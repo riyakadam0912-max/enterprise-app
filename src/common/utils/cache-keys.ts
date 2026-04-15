@@ -1,0 +1,1 @@
+export const DASHBOARD_CACHE_KEY = 'dashboard_data';

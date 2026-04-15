@@ -1,0 +1,1101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  HR
+  MANAGER
+  EMPLOYEE
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  password  String
+  refreshToken String?
+  role      Role
+  isActive  Boolean  @default(true)
+  employeeId Int?    @unique
+  managerId Int?
+
+
+  deletedAt   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  employee       Employee? @relation("UserEmployee", fields: [employeeId], references: [id])
+  manager        User?     @relation("UserManager", fields: [managerId], references: [id])
+  teamMembers    User[]    @relation("UserManager")
+  managedProjects Project[] @relation("ProjectManager")
+  projectLinksCreated ProjectLink[]
+  assignedTasks   Task[]    @relation("TaskAssignedTo")
+  createdTasks    Task[]    @relation("TaskAssignedBy")
+  invoices       Invoice[]
+  ledgerEntries  LedgerEntry[]
+  activities     Activity[]
+  submittedExpenses Expense[] @relation("ExpenseSubmittedBy")
+  managerApprovedExpenses Expense[] @relation("ExpenseManagerApprovedBy")
+  hrApprovedExpenses Expense[] @relation("ExpenseHrApprovedBy")
+}
+
+model Employee {
+  id           Int       @id @default(autoincrement())
+  name         String
+  phone        String?
+  position     String?
+  salary       Float?
+  email        String?
+  phoneNumber  String?
+  department   String?
+  designation  String?
+  hireDate     DateTime?
+  manager      String?
+  leaveBalance Int?
+  status       String?
+  pan          String?
+  shiftId      Int?
+  address      String?
+  emergencyContact String?
+  emergencyContactPhone String?
+
+  user          User?      @relation("UserEmployee")
+  leadAssignments Lead[]   @relation("LeadAssignee")
+  dealAssignments Deal[]   @relation("DealAssignee")
+  taskAssignments Task[]   @relation("TaskAssignee")
+  projectMemberships ProjectMember[]
+  attendances  Attendance[]
+  leaveRequests LeaveRequest[]
+  expenseClaims Expense[]
+  salaryStructures SalaryStructure[]
+  payrollEntries PayrollEntry[]
+  payslips     Payslip[]
+  taxDeclarations TaxDeclaration[]
+  form16s      Form16[]
+  goals Goal[]
+  performanceReviews PerformanceReview[]
+  shift         Shift?     @relation(fields: [shiftId], references: [id])
+
+
+  deletedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+enum ShiftType {
+  FIXED
+  FLEXIBLE
+  ROTATIONAL
+}
+
+model Shift {
+  id                 Int       @id @default(autoincrement())
+  name               String
+  type               ShiftType
+  startTime          String?
+  endTime            String?
+  requiredHours      Float     @default(8)
+  gracePeriodMinutes Int       @default(15)
+  rotationPattern    String?
+  isActive           Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  employees          Employee[]
+  attendances        Attendance[]
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  LEAVE
+}
+
+model Attendance {
+  id           Int              @id @default(autoincrement())
+  employeeId   Int
+  shiftId      Int?
+  date         DateTime
+  checkIn      DateTime?
+  checkOut     DateTime?
+  workingHours Float?
+  lateMinutes  Int              @default(0)
+  overtimeHours Float           @default(0)
+  requiredHours Float?
+  isAutoClosed Boolean          @default(false)
+  isPaidLeave  Boolean?
+  remarks      String?
+  status       AttendanceStatus
+  deletedAt   DateTime?
+  createdAt    DateTime         @default(now())
+
+  employee     Employee         @relation(fields: [employeeId], references: [id])
+  shift        Shift?           @relation(fields: [shiftId], references: [id])
+
+  @@unique([employeeId, date])
+  @@index([date])
+}
+
+model Invoice {
+  id            Int       @id @default(autoincrement())
+  invoiceNo     String    @unique
+  issueDate     DateTime?
+  dueDate       DateTime?
+  status        String    @default("DRAFT")
+  customer      String?
+  totalAmount   Float     @default(0)
+  taxAmount     Float     @default(0)
+  discount      Float     @default(0)
+  paymentMethod String?
+  notes         String?
+
+  userId        Int
+  user          User      @relation(fields: [userId], references: [id])
+  payments      Payment[]
+
+
+  deletedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model LedgerEntry {
+  id          Int       @id @default(autoincrement())
+  date        DateTime?
+  description String?
+  debit       Float     @default(0)
+  credit      Float     @default(0)
+  account     String?
+  invoice     String?
+  expense     String?
+  balance     Float     @default(0)
+  reference   String?
+
+  userId      Int
+  user        User      @relation(fields: [userId], references: [id])
+
+
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Lead {
+  id                 Int       @id @default(autoincrement())
+  name               String
+  company            String?
+  email              String?
+  phone              String?
+  status             String    @default("New")
+  source             String?
+  notes              String?
+  leadOwner          String?
+  contactedDate      DateTime?
+  nextFollowUp       DateTime?
+  assignedTo         String?
+  assignedToId       Int?
+  leadScore          Int?
+  createdBy          String?
+
+
+  deletedAt   DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // Relations
+  assignedEmployee Employee? @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  deals          Deal[]
+  campaignLeads  CampaignLead[]
+  tasks          Task[]
+  activities     Activity[]
+}
+
+model CampaignLead {
+  id              Int       @id @default(autoincrement())
+  campaign        String
+  engagementScore Int?
+  sourceType      String?
+  lastInteraction DateTime?
+  status          String    @default("NEW")
+  notes           String?
+
+  leadId          Int?
+  lead            Lead?     @relation(fields: [leadId], references: [id])
+
+
+  deletedAt   DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model Timesheet {
+  id          Int      @id @default(autoincrement())
+  task        String
+  project     String?
+  date        DateTime
+  hours       Float
+  status      String   @default("PENDING")
+  notes       String?
+
+
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Deal {
+  id              Int       @id @default(autoincrement())
+  title           String
+  value           Float
+  stage           String    @default("NEW")
+  probability     Float?
+  closeDate       DateTime?
+  actualCloseDate DateTime?
+  contact         String?
+  owner           String?
+  assignedToId    Int?
+  pipeline        String?
+
+  leadId      Int?
+  contactId   Int?
+
+  lead        Lead?     @relation(fields: [leadId], references: [id])
+  linkedContact Contact? @relation("ContactToDeals", fields: [contactId], references: [id])
+  assignedEmployee Employee? @relation("DealAssignee", fields: [assignedToId], references: [id])
+  tasks       Task[]
+  activities  Activity[]
+  quotes      Quote[]
+
+
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Task {
+  id             Int       @id @default(autoincrement())
+  taskName       String
+  project        String?
+  projectId      Int?
+  assignee       String?
+  assignedToId   Int?
+  assignedToUserId Int?
+  assignedByUserId Int?
+  dueDate        DateTime?
+  priority       String?
+  status         String    @default("PENDING")
+  estimatedHours Float?
+  actualHours    Float?
+  notes          String?
+  submissionLink String?
+  reviewComment  String?
+  leadId         Int?
+  dealId         Int?
+
+  lead           Lead?     @relation(fields: [leadId], references: [id])
+  deal           Deal?     @relation(fields: [dealId], references: [id])
+  projectRef     Project?  @relation("ProjectTasks", fields: [projectId], references: [id])
+  assignedEmployee Employee? @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  assignedToUser User?       @relation("TaskAssignedTo", fields: [assignedToUserId], references: [id])
+  assignedByUser User?       @relation("TaskAssignedBy", fields: [assignedByUserId], references: [id])
+
+
+  deletedAt   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model LeaveRequest {
+  id         Int       @id @default(autoincrement())
+  employeeId Int?
+  startDate  DateTime
+  endDate    DateTime
+  leaveType  String
+  reason     String?
+  status     String    @default("PENDING")
+  isPaid     Boolean   @default(true)
+  appliedOn  DateTime?
+  approvedBy String?
+
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+
+
+  deletedAt   DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model TicketType {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  color     String?
+
+  tickets   Ticket[]
+
+
+  deletedAt   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Ticket {
+  id           Int         @id @default(autoincrement())
+  event        String?
+  customer     String?
+  price        Float?
+  status       String      @default("RESERVED")
+  purchaseDate DateTime?
+  qrCode       String?
+  notes        String?
+
+  ticketTypeId Int?
+  ticketType   TicketType? @relation(fields: [ticketTypeId], references: [id])
+
+
+  deletedAt   DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model FormSubmission {
+  id             Int       @id @default(autoincrement())
+  form           String
+  submittedBy    String?
+  submissionDate DateTime?
+  data           String?
+  status         String    @default("SUBMITTED")
+  reviewer       String?
+  reviewDate     DateTime?
+
+
+  deletedAt   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model MarketingCampaign {
+  id             Int       @id @default(autoincrement())
+  campaignName   String
+  channel        String?
+  startDate      DateTime?
+  endDate        DateTime?
+  objective      String?
+  budget         Float?
+  status         String    @default("PLANNED")
+  targetAudience String?
+  createdBy      String?
+  campaignOwner  String?
+
+
+  deletedAt   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model Expense {
+  id           Int       @id @default(autoincrement())
+  expenseDate  DateTime?
+  category     String?
+  description  String?
+  amount       Float?
+  currency     String?
+  receiptImage String?
+  approvedBy   String?
+  status       String    @default("PENDING")
+  employeeId   Int?
+  submittedByUserId Int?
+  managerApprovalByUserId Int?
+  hrApprovalByUserId Int?
+  approvedAt   DateTime?
+  rejectedAt   DateTime?
+  rejectionReason String?
+  approvalTrail Json?
+
+  employee Employee? @relation(fields: [employeeId], references: [id])
+  submittedByUser User? @relation("ExpenseSubmittedBy", fields: [submittedByUserId], references: [id])
+  managerApprovalByUser User? @relation("ExpenseManagerApprovedBy", fields: [managerApprovalByUserId], references: [id])
+  hrApprovalByUser User? @relation("ExpenseHrApprovedBy", fields: [hrApprovalByUserId], references: [id])
+
+
+  deletedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Project {
+  id          Int       @id @default(autoincrement())
+  projectName String
+  projectCode String?
+  startDate   DateTime?
+  endDate     DateTime?
+  manager     String?
+  managerId   Int?
+  status      String    @default("PLANNED")
+  budget      Float?
+  description String?
+  client      String?
+  projectLead String?
+
+  managerUser User?     @relation("ProjectManager", fields: [managerId], references: [id])
+  members     ProjectMember[]
+  links       ProjectLink[]
+  tasks       Task[]    @relation("ProjectTasks")
+
+
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model ProjectLink {
+  id         Int      @id @default(autoincrement())
+  projectId  Int
+  title      String
+  url        String
+  createdById Int
+
+  deletedAt   DateTime?
+  createdAt  DateTime @default(now())
+
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy  User     @relation(fields: [createdById], references: [id])
+
+  @@index([projectId])
+}
+
+model ProjectMember {
+  projectId   Int
+  employeeId  Int
+  role        String?
+  joinedAt    DateTime @default(now())
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, employeeId])
+  deletedAt   DateTime?
+}
+
+model Contact {
+  id            Int      @id @default(autoincrement())
+  contactName   String
+  email         String?
+  phoneNumber   String?
+  company       String?
+  jobTitle      String?
+  leadSource    String?
+  address       String?
+  website       String?
+  linkedin      String?
+  contactStatus String?
+
+  deals         Deal[]     @relation("ContactToDeals")
+  activities    Activity[]
+  quotes        Quote[]
+
+
+  deletedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+enum ActivityType {
+  CALL
+  EMAIL
+  MEETING
+  NOTE
+  STATUS_CHANGE
+  DEAL_CREATED
+  LEAD_CONVERTED
+  QUOTE_SENT
+  INVOICE_PAID
+  TASK_DUE
+}
+
+model Activity {
+  id          Int          @id @default(autoincrement())
+  type        ActivityType
+  description String
+  userId      Int
+  leadId      Int?
+  dealId      Int?
+  contactId   Int?
+  deletedAt   DateTime?
+  createdAt   DateTime     @default(now())
+
+  user        User         @relation(fields: [userId], references: [id])
+  lead        Lead?        @relation(fields: [leadId], references: [id])
+  deal        Deal?        @relation(fields: [dealId], references: [id])
+  contact     Contact?     @relation(fields: [contactId], references: [id])
+}
+
+model Event {
+  id            Int       @id @default(autoincrement())
+  eventName     String
+  eventCode     String?
+  startDateTime DateTime?
+  endDateTime   DateTime?
+  location      String?
+  organizer     String?
+  status        String?
+  capacity      Int?
+  description   String?
+  eventType     String?
+
+
+  deletedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model DynamicForm {
+  id            Int       @id @default(autoincrement())
+  formName      String
+  formCode      String?
+  description   String?
+  createdBy     String?
+  status        String?
+  formType      String?
+  targetModule  String?
+  createdOn     DateTime?
+
+
+  deletedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Quote {
+  id        Int      @id @default(autoincrement())
+  dealId    Int
+  contactId Int
+  total     Float
+  status    String   @default("DRAFT")
+  validTill DateTime
+  notes     String?
+
+
+  deletedAt   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deal    Deal    @relation(fields: [dealId], references: [id])
+  contact Contact @relation(fields: [contactId], references: [id])
+  items   QuoteItem[]
+}
+
+model QuoteItem {
+  id       Int    @id @default(autoincrement())
+  quoteId  Int
+  name     String
+  quantity Int
+  price    Float
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  deletedAt   DateTime?
+}
+
+// ── Products ──────────────────────────────────────────────────────────────────
+
+model ProductCategory {
+  id        Int       @id @default(autoincrement())
+  name      String
+
+
+  deletedAt   DateTime?
+  createdAt DateTime  @default(now())
+  products  Product[]
+}
+
+model Product {
+  id          Int              @id @default(autoincrement())
+  name        String
+  description String?
+  price       Float
+  sku         String?
+  categoryId  Int?
+  taxRate     Float?
+  isActive    Boolean          @default(true)
+
+  deletedAt   DateTime?
+  createdAt   DateTime         @default(now())
+  category    ProductCategory? @relation(fields: [categoryId], references: [id])
+}
+
+// ── Payments ─────────────────────────────────────────────────────────────────
+
+model Payment {
+  id            Int      @id @default(autoincrement())
+  invoiceId     Int
+  amount        Float
+  paymentMethod String
+  transactionId String?
+  paymentDate   DateTime
+  status        String
+
+  deletedAt   DateTime?
+  createdAt     DateTime @default(now())
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id])
+}
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  deletedAt   DateTime?
+  createdAt DateTime @default(now())
+}
+
+// ── File Attachments ──────────────────────────────────────────────────────────
+
+model FileAttachment {
+  id         Int      @id @default(autoincrement())
+  fileName   String
+  fileUrl    String
+  entityType String
+  entityId   Int
+  uploadedBy Int
+
+  deletedAt   DateTime?
+  createdAt  DateTime @default(now())
+}
+
+// ── Audit Logs ────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  action    String
+  entity    String
+  entityId  Int
+  deletedAt   DateTime?
+  createdAt DateTime @default(now())
+}
+
+// ── RBAC ──────────────────────────────────────────────────────────────────────
+
+model AppRole {
+  id          Int              @id @default(autoincrement())
+  name        String           @unique
+  permissions RolePermission[]
+  deletedAt   DateTime?
+}
+
+model Permission {
+  id    Int              @id @default(autoincrement())
+  key   String           @unique
+  roles RolePermission[]
+  deletedAt   DateTime?
+}
+
+model RolePermission {
+  roleId       Int
+  permissionId Int
+  role         AppRole    @relation(fields: [roleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  @@id([roleId, permissionId])
+  deletedAt   DateTime?
+}
+
+// Payroll
+model SalaryStructure {
+  id              Int      @id @default(autoincrement())
+  employeeId      Int
+  basic           Float    @default(0)
+  hra             Float    @default(0)
+  allowances      Float    @default(0)
+  deductions      Float    @default(0)
+  pf              Float    @default(0)
+  esi             Float    @default(0)
+  professionalTax Float    @default(0)
+  tds             Float    @default(0)
+  overtimeRatePerHour Float @default(0)
+  allowedLateMarks  Int     @default(2)
+  lateMarkPenalty   Float   @default(0)
+  isActive        Boolean  @default(true)
+  effectiveFrom   DateTime @default(now())
+
+  deletedAt   DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, isActive])
+}
+
+model PayrollCycle {
+  id        Int      @id @default(autoincrement())
+  name      String
+  month     Int
+  year      Int
+  status    String   @default("DRAFT")
+  runDate   DateTime?
+  notes     String?
+  createdBy Int?
+
+  deletedAt   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entries PayrollEntry[]
+
+  @@unique([month, year])
+}
+
+model PayrollEntry {
+  id              Int      @id @default(autoincrement())
+  payrollCycleId  Int
+  employeeId      Int
+  grossPay        Float    @default(0)
+  totalDeductions Float    @default(0)
+  netPay          Float    @default(0)
+  status          String   @default("PENDING")
+  totalPresentDays Float   @default(0)
+  totalAbsentDays  Float   @default(0)
+  lateCount        Int     @default(0)
+  overtimeHours    Float   @default(0)
+  paidAt          DateTime?
+  remarks         String?
+
+  deletedAt   DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  payrollCycle PayrollCycle @relation(fields: [payrollCycleId], references: [id], onDelete: Cascade)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  payslip      Payslip?
+  earnings     PayrollEarnings?
+  deductions   PayrollDeduction?
+
+  @@unique([payrollCycleId, employeeId])
+  @@index([employeeId])
+}
+
+model Payslip {
+  id              Int      @id @default(autoincrement())
+  payrollEntryId  Int      @unique
+  employeeId      Int
+  month           Int
+  year            Int
+  
+  basicSalary     Float    @default(0)
+  hra             Float    @default(0)
+  allowances      Float    @default(0)
+  bonus           Float    @default(0)
+  overtime        Float    @default(0)
+  reimbursements  Float    @default(0)
+  
+  grossEarnings   Float    @default(0)
+  
+  pfDeduction     Float    @default(0)
+  esiDeduction    Float    @default(0)
+  professionalTax Float    @default(0)
+  tdsDeduction    Float    @default(0)
+  lossOfPay       Float    @default(0)
+  otherDeductions Float    @default(0)
+  
+  totalDeductions Float    @default(0)
+  netPay          Float    @default(0)
+  
+  workingDays     Int?
+  presentDays     Int?
+  absenceDays     Int?
+  paidLeaveTaken  Int?
+  unpaidLeaveTaken Int?
+  lateCount       Int      @default(0)
+  overtimeHours   Float    @default(0)
+  overtimeBonus   Float    @default(0)
+  lateMarkPenalty Float    @default(0)
+  
+  taxRegime       String   @default("NEW")
+  annualTaxableIncome Float?
+  form16Generated Boolean  @default(false)
+  form16Data      Json?
+  
+  payslipUrl      String?
+  generatedAt     DateTime?
+  downloadedAt    DateTime?
+  emailSentAt     DateTime?
+
+  
+  deletedAt   DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  payrollEntry PayrollEntry @relation(fields: [payrollEntryId], references: [id], onDelete: Cascade)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model PayrollEarnings {
+  id              Int      @id @default(autoincrement())
+  payrollEntryId  Int      @unique
+  
+  basicSalary     Float    @default(0)
+  hra             Float    @default(0)
+  specialAllowance Float   @default(0)
+  da              Float    @default(0)
+  bonus           Float    @default(0)
+  overtime        Float    @default(0)
+  incentive       Float    @default(0)
+  reimbursements  Float    @default(0)
+  
+  totalEarnings   Float    @default(0)
+
+  
+  deletedAt   DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  payrollEntry PayrollEntry @relation(fields: [payrollEntryId], references: [id], onDelete: Cascade)
+}
+
+model PayrollDeduction {
+  id                Int      @id @default(autoincrement())
+  payrollEntryId    Int      @unique
+  
+  pfEmployeeContribution Float @default(0)
+  pfEmployerContribution Float @default(0)
+  esiContribution   Float    @default(0)
+  professionalTax   Float    @default(0)
+  tdsDeducted       Float    @default(0)
+  lossOfPay         Float    @default(0)
+  advanceRecovery   Float    @default(0)
+  otherDeductions   Float    @default(0)
+  
+  totalDeductions   Float    @default(0)
+
+  
+  deletedAt   DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  payrollEntry PayrollEntry @relation(fields: [payrollEntryId], references: [id], onDelete: Cascade)
+}
+
+model TaxDeclaration {
+  id              Int      @id @default(autoincrement())
+  employeeId      Int
+  year            Int
+  
+  investment80C   Float    @default(0)
+  investment80D   Float    @default(0)
+  investment80CCD Float   @default(0)
+  hraExemption    Float    @default(0)
+  standardDeduction Float  @default(0)
+  
+  otherIncome     Float    @default(0)
+  otherIncomeTaxed Float   @default(0)
+  
+  exerciseStock   Float    @default(0)
+  
+  estimatedTaxableIncome Float?
+  approvalStatus  String   @default("PENDING")
+  approvedBy      Int?
+  approvedAt      DateTime?
+
+  
+  deletedAt   DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, year])
+}
+
+model PayrollConfig {
+  id              Int      @id @default(autoincrement())
+  
+  // PF Configuration
+  pfEmployeeRate  Float    @default(12)
+  pfEmployerRate  Float    @default(12)
+  pfWaiveLimit    Float    @default(15000)
+  
+  // ESI Configuration
+  esiRate         Float    @default(0.75)
+  esiSalaryLimit  Float    @default(21000)
+  esiApplicable   Boolean  @default(true)
+  
+  // Professional Tax
+  ptApplicable    Boolean  @default(true)
+  ptState         String   @default("MAHARASHTRA")
+  ptSlabs         Json     // JSON array of PT slabs based on salary
+  
+  // Tax Regimes
+  standardDeduction2024 Float @default(75000)
+  
+  // Other Settings
+  defaultLossOfPayRate Float @default(50)
+  financialYearStart Int    @default(4) // April
+  
+  deletedAt   DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Form16 {
+  id              Int      @id @default(autoincrement())
+  employeeId      Int
+  year            Int
+  
+  panNumber       String?
+  grossIncome     Float    @default(0)
+  taxableIncome   Float    @default(0)
+  totalTaxPaid    Float    @default(0)
+  
+  grossSalary     Float    @default(0)
+  standardDeduction Float  @default(0)
+  
+  interestIncomeUnderSection80A Float @default(0)
+  investmentUnder80C Float @default(0)
+  
+  tfcData         Json?
+  
+  generatedAt     DateTime?
+  pdfUrl          String?
+
+  
+  deletedAt   DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, year])
+}
+
+// ATS
+model JobOpening {
+  id             Int      @id @default(autoincrement())
+  title          String
+  department     String?
+  location       String?
+  employmentType String?
+  status         String   @default("OPEN")
+  openings       Int      @default(1)
+  description    String?
+  createdBy      Int?
+
+  deletedAt   DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  candidates Candidate[]
+}
+
+model Candidate {
+  id            Int      @id @default(autoincrement())
+  jobOpeningId  Int
+  name          String
+  email         String?
+  phone         String?
+  resumeUrl     String?
+  source        String?
+  currentStage  String   @default("APPLIED")
+  status        String   @default("ACTIVE")
+  remarks       String?
+
+  deletedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  jobOpening JobOpening @relation(fields: [jobOpeningId], references: [id], onDelete: Cascade)
+  interviews Interview[]
+
+  @@index([jobOpeningId, currentStage])
+}
+
+model Interview {
+  id           Int      @id @default(autoincrement())
+  candidateId  Int
+  scheduledAt  DateTime
+  interviewerId Int?
+  mode         String?
+  status       String   @default("SCHEDULED")
+  feedback     String?
+  outcome      String?
+
+  deletedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId, scheduledAt])
+}
+
+// Performance
+model GoalCycle {
+  id         Int      @id @default(autoincrement())
+  name       String
+  startDate  DateTime
+  endDate    DateTime
+  status     String   @default("ACTIVE")
+  createdBy  Int?
+
+  deletedAt   DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  goals   Goal[]
+  reviews PerformanceReview[]
+}
+
+model Goal {
+  id              Int      @id @default(autoincrement())
+  employeeId      Int
+  goalCycleId     Int
+  title           String
+  description     String?
+  weightage       Float    @default(0)
+  targetMetric    String?
+  status          String   @default("NOT_STARTED")
+  managerComment  String?
+  employeeComment String?
+
+  deletedAt   DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  employee  Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  goalCycle GoalCycle @relation(fields: [goalCycleId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, goalCycleId])
+}
+
+model PerformanceReview {
+  id            Int      @id @default(autoincrement())
+  employeeId    Int
+  goalCycleId   Int
+  reviewerId    Int?
+  rating        Float?
+  summary       String?
+  strengths     String?
+  improvements  String?
+  status        String   @default("DRAFT")
+  submittedAt   DateTime?
+
+  deletedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  goalCycle   GoalCycle @relation(fields: [goalCycleId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, goalCycleId])
+}
