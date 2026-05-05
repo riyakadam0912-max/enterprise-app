@@ -1,0 +1,13 @@
+{
+  "name": "enterprise-app",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix web run dev",
+    "dev:api": "npm --prefix api run start:dev",
+    "dev:web": "npm --prefix web run dev",
+    "dev:full": "concurrently \"npm --prefix api run start:dev\" \"npm --prefix web run dev\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
