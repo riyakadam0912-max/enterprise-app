@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import { logout } from '@/utils/logout';
+import { useAuthSession } from '@/stores/auth-store';
 
 // ── SVG icon components ──────────────────────────────────────────────────────
 const stroke = { fill: 'none' as const, stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
@@ -20,6 +21,7 @@ function InboxIcon()      { return <svg viewBox="0 0 24 24" className="w-4.25 h-
 function MegaphoneIcon()  { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" {...stroke}><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>; }
 function RupeeIcon()      { return <span className="inline-flex w-4.25 h-4.25 shrink-0 items-center justify-center text-[15px] font-semibold leading-none">₹</span>; }
 function WalletIcon()     { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" {...stroke}><path d="M21 8H3a2 2 0 00-2 2v8a2 2 0 002 2h18a2 2 0 002-2v-8a2 2 0 00-2-2z"/><path d="M16 8V6a2 2 0 00-2-2H5"/><circle cx="17" cy="14" r="1"/></svg>; }
+function CoinsIcon()      { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" {...stroke}><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>; }
 function FolderIcon()     { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" {...stroke}><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>; }
 function ContactsIcon()   { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" {...stroke}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 11l-4 4-1.5-1.5"/></svg>; }
 function EventsIcon()     { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" {...stroke}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>; }
@@ -29,6 +31,7 @@ function LeadsIcon()      { return <svg viewBox="0 0 24 24" className="w-4.25 h-
 function ShoppingBagIcon()  { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>; }
 function CreditCardIcon()   { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>; }
 function BarChartIcon()     { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>; }
+function ShieldAlertIcon()  { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>; }
 
 function ChevronRightIcon({ className }: { className?: string }) {
   return (
@@ -117,6 +120,14 @@ const navConfig: NavItem[] = [
     ],
   },
   {
+    type: 'dropdown', id: 'accounts', label: 'Accounts', icon: <CoinsIcon />,
+    children: [
+      { label: 'Accounts Overview', href: '/dashboard/accounts', icon: <ReportIcon /> },
+      { label: 'Invoices', href: '/dashboard/invoices', icon: <FileTextIcon /> },
+      { label: 'Expenses', href: '/dashboard/expenses', icon: <RupeeIcon /> },
+    ],
+  },
+  {
     type: 'link', label: 'Payments', href: '/dashboard/payments', icon: <CreditCardIcon />,
   },
   {
@@ -124,6 +135,12 @@ const navConfig: NavItem[] = [
   },
   {
     type: 'link', label: 'Reports', href: '/dashboard/reports', icon: <BarChartIcon />,
+  },
+  {
+    type: 'link', label: 'Activity Timeline', href: '/dashboard/activity-timeline', icon: <EventsIcon />,
+  },
+  {
+    type: 'link', label: 'Audit Logs', href: '/dashboard/audit-logs', icon: <ShieldAlertIcon />,
   },
   {
     type: 'dropdown', id: 'ledger', label: 'Ledger', icon: <BookIcon />,
@@ -229,8 +246,6 @@ interface SidebarProps {
   currentPath: string;
 }
 
-type UserRole = 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
-
 const EMPLOYEE_VISIBLE_LABELS = new Set([
   'Dashboard',
   'Leads',
@@ -241,12 +256,15 @@ const EMPLOYEE_VISIBLE_LABELS = new Set([
   'Timesheets',
   'Attendance',
   'Requests',
+  'Expenses',
 ]);
 
 const MANAGER_VISIBLE_LABELS = new Set([
   'Dashboard',
   'Tasks',
   'Projects',
+  'Invoices',
+  'Expenses',
 ]);
 
 function getMatchedDropdownId(items: NavItem[], path: string): string | null {
@@ -259,54 +277,9 @@ function getMatchedDropdownId(items: NavItem[], path: string): string | null {
 }
 
 export default function Sidebar({ currentPath }: SidebarProps) {
-  const [role] = useState<UserRole>(() => {
-    if (typeof window === 'undefined') return 'ADMIN';
-    const storedRole = localStorage.getItem('role');
-    if (storedRole === 'EMPLOYEE') return 'EMPLOYEE';
-    if (storedRole === 'MANAGER') return 'MANAGER';
-    if (storedRole === 'HR') return 'HR';
-    return 'ADMIN';
-  });
-  const [currentUser] = useState<{
-    name: string;
-    email: string;
-    role?: string;
-    jobTitle?: string;
-    designation?: string;
-    position?: string;
-    department?: string;
-    team?: string;
-  } | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const rawUser = localStorage.getItem('currentUser');
-    if (!rawUser) return null;
-
-    try {
-      const parsed = JSON.parse(rawUser) as {
-        name?: string;
-        email?: string;
-        role?: string;
-        jobTitle?: string;
-        designation?: string;
-        position?: string;
-        department?: string;
-        team?: string;
-      };
-      if (!parsed.name && !parsed.email) return null;
-      return {
-        name: parsed.name ?? 'User',
-        email: parsed.email ?? '',
-        role: parsed.role,
-        jobTitle: parsed.jobTitle,
-        designation: parsed.designation,
-        position: parsed.position,
-        department: parsed.department,
-        team: parsed.team,
-      };
-    } catch {
-      return null;
-    }
-  });
+  const session = useAuthSession();
+  const role = session.role;
+  const currentUser = session.user;
   const [openMenu, setOpenMenu] = useState<string | null>(() => {
     const initialItems = role === 'EMPLOYEE'
       ? navConfig.filter((item) => EMPLOYEE_VISIBLE_LABELS.has(item.label))
@@ -348,23 +321,23 @@ export default function Sidebar({ currentPath }: SidebarProps) {
   }, []);
 
   return (
-    <aside className="w-65 bg-[#111827] flex flex-col h-full overflow-hidden shrink-0">
+    <aside key={role} className="sidebar-shell w-65 flex flex-col h-full overflow-hidden shrink-0">
 
       {/* ── Brand ── */}
-      <div className="px-5 py-4 border-b border-white/10">
+      <div className="sidebar-brand px-5 py-4">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-orange-500 rounded-xl flex items-center justify-center shrink-0 shadow-lg shadow-orange-500/30">
+          <div className="sidebar-brand-mark w-9 h-9 bg-orange-500 rounded-xl flex items-center justify-center shrink-0">
             <span className="text-white text-base font-bold">E</span>
           </div>
           <div className="min-w-0">
-            <p className="text-white text-[13px] font-bold leading-tight truncate">Enterprise</p>
-            <p className="text-slate-400 text-[10px] leading-tight">Management System</p>
+            <p className="sidebar-brand-title truncate">Enterprise</p>
+            <p className="sidebar-brand-subtitle">Management System</p>
           </div>
         </div>
       </div>
 
       {/* ── Navigation ── */}
-<nav className="flex-1 overflow-y-auto py-3 px-2.5 scrollbar-hide">
+<nav className="sidebar-nav flex-1 overflow-y-auto py-3 px-2.5 scrollbar-hide">
   {visibleNavConfig.map((item) => {
 
     // ── Flat link ──
@@ -377,10 +350,10 @@ export default function Sidebar({ currentPath }: SidebarProps) {
         <Link
           key={item.href}
           href={item.href}
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all mb-0.5 ${
+          className={`sidebar-item mb-0.5 ${
             isActive
-              ? 'bg-orange-500 text-white shadow-md shadow-orange-500/25'
-              : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+              ? 'sidebar-item--active'
+              : ''
           }`}
         >
           {item.icon}
@@ -401,21 +374,21 @@ export default function Sidebar({ currentPath }: SidebarProps) {
         {/* Parent row */}
         <button
           onClick={() => toggleMenu(item.id)}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all ${
+          className={`sidebar-item ${
             isAnyChildActive && !isOpen
-              ? 'text-orange-400 bg-orange-500/10'
+              ? 'sidebar-item--current'
               : isOpen
-                ? 'text-slate-200 bg-slate-800'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                ? 'sidebar-item--open'
+                : ''
           }`}
         >
           {item.icon}
           <span className="flex-1 text-left">{item.label}</span>
           <ChevronRightIcon
-            className={`transition-transform duration-200 ${
+            className={`sidebar-chevron transition-transform duration-200 ${
               isOpen ? 'rotate-90' : ''
             } ${
-              isAnyChildActive && !isOpen ? 'text-orange-400' : 'text-slate-500'
+              isAnyChildActive && !isOpen ? 'sidebar-chevron--active' : ''
             }`}
           />
         </button>
@@ -426,7 +399,7 @@ export default function Sidebar({ currentPath }: SidebarProps) {
             isOpen ? 'max-h-125 opacity-100' : 'max-h-0 opacity-0'
           }`}
         >
-          <div className="ml-3.5 pl-4 border-l border-slate-700/50 mt-1 mb-1 space-y-0.5">
+          <div className="sidebar-subnav space-y-0.5">
             {item.children.map((child) => {
               const isChildActive =
                 currentPath === child.href ||
@@ -436,20 +409,20 @@ export default function Sidebar({ currentPath }: SidebarProps) {
                 <Link
                   key={child.href}
                   href={child.href}
-                  className={`flex items-center gap-2.5 px-3 py-1.75 rounded-lg text-xs font-medium transition-all ${
+                  className={`sidebar-subitem ${
                     isChildActive
-                      ? 'text-orange-400 bg-orange-500/15'
-                      : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'
+                      ? 'sidebar-subitem--active'
+                      : ''
                   }`}
                 >
                   {child.icon ? (
-                    <span className={isChildActive ? 'text-orange-400' : 'text-slate-500'}>
+                    <span className="sidebar-subitem-icon">
                       {child.icon}
                     </span>
                   ) : (
                     <span
                       className={`w-1.5 h-1.5 rounded-full shrink-0 transition-colors ${
-                        isChildActive ? 'bg-orange-400' : 'bg-slate-600'
+                        isChildActive ? 'bg-orange-400' : 'bg-slate-500'
                       }`}
                     />
                   )}
@@ -466,24 +439,24 @@ export default function Sidebar({ currentPath }: SidebarProps) {
 </nav>
 
       {/* ── User profile (dropdown opens upward) ── */}
-      <div className="border-t border-white/10 p-3 relative" ref={userMenuRef}>
+      <div className="sidebar-user-panel" ref={userMenuRef}>
 
         {/* Popup menu */}
         <div
-          className={`absolute bottom-full left-3 right-3 mb-2 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-50 transition-all duration-200 ease-in-out origin-bottom ${
+          className={`sidebar-user-popover absolute bottom-full left-3 right-3 mb-2 rounded-xl overflow-hidden z-50 transition-all duration-200 ease-in-out origin-bottom ${
             userMenuOpen ? 'opacity-100 scale-y-100 pointer-events-auto' : 'opacity-0 scale-y-95 pointer-events-none'
           }`}
         >
           <Link
             href="/dashboard/profile"
-            className="flex items-center gap-3 px-4 py-3 text-slate-300 text-[13px] font-medium hover:bg-slate-700 transition-colors"
+            className="sidebar-user-link"
           >
             <svg viewBox="0 0 24 24" className="w-4 h-4 shrink-0" {...stroke}><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             Profile
           </Link>
           <button
             onClick={logout}
-            className="w-full flex items-center gap-3 px-4 py-3 text-red-400 text-[13px] font-medium hover:bg-slate-700 transition-colors border-t border-slate-700/60"
+            className="sidebar-user-link sidebar-user-link--danger w-full border-t border-slate-700/60"
           >
             <svg viewBox="0 0 24 24" className="w-4 h-4 shrink-0" {...stroke}><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             Logout
@@ -493,21 +466,21 @@ export default function Sidebar({ currentPath }: SidebarProps) {
         {/* Profile trigger */}
         <button
           onClick={() => setUserMenuOpen((v) => !v)}
-          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-            userMenuOpen ? 'bg-slate-800' : 'hover:bg-slate-800'
+          className={`sidebar-user-trigger w-full px-3 py-2 ${
+            userMenuOpen ? 'sidebar-user-trigger--open' : ''
           }`}
         >
-          <div className="relative w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center shrink-0">
+          <div className="sidebar-user-avatar relative w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center shrink-0">
             <span className="text-white text-xs font-bold">{(currentUser?.name?.charAt(0) ?? 'U').toUpperCase()}</span>
             <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-[#111827]" />
           </div>
           <div className="flex-1 text-left min-w-0 leading-tight">
-            <p className="text-slate-100 text-[13px] font-semibold truncate">{currentUser?.name ?? 'User'}</p>
-            <p className="text-slate-500 text-[10px] font-medium truncate">
+            <p className="sidebar-user-name truncate">{currentUser?.name ?? 'User'}</p>
+            <p className="sidebar-user-role truncate">
               {currentUser?.jobTitle ?? currentUser?.designation ?? currentUser?.position ?? currentUser?.role ?? role}
             </p>
             {(currentUser?.department || currentUser?.team) && (
-              <p className="text-slate-500 text-[9px] truncate">
+              <p className="sidebar-user-meta truncate">
                 {currentUser?.department ?? currentUser?.team}
               </p>
             )}

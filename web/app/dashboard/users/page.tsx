@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { apiClient } from '@/api/apiClient';
+import { canAccessUsers } from '@/utils/auth/permissions';
 
 interface UserAccount {
   id: number;
@@ -15,13 +16,28 @@ interface UserAccount {
 }
 
 export default function UsersPage() {
+  const [role] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 'EMPLOYEE' as UserAccount['role'];
+    }
+
+    return (localStorage.getItem('role') ?? 'EMPLOYEE') as UserAccount['role'];
+  });
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
+
+    if (!canAccessUsers(role)) {
+      setUsers([]);
+      setError('You do not have permission to view user accounts.');
+      setLoading(false);
+      return;
+    }
+
     try {
       const usersData = await apiClient<UserAccount[]>('/users');
       setUsers(usersData);
@@ -30,11 +46,11 @@ export default function UsersPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [role]);
 
-  useEffect(() => { loadData(); }, []);
-
-  const inputCls = 'w-full px-4 py-2.5 rounded-lg border border-slate-300 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition text-sm';
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
 
   return (
     <div className="p-6">

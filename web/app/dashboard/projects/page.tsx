@@ -1,25 +1,59 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
+  addCoManager,
   assignProjectManager,
+  assignEmployee,
   getProject,
   getProjectProgress,
   getProjects,
+  getMessages,
   type Project,
+  type ProjectMessage,
   type ProjectProgress,
+  removeCoManager,
+  removeEmployee,
+  sendMessage,
   updateProjectStatus,
 } from '@/api/projectsApi';
 import { createTask, reviewTask, submitTaskWork, updateTaskStatus } from '@/api/tasksApi';
 import { apiClient } from '@/api/apiClient';
+import { TaskDetailPanel } from '@/components/tasks/TaskDetailPanel';
+import { canAccessUsers } from '@/utils/auth/permissions';
+import { useStableNow } from '@/hooks/useStableNow';
 
 type DashboardRole = 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
-type ProjectTab = 'overview' | 'tasks' | 'team';
+type ProjectTab = 'overview' | 'tasks' | 'chat' | 'team';
+
+type TaskPanelData = {
+  id: number;
+  taskName: string;
+  status: string;
+  priority?: string | null;
+  category?: string | null;
+  description?: string | null;
+  links?: string | null;
+  assignee?: string | null;
+  assignedToUserId?: number | null;
+  assignedToUser?: { id: number; name: string; email: string } | null;
+  assignedByUser?: { id: number; name: string; email: string } | null;
+  dueDate?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  notes?: string | null;
+  submissionLink?: string | null;
+  submissionNotes?: string | null;
+  reviewComment?: string | null;
+  reviewedAt?: string | null;
+  reviewedByUser?: { id: number; name: string; email: string } | null;
+};
 
 const tabs: Array<{ id: ProjectTab; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'tasks', label: 'Tasks' },
+  { id: 'chat', label: 'Chat' },
   { id: 'team', label: 'Team' },
 ];
 
@@ -29,6 +63,12 @@ const taskStatusClass: Record<string, string> = {
   SUBMITTED: 'bg-amber-100 text-amber-700',
   APPROVED: 'bg-emerald-100 text-emerald-700',
   REJECTED: 'bg-rose-100 text-rose-700',
+};
+
+const taskPriorityClass: Record<string, string> = {
+  LOW: 'bg-slate-200 text-slate-700',
+  MEDIUM: 'bg-amber-100 text-amber-700',
+  HIGH: 'bg-rose-100 text-rose-700',
 };
 
 function formatDate(value?: string | null) {
@@ -67,53 +107,83 @@ function formatBudget(value?: number | null) {
 
 function parseCurrentUser() {
   if (typeof window === 'undefined') {
-    return { role: 'EMPLOYEE' as DashboardRole, userId: null as number | null };
+    return { role: 'EMPLOYEE' as DashboardRole, userId: null as number | null, employeeId: null as number | null, name: '' };
   }
 
   const role = (localStorage.getItem('role') ?? 'EMPLOYEE') as DashboardRole;
+  const employeeIdRaw = localStorage.getItem('employeeId');
   try {
     const raw = localStorage.getItem('currentUser');
-    const user = raw ? (JSON.parse(raw) as { id?: number }) : null;
-    return { role, userId: user?.id ?? null };
+    const user = raw ? (JSON.parse(raw) as { id?: number; name?: string }) : null;
+    return {
+      role,
+      userId: user?.id ?? null,
+      employeeId: employeeIdRaw ? Number(employeeIdRaw) : null,
+      name: user?.name ?? '',
+    };
   } catch {
-    return { role, userId: null };
+    return { role, userId: null, employeeId: employeeIdRaw ? Number(employeeIdRaw) : null, name: '' };
   }
 }
 
 export default function ProjectsWorkflowPage() {
   const router = useRouter();
-  const [{ role, userId }] = useState(parseCurrentUser);
+  const [{ role, userId, employeeId }] = useState(parseCurrentUser);
+  const currentTime = useStableNow();
   const [activeTab, setActiveTab] = useState<ProjectTab>('overview');
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [projectDetails, setProjectDetails] = useState<Project | null>(null);
   const [progress, setProgress] = useState<ProjectProgress | null>(null);
+  const [messages, setMessages] = useState<ProjectMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionMessage, setActionMessage] = useState('');
 
   const [managers, setManagers] = useState<Array<{ id: number; name: string; role: string }>>([]);
-  const [assignableUsers, setAssignableUsers] = useState<Array<{ id: number; name: string; role: string; managerId?: number | null }>>([]);
-
+  const [employees, setEmployees] = useState<Array<{ id: number; userId: number | null; name: string; email: string | null; department: string | null; designation: string | null }>>([]);
   const [managerSelection, setManagerSelection] = useState('');
+  const [showCoManagerPicker, setShowCoManagerPicker] = useState(false);
+  const [coManagerSelection, setCoManagerSelection] = useState('');
+  const [showEmployeePicker, setShowEmployeePicker] = useState(false);
+  const [employeeSearch, setEmployeeSearch] = useState('');
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [taskForm, setTaskForm] = useState({
     taskName: '',
+    category: '',
     description: '',
-    assignedToUserId: '',
+    links: '',
+    assignedEmployeeId: '',
     dueDate: '',
-    priority: 'Medium',
+    priority: 'MEDIUM',
   });
-  const [submitForms, setSubmitForms] = useState<Record<number, { submissionLink: string; note: string }>>({});
-  const [reviewForms, setReviewForms] = useState<Record<number, string>>({});
+  const [chatDraft, setChatDraft] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [taskSubmitting, setTaskSubmitting] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const isAdmin = role === 'ADMIN';
   const isManager = role === 'MANAGER';
   const isEmployee = role === 'EMPLOYEE';
   const canManageProject = isAdmin || isManager;
+  const canLoadDirectoryData = canAccessUsers(role);
+  const primaryManagerId = projectDetails?.managerId ?? null;
+  const coManagers = useMemo(() => projectDetails?.coManagers ?? [], [projectDetails?.coManagers]);
+  const assignedEmployees = useMemo(() => projectDetails?.assignedEmployees ?? [], [projectDetails?.assignedEmployees]);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const coManagerIds = new Set((projectDetails?.coManagers ?? []).map((manager) => manager.id));
+  const isPrimaryManager = isManager && projectDetails?.managerId === userId;
+  const isCoManager = isManager && userId != null && coManagerIds.has(userId);
+  const canEditTeam = isAdmin || isPrimaryManager || isCoManager;
+  const canEditCoManagers = isAdmin || isPrimaryManager;
+  const isAssignedEmployee = employeeId != null && (projectDetails?.assignedEmployees ?? []).some((employee) => employee.id === employeeId);
+  const canViewChat = isAdmin || isManager || isAssignedEmployee;
 
   async function loadProjectDetails(projectId: number) {
     setProgress(null);
+    setMessages([]);
     const details = await getProject(projectId);
     setProjectDetails(details);
     setManagerSelection(details.managerId ? String(details.managerId) : '');
@@ -129,6 +199,20 @@ export default function ProjectsWorkflowPage() {
     }
   }
 
+  async function loadMessages(projectId: number) {
+    if (!canViewChat) {
+      setMessages([]);
+      return;
+    }
+
+    try {
+      const list = await getMessages(projectId);
+      setMessages(list);
+    } catch {
+      setMessages([]);
+    }
+  }
+
   async function refreshProjects(initialProjectId?: number) {
     const list = await getProjects();
     setProjects(list);
@@ -137,32 +221,91 @@ export default function ProjectsWorkflowPage() {
     setSelectedProjectId(targetId);
     if (targetId) {
       await loadProjectDetails(targetId);
+      if (activeTab === 'chat') {
+        await loadMessages(targetId);
+      }
     } else {
       setProjectDetails(null);
       setProgress(null);
+      setMessages([]);
     }
   }
 
   useEffect(() => {
-    Promise.all([
-      apiClient<Array<{ id: number; name: string; role: string }>>('/users').catch(() => []),
-      apiClient<Array<{ id: number; name: string; role: string; managerId?: number | null }>>('/users/assignable').catch(() => []),
-    ])
-      .then(async ([users, assignable]) => {
-        setManagers(users.filter((u) => u.role === 'MANAGER'));
-        if (isManager && userId) {
-          setAssignableUsers(assignable.filter((u) => u.role === 'EMPLOYEE' && u.managerId === userId));
-        } else if (isAdmin) {
-          setAssignableUsers(assignable.filter((u) => u.role !== 'ADMIN'));
-        } else {
-          setAssignableUsers([]);
+    let cancelled = false;
+
+    async function loadInitialData() {
+      const usersPromise = canLoadDirectoryData
+        ? apiClient<Array<{ id: number; name: string; role: string; employeeId?: number | null }>>('/users')
+        : Promise.resolve([] as Array<{ id: number; name: string; role: string; employeeId?: number | null }>);
+      const employeesPromise = canLoadDirectoryData
+        ? apiClient<Array<{ id: number; name: string; email: string | null; department: string | null; designation: string | null }>>('/employees')
+        : Promise.resolve([] as Array<{ id: number; name: string; email: string | null; department: string | null; designation: string | null }>);
+
+      const [usersResult, employeesResult] = await Promise.allSettled([usersPromise, employeesPromise]);
+
+      if (cancelled) return;
+
+      if (usersResult.status === 'fulfilled') {
+        setManagers(usersResult.value.filter((u) => u.role === 'MANAGER'));
+      } else {
+        setManagers([]);
+        if (canLoadDirectoryData) {
+          console.error('Failed to load users', usersResult.reason);
         }
-        await refreshProjects();
-      })
-      .catch(() => setError('Failed to load projects module'))
-      .finally(() => setLoading(false));
+      }
+
+      if (employeesResult.status === 'fulfilled') {
+        const users = usersResult.status === 'fulfilled' ? usersResult.value : [];
+        setEmployees(employeesResult.value.map((employee) => {
+          const linkedUser = users.find((user) => user.employeeId === employee.id);
+          return { ...employee, userId: linkedUser?.id ?? null };
+        }));
+      } else {
+        setEmployees([]);
+        if (canLoadDirectoryData) {
+          console.error('Failed to load employees', employeesResult.reason);
+        }
+      }
+
+      await refreshProjects();
+      if (!cancelled) {
+        setLoading(false);
+      }
+    }
+
+    void loadInitialData().catch(() => {
+      if (!cancelled) {
+        setError('Failed to load projects module');
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [canLoadDirectoryData]);
+
+  useEffect(() => {
+    if (activeTab === 'chat' && selectedProjectId && canViewChat) {
+      void loadMessages(selectedProjectId);
+      const interval = window.setInterval(() => {
+        void loadMessages(selectedProjectId);
+      }, 10000);
+
+      return () => window.clearInterval(interval);
+    }
+
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, selectedProjectId, canViewChat]);
+
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
 
   const visibleTasks = useMemo(() => {
     const all = projectDetails?.tasks ?? [];
@@ -172,8 +315,36 @@ export default function ProjectsWorkflowPage() {
     return all;
   }, [projectDetails?.tasks, isEmployee, userId]);
 
+  const selectedTask = useMemo(
+    () => visibleTasks.find((task) => task.id === selectedTaskId) ?? null,
+    [selectedTaskId, visibleTasks],
+  );
+
+  const taskAssigneeOptions = useMemo(() => employees, [employees]);
+
+  const availableCoManagerOptions = useMemo(() => {
+    const existingIds = new Set(coManagers.map((manager) => manager.id));
+    return managers.filter((manager) => manager.id !== primaryManagerId && manager.id !== userId && !existingIds.has(manager.id));
+  }, [coManagers, managers, primaryManagerId, userId]);
+
+  const availableEmployeeOptions = useMemo(() => {
+    const existingIds = new Set(assignedEmployees.map((employee) => employee.id));
+    return employees.filter((employee) => !existingIds.has(employee.id));
+  }, [assignedEmployees, employees]);
+
+  const filteredEmployeeOptions = useMemo(() => {
+    const term = employeeSearch.trim().toLowerCase();
+    return availableEmployeeOptions.filter((employee) => {
+      const haystack = [employee.name, employee.department ?? '', employee.designation ?? '', employee.email ?? '']
+        .join(' ')
+        .toLowerCase();
+      return !term || haystack.includes(term);
+    });
+  }, [availableEmployeeOptions, employeeSearch]);
+
   async function onProjectSelect(projectId: number) {
     setSelectedProjectId(projectId);
+    setSelectedTaskId(null);
     await loadProjectDetails(projectId);
   }
 
@@ -231,41 +402,53 @@ export default function ProjectsWorkflowPage() {
 
   async function onAssignTask(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedProjectId || !taskForm.taskName.trim() || !taskForm.assignedToUserId) return;
+    if (!selectedProjectId || !taskForm.taskName.trim() || !taskForm.assignedEmployeeId) return;
 
-    setBusy(true);
+    const selectedEmployee = employees.find((employee) => String(employee.id) === taskForm.assignedEmployeeId);
+    if (!selectedEmployee?.userId) {
+      setError('Selected employee does not have a linked user account.');
+      return;
+    }
+
+    setTaskSubmitting(true);
     try {
       await createTask({
+        title: taskForm.taskName.trim(),
         taskName: taskForm.taskName.trim(),
+        category: taskForm.category.trim() || null,
         description: taskForm.description.trim() || null,
+        links: taskForm.links.trim() || null,
         projectId: selectedProjectId,
-        assignedToUserId: Number(taskForm.assignedToUserId),
+        assignedToUserId: selectedEmployee.userId,
+        employeeId: Number(taskForm.assignedEmployeeId),
         dueDate: taskForm.dueDate || null,
         priority: taskForm.priority,
         status: 'PENDING',
       });
       setTaskForm({
         taskName: '',
+        category: '',
         description: '',
-        assignedToUserId: '',
+        links: '',
+        assignedEmployeeId: '',
         dueDate: '',
-        priority: 'Medium',
+        priority: 'MEDIUM',
       });
       await loadProjectDetails(selectedProjectId);
+      setShowTaskForm(false);
     } finally {
-      setBusy(false);
+      setTaskSubmitting(false);
     }
   }
 
-  async function onSubmitTask(taskId: number) {
-    const form = submitForms[taskId];
-    if (!form?.submissionLink || !form?.note) return;
+  async function onSubmitTask(taskId: number, payload: { submissionLink: string; note: string }) {
+    if (!payload?.note) return;
 
     setBusy(true);
     try {
       await submitTaskWork(taskId, {
-        submissionLink: form.submissionLink,
-        note: form.note,
+        submissionLink: payload.submissionLink,
+        note: payload.note,
       });
       if (selectedProjectId) {
         await loadProjectDetails(selectedProjectId);
@@ -275,12 +458,17 @@ export default function ProjectsWorkflowPage() {
     }
   }
 
-  async function onReviewTask(taskId: number, decision: 'APPROVED' | 'REJECTED') {
+  async function onReviewTask(
+    taskId: number,
+    decisionOrPayload: 'APPROVED' | 'REJECTED' | { status: 'APPROVED' | 'REJECTED'; remarks?: string },
+  ) {
+    const decision = typeof decisionOrPayload === 'string' ? decisionOrPayload : decisionOrPayload.status;
+    const remarks = typeof decisionOrPayload === 'string' ? undefined : decisionOrPayload.remarks?.trim() || undefined;
     setBusy(true);
     try {
       await reviewTask(taskId, {
-        decision,
-        comment: reviewForms[taskId]?.trim() || undefined,
+        status: decision,
+        remarks,
       });
       if (selectedProjectId) {
         await loadProjectDetails(selectedProjectId);
@@ -290,10 +478,89 @@ export default function ProjectsWorkflowPage() {
     }
   }
 
-  async function onMoveToInProgress(taskId: number) {
+  async function onAddCoManager() {
+    if (!selectedProjectId || !coManagerSelection) return;
+    setBusy(true);
+    setActionMessage('');
+    try {
+      await addCoManager(selectedProjectId, Number(coManagerSelection));
+      await refreshProjects(selectedProjectId);
+      setShowCoManagerPicker(false);
+      setCoManagerSelection('');
+      setActionMessage('Co-manager added successfully.');
+    } catch (err) {
+      setActionMessage(err instanceof Error ? err.message : 'Failed to add co-manager');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRemoveCoManager(userIdToRemove: number) {
+    if (!selectedProjectId) return;
+    setBusy(true);
+    setActionMessage('');
+    try {
+      await removeCoManager(selectedProjectId, userIdToRemove);
+      await refreshProjects(selectedProjectId);
+      setActionMessage('Co-manager removed successfully.');
+    } catch (err) {
+      setActionMessage(err instanceof Error ? err.message : 'Failed to remove co-manager');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onAddEmployee() {
+    if (!selectedProjectId || !selectedEmployeeId) return;
+    setBusy(true);
+    setActionMessage('');
+    try {
+      await assignEmployee(selectedProjectId, Number(selectedEmployeeId));
+      await refreshProjects(selectedProjectId);
+      setShowEmployeePicker(false);
+      setEmployeeSearch('');
+      setSelectedEmployeeId('');
+      setActionMessage('Team member added successfully.');
+    } catch (err) {
+      setActionMessage(err instanceof Error ? err.message : 'Failed to add employee');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRemoveEmployee(employeeIdToRemove: number) {
+    if (!selectedProjectId) return;
+    setBusy(true);
+    setActionMessage('');
+    try {
+      await removeEmployee(selectedProjectId, employeeIdToRemove);
+      await refreshProjects(selectedProjectId);
+      setActionMessage('Team member removed successfully.');
+    } catch (err) {
+      setActionMessage(err instanceof Error ? err.message : 'Failed to remove employee');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onSendMessage() {
+    if (!selectedProjectId || !chatDraft.trim()) return;
+    setChatLoading(true);
+    try {
+      const sent = await sendMessage(selectedProjectId, chatDraft.trim());
+      setMessages((prev) => [...prev, sent]);
+      setChatDraft('');
+    } catch (err) {
+      setActionMessage(err instanceof Error ? err.message : 'Failed to send message');
+    } finally {
+      setChatLoading(false);
+    }
+  }
+
+  async function onTaskStatusChange(taskId: number, status: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED') {
     setBusy(true);
     try {
-      await updateTaskStatus(taskId, 'IN_PROGRESS');
+      await updateTaskStatus(taskId, status);
       if (selectedProjectId) {
         await loadProjectDetails(selectedProjectId);
       }
@@ -321,7 +588,7 @@ export default function ProjectsWorkflowPage() {
             {isEmployee && "Manager's Projects -> Resources -> My Tasks -> Submit Work"}
           </p>
         </div>
-        {isAdmin && (
+        {(isAdmin || isManager) && (
           <button
             onClick={() => router.push('/dashboard/projects/add')}
             className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600"
@@ -500,54 +767,89 @@ export default function ProjectsWorkflowPage() {
 
           {activeTab === 'tasks' && (
             <div className="space-y-4">
-              {canManageProject && (
-                <form onSubmit={onAssignTask} className="grid gap-2 md:grid-cols-2">
-                  <input
-                    value={taskForm.taskName}
-                    onChange={(e) => setTaskForm((prev) => ({ ...prev, taskName: e.target.value }))}
-                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    placeholder="Task title"
-                  />
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-slate-500">Create tasks and track submissions within this project.</p>
+                {canManageProject && (
+                  <button
+                    onClick={() => setShowTaskForm((prev) => !prev)}
+                    className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+                  >
+                    {showTaskForm ? 'Close Form' : 'Create New Task'}
+                  </button>
+                )}
+              </div>
+
+              {canManageProject && showTaskForm && (
+                <form onSubmit={onAssignTask} className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <input
+                      required
+                      value={taskForm.taskName}
+                      onChange={(e) => setTaskForm((prev) => ({ ...prev, taskName: e.target.value }))}
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      placeholder="Task title"
+                    />
+                    <select
+                      required
+                      value={taskForm.assignedEmployeeId}
+                      onChange={(e) => setTaskForm((prev) => ({ ...prev, assignedEmployeeId: e.target.value }))}
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    >
+                      <option value="">Assign to employee</option>
+                      {taskAssigneeOptions.map((employee) => (
+                        <option key={employee.id} value={employee.id}>
+                          {employee.name}{employee.department ? ` · ${employee.department}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <select
-                    value={taskForm.assignedToUserId}
-                    onChange={(e) => setTaskForm((prev) => ({ ...prev, assignedToUserId: e.target.value }))}
+                    value={taskForm.category}
+                    onChange={(e) => setTaskForm((prev) => ({ ...prev, category: e.target.value }))}
                     className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
                   >
-                    <option value="">Assign to employee</option>
-                    {assignableUsers.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.name} ({user.role})
-                      </option>
-                    ))}
+                    <option value="">Category</option>
+                    <option value="Development">Development</option>
+                    <option value="Design">Design</option>
+                    <option value="Testing">Testing</option>
+                    <option value="Review">Review</option>
+                    <option value="Documentation">Documentation</option>
+                    <option value="Other">Other</option>
                   </select>
-                  <input
+                  <textarea
                     value={taskForm.description}
                     onChange={(e) => setTaskForm((prev) => ({ ...prev, description: e.target.value }))}
-                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm md:col-span-2"
-                    placeholder="Task description"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm md:col-span-2"
+                    placeholder="Describe what the employee needs to do. Include steps, context, and any reference materials."
+                    rows={4}
                   />
                   <input
-                    type="date"
-                    value={taskForm.dueDate}
-                    onChange={(e) => setTaskForm((prev) => ({ ...prev, dueDate: e.target.value }))}
-                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    value={taskForm.links}
+                    onChange={(e) => setTaskForm((prev) => ({ ...prev, links: e.target.value }))}
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm md:col-span-2"
+                    placeholder="Paste URLs or document links here (comma separated)"
                   />
-                  <div className="flex gap-2">
+                  <div className="grid gap-3 md:grid-cols-3">
                     <select
                       value={taskForm.priority}
                       onChange={(e) => setTaskForm((prev) => ({ ...prev, priority: e.target.value }))}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     >
-                      <option>High</option>
-                      <option>Medium</option>
-                      <option>Low</option>
-                      <option>Critical</option>
+                      <option value="LOW">LOW</option>
+                      <option value="MEDIUM">MEDIUM</option>
+                      <option value="HIGH">HIGH</option>
                     </select>
+                    <input
+                      type="date"
+                      value={taskForm.dueDate}
+                      onChange={(e) => setTaskForm((prev) => ({ ...prev, dueDate: e.target.value }))}
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    />
                     <button
-                      disabled={busy}
-                      className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                      disabled={taskSubmitting}
+                      className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                     >
-                      Assign Task
+                      {taskSubmitting ? 'Saving…' : 'Assign Task'}
                     </button>
                   </div>
                 </form>
@@ -555,127 +857,282 @@ export default function ProjectsWorkflowPage() {
 
               <div className="space-y-3">
                 {visibleTasks.length === 0 && (
-                  <div className="flex min-h-40 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center">
+                  <div className="flex min-h-40 items-center justify-center px-4 py-10 text-center">
                     <div>
                       <div className="mb-2 text-2xl">📋</div>
-                      <p className="text-sm font-medium text-slate-500">No tasks assigned to this project yet.</p>
+                      <p className="text-sm text-slate-500">No tasks here</p>
                     </div>
                   </div>
                 )}
                 {visibleTasks.map((task) => {
                   const status = task.status?.toUpperCase() ?? 'PENDING';
-                  const canSubmitThisTask = isEmployee && task.assignedToUserId === userId;
+                  const priority = (task.priority?.toUpperCase() ?? 'LOW') as keyof typeof taskPriorityClass;
+                  const taskDue = task.dueDate ? new Date(task.dueDate) : null;
+                  const isPastDue = Boolean(taskDue && taskDue.getTime() < currentTime && status !== 'APPROVED');
                   return (
-                    <article key={task.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                        <p className="font-semibold text-slate-900">{task.taskName}</p>
-                        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${taskStatusClass[status] ?? 'bg-slate-200 text-slate-700'}`}>
+                    <article key={task.id} onClick={() => setSelectedTaskId(task.id)} className="cursor-pointer rounded-xl border border-slate-200 bg-slate-50 p-4 transition hover:border-orange-200">
+                      <div className="mb-2 flex items-start justify-between gap-3">
+                        <p className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">{task.taskName}</p>
+                        <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${taskStatusClass[status] ?? 'bg-slate-200 text-slate-700'}`}>
                           {status}
                         </span>
                       </div>
-                      <p className="text-sm text-slate-600">{task.notes ?? 'No description'}</p>
-                      <p className="mt-2 text-xs text-slate-500">Assigned to: {task.assignedToUser?.name ?? 'N/A'}</p>
-                      <p className="text-xs text-slate-500">Due: {formatDate(task.dueDate)}</p>
-
-                      {task.submissionLink && (
-                        <a href={task.submissionLink} target="_blank" rel="noreferrer" className="mt-2 block text-xs font-medium text-blue-600 hover:underline">
-                          View submitted work
-                        </a>
-                      )}
-
-                      {task.reviewComment && (
-                        <p className={`mt-2 text-xs ${status === 'REJECTED' ? 'text-rose-600' : 'text-slate-600'}`}>
-                          Feedback: {task.reviewComment}
-                        </p>
-                      )}
-
-                      {canSubmitThisTask && (status === 'PENDING' || status === 'IN_PROGRESS' || status === 'REJECTED') && (
-                        <div className="mt-3 grid gap-2 md:grid-cols-2">
-                          <input
-                            value={submitForms[task.id]?.submissionLink ?? ''}
-                            onChange={(e) =>
-                              setSubmitForms((prev) => ({
-                                ...prev,
-                                [task.id]: { submissionLink: e.target.value, note: prev[task.id]?.note ?? '' },
-                              }))
-                            }
-                            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                            placeholder="Submission URL"
-                          />
-                          <input
-                            value={submitForms[task.id]?.note ?? ''}
-                            onChange={(e) =>
-                              setSubmitForms((prev) => ({
-                                ...prev,
-                                [task.id]: { submissionLink: prev[task.id]?.submissionLink ?? '', note: e.target.value },
-                              }))
-                            }
-                            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                            placeholder="Work note"
-                          />
-                          <div className="md:col-span-2 flex gap-2">
-                            <button
-                              onClick={() => onSubmitTask(task.id)}
-                              disabled={busy}
-                              className="rounded-lg bg-orange-500 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
-                            >
-                              Submit Work
-                            </button>
-                            <button
-                              onClick={() => onMoveToInProgress(task.id)}
-                              disabled={busy}
-                              className="rounded-lg bg-slate-700 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
-                            >
-                              Mark In Progress
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {canManageProject && status === 'SUBMITTED' && (
-                        <div className="mt-3 space-y-2">
-                          <input
-                            value={reviewForms[task.id] ?? ''}
-                            onChange={(e) => setReviewForms((prev) => ({ ...prev, [task.id]: e.target.value }))}
-                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                            placeholder="Review comment"
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => onReviewTask(task.id, 'APPROVED')}
-                              disabled={busy}
-                              className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => onReviewTask(task.id, 'REJECTED')}
-                              disabled={busy}
-                              className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-                            >
-                              Reject and Reassign
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                      <p className={`text-xs ${isPastDue ? 'font-semibold text-rose-600' : 'text-slate-500'}`}>
+                        {priority} · {task.dueDate ? formatDate(task.dueDate) : 'No due date'}
+                      </p>
+                      <div className="mt-3 h-0.75 w-full overflow-hidden rounded-full bg-slate-200">
+                        <div
+                          className={`h-full rounded-full ${taskPriorityClass[priority] ?? taskPriorityClass.LOW}`}
+                          style={{ width: `${status === 'APPROVED' ? 100 : status === 'SUBMITTED' ? 80 : status === 'IN_PROGRESS' ? 55 : 20}%` }}
+                        />
+                      </div>
                     </article>
                   );
                 })}
+              </div>
+
+              <TaskDetailPanel
+                key={selectedTask?.id ?? 'none'}
+                task={selectedTask as TaskPanelData | null}
+                open={Boolean(selectedTask)}
+                role={(role as DashboardRole)}
+                currentUserId={userId}
+                onClose={() => setSelectedTaskId(null)}
+                onStartTask={(taskId) => onTaskStatusChange(taskId, 'IN_PROGRESS')}
+                onSubmitTask={(taskId, payload) => {
+                  return onSubmitTask(taskId, payload);
+                }}
+                onReviewTask={(taskId, payload) => onReviewTask(taskId, payload)}
+                onUpdateStatus={onTaskStatusChange}
+                busy={busy}
+              />
+            </div>
+          )}
+
+          {activeTab === 'chat' && canViewChat && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="h-112 overflow-y-auto rounded-lg bg-white p-4 shadow-inner space-y-3">
+                {messages.length === 0 ? (
+                  <div className="flex h-full items-center justify-center text-sm text-slate-400">
+                    No messages yet. Start the project conversation.
+                  </div>
+                ) : (
+                  messages.map((message) => {
+                    const isMine = message.sender.id === userId;
+                    return (
+                      <div key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[75%] rounded-2xl px-4 py-3 shadow-sm ${isMine ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-800'}`}>
+                          <p className={`text-xs font-semibold ${isMine ? 'text-blue-100' : 'text-slate-700'}`}>
+                            {message.sender.name}
+                          </p>
+                          <p className="mt-1 text-sm leading-6">{message.content}</p>
+                          <p className={`mt-2 text-[11px] ${isMine ? 'text-blue-100' : 'text-slate-500'}`}>
+                            {new Date(message.createdAt).toLocaleString('en-GB', {
+                              day: '2-digit',
+                              month: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+              <div className="mt-4 flex gap-2">
+                <input
+                  value={chatDraft}
+                  onChange={(e) => setChatDraft(e.target.value)}
+                  className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  placeholder="Write a message to the project team"
+                />
+                <button
+                  onClick={onSendMessage}
+                  disabled={chatLoading || !chatDraft.trim()}
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {chatLoading ? 'Sending…' : 'Send'}
+                </button>
               </div>
             </div>
           )}
 
           {activeTab === 'team' && (
-            <div className="space-y-2">
-              {(projectDetails.teamMembers ?? []).length === 0 && (
-                <p className="text-sm text-slate-500">No team members found under this manager yet.</p>
-              )}
-              {(projectDetails.teamMembers ?? []).map((member) => (
-                <div key={member.id} className="rounded-lg border border-slate-100 px-3 py-2">
-                  <p className="text-sm font-semibold text-slate-900">{member.name}</p>
-                  <p className="text-xs text-slate-500">{member.email}</p>
+            <div className="space-y-6">
+              <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-900">Co-Managers</h3>
+                    <p className="text-sm text-slate-500">Extra managers who can help run this project.</p>
+                  </div>
+                  {canEditCoManagers && (
+                    <button
+                      onClick={() => setShowCoManagerPicker((prev) => !prev)}
+                      className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+                    >
+                      {showCoManagerPicker ? 'Close' : 'Add Co-Manager'}
+                    </button>
+                  )}
                 </div>
-              ))}
+
+                {canEditCoManagers && showCoManagerPicker && (
+                  <div className="flex flex-wrap gap-2">
+                    <select
+                      value={coManagerSelection}
+                      onChange={(e) => setCoManagerSelection(e.target.value)}
+                      className="min-w-55 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    >
+                      <option value="">Select a manager</option>
+                      {availableCoManagerOptions.map((manager) => (
+                        <option key={manager.id} value={manager.id}>
+                          {manager.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={onAddCoManager}
+                      disabled={!coManagerSelection || busy}
+                      className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      Add
+                    </button>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  {coManagers.length === 0 && (
+                    <p className="text-sm text-slate-500">No co-managers assigned yet.</p>
+                  )}
+                  {coManagers.map((manager) => (
+                    <div key={manager.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{manager.name}</p>
+                        <p className="text-xs text-slate-500">{manager.email}</p>
+                      </div>
+                      {canEditCoManagers && (
+                        <button
+                          onClick={() => onRemoveCoManager(manager.id)}
+                          className="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-900">Assigned Team Members</h3>
+                    <p className="text-sm text-slate-500">Employees assigned specifically to this project.</p>
+                  </div>
+                  {canEditTeam && (
+                    <button
+                      onClick={() => setShowEmployeePicker((prev) => !prev)}
+                      className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+                    >
+                      {showEmployeePicker ? 'Close' : 'Add Team Member'}
+                    </button>
+                  )}
+                </div>
+
+                {canEditTeam && showEmployeePicker && (
+                  <div className="space-y-2">
+                    <input
+                      value={employeeSearch}
+                      onChange={(e) => setEmployeeSearch(e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      placeholder="Search employee by name, department, or designation"
+                    />
+                    <div className="max-h-52 overflow-y-auto rounded-lg border border-slate-200 bg-white">
+                      {filteredEmployeeOptions.length === 0 ? (
+                        <p className="p-3 text-sm text-slate-400">No matching employees</p>
+                      ) : (
+                        filteredEmployeeOptions.map((employee) => (
+                          <button
+                            key={employee.id}
+                            type="button"
+                            onClick={() => setSelectedEmployeeId(String(employee.id))}
+                            className={`w-full border-b border-slate-100 px-3 py-2 text-left last:border-b-0 ${selectedEmployeeId === String(employee.id) ? 'bg-orange-50' : 'hover:bg-slate-50'}`}
+                          >
+                            <p className="text-sm font-medium text-slate-900">{employee.name}</p>
+                            <p className="text-xs text-slate-500">
+                              {[employee.department, employee.designation].filter(Boolean).join(' · ') || employee.email || 'Employee'}
+                            </p>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={onAddEmployee}
+                        disabled={!selectedEmployeeId || busy}
+                        className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                      >
+                        Add Selected Employee
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEmployeeSearch('');
+                          setSelectedEmployeeId('');
+                        }}
+                        className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-700 border border-slate-200"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  {assignedEmployees.length === 0 && (
+                    <div className="flex min-h-28 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center">
+                      <div>
+                        <div className="mb-2 text-2xl">📋</div>
+                        <p className="text-sm font-medium text-slate-500">No team members assigned yet. Add employees to get started.</p>
+                      </div>
+                    </div>
+                  )}
+                  {assignedEmployees.map((employee) => (
+                    <div key={employee.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{employee.name}</p>
+                        <p className="text-xs text-slate-500">
+                          {employee.department ?? 'No department'}{employee.designation ? ` · ${employee.designation}` : ''}
+                        </p>
+                      </div>
+                      {canEditTeam && (
+                        <button
+                          onClick={() => onRemoveEmployee(employee.id)}
+                          className="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700"
+                        >
+                          Remove from Project
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                <div>
+                  <h3 className="text-base font-semibold text-slate-900">Manager Team</h3>
+                  <p className="text-sm text-slate-500">Employees still linked through the primary manager.</p>
+                </div>
+                {(projectDetails.teamMembers ?? []).length === 0 && (
+                  <p className="text-sm text-slate-500">No manager-linked team members found.</p>
+                )}
+                {(projectDetails.teamMembers ?? []).map((member) => (
+                  <div key={member.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <p className="text-sm font-semibold text-slate-900">{member.name}</p>
+                    <p className="text-xs text-slate-500">{member.email}</p>
+                  </div>
+                ))}
+              </section>
             </div>
           )}
         </section>

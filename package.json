@@ -2,10 +2,19 @@
   "name": "enterprise-app",
   "private": true,
   "scripts": {
-    "dev": "npm --prefix web run dev",
-    "dev:api": "npm --prefix api run start:dev",
+    "dev": "node scripts/dev.js",
+    "dev:clean": "node scripts/kill-ports.js && npm run dev",
+    "dev:api": "npm --prefix api run dev",
     "dev:web": "npm --prefix web run dev",
-    "dev:full": "concurrently \"npm --prefix api run start:dev\" \"npm --prefix web run dev\""
+    "dev:full": "npm run dev",
+    "build": "npm --prefix api run build && npm --prefix web run build",
+    "start": "concurrently -k --names API,WEB --prefix-colors blue,green \"npm --prefix api run start:prod\" \"npm --prefix web run start\"",
+    "lint": "npm --prefix api run lint && npm --prefix web run lint",
+    "test": "npm --prefix api run test && npm --prefix web run test",
+    "typecheck": "npm --prefix api run typecheck && npm --prefix web run typecheck",
+    "prisma:generate": "npm --prefix api run prisma:generate",
+    "prisma:migrate": "npm --prefix api run prisma:migrate",
+    "kill:ports": "node scripts/kill-ports.js"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

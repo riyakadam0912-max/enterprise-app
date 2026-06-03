@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLeads, removeLead } from '@/hooks/useLeads';
+import { useStableNow } from '@/hooks/useStableNow';
 import TableActions from '@/components/common/TableActions';
 
 const SOURCE_STYLES: Record<string, string> = {
@@ -22,12 +23,12 @@ function fmtDate(d?: string | null) {
   return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-');
 }
 
-function fmtRelativeDate(d?: string | null) {
+function fmtRelativeDate(d: string | null | undefined, currentTime: number) {
   if (!d) return 'No follow-up';
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return 'No follow-up';
 
-  const diffDays = Math.floor((dt.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  const diffDays = Math.floor((dt.getTime() - currentTime) / (1000 * 60 * 60 * 24));
   if (diffDays < 0) return `${Math.abs(diffDays)}d overdue`;
   if (diffDays === 0) return 'Due today';
   if (diffDays === 1) return 'Due tomorrow';
@@ -55,6 +56,7 @@ function getInitials(name: string) {
 export default function LeadsReportPage() {
   const router = useRouter();
   const { leads, loading, error, refetch } = useLeads();
+  const currentTime = useStableNow();
   const [deleting, setDeleting] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>('All');
@@ -88,7 +90,7 @@ export default function LeadsReportPage() {
     const dueFollowUps = leads.filter((lead) => {
       if (!lead.nextFollowUp) return false;
       const followUpDate = new Date(lead.nextFollowUp).getTime();
-      return !Number.isNaN(followUpDate) && followUpDate <= Date.now();
+      return !Number.isNaN(followUpDate) && followUpDate <= currentTime;
     });
     const qualified = leads.filter((lead) => (lead.status ?? '').toLowerCase().includes('qualified'));
     const won = leads.filter((lead) => (lead.status ?? '').toLowerCase().includes('won'));
@@ -100,7 +102,7 @@ export default function LeadsReportPage() {
       qualified: qualified.length,
       won: won.length,
     };
-  }, [leads]);
+  }, [leads, currentTime]);
 
   const followUpQueue = useMemo(
     () =>
@@ -252,7 +254,7 @@ export default function LeadsReportPage() {
                     <td className="px-4 py-4 whitespace-nowrap">
                       <div>
                         <p className="text-sm text-slate-600">{fmtDate(lead.nextFollowUp)}</p>
-                        <p className="text-xs text-slate-400">{fmtRelativeDate(lead.nextFollowUp)}</p>
+                        <p className="text-xs text-slate-400">{fmtRelativeDate(lead.nextFollowUp, currentTime)}</p>
                       </div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-slate-800">{lead.leadScore ?? '—'}</td>
@@ -304,7 +306,7 @@ export default function LeadsReportPage() {
                         <p className="text-sm font-semibold text-slate-900 truncate">{lead.name}</p>
                         <p className="mt-1 text-xs text-slate-500">{lead.status ?? 'New'} · {lead.source ?? 'No source'}</p>
                       </div>
-                      <span className="whitespace-nowrap text-xs font-medium text-slate-500">{fmtRelativeDate(lead.nextFollowUp)}</span>
+                      <span className="whitespace-nowrap text-xs font-medium text-slate-500">{fmtRelativeDate(lead.nextFollowUp, currentTime)}</span>
                     </div>
                   </Link>
                 ))

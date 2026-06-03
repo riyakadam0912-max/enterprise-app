@@ -20,6 +20,7 @@ import {
 import { Activity, Coins, RefreshCw, TimerReset } from 'lucide-react';
 import type { DashboardStats } from '@/api/dashboardApi';
 import type { AnalyticsSummary } from '@/api/analyticsApi';
+import { useStableNow } from '@/hooks/useStableNow';
 import { formatInrCurrency } from '@/utils/formatCurrency';
 import AnalyticsKpiCard from './AnalyticsKpiCard';
 import AnalyticsKpiSkeleton from './AnalyticsKpiSkeleton';
@@ -45,11 +46,11 @@ function formatWorkflowAction(action: string) {
   return action.replaceAll('_', ' ').toLowerCase();
 }
 
-function formatWorkflowTime(at: string) {
+function formatWorkflowTime(at: string, currentTime: number) {
   const startedAt = new Date(at).getTime();
   if (Number.isNaN(startedAt)) return '';
 
-  const diffMinutes = Math.max(0, Math.floor((Date.now() - startedAt) / (1000 * 60)));
+  const diffMinutes = Math.max(0, Math.floor((currentTime - startedAt) / (1000 * 60)));
   if (diffMinutes < 60) return `${Math.max(1, diffMinutes)}m ago`;
 
   const diffHours = Math.floor(diffMinutes / 60);
@@ -85,6 +86,7 @@ function DashboardCharts({
   tooltipStyle,
 }: DashboardChartsProps) {
   const workflow = stats.workflow;
+  const currentTime = useStableNow();
   const statusBoxes = useMemo(
     () => [
       { label: 'Submitted', count: 2, color: 'text-orange-500' },
@@ -216,7 +218,7 @@ function DashboardCharts({
                             <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                               {formatWorkflowAction(item.action)}
                             </span>
-                            <span className="text-[11px] text-slate-400">{formatWorkflowTime(item.at)}</span>
+                            <span className="text-[11px] text-slate-400">{formatWorkflowTime(item.at, currentTime)}</span>
                           </div>
                           <p className="mt-2 text-sm font-medium text-slate-900">{item.title}</p>
                           <p className="mt-1 text-xs text-slate-500">Status: {item.status}</p>

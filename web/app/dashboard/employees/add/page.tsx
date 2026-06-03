@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { addEmployee, removeEmployee } from '@/hooks/useEmployees';
 import { apiClient } from '@/api/apiClient';
+import { canAccessUsers } from '@/utils/auth/permissions';
 
 const DEPARTMENTS = ['Sales', 'Engineering', 'HR', 'Finance', 'Operations'] as const;
 const ROLES = ['EMPLOYEE', 'MANAGER', 'HR'] as const;
@@ -43,14 +44,15 @@ export default function AddEmployeePage() {
   const selectedRole = form.role;
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
+    if (typeof window === 'undefined' || !canAccessUsers(currentRole)) {
+      setManagerOptions([]);
       return;
     }
 
     apiClient<ManagerOption[]>('/users')
       .then((users) => setManagerOptions(users.filter((user) => user.role === 'MANAGER')))
       .catch(() => setManagerOptions([]));
-  }, []);
+  }, [currentRole]);
 
   const inputCls = 'w-full px-4 py-2.5 rounded-lg border border-slate-300 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition text-sm';
   const selectCls = inputCls;

@@ -3,8 +3,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 
-export default function ReactQueryProvider({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient({
+function createQueryClient() {
+  return new QueryClient({
     defaultOptions: {
       queries: {
         staleTime: 10 * 60 * 1000,
@@ -13,7 +13,11 @@ export default function ReactQueryProvider({ children }: { children: React.React
         retry: 1,
       },
     },
-  }));
+  });
+}
+
+export default function ReactQueryProvider({ children }: { children: React.ReactNode }) {
+  const [queryClient] = useState(createQueryClient);
 
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }

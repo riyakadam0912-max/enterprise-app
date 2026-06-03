@@ -5,30 +5,40 @@ import { useRouter, usePathname } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import Topbar from '@/components/Topbar';
 
+const EMPLOYEE_ALLOWED_EXACT_PATHS = ['/dashboard'];
 const EMPLOYEE_ALLOWED_PATH_PREFIXES = [
-  '/dashboard',
-  '/dashboard/leads',
-  '/dashboard/deals',
-  '/dashboard/contacts',
   '/dashboard/tasks',
   '/dashboard/projects',
   '/dashboard/timesheets',
   '/dashboard/attendance',
+  '/dashboard/leave',
   '/dashboard/requests',
+  '/dashboard/expenses',
+  '/dashboard/payslips',
+  '/dashboard/profile',
 ];
 
+const MANAGER_ALLOWED_EXACT_PATHS = ['/dashboard'];
 const MANAGER_ALLOWED_PATH_PREFIXES = [
-  '/dashboard',
   '/dashboard/projects',
   '/dashboard/tasks',
+  '/dashboard/invoices',
+  '/dashboard/expenses',
+  '/dashboard/attendance',
+  '/dashboard/leave',
+  '/dashboard/profile',
 ];
 
+function isPathAllowed(pathname: string, exactPaths: string[], prefixes: string[]): boolean {
+  return exactPaths.includes(pathname) || prefixes.some((prefix) => pathname === prefix || pathname.startsWith(prefix + '/'));
+}
+
 function isEmployeePathAllowed(pathname: string): boolean {
-  return EMPLOYEE_ALLOWED_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix + '/'));
+  return isPathAllowed(pathname, EMPLOYEE_ALLOWED_EXACT_PATHS, EMPLOYEE_ALLOWED_PATH_PREFIXES);
 }
 
 function isManagerPathAllowed(pathname: string): boolean {
-  return MANAGER_ALLOWED_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix + '/'));
+  return isPathAllowed(pathname, MANAGER_ALLOWED_EXACT_PATHS, MANAGER_ALLOWED_PATH_PREFIXES);
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createTask } from '@/api/tasksApi';
 import { getProjects, type Project } from '@/api/projectsApi';
 import { apiClient } from '@/api/apiClient';
+import { canManageProjects } from '@/utils/auth/permissions';
 
 const PRIORITIES = ['High', 'Low', 'Medium', 'Critical'];
 const STATUSES   = ['PENDING', 'IN_PROGRESS', 'SUBMITTED', 'APPROVED', 'REJECTED'];
@@ -46,6 +47,12 @@ export default function AddTaskPage() {
 
   useEffect(() => {
     getProjects().then(setProjects).catch(() => setProjects([]));
+
+    if (!canManageProjects(role)) {
+      setAssignableUsers([]);
+      return;
+    }
+
     apiClient<Array<{ id: number; name: string; role: string; managerId?: number | null }>>('/users/assignable')
       .then((users) => {
         if (role === 'MANAGER' && currentUserId) {

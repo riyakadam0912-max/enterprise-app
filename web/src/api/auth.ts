@@ -3,6 +3,8 @@
  * Handles token retrieval and storage
  */
 
+import { notifyAuthStateChange } from '@/stores/auth-store';
+
 export function getAuthToken(): string | null {
   if (typeof window === 'undefined') {
     return null;
@@ -13,12 +15,14 @@ export function getAuthToken(): string | null {
 export function setAuthToken(token: string): void {
   if (typeof window !== 'undefined') {
     localStorage.setItem('access_token', token);
+    notifyAuthStateChange();
   }
 }
 
 export function clearAuthToken(): void {
   if (typeof window !== 'undefined') {
     localStorage.removeItem('access_token');
+    notifyAuthStateChange();
   }
 }
 

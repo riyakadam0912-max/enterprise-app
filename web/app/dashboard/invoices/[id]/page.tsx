@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useMemo } from 'react';
+import { useEffect, useState } from 'react';
+import { useStableNow } from '@/hooks/useStableNow';
 import { getInvoice, type Invoice } from '@/api/invoicesApi';
 import {
   INVOICE_STATUS_STYLES,
@@ -11,7 +13,6 @@ import {
   invoiceOutstanding,
   normalizeInvoiceStatus,
 } from '@/utils/finance';
-import { useEffect, useState } from 'react';
 
 function StatusBadge({ status }: { status: string }) {
   const cls = INVOICE_STATUS_STYLES[status] ?? 'bg-slate-100 text-slate-600 ring-1 ring-slate-200';
@@ -22,6 +23,7 @@ export default function InvoiceDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const invoiceId = Number(params.id);
+  const currentTime = useStableNow();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +52,7 @@ export default function InvoiceDetailPage() {
   }
 
   const status = normalizeInvoiceStatus(invoice.status);
-  const agingDays = invoice.dueDate ? Math.floor((Date.now() - new Date(invoice.dueDate).getTime()) / (1000 * 60 * 60 * 24)) : null;
+  const agingDays = invoice.dueDate ? Math.floor((currentTime - new Date(invoice.dueDate).getTime()) / (1000 * 60 * 60 * 24)) : null;
 
   return (
     <div className="space-y-6 p-6">

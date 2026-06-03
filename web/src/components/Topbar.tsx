@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import { useState, useRef, useEffect } from 'react';
 import { useNotifications } from '@/hooks/useNotifications';
+import { useAuthSession } from '@/stores/auth-store';
 
 const segmentLabels: Record<string, string> = {
   dashboard: 'Dashboard',
@@ -74,29 +75,13 @@ function ChevronRightIcon() {
 export default function Topbar() {
   const pathname = usePathname();
   const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
-  const [sessionUser] = useState<{ name: string; role: string }>(() => {
-    if (typeof window === 'undefined') {
-      return { name: 'User', role: 'User' };
-    }
-
-    const role = localStorage.getItem('role') ?? 'User';
-    const raw = localStorage.getItem('currentUser');
-    if (!raw) {
-      return { name: 'User', role };
-    }
-
-    try {
-      const parsed = JSON.parse(raw) as { name?: string };
-      return {
-        name: parsed.name ?? 'User',
-        role,
-      };
-    } catch {
-      return { name: 'User', role };
-    }
-  });
   const [bellOpen, setBellOpen] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
+  const session = useAuthSession();
+  const sessionUser = {
+    name: session.user?.name ?? 'User',
+    role: session.role,
+  };
 
   // Close dropdown on outside click
   useEffect(() => {

@@ -21,6 +21,17 @@ export interface Expense {
     byUserId: number;
     reason: string | null;
   }[] | null;
+  employee?: {
+    id: number;
+    name: string;
+    email?: string | null;
+  } | null;
+  submittedByUser?: {
+    id: number;
+    name: string;
+    email: string;
+    managerId?: number | null;
+  } | null;
   createdAt: string;
   updatedAt: string;
 }

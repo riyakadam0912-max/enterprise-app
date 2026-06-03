@@ -1,6 +1,37 @@
 import { AxiosError, type AxiosRequestConfig } from 'axios';
 import { axiosClient } from './axiosClient';
 import type { ApiResponseEnvelope } from '@/types/api';
+import { toast } from '@/providers/toast-provider';
+import { extractApiErrorMessage } from '@/lib/api-errors';
+
+export class ApiError extends Error {
+  status?: number;
+
+  response?: unknown;
+
+  constructor(message: string, status?: number, response?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.response = response;
+  }
+}
+
+function getErrorMessage(status: number | undefined, responseData: unknown, fallbackMessage: string): string {
+  const serverMessage = typeof responseData === 'object' && responseData && 'message' in responseData
+    ? String((responseData as { message?: unknown }).message ?? '')
+    : '';
+
+  if (status === 401) {
+    return serverMessage || 'Your session has expired. Please sign in again.';
+  }
+
+  if (status === 403) {
+    return serverMessage || 'You do not have permission to access this resource.';
+  }
+
+  return serverMessage || fallbackMessage || 'API request failed';
+}
 
 export async function apiClient<T>(
   endpoint: string,
@@ -42,14 +73,29 @@ export async function apiClient<T>(
   } catch (error: unknown) {
     const axiosError = error as AxiosError<{ message?: string }>;
     if (!axiosError.response) {
-      throw new Error('Backend not reachable. Start the NestJS API on port 3000.');
+      const message = 'Backend not reachable. Start the NestJS API on port 3000.';
+      toast.error('Backend unavailable', message);
+      throw new Error(message);
     }
 
-    throw new Error(
-      axiosError.response?.data?.message ??
-      axiosError.message ??
-      'API request failed',
+    const apiError = new ApiError(
+      extractApiErrorMessage(axiosError, getErrorMessage(axiosError.response.status, axiosError.response.data, axiosError.message)),
+      axiosError.response.status,
+      axiosError.response,
     );
+
+    if (typeof window !== 'undefined') {
+      toast.error('Request failed', apiError.message);
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[apiClient] request failed', {
+        endpoint,
+        status: axiosError.response.status,
+      });
+    }
+
+    throw apiError;
   }
 }
 

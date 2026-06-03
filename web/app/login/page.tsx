@@ -3,6 +3,7 @@
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { loginUser } from '@/api/authApi';
+import { setAuthSession } from '@/stores/auth-store';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,14 +19,12 @@ export default function LoginPage() {
 
     try {
       const data = await loginUser(email, password);
-      localStorage.setItem('token', data.access_token);
-      localStorage.setItem('role', data.role);
-      localStorage.setItem('currentUser', JSON.stringify(data.user));
-      if (data.employeeId != null) {
-        localStorage.setItem('employeeId', String(data.employeeId));
-      } else {
-        localStorage.removeItem('employeeId');
-      }
+      setAuthSession({
+        token: data.access_token,
+        role: data.role,
+        user: data.user,
+        employeeId: data.employeeId,
+      });
       router.push('/dashboard');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed');

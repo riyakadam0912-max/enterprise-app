@@ -21,6 +21,19 @@ export interface Project {
   client: string | null;
   projectLead: string | null;
   links?: ProjectLink[];
+  coManagers?: Array<{
+    id: number;
+    name: string;
+    email: string;
+  }>;
+  assignedEmployees?: Array<{
+    id: number;
+    name: string;
+    email: string;
+    department: string | null;
+    designation: string | null;
+  }>;
+  messages?: ProjectMessage[];
   tasks?: Array<{
     id: number;
     taskName: string;
@@ -28,11 +41,19 @@ export interface Project {
     assignedToUser?: { id: number; name: string; email: string } | null;
     assignedByUser?: { id: number; name: string; email: string } | null;
     status: string;
+    category?: string | null;
+    description?: string | null;
+    links?: string | null;
     dueDate: string | null;
     priority: string | null;
+    createdAt?: string;
+    updatedAt?: string;
     notes: string | null;
     submissionLink?: string | null;
+    submissionNotes?: string | null;
     reviewComment?: string | null;
+    reviewedAt?: string | null;
+    reviewedByUser?: { id: number; name: string; email: string } | null;
   }>;
   teamMembers?: Array<{
     id: number;
@@ -43,6 +64,19 @@ export interface Project {
   }>;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ProjectMessage {
+  id: string;
+  projectId: number;
+  senderId: number;
+  content: string;
+  createdAt: string;
+  sender: {
+    id: number;
+    name: string;
+    email: string;
+  };
 }
 
 export interface ProjectLink {
@@ -114,6 +148,32 @@ export async function assignProjectManager(id: number, managerId: number): Promi
   });
 }
 
+export async function addCoManager(projectId: number, userId: number): Promise<Project> {
+  return apiClient<Project>(`/projects/${projectId}/co-managers`, {
+    method: 'POST',
+    body: JSON.stringify({ userId }),
+  });
+}
+
+export async function removeCoManager(projectId: number, userId: number): Promise<Project> {
+  return apiClient<Project>(`/projects/${projectId}/co-managers/${userId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function assignEmployee(projectId: number, employeeId: number): Promise<Project> {
+  return apiClient<Project>(`/projects/${projectId}/employees`, {
+    method: 'POST',
+    body: JSON.stringify({ employeeId }),
+  });
+}
+
+export async function removeEmployee(projectId: number, employeeId: number): Promise<Project> {
+  return apiClient<Project>(`/projects/${projectId}/employees/${employeeId}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function updateProjectStatus(id: number, status: 'ACTIVE' | 'COMPLETED'): Promise<Project> {
   return apiClient<Project>(`/projects/${id}/status`, {
     method: 'PATCH',
@@ -135,6 +195,17 @@ export async function getProjectsByStatus(): Promise<Record<string, Project[]>> 
 
 export async function getProjectLinks(projectId: number): Promise<ProjectLink[]> {
   return apiClient<ProjectLink[]>(`/projects/${projectId}/links`);
+}
+
+export async function getMessages(projectId: number): Promise<ProjectMessage[]> {
+  return apiClient<ProjectMessage[]>(`/projects/${projectId}/messages`);
+}
+
+export async function sendMessage(projectId: number, content: string): Promise<ProjectMessage> {
+  return apiClient<ProjectMessage>(`/projects/${projectId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+  });
 }
 
 export async function createProjectLink(projectId: number, payload: CreateProjectLinkPayload): Promise<ProjectLink> {

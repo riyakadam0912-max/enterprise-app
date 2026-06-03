@@ -9,6 +9,8 @@ export interface Task {
   title?: string;
   taskName: string;
   description?: string | null;
+  category?: string | null;
+  links?: string | null;
   project: string | null;
   projectId?: number | null;
   projectRef?: {
@@ -33,7 +35,15 @@ export interface Task {
   priority: string | null;
   status: string;
   submissionLink?: string | null;
+  submissionNotes?: string | null;
   reviewComment?: string | null;
+  reviewedAt?: string | null;
+  reviewedBy?: number | null;
+  reviewedByUser?: {
+    id: number;
+    name: string;
+    email: string;
+  } | null;
   estimatedHours: number | null;
   actualHours: number | null;
   notes: string | null;
@@ -47,10 +57,13 @@ export interface TaskPayload {
   title?: string;
   taskName: string;
   description?: string | null;
+  category?: string | null;
+  links?: string | null;
   project?: string | null;
   projectId?: number;
   assignee?: string | null;
-  assignedToUserId?: number;
+  employeeId?: number | null;
+  assignedToUserId?: number | null;
   dueDate?: string | null;
   priority?: string | null;
   status?: string;
@@ -104,11 +117,14 @@ export async function submitTaskWork(id: number, payload: { submissionLink: stri
 
 export async function reviewTask(
   id: number,
-  payload: { decision: 'APPROVED' | 'REJECTED'; comment?: string },
+  payload: { status?: 'APPROVED' | 'REJECTED'; decision?: 'APPROVED' | 'REJECTED'; remarks?: string; comment?: string },
 ): Promise<Task> {
   return request<Task>(`/tasks/${id}/review`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
+    method: 'PATCH',
+    body: JSON.stringify({
+      status: payload.status ?? payload.decision,
+      remarks: payload.remarks ?? payload.comment,
+    }),
   });
 }
 

@@ -1,0 +1,40 @@
+export const designTokens = {
+  colors: {
+    background: 'hsl(220 33% 98%)',
+    foreground: 'hsl(222 47% 11%)',
+    surface: 'hsl(0 0% 100%)',
+    muted: 'hsl(210 40% 96%)',
+    border: 'hsl(214 32% 91%)',
+    primary: 'hsl(221 83% 53%)',
+    primaryForeground: 'hsl(210 40% 98%)',
+    success: 'hsl(142 72% 29%)',
+    warning: 'hsl(38 92% 50%)',
+    danger: 'hsl(0 84% 60%)',
+    info: 'hsl(199 89% 48%)',
+  },
+  spacing: {
+    pageX: '1.5rem',
+    pageY: '1.5rem',
+    card: '1rem',
+    section: '1.25rem',
+  },
+  radius: {
+    sm: '0.5rem',
+    md: '0.75rem',
+    lg: '1rem',
+    xl: '1.25rem',
+    '2xl': '1.5rem',
+  },
+  shadows: {
+    sm: '0 1px 2px rgba(15, 23, 42, 0.06)',
+    md: '0 10px 25px rgba(15, 23, 42, 0.08)',
+    lg: '0 18px 40px rgba(15, 23, 42, 0.12)',
+  },
+  zIndex: {
+    dropdown: 40,
+    sticky: 45,
+    modal: 60,
+    toast: 70,
+    overlay: 80,
+  },
+} as const;
