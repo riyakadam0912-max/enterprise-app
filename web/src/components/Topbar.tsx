@@ -1,9 +1,8 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { useState, useRef, useEffect } from 'react';
-import { useNotifications } from '@/hooks/useNotifications';
 import { useAuthSession } from '@/stores/auth-store';
+import NotificationBell from '@/components/notifications/NotificationBell';
 
 const segmentLabels: Record<string, string> = {
   dashboard: 'Dashboard',
@@ -34,14 +33,6 @@ const segmentLabels: Record<string, string> = {
   notifications: 'Notifications',
 };
 
-function BellIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
-      <path d="M13.73 21a2 2 0 01-3.46 0" />
-    </svg>
-  );
-}
 
 function CalendarIcon() {
   return (
@@ -74,23 +65,11 @@ function ChevronRightIcon() {
 
 export default function Topbar() {
   const pathname = usePathname();
-  const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
-  const [bellOpen, setBellOpen] = useState(false);
-  const bellRef = useRef<HTMLDivElement>(null);
   const session = useAuthSession();
   const sessionUser = {
     name: session.user?.name ?? 'User',
     role: session.role,
   };
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    function onOutside(e: MouseEvent) {
-      if (bellRef.current && !bellRef.current.contains(e.target as Node)) setBellOpen(false);
-    }
-    document.addEventListener('mousedown', onOutside);
-    return () => document.removeEventListener('mousedown', onOutside);
-  }, []);
 
   // Build breadcrumb parts from path
   const segments = pathname.split('/').filter(Boolean);
@@ -115,49 +94,7 @@ export default function Topbar() {
       <div className="flex items-center gap-2">
 
         {/* Notification bell */}
-        <div className="relative" ref={bellRef}>
-          <button
-            onClick={() => setBellOpen((v) => !v)}
-            className="relative p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
-          >
-            <BellIcon />
-            {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 bg-orange-500 rounded-full flex items-center justify-center text-[9px] font-bold text-white leading-none">
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
-          </button>
-
-          {bellOpen && (
-            <div className="absolute right-0 top-10 w-80 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden">
-              <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-200">
-                <span className="text-xs font-semibold text-slate-700">Notifications</span>
-                {unreadCount > 0 && (
-                  <button onClick={markAllRead} className="text-[10px] text-orange-500 hover:text-orange-600 font-medium">
-                    Mark all read
-                  </button>
-                )}
-              </div>
-              <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
-                {notifications.length === 0 ? (
-                  <p className="text-xs text-slate-400 text-center py-8">No notifications</p>
-                ) : notifications.slice(0, 20).map((n) => (
-                  <button
-                    key={n.id}
-                    onClick={() => markRead(n.id)}
-                    className={`w-full text-left px-3 py-2.5 hover:bg-slate-50 transition-colors ${n.isRead ? '' : 'bg-orange-50'}`}
-                  >
-                    <p className={`text-xs font-medium leading-tight ${n.isRead ? 'text-slate-600' : 'text-slate-800'}`}>{n.title}</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">{n.message}</p>
-                    <p className="text-[9px] text-slate-300 mt-0.5">
-                      {new Date(n.createdAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        <NotificationBell />
 
         {/* Total entries chip */}
         <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 rounded-lg">

@@ -22,15 +22,32 @@ function getErrorMessage(status: number | undefined, responseData: unknown, fall
     ? String((responseData as { message?: unknown }).message ?? '')
     : '';
 
-  if (status === 401) {
-    return serverMessage || 'Your session has expired. Please sign in again.';
+  switch (status) {
+    case 400:
+      return serverMessage || 'Invalid request. Please check your input and try again.';
+    case 401:
+      return serverMessage || 'Your session has expired. Please sign in again.';
+    case 403:
+      return serverMessage || 'You do not have permission to perform this action.';
+    case 404:
+      return serverMessage || 'The requested resource was not found.';
+    case 409:
+      return serverMessage || 'This action conflicts with existing data.';
+    case 422:
+      return serverMessage || 'Validation failed. Please check your input.';
+    case 429:
+      return serverMessage || 'Too many requests. Please try again later.';
+    case 500:
+      return serverMessage || 'Server error. Please try again later.';
+    case 502:
+      return serverMessage || 'Bad gateway. The server is temporarily unavailable.';
+    case 503:
+      return serverMessage || 'Service temporarily unavailable. Please try again later.';
+    case 504:
+      return serverMessage || 'Gateway timeout. The request took too long.';
+    default:
+      return serverMessage || fallbackMessage || 'Request failed. Please try again.';
   }
-
-  if (status === 403) {
-    return serverMessage || 'You do not have permission to access this resource.';
-  }
-
-  return serverMessage || fallbackMessage || 'API request failed';
 }
 
 export async function apiClient<T>(
