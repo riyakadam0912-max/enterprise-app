@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createCampaignLead } from '@/api/campaignLeadsApi';
 import { getLeads, Lead } from '@/api/leadsApi';
+import { getErrorMessage, reportError, retryAsync } from '@/lib/error-handling';
 
 const SOURCE_TYPES = ['Page Visit', 'Click', 'Email Open', 'Form Submission'];
 const STATUS_OPTIONS = ['New', 'Engaged', 'Qualified'];
@@ -26,7 +27,15 @@ export default function AddCampaignLeadPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getLeads().then(setLeads).catch(() => {});
+    async function loadLeads() {
+      try {
+        setLeads(await retryAsync(() => getLeads(), 2, 200));
+      } catch (error) {
+        reportError(error, 'Unable to load leads');
+      }
+    }
+
+    loadLeads();
   }, []);
 
   const set = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }));
@@ -47,7 +56,9 @@ export default function AddCampaignLeadPage() {
       });
       router.push('/dashboard/campaign-leads');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      const message = getErrorMessage(err, 'Failed to save campaign lead');
+      setError(message);
+      reportError(err, 'Campaign lead creation failed');
     } finally {
       setSaving(false);
     }

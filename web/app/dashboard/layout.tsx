@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import Topbar from '@/components/Topbar';
+import { useAuth } from '@/providers/AuthProvider';
 
 const EMPLOYEE_ALLOWED_EXACT_PATHS = ['/dashboard'];
 const EMPLOYEE_ALLOWED_PATH_PREFIXES = [
@@ -44,17 +45,21 @@ function isManagerPathAllowed(pathname: string): boolean {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { authenticated, loading, session } = useAuth();
   const [checked, setChecked] = useState(false);
   const [, startTransition] = useTransition();
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const role = localStorage.getItem('role');
+    if (loading) {
+      return;
+    }
 
-    if (!token) {
+    if (!authenticated) {
       router.replace('/login');
       return;
     }
+
+    const role = session.role;
 
     if (role === 'EMPLOYEE' && !isEmployeePathAllowed(pathname)) {
       router.replace('/dashboard');
@@ -64,12 +69,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (role === 'MANAGER' && !isManagerPathAllowed(pathname)) {
       router.replace('/dashboard');
       return;
-    } else {
-      startTransition(() => setChecked(true));
     }
-  }, [pathname, router, startTransition]);
 
-  if (!checked) {
+    startTransition(() => setChecked(true));
+  }, [authenticated, loading, pathname, router, session.role, startTransition]);
+
+  if (loading || !checked) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500" />

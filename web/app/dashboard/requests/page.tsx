@@ -11,6 +11,7 @@ import {
   rejectLeaveRequest,
 } from '../../../src/api/leaveRequestsApi';
 import TableActions from '@/components/common/TableActions';
+import { reportError, retryAsync } from '@/lib/error-handling';
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING_MANAGER: 'bg-amber-100 text-amber-700',
@@ -56,10 +57,17 @@ export default function AllRequestsPage() {
   const canHrApprove = role === 'HR' || role === 'ADMIN';
 
   useEffect(() => {
-    getLeaveRequests()
-      .then(setRequests)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    async function loadRequests() {
+      try {
+        setRequests(await retryAsync(() => getLeaveRequests(), 2, 200));
+      } catch (error) {
+        reportError(error, 'Unable to load leave requests');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadRequests();
   }, []);
 
   const handleDelete = async (id: number) => {
@@ -130,7 +138,17 @@ export default function AllRequestsPage() {
           >
             +
           </button>
-          <TableActions moduleKey="requests" rows={filtered} onRefresh={() => getLeaveRequests().then(setRequests)} />
+          <TableActions
+            moduleKey="requests"
+            rows={filtered}
+            onRefresh={async () => {
+              try {
+                setRequests(await getLeaveRequests());
+              } catch (error) {
+                reportError(error, 'Unable to refresh requests');
+              }
+            }}
+          />
         </div>
       </div>
 

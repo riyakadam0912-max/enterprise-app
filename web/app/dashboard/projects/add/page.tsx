@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createProject } from '@/api/projectsApi';
 import { apiClient } from '@/api/apiClient';
 import { canAccessUsers } from '@/utils/auth/permissions';
+import { reportError } from '@/lib/error-handling';
 
 const STATUSES = ['ACTIVE', 'COMPLETED'];
 
@@ -57,7 +58,10 @@ export default function AddProjectPage() {
 
     apiClient<Array<{ id: number; name: string; role: string }>>('/users')
       .then((users) => setManagers(users.filter((user) => user.role === 'MANAGER')))
-      .catch(() => setManagers([]));
+      .catch((error) => {
+        reportError(error, 'Unable to load project managers');
+        setManagers([]);
+      });
   }, [session.name, session.role, session.userId]);
 
   useEffect(() => {

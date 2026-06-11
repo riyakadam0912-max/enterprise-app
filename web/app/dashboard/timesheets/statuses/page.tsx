@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { getTimesheetsReport, TimesheetRow } from '@/api/timesheetsApi';
+import { reportError } from '@/lib/error-handling';
 
 const COLUMNS = ['Submitted', 'Approved', 'Rejected'] as const;
 type ColStatus = typeof COLUMNS[number];
@@ -23,10 +24,18 @@ export default function StatusesPage() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    getTimesheetsReport({ limit: 200 })
-      .then((r) => setRows(r.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    async function loadTimesheets() {
+      try {
+        const response = await getTimesheetsReport({ limit: 200 });
+        setRows(response.data);
+      } catch (error) {
+        reportError(error, 'Unable to load timesheets');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadTimesheets();
   }, []);
 
   // Close menu when clicking outside

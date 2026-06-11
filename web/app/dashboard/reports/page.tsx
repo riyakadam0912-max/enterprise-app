@@ -12,6 +12,7 @@ import {
   ReportsDashboard,
   ReportsFilters,
 } from '@/api/reportsApi';
+import { reportError } from '@/lib/error-handling';
 
 const AttendanceTrendChart = dynamic(() => import('@/components/reports/AttendanceTrendChart'), {
   ssr: false,
@@ -108,9 +109,20 @@ export default function ReportsPage() {
   const [reviewNotes, setReviewNotes] = useState('');
 
   useEffect(() => {
-    if (role === 'ADMIN' || role === 'HR' || role === 'MANAGER') {
-      getEmployees().then(setEmployees).catch(() => setEmployees([]));
+    async function loadEmployees() {
+      if (role !== 'ADMIN' && role !== 'HR' && role !== 'MANAGER') {
+        return;
+      }
+
+      try {
+        setEmployees(await getEmployees());
+      } catch (error) {
+        reportError(error, 'Unable to load employees');
+        setEmployees([]);
+      }
     }
+
+    loadEmployees();
   }, [role]);
 
   const departments = useMemo(() => {

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/api/apiClient';
 import { getEmployees, Employee } from '@/api/employeesApi';
+import { reportError, retryAsync, getErrorMessage } from '@/lib/error-handling';
 
 const STATUS_OPTIONS = ['Submitted', 'Approved', 'Rejected'];
 
@@ -25,7 +26,15 @@ export default function AddTimesheetPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getEmployees().then(setEmployees).catch(() => {});
+    async function loadEmployees() {
+      try {
+        setEmployees(await retryAsync(() => getEmployees(), 2, 200));
+      } catch (error) {
+        reportError(error, 'Unable to load employees');
+      }
+    }
+
+    loadEmployees();
   }, []);
 
   const set = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }));
@@ -49,7 +58,9 @@ export default function AddTimesheetPage() {
       });
       router.push('/dashboard/timesheets');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to save timesheet');
+      const message = getErrorMessage(err, 'Failed to save timesheet');
+      setError(message);
+      reportError(err, 'Timesheet submission failed');
     } finally {
       setSaving(false);
     }

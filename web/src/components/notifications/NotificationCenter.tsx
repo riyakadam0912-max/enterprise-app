@@ -15,6 +15,7 @@ import {
   type Notification,
   type NotificationPreferences,
 } from '@/api/notificationsApi';
+import { reportError } from '@/lib/error-handling';
 
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString('en-GB', {
@@ -62,13 +63,17 @@ export function NotificationCenter() {
 
   useEffect(() => {
     let active = true;
-    void getNotificationPreferences()
-      .then((data) => {
+    async function loadPreferences() {
+      try {
+        const data = await getNotificationPreferences();
         if (active) setPreferences(data);
-      })
-      .catch(() => {
+      } catch (error) {
+        reportError(error, 'Unable to load notification preferences');
         if (active) setPreferences(null);
-      });
+      }
+    }
+
+    void loadPreferences();
 
     return () => {
       active = false;

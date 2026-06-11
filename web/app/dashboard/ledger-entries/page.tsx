@@ -9,6 +9,7 @@ import {
 } from '../../../src/api/ledgerEntriesApi';
 import TableActions from '@/components/common/TableActions';
 import { formatInrCurrency } from '@/utils/formatCurrency';
+import { reportError } from '@/lib/error-handling';
 
 export default function LedgerEntriesPage() {
   const router = useRouter();
@@ -19,10 +20,17 @@ export default function LedgerEntriesPage() {
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    getLedgerEntries()
-      .then(setEntries)
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    async function loadEntries() {
+      try {
+        setEntries(await getLedgerEntries());
+      } catch (error) {
+        reportError(error, 'Unable to load ledger entries');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadEntries();
   }, []);
 
   const filtered = entries.filter((e) => {

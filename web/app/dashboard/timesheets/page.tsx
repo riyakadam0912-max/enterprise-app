@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getTimesheetsReport, TimesheetRow } from '@/api/timesheetsApi';
+import { reportError } from '@/lib/error-handling';
 import TableActions from '@/components/common/TableActions';
 
 const STATUS_COLOR: Record<string, string> = {
@@ -35,10 +36,19 @@ export default function TimesheetsPage() {
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>('All');
 
   useEffect(() => {
-    getTimesheetsReport({ limit: 100, search: search || undefined })
-      .then((r) => { setRows(r.data); setTotal(r.total); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    async function loadTimesheets() {
+      try {
+        const response = await getTimesheetsReport({ limit: 100, search: search || undefined });
+        setRows(response.data);
+        setTotal(response.total);
+      } catch (error) {
+        reportError(error, 'Unable to load timesheets');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadTimesheets();
   }, [search]);
 
   const filteredRows = useMemo(

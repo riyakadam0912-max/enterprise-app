@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getCampaignLeads, CampaignLeadRow } from '@/api/campaignLeadsApi';
 import TableActions from '@/components/common/TableActions';
+import { reportError } from '@/lib/error-handling';
 
 const SOURCE_TYPE_STYLE: Record<string, string> = {
   'EMAIL OPEN':       'bg-emerald-500 text-white',
@@ -41,8 +42,9 @@ export default function CampaignLeadsPage() {
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    getCampaignLeads()
-      .then((data) => {
+    async function loadCampaignLeads() {
+      try {
+        const data = await getCampaignLeads();
         const filtered = search
           ? data.filter(
               (r) =>
@@ -53,9 +55,14 @@ export default function CampaignLeadsPage() {
           : data;
         setRows(filtered);
         setTotal(data.length);
+      } catch (error) {
+        reportError(error, 'Unable to load campaign leads');
+      } finally {
         setLoading(false);
-      })
-      .catch(() => { setLoading(false); });
+      }
+    }
+
+    loadCampaignLeads();
   }, [search]);
 
   return (

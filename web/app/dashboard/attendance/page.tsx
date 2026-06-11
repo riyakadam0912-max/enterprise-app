@@ -7,6 +7,7 @@ import { assignShift, AttendanceRecord, AttendanceStatus, createShift, getShifts
 import { useAttendance, useCheckIn, useCheckOut, useTodayAttendance, useUpdateAttendance } from '@/hooks/useAttendance';
 import { useEmployees } from '@/hooks/useEmployees';
 import TableActions from '@/components/common/TableActions';
+import { reportError } from '@/lib/error-handling';
 
 const STATUS_STYLES: Record<AttendanceStatus, string> = {
   PRESENT: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -464,9 +465,17 @@ export default function AttendancePage() {
 
   useEffect(() => {
     if (!canManageShifts) return;
-    getShifts()
-      .then((rows) => setShifts(rows))
-      .catch(() => setShifts([]));
+
+    async function loadShifts() {
+      try {
+        setShifts(await getShifts());
+      } catch (error) {
+        reportError(error, 'Unable to load shifts');
+        setShifts([]);
+      }
+    }
+
+    loadShifts();
   }, [canManageShifts]);
 
   useEffect(() => {

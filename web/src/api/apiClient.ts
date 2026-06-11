@@ -90,7 +90,16 @@ export async function apiClient<T>(
   } catch (error: unknown) {
     const axiosError = error as AxiosError<{ message?: string }>;
     if (!axiosError.response) {
-      const message = 'Backend not reachable. Start the NestJS API on port 3000.';
+      const requestUrl =
+        axiosError.config?.url ??
+        axiosError.config?.baseURL ??
+        'http://localhost:3000';
+      const message = `Backend not reachable at ${requestUrl}. Verify the NestJS API is running on port 3000 and CORS is configured correctly.`;
+      console.error('[apiClient] No response from API', {
+        url: requestUrl,
+        method: axiosError.config?.method,
+        message: axiosError.message,
+      });
       toast.error('Backend unavailable', message);
       throw new Error(message);
     }

@@ -9,6 +9,7 @@ import {
 } from '@/api/marketingCampaignsApi';
 import TableActions from '@/components/common/TableActions';
 import { formatInrCurrency } from '@/utils/formatCurrency';
+import { reportError } from '@/lib/error-handling';
 
 const CHANNEL_COLOR: Record<string, string> = {
   'Event':       'bg-teal-500 text-white',
@@ -37,10 +38,18 @@ export default function AllMarketingCampaignsPage() {
   const [error, setError]         = useState('');
 
   useEffect(() => {
-    getMarketingCampaigns()
-      .then(setCampaigns)
-      .catch(() => setError('Failed to load marketing campaigns'))
-      .finally(() => setLoading(false));
+    async function loadCampaigns() {
+      try {
+        setCampaigns(await getMarketingCampaigns());
+      } catch (error) {
+        reportError(error, 'Unable to load marketing campaigns');
+        setError('Failed to load marketing campaigns');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadCampaigns();
   }, []);
 
   async function handleDelete(id: number, name: string) {
@@ -61,7 +70,17 @@ export default function AllMarketingCampaignsPage() {
           >
             + Add Campaign
           </button>
-          <TableActions moduleKey="marketing-campaigns" rows={campaigns} onRefresh={() => getMarketingCampaigns().then(setCampaigns)} />
+          <TableActions
+            moduleKey="marketing-campaigns"
+            rows={campaigns}
+            onRefresh={async () => {
+              try {
+                setCampaigns(await getMarketingCampaigns());
+              } catch (error) {
+                reportError(error, 'Unable to refresh marketing campaigns');
+              }
+            }}
+          />
         </div>
       </div>
 

@@ -14,6 +14,7 @@
     "typecheck": "npm --prefix api run typecheck && npm --prefix web run typecheck",
     "prisma:generate": "npm --prefix api run prisma:generate",
     "prisma:migrate": "npm --prefix api run prisma:migrate",
+    "ci:prisma": "npm --prefix api run prisma:validate && npm --prefix api run prisma:migrate:status && npm --prefix api run prisma:migrate",
     "kill:ports": "node scripts/kill-ports.js"
   },
   "devDependencies": {

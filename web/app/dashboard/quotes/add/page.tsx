@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { getDeals, type Deal } from '@/api/dealsApi';
 import { getContacts, type Contact } from '@/api/contactsApi';
 import { createQuote, getQuote, updateQuote } from '@/api/quotesApi';
+import { getErrorMessage, reportError } from '@/lib/error-handling';
 import { formatInr, QUOTE_STATUS_STYLES, quoteLineTotal, sumLineItems } from '@/utils/finance';
 
 interface ItemRow {
@@ -36,12 +37,17 @@ export default function AddQuotePage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([getDeals(), getContacts()])
-      .then(([dealList, contactList]) => {
+    async function loadMeta() {
+      try {
+        const [dealList, contactList] = await Promise.all([getDeals(), getContacts()]);
         setDeals(dealList);
         setContacts(contactList);
-      })
-      .catch(() => undefined);
+      } catch (error) {
+        reportError(error, 'Unable to load quote metadata');
+      }
+    }
+
+    loadMeta();
   }, []);
 
   useEffect(() => {
@@ -55,7 +61,10 @@ export default function AddQuotePage() {
         setNotes(quote.notes ?? '');
         setItems(quote.items.map((item) => ({ name: item.name, quantity: item.quantity, price: item.price })));
       })
-      .catch(() => setError('Failed to load quote.'));
+      .catch((error) => {
+        reportError(error, 'Unable to load quote');
+        setError('Failed to load quote.');
+      });
   }, [editId]);
 
   const total = useMemo(() => sumLineItems(items), [items]);

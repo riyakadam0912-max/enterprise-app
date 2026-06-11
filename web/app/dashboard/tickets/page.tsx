@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { getTickets, deleteTicket, Ticket, TicketStatus } from '../../../src/api/ticketsApi';
 import TableActions from '@/components/common/TableActions';
 import { formatInrCurrency } from '@/utils/formatCurrency';
+import { reportError } from '@/lib/error-handling';
 
 const STATUS_COLOR: Record<TicketStatus, string> = {
   RESERVED:  'bg-blue-100 text-blue-700',
@@ -31,10 +32,17 @@ export default function AllTicketsPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
   useEffect(() => {
-    getTickets()
-      .then(setTickets)
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    async function loadTickets() {
+      try {
+        setTickets(await getTickets());
+      } catch (error) {
+        reportError(error, 'Unable to load tickets');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadTickets();
   }, []);
 
   const filtered = tickets.filter((t) => {
@@ -85,7 +93,17 @@ export default function AllTicketsPage() {
           >
             Ticket Types
           </button>
-          <TableActions moduleKey="tickets" rows={filtered} onRefresh={() => getTickets().then(setTickets)} />
+          <TableActions
+            moduleKey="tickets"
+            rows={filtered}
+            onRefresh={async () => {
+              try {
+                setTickets(await getTickets());
+              } catch (error) {
+                reportError(error, 'Unable to refresh tickets');
+              }
+            }}
+          />
         </div>
       </div>
 

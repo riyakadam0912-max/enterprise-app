@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getMarketingCampaignsByChannel, type MarketingCampaign } from '@/api/marketingCampaignsApi';
+import { reportError } from '@/lib/error-handling';
 
 const CHANNELS = ['Email', 'Social Media', 'Website', 'Event', 'Direct Mail'];
 
@@ -41,10 +42,18 @@ export default function ChannelsPage() {
   const [error,   setError]   = useState('');
 
   useEffect(() => {
-    getMarketingCampaignsByChannel()
-      .then(setGrouped)
-      .catch(() => setError('Failed to load channels'))
-      .finally(() => setLoading(false));
+    async function loadChannels() {
+      try {
+        setGrouped(await getMarketingCampaignsByChannel());
+      } catch (error) {
+        reportError(error, 'Unable to load campaign channels');
+        setError('Failed to load channels');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadChannels();
   }, []);
 
   return (

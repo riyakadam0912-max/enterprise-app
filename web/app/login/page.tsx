@@ -2,8 +2,7 @@
 
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { loginUser } from '@/api/authApi';
-import { setAuthSession } from '@/stores/auth-store';
+import { useAuth } from '@/providers/AuthProvider';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,19 +11,15 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const { login } = useAuth();
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
     setLoading(true);
 
     try {
-      const data = await loginUser(email, password);
-      setAuthSession({
-        token: data.access_token,
-        role: data.role,
-        user: data.user,
-        employeeId: data.employeeId,
-      });
+      await login(email, password);
       router.push('/dashboard');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed');

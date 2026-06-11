@@ -4,6 +4,7 @@ import "./globals.css";
 import ReactQueryProvider from "@/components/providers/ReactQueryProvider";
 import BackendHealthProvider from "@/components/providers/BackendHealthProvider";
 import { DesignSystemProvider } from "@/providers/design-system-provider";
+import { AuthProvider } from '@/providers/AuthProvider';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,7 +36,9 @@ export default function RootLayout({
       >
         <ReactQueryProvider>
           <BackendHealthProvider>
-            <DesignSystemProvider>{children}</DesignSystemProvider>
+            <DesignSystemProvider>
+              <AuthProvider>{children}</AuthProvider>
+            </DesignSystemProvider>
           </BackendHealthProvider>
         </ReactQueryProvider>
       </body>

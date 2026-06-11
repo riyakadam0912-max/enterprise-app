@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { getDeals, deleteDeal, Deal } from '../../../src/api/dealsApi';
 import TableActions from '@/components/common/TableActions';
 import { formatInrCurrency } from '@/utils/formatCurrency';
+import { reportError } from '@/lib/error-handling';
 
 const PIPELINE_COLORS: Record<string, string> = {
   Marketing: 'bg-purple-100 text-purple-700',
@@ -30,10 +31,17 @@ export default function DealsPage() {
   const now = useMemo(() => new Date().getTime(), []);
 
   useEffect(() => {
-    getDeals()
-      .then(setDeals)
-      .catch(() => undefined)
-      .finally(() => setLoading(false));
+    async function loadDeals() {
+      try {
+        setDeals(await getDeals());
+      } catch (error) {
+        reportError(error, 'Unable to load deals');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadDeals();
   }, []);
 
   const handleDelete = async (id: number) => {

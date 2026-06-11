@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { getExpensesByCategory, type Expense } from '@/api/expensesApi';
 import { formatInrCurrency } from '@/utils/formatCurrency';
+import { reportError } from '@/lib/error-handling';
 
 const CATEGORY_BORDER: Record<string, string> = {
   'Training':        'border-l-blue-500',
@@ -45,10 +46,18 @@ export default function CategoriesPage() {
   const [error,   setError]   = useState('');
 
   useEffect(() => {
-    getExpensesByCategory()
-      .then(setGrouped)
-      .catch(() => setError('Failed to load categories'))
-      .finally(() => setLoading(false));
+    async function loadCategories() {
+      try {
+        setGrouped(await getExpensesByCategory());
+      } catch (error) {
+        reportError(error, 'Unable to load expense categories');
+        setError('Failed to load categories');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadCategories();
   }, []);
 
   const columns = Object.keys(grouped);

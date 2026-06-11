@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Deal, DealStage, CreateDealPayload } from '../../api/dealsApi';
 import { getLeads } from '../../api/leadsApi';
 import { getEmployees } from '../../api/employeesApi';
+import { reportError, retryAsync } from '@/lib/error-handling';
 
 const STAGES: DealStage[] = ['NEW', 'QUALIFIED', 'PROPOSAL', 'WON', 'LOST'];
 
@@ -35,8 +36,16 @@ export default function DealForm({ initial, onSubmit, submitting, error }: DealF
   const [employees, setEmployees] = useState<Employee[]>([]);
 
   useEffect(() => {
-    getLeads().then(setLeads).catch(() => {});
-    getEmployees().then(setEmployees).catch(() => {});
+    async function loadOptions() {
+      try {
+        setLeads(await retryAsync(() => getLeads(), 2, 200));
+        setEmployees(await retryAsync(() => getEmployees(), 2, 200));
+      } catch (error) {
+        reportError(error, 'Unable to load deal options');
+      }
+    }
+
+    loadOptions();
   }, []);
 
   const set = (key: keyof typeof form, value: string) =>

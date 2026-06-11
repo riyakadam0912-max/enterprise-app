@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { addPayment, usePayments } from '@/hooks/usePayments';
 import { getInvoices, type Invoice } from '@/api/invoicesApi';
+import { reportError } from '@/lib/error-handling';
 import { formatDate, formatInr, PAYMENT_STATUS_STYLES } from '@/utils/finance';
 
 const STATUS_FILTERS = ['ALL', 'COMPLETED', 'PENDING', 'FAILED', 'REFUNDED', 'RECONCILED', 'PARTIALLY_SETTLED'] as const;
@@ -35,7 +36,15 @@ export default function PaymentsPage() {
   });
 
   useEffect(() => {
-    getInvoices().then(setInvoices).catch(() => undefined);
+    async function loadInvoices() {
+      try {
+        setInvoices(await getInvoices());
+      } catch (error) {
+        reportError(error, 'Unable to load invoices');
+      }
+    }
+
+    loadInvoices();
   }, []);
 
   const paymentStats = useMemo(() => {

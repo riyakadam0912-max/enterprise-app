@@ -6,6 +6,7 @@ import {
   getFormSubmissions, deleteFormSubmission,
   FormSubmission, FormSubmissionStatus,
 } from '../../../src/api/formSubmissionsApi';
+import { reportError } from '@/lib/error-handling';
 
 const STATUS_COLOR: Record<FormSubmissionStatus, string> = {
   SUBMITTED: 'bg-blue-100 text-blue-700',
@@ -34,10 +35,17 @@ export default function AllFormSubmissionsPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
   useEffect(() => {
-    getFormSubmissions()
-      .then(setRows)
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    async function loadSubmissions() {
+      try {
+        setRows(await getFormSubmissions());
+      } catch (error) {
+        reportError(error, 'Unable to load form submissions');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadSubmissions();
   }, []);
 
   const filtered = rows.filter((r) => {

@@ -5,6 +5,7 @@ import {
   getProductCategories,
   Product, ProductCategory, CreateProductPayload, UpdateProductPayload,
 } from '@/api/productsApi';
+import { reportError, retryAsync } from '@/lib/error-handling';
 
 export function useProducts() {
   const [products, setProducts]   = useState<Product[]>([]);
@@ -43,10 +44,17 @@ export function useProductCategories() {
   const [loading, setLoading]       = useState(true);
 
   useEffect(() => {
-    getProductCategories()
-      .then(setCategories)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    async function loadCategories() {
+      try {
+        setCategories(await retryAsync(() => getProductCategories(), 2, 200));
+      } catch (error) {
+        reportError(error, 'Unable to load product categories');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadCategories();
   }, []);
 
   return { categories, loading };

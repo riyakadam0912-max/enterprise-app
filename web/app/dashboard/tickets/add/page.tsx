@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createTicket, getTicketTypes, TicketType, TicketStatus, CreateTicketPayload } from '../../../../src/api/ticketsApi';
+import { getErrorMessage, reportError, retryAsync } from '@/lib/error-handling';
 
 const STATUSES: TicketStatus[] = ['RESERVED', 'SOLD', 'CANCELLED', 'REFUNDED'];
 
@@ -25,7 +26,15 @@ export default function AddTicketPage() {
   const [error, setError]           = useState<string | null>(null);
 
   useEffect(() => {
-    getTicketTypes().then(setTicketTypes).catch(() => {});
+    async function loadTicketTypes() {
+      try {
+        setTicketTypes(await retryAsync(() => getTicketTypes(), 2, 200));
+      } catch (error) {
+        reportError(error, 'Unable to load ticket types');
+      }
+    }
+
+    loadTicketTypes();
   }, []);
 
   function set(field: keyof CreateTicketPayload, value: unknown) {
@@ -49,8 +58,10 @@ export default function AddTicketPage() {
       };
       await createTicket(payload);
       router.push('/dashboard/tickets');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create ticket');
+    } catch (err: unknown) {
+      const message = getErrorMessage(err, 'Failed to create ticket');
+      setError(message);
+      reportError(err, 'Ticket creation failed');
     } finally {
       setSaving(false);
     }

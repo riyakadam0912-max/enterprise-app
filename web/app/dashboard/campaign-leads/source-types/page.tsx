@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { getCampaignLeads, CampaignLeadRow } from '@/api/campaignLeadsApi';
+import { reportError } from '@/lib/error-handling';
 
 const SOURCE_TYPES = ['Page Visit', 'Click', 'Email Open', 'Form Submission'];
 
@@ -39,10 +40,17 @@ export default function SourceTypesPage() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    getCampaignLeads()
-      .then(setRows)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    async function loadCampaignLeads() {
+      try {
+        setRows(await getCampaignLeads());
+      } catch (error) {
+        reportError(error, 'Unable to load campaign leads');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadCampaignLeads();
   }, []);
 
   useEffect(() => {

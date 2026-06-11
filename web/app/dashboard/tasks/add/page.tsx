@@ -6,6 +6,7 @@ import { createTask } from '@/api/tasksApi';
 import { getProjects, type Project } from '@/api/projectsApi';
 import { apiClient } from '@/api/apiClient';
 import { canManageProjects } from '@/utils/auth/permissions';
+import { reportError } from '@/lib/error-handling';
 
 const PRIORITIES = ['High', 'Low', 'Medium', 'Critical'];
 const STATUSES   = ['PENDING', 'IN_PROGRESS', 'SUBMITTED', 'APPROVED', 'REJECTED'];
@@ -46,15 +47,21 @@ export default function AddTaskPage() {
   const [error,  setError]  = useState('');
 
   useEffect(() => {
-    getProjects().then(setProjects).catch(() => setProjects([]));
+    async function loadOptions() {
+      try {
+        setProjects(await getProjects());
+      } catch (error) {
+        reportError(error, 'Unable to load projects');
+        setProjects([]);
+      }
 
-    if (!canManageProjects(role)) {
-      setAssignableUsers([]);
-      return;
-    }
+      if (!canManageProjects(role)) {
+        setAssignableUsers([]);
+        return;
+      }
 
-    apiClient<Array<{ id: number; name: string; role: string; managerId?: number | null }>>('/users/assignable')
-      .then((users) => {
+      try {
+        const users = await apiClient<Array<{ id: number; name: string; role: string; managerId?: number | null }>>('/users/assignable');
         if (role === 'MANAGER' && currentUserId) {
           setAssignableUsers(users.filter((user) => user.role === 'EMPLOYEE' && user.managerId === currentUserId));
           return;
@@ -64,8 +71,13 @@ export default function AddTaskPage() {
           return;
         }
         setAssignableUsers([]);
-      })
-      .catch(() => setAssignableUsers([]));
+      } catch (error) {
+        reportError(error, 'Unable to load assignable users');
+        setAssignableUsers([]);
+      }
+    }
+
+    loadOptions();
   }, [currentUserId, role]);
 
   function set(key: keyof typeof form, val: string) {

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getInvoicesByStatus, type Invoice } from '../../../../src/api/invoicesApi';
 import { formatInr } from '@/utils/finance';
+import { reportError } from '@/lib/error-handling';
 
 const COLUMNS = [
   { key: 'DRAFT', label: 'Draft' },
@@ -27,10 +28,17 @@ export default function InvoiceStatusesPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getInvoicesByStatus()
-      .then(setGrouped)
-      .catch(() => undefined)
-      .finally(() => setLoading(false));
+    async function loadInvoices() {
+      try {
+        setGrouped(await getInvoicesByStatus());
+      } catch (error) {
+        reportError(error, 'Unable to load invoice statuses');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadInvoices();
   }, []);
 
   if (loading) {

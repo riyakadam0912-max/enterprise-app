@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createLeaveRequest, LeaveType } from '../../../../src/api/leaveRequestsApi';
 import { getEmployees } from '../../../../src/api/employeesApi';
+import { getErrorMessage, reportError, retryAsync } from '@/lib/error-handling';
 
 interface Employee { id: number; name: string }
 
@@ -38,7 +39,15 @@ export default function AddLeaveRequestPage() {
   const [error, setError]       = useState<string | null>(null);
 
   useEffect(() => {
-    getEmployees().then(setEmployees).catch(() => {});
+    async function loadEmployees() {
+      try {
+        setEmployees(await retryAsync(() => getEmployees(), 2, 200));
+      } catch (error) {
+        reportError(error, 'Unable to load employees');
+      }
+    }
+
+    loadEmployees();
   }, []);
 
   const set = (key: keyof typeof form, value: string) =>
@@ -60,8 +69,10 @@ export default function AddLeaveRequestPage() {
         employeeId: form.employeeId ? parseInt(form.employeeId) : undefined,
       });
       router.push('/dashboard/requests');
-    } catch {
-      setError('Failed to create leave request. Please try again.');
+    } catch (err: unknown) {
+      const message = getErrorMessage(err, 'Failed to create leave request. Please try again.');
+      setError(message);
+      reportError(err, 'Leave request submission failed');
     } finally {
       setSubmitting(false);
     }

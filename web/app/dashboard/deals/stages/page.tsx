@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { getDeals, Deal, DealStage } from '../../../../src/api/dealsApi';
 import { formatInrCurrency } from '@/utils/formatCurrency';
+import { reportError, retryAsync } from '@/lib/error-handling';
 
 const STAGE_COLUMNS: DealStage[] = [
   'NEW',
@@ -46,10 +47,17 @@ export default function DealStagesPage() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    getDeals()
-      .then(setDeals)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    async function loadDeals() {
+      try {
+        setDeals(await retryAsync(() => getDeals(), 2, 200));
+      } catch (error) {
+        reportError(error, 'Unable to load deals');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadDeals();
   }, []);
 
   useEffect(() => {

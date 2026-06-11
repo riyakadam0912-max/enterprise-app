@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { reportError } from '@/lib/error-handling';
 import { useRouter } from 'next/navigation';
 import {
   addCoManager,
@@ -274,7 +275,8 @@ export default function ProjectsWorkflowPage() {
       }
     }
 
-    void loadInitialData().catch(() => {
+    void loadInitialData().catch((error) => {
+      reportError(error, 'Unable to initialize projects');
       if (!cancelled) {
         setError('Failed to load projects module');
         setLoading(false);

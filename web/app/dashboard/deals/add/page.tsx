@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createDeal, DealStage } from '../../../../src/api/dealsApi';
 import { getLeads } from '../../../../src/api/leadsApi';
+import { getErrorMessage, reportError, retryAsync } from '@/lib/error-handling';
 
 interface Lead { id: number; name: string; company?: string | null }
 
@@ -32,7 +33,15 @@ export default function AddDealPage() {
   const [error, setError]         = useState<string | null>(null);
 
   useEffect(() => {
-    getLeads().then(setLeads).catch(() => {});
+    async function loadLeads() {
+      try {
+        setLeads(await retryAsync(() => getLeads(), 2, 200));
+      } catch (error) {
+        reportError(error, 'Unable to load leads');
+      }
+    }
+
+    loadLeads();
   }, []);
 
   const set = (key: keyof typeof form, value: string) =>
@@ -56,8 +65,10 @@ export default function AddDealPage() {
         pipeline:        form.pipeline        || undefined,
       });
       router.push('/dashboard/deals');
-    } catch {
-      setError('Failed to create deal. Please try again.');
+    } catch (err: unknown) {
+      const message = getErrorMessage(err, 'Failed to create deal. Please try again.');
+      setError(message);
+      reportError(err, 'Deal creation failed');
     } finally {
       setSubmitting(false);
     }

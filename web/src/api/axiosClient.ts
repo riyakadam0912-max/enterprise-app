@@ -1,10 +1,22 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { toast } from '@/providers/toast-provider';
 import { extractApiErrorMessage } from '@/lib/api-errors';
-import { clearAuthSession } from '@/stores/auth-store';
+import { clearAuthSession, setAuthSession, type AuthUser } from '@/stores/auth-store';
 import { clientEnv } from '@/config/env';
 
 const API_URL = clientEnv.NEXT_PUBLIC_API_URL;
+
+interface AuthRefreshPayload {
+  user: AuthUser;
+  role: string;
+  employeeId: number | null;
+}
+
+interface AuthRefreshResponse {
+  success?: boolean;
+  message?: string;
+  data?: AuthRefreshPayload;
+}
 
 // Track refresh token state to prevent multiple simultaneous refresh attempts
 let isRefreshing = false;
@@ -17,12 +29,12 @@ function clearAuthState() {
   clearAuthSession();
 }
 
-function processQueue(error: Error | null, token: string | null = null) {
+function processQueue(error: Error | null) {
   failedQueue.forEach((prom) => {
     if (error) {
       prom.reject(error);
     } else {
-      prom.resolve(token);
+      prom.resolve(undefined);
     }
   });
 
@@ -34,17 +46,7 @@ export const axiosClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-});
-
-axiosClient.interceptors.request.use((config) => {
-  if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('token') ?? localStorage.getItem('access_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-  }
-
-  return config;
+  withCredentials: true,
 });
 
 axiosClient.interceptors.response.use(
@@ -73,39 +75,31 @@ axiosClient.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        // Attempt to refresh the token
-        // Note: This requires a /auth/refresh endpoint on the backend
-        const refreshToken = localStorage.getItem('refresh_token');
-        
-        if (!refreshToken) {
-          throw new Error('No refresh token available');
-        }
-
-        const response = await axios.post(`${API_URL}/auth/refresh`, {
-          refresh_token: refreshToken,
+        const response = await axios.post<AuthRefreshResponse>(`${API_URL}/auth/refresh`, undefined, {
+          withCredentials: true,
+          headers: {
+            'Content-Type': 'application/json',
+          },
         });
 
-        const { access_token, refresh_token: newRefreshToken } = response.data;
+        const apiResponse = response.data;
+        const refreshData = apiResponse.success ? apiResponse.data : undefined;
 
-        // Update tokens in localStorage
-        localStorage.setItem('token', access_token);
-        localStorage.setItem('access_token', access_token);
-        if (newRefreshToken) {
-          localStorage.setItem('refresh_token', newRefreshToken);
+        if (refreshData) {
+          setAuthSession({
+            role: refreshData.role,
+            user: refreshData.user,
+            employeeId: refreshData.employeeId,
+          });
         }
 
-        // Update the authorization header
-        originalRequest.headers.Authorization = `Bearer ${access_token}`;
+        processQueue(null);
 
-        // Process queued requests
-        processQueue(null, access_token);
-
-        // Retry the original request
+        // Retry the original request after refresh
         return axiosClient(originalRequest);
       } catch (refreshError) {
-        // Refresh failed, clear auth and redirect to login
-        processQueue(refreshError as Error, null);
-        
+        processQueue(refreshError as Error);
+
         if (typeof window !== 'undefined') {
           clearAuthState();
           if (window.location.pathname !== '/login') {

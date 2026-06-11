@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { getLeaveRequests, LeaveRequest, LeaveType } from '../../../../src/api/leaveRequestsApi';
+import { reportError } from '@/lib/error-handling';
 
 const LEAVE_TYPE_COLUMNS: LeaveType[] = ['PAID', 'CASUAL', 'SICK', 'MEDICAL', 'MATERNITY', 'PATERNITY', 'UNPAID', 'OTHER'];
 
@@ -41,10 +42,17 @@ export default function LeaveTypesPage() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    getLeaveRequests()
-      .then(setRequests)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    async function loadRequests() {
+      try {
+        setRequests(await getLeaveRequests());
+      } catch (error) {
+        reportError(error, 'Unable to load leave requests');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadRequests();
   }, []);
 
   useEffect(() => {

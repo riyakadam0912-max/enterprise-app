@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { addEmployee, removeEmployee } from '@/hooks/useEmployees';
 import { apiClient } from '@/api/apiClient';
 import { canAccessUsers } from '@/utils/auth/permissions';
+import { reportError } from '@/lib/error-handling';
 
 const DEPARTMENTS = ['Sales', 'Engineering', 'HR', 'Finance', 'Operations'] as const;
 const ROLES = ['EMPLOYEE', 'MANAGER', 'HR'] as const;
@@ -51,7 +52,10 @@ export default function AddEmployeePage() {
 
     apiClient<ManagerOption[]>('/users')
       .then((users) => setManagerOptions(users.filter((user) => user.role === 'MANAGER')))
-      .catch(() => setManagerOptions([]));
+      .catch((error) => {
+        reportError(error, 'Unable to load manager options');
+        setManagerOptions([]);
+      });
   }, [currentRole]);
 
   const inputCls = 'w-full px-4 py-2.5 rounded-lg border border-slate-300 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition text-sm';
@@ -144,8 +148,11 @@ export default function AddEmployeePage() {
             method: 'POST',
             body: JSON.stringify(userPayload),
           });
-        } catch {
-          await removeEmployee(createdEmployeeId);
+        } catch (error) {
+          await removeEmployee(createdEmployeeId).catch((cleanupError) => {
+            reportError(cleanupError, 'Employee cleanup failed');
+          });
+          reportError(error, 'Employee login creation failed');
           setError('Employee profile created but login account failed. Please go to Users page to create login manually.');
           return;
         }
@@ -157,8 +164,11 @@ export default function AddEmployeePage() {
       router.push('/dashboard/employees');
     } catch (err) {
       if (createdEmployeeId) {
-        await removeEmployee(createdEmployeeId).catch(() => undefined);
+        await removeEmployee(createdEmployeeId).catch((cleanupError) => {
+          reportError(cleanupError, 'Employee cleanup failed');
+        });
       }
+      reportError(err, 'Failed to create employee');
       setError(err instanceof Error ? err.message : 'Failed to create employee');
     } finally {
       setLoading(false);
