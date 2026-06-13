@@ -11,7 +11,8 @@ export function FormCheckbox<TFieldValues extends FieldValues>({
   label,
   helperText,
   className,
-}: {
+  ...props
+}: React.InputHTMLAttributes<HTMLInputElement> & {
   name: Path<TFieldValues>;
   label: string;
   helperText?: string;
@@ -28,15 +29,21 @@ export function FormCheckbox<TFieldValues extends FieldValues>({
         name={name}
         render={({ field }) => (
           <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-            <Checkbox checked={Boolean(field.value)} onChange={(event) => field.onChange(event.target.checked)} />
+            <Checkbox
+              id={name}
+              name={name}
+              checked={Boolean(field.value)}
+              onChange={(event) => field.onChange(event.target.checked)}
+              {...props}
+            />
             <span className="space-y-1">
-              <Label>{label}</Label>
-              {helperText ? <p className="text-xs text-slate-500">{helperText}</p> : null}
+              <Label htmlFor={name}>{label}</Label>
+              {helperText ? <p id={`${name}-help`} className="text-xs text-slate-500">{helperText}</p> : null}
             </span>
           </label>
         )}
       />
-      {errorMessage ? <p className="text-xs font-medium text-rose-600">{errorMessage}</p> : null}
+      {errorMessage ? <p id={`${name}-error`} className="text-xs font-medium text-rose-600">{errorMessage}</p> : null}
     </div>
   );
 }

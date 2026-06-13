@@ -36,7 +36,13 @@ export function FormRadio<TFieldValues extends FieldValues>({
           <div className="grid gap-2 sm:grid-cols-2">
             {options.map((option) => (
               <label key={option.value} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
-                <Radio checked={field.value === option.value} onChange={() => field.onChange(option.value)} />
+                <Radio
+                  id={`${name}-${option.value}`}
+                  name={name}
+                  value={option.value}
+                  checked={field.value === option.value}
+                  onChange={() => field.onChange(option.value)}
+                />
                 <span className="text-sm text-slate-700">{option.label}</span>
               </label>
             ))}

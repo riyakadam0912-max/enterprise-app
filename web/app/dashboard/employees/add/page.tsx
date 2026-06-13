@@ -192,12 +192,14 @@ export default function AddEmployeePage() {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
+            <label htmlFor="employee-name" className="block text-sm font-medium text-slate-700 mb-1">
               Name <span className="text-red-500">*</span>
             </label>
             <input
-              type="text"
+              id="employee-name"
               name="name"
+              type="text"
+              autoComplete="name"
               value={form.name}
               onChange={handleChange}
               placeholder="Full name"
@@ -206,8 +208,14 @@ export default function AddEmployeePage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Department</label>
-            <select name="department" value={form.department} onChange={handleChange} className={selectCls}>
+            <label htmlFor="employee-department" className="block text-sm font-medium text-slate-700 mb-1">Department</label>
+            <select
+              id="employee-department"
+              name="department"
+              value={form.department}
+              onChange={handleChange}
+              className={selectCls}
+            >
               <option value="">-Select-</option>
               {DEPARTMENTS.map((department) => (
                 <option key={department} value={department}>
@@ -218,10 +226,12 @@ export default function AddEmployeePage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Designation</label>
+            <label htmlFor="employee-designation" className="block text-sm font-medium text-slate-700 mb-1">Designation</label>
             <input
-              type="text"
+              id="employee-designation"
               name="designation"
+              type="text"
+              autoComplete="organization-title"
               value={form.designation}
               onChange={handleChange}
               placeholder="e.g. Software Engineer"
@@ -230,10 +240,12 @@ export default function AddEmployeePage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Hire Date</label>
+            <label htmlFor="employee-hire-date" className="block text-sm font-medium text-slate-700 mb-1">Hire Date</label>
             <input
-              type="date"
+              id="employee-hire-date"
               name="hireDate"
+              type="date"
+              autoComplete="bday"
               value={form.hireDate}
               onChange={handleChange}
               className={inputCls}
@@ -245,12 +257,14 @@ export default function AddEmployeePage() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <label htmlFor="employee-email" className="block text-sm font-medium text-slate-700 mb-1">
                   Email <span className="text-red-500">*</span>
                 </label>
                 <input
-                  type="email"
+                  id="employee-email"
                   name="email"
+                  type="email"
+                  autoComplete="email"
                   value={form.email}
                   onChange={handleChange}
                   placeholder="user@company.com"
@@ -260,12 +274,14 @@ export default function AddEmployeePage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <label htmlFor="employee-password" className="block text-sm font-medium text-slate-700 mb-1">
                   Password <span className="text-red-500">*</span>
                 </label>
                 <input
-                  type="password"
+                  id="employee-password"
                   name="password"
+                  type="password"
+                  autoComplete="new-password"
                   value={form.password}
                   onChange={handleChange}
                   placeholder="Minimum 8 characters"
@@ -275,8 +291,14 @@ export default function AddEmployeePage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
-                <select name="role" value={form.role} onChange={handleChange} className={selectCls}>
+                <label htmlFor="employee-role" className="block text-sm font-medium text-slate-700 mb-1">Role</label>
+                <select
+                  id="employee-role"
+                  name="role"
+                  value={form.role}
+                  onChange={handleChange}
+                  className={selectCls}
+                >
                   {ROLES.map((role) => (
                     <option key={role} value={role}>
                       {role}
@@ -287,9 +309,15 @@ export default function AddEmployeePage() {
 
               {selectedRole !== 'MANAGER' && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Reporting Manager</label>
+                  <label htmlFor="employee-reporting-manager" className="block text-sm font-medium text-slate-700 mb-1">Reporting Manager</label>
                   <p className="text-xs text-slate-500 mb-1">(Optional — managers do not need a reporting manager)</p>
-                  <select name="reportingManagerId" value={form.reportingManagerId} onChange={handleChange} className={selectCls}>
+                  <select
+                    id="employee-reporting-manager"
+                    name="reportingManagerId"
+                    value={form.reportingManagerId}
+                    onChange={handleChange}
+                    className={selectCls}
+                  >
                     <option value="">No manager</option>
                     {managerOptions.map((manager) => (
                       <option key={manager.id} value={manager.id}>

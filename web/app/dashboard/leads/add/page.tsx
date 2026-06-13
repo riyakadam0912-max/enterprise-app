@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
@@ -101,52 +101,126 @@ export default function AddLeadPage() {
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="grid gap-5 md:grid-cols-2">
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Lead Name <span className="text-red-500">*</span></label>
-                <input type="text" name="name" value={form.name} onChange={handleChange} className={`${inputCls} border-orange-400`} />
+                <label htmlFor="lead-name" className="mb-1 block text-sm font-medium text-slate-700">Lead Name <span className="text-red-500">*</span></label>
+                <input
+                  id="lead-name"
+                  name="name"
+                  type="text"
+                  autoComplete="organization"
+                  value={form.name}
+                  onChange={handleChange}
+                  className={`${inputCls} border-orange-400`}
+                />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Source</label>
-                <select name="source" value={form.source} onChange={handleChange} className={inputCls}>
+                <label htmlFor="lead-source" className="mb-1 block text-sm font-medium text-slate-700">Source</label>
+                <select
+                  id="lead-source"
+                  name="source"
+                  value={form.source}
+                  onChange={handleChange}
+                  className={inputCls}
+                >
                   <option value="">-Select-</option>
                   {SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Status</label>
-                <select name="status" value={form.status} onChange={handleChange} className={inputCls}>
+                <label htmlFor="lead-status" className="mb-1 block text-sm font-medium text-slate-700">Status</label>
+                <select
+                  id="lead-status"
+                  name="status"
+                  value={form.status}
+                  onChange={handleChange}
+                  className={inputCls}
+                >
                   <option value="">-Select-</option>
                   {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Lead Owner</label>
-                <input type="text" name="leadOwner" value={form.leadOwner} onChange={handleChange} className={inputCls} />
+                <label htmlFor="lead-owner" className="mb-1 block text-sm font-medium text-slate-700">Lead Owner</label>
+                <input
+                  id="lead-owner"
+                  name="leadOwner"
+                  type="text"
+                  autoComplete="name"
+                  value={form.leadOwner}
+                  onChange={handleChange}
+                  className={inputCls}
+                />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Assigned To</label>
-                <input type="text" name="assignedTo" value={form.assignedTo} onChange={handleChange} className={inputCls} />
+                <label htmlFor="lead-assigned-to" className="mb-1 block text-sm font-medium text-slate-700">Assigned To</label>
+                <input
+                  id="lead-assigned-to"
+                  name="assignedTo"
+                  type="text"
+                  autoComplete="name"
+                  value={form.assignedTo}
+                  onChange={handleChange}
+                  className={inputCls}
+                />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Created By</label>
-                <input type="text" name="createdBy" value={form.createdBy} onChange={handleChange} className={inputCls} />
+                <label htmlFor="lead-created-by" className="mb-1 block text-sm font-medium text-slate-700">Created By</label>
+                <input
+                  id="lead-created-by"
+                  name="createdBy"
+                  type="text"
+                  autoComplete="name"
+                  value={form.createdBy}
+                  onChange={handleChange}
+                  className={inputCls}
+                />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Contacted Date</label>
-                <input type="date" name="contactedDate" value={form.contactedDate} onChange={handleChange} className={inputCls} />
+                <label htmlFor="lead-contacted-date" className="mb-1 block text-sm font-medium text-slate-700">Contacted Date</label>
+                <input
+                  id="lead-contacted-date"
+                  name="contactedDate"
+                  type="date"
+                  value={form.contactedDate}
+                  onChange={handleChange}
+                  className={inputCls}
+                />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Next Follow Up</label>
-                <input type="date" name="nextFollowUp" value={form.nextFollowUp} onChange={handleChange} className={inputCls} />
+                <label htmlFor="lead-next-follow-up" className="mb-1 block text-sm font-medium text-slate-700">Next Follow Up</label>
+                <input
+                  id="lead-next-follow-up"
+                  name="nextFollowUp"
+                  type="date"
+                  value={form.nextFollowUp}
+                  onChange={handleChange}
+                  className={inputCls}
+                />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Lead Score</label>
-                <input type="number" name="leadScore" value={form.leadScore} onChange={handleChange} min={0} max={100} className={inputCls} />
+                <label htmlFor="lead-score" className="mb-1 block text-sm font-medium text-slate-700">Lead Score</label>
+                <input
+                  id="lead-score"
+                  name="leadScore"
+                  type="number"
+                  value={form.leadScore}
+                  onChange={handleChange}
+                  min={0}
+                  max={100}
+                  className={inputCls}
+                />
               </div>
             </div>
 
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Notes</label>
-              <textarea name="notes" value={form.notes} onChange={handleChange} rows={5} className={`${inputCls} resize-none`} />
+              <label htmlFor="lead-notes" className="mb-1 block text-sm font-medium text-slate-700">Notes</label>
+              <textarea
+                id="lead-notes"
+                name="notes"
+                value={form.notes}
+                onChange={handleChange}
+                rows={5}
+                className={`${inputCls} resize-none`}
+              />
             </div>
 
             <div className="flex flex-wrap items-center gap-3 pt-2">

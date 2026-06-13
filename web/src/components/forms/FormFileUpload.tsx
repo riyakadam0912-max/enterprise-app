@@ -13,7 +13,8 @@ export function FormFileUpload<TFieldValues extends FieldValues>({
   accept,
   multiple = false,
   className,
-}: {
+  ...props
+}: React.InputHTMLAttributes<HTMLInputElement> & {
   name: Path<TFieldValues>;
   label: string;
   helperText?: string;
@@ -27,21 +28,24 @@ export function FormFileUpload<TFieldValues extends FieldValues>({
 
   return (
     <div className={cn('space-y-2', className)}>
-      <Label>{label}</Label>
+      <Label htmlFor={name}>{label}</Label>
       <Controller
         control={control}
         name={name}
         render={({ field }) => (
           <Input
+            id={name}
+            name={name}
             type="file"
             accept={accept}
             multiple={multiple}
             onChange={(event) => field.onChange(multiple ? Array.from(event.target.files ?? []) : event.target.files?.[0] ?? null)}
+            {...props}
           />
         )}
       />
-      {errorMessage ? <p className="text-xs font-medium text-rose-600">{errorMessage}</p> : null}
-      {helperText ? <p className="text-xs text-slate-500">{helperText}</p> : null}
+      {errorMessage ? <p id={`${name}-error`} className="text-xs font-medium text-rose-600">{errorMessage}</p> : null}
+      {helperText ? <p id={`${name}-help`} className="text-xs text-slate-500">{helperText}</p> : null}
     </div>
   );
 }

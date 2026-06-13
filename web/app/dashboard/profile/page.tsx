@@ -292,18 +292,36 @@ export default function ProfilePage() {
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
-                <label className="mb-1 block text-sm font-medium text-slate-700">Full Name</label>
-                <input value={details.fullName} readOnly className="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none" />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
-                <input value={details.email} readOnly className="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none" />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Phone</label>
+                <label htmlFor="profile-full-name" className="mb-1 block text-sm font-medium text-slate-700">Full Name</label>
                 <input
+                  id="profile-full-name"
+                  name="fullName"
+                  value={details.fullName}
+                  readOnly
+                  className="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="profile-email" className="mb-1 block text-sm font-medium text-slate-700">Email</label>
+                <input
+                  id="profile-email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  value={details.email}
+                  readOnly
+                  className="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="profile-phone" className="mb-1 block text-sm font-medium text-slate-700">Phone</label>
+                <input
+                  id="profile-phone"
+                  name="phone"
+                  type="tel"
+                  autoComplete="tel"
                   value={details.phone}
                   onChange={(e) => setDetails((prev) => ({ ...prev, phone: e.target.value }))}
                   placeholder="Enter phone number"
@@ -312,18 +330,34 @@ export default function ProfilePage() {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Department</label>
-                <input value={displayDepartment || 'Not assigned'} readOnly className="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none" />
+                <label htmlFor="profile-department" className="mb-1 block text-sm font-medium text-slate-700">Department</label>
+                <input
+                  id="profile-department"
+                  name="department"
+                  value={displayDepartment || 'Not assigned'}
+                  readOnly
+                  className="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none"
+                />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Role</label>
-                <input value={displayRole} readOnly className="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none" />
+                <label htmlFor="profile-role" className="mb-1 block text-sm font-medium text-slate-700">Role</label>
+                <input
+                  id="profile-role"
+                  name="role"
+                  value={displayRole}
+                  readOnly
+                  className="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none"
+                />
               </div>
 
               <div className="sm:col-span-2">
-                <label className="mb-1 block text-sm font-medium text-slate-700">Location</label>
+                <label htmlFor="profile-location" className="mb-1 block text-sm font-medium text-slate-700">Location</label>
                 <input
+                  id="profile-location"
+                  name="location"
+                  type="text"
+                  autoComplete="street-address"
                   value={details.location}
                   onChange={(e) => setDetails((prev) => ({ ...prev, location: e.target.value }))}
                   placeholder="Enter location"
@@ -381,9 +415,12 @@ export default function ProfilePage() {
 
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Current Password</label>
+              <label htmlFor="profile-current-password" className="mb-1 block text-sm font-medium text-slate-700">Current Password</label>
               <input
+                id="profile-current-password"
+                name="currentPassword"
                 type="password"
+                autoComplete="current-password"
                 value={passwordForm.currentPassword}
                 onChange={(e) => setPasswordForm((prev) => ({ ...prev, currentPassword: e.target.value }))}
                 className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-transparent focus:ring-2 focus:ring-orange-500"
@@ -391,9 +428,12 @@ export default function ProfilePage() {
             </div>
 
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">New Password</label>
+              <label htmlFor="profile-new-password" className="mb-1 block text-sm font-medium text-slate-700">New Password</label>
               <input
+                id="profile-new-password"
+                name="newPassword"
                 type="password"
+                autoComplete="new-password"
                 value={passwordForm.newPassword}
                 onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))}
                 className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-transparent focus:ring-2 focus:ring-orange-500"
@@ -401,9 +441,12 @@ export default function ProfilePage() {
             </div>
 
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Confirm Password</label>
+              <label htmlFor="profile-confirm-password" className="mb-1 block text-sm font-medium text-slate-700">Confirm Password</label>
               <input
+                id="profile-confirm-password"
+                name="confirmPassword"
                 type="password"
+                autoComplete="new-password"
                 value={passwordForm.confirmPassword}
                 onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
                 className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-transparent focus:ring-2 focus:ring-orange-500"
