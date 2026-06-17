@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { clientEnv } from '@/config/env';
 
 type BackendHealthState = 'checking' | 'up' | 'down';
 
@@ -12,7 +13,7 @@ export default function BackendHealthProvider({ children }: { children: React.Re
 
     const checkHealth = async () => {
       try {
-        const response = await fetch('/api/v1/health', { cache: 'no-store' });
+        const response = await fetch(`${clientEnv.NEXT_PUBLIC_API_URL}/health`, { cache: 'no-store' });
         if (!active) {
           return;
         }

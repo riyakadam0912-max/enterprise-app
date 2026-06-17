@@ -9,6 +9,8 @@ const API_URL = clientEnv.NEXT_PUBLIC_API_URL;
 interface AuthRefreshPayload {
   user: AuthUser;
   role: string;
+  roles: string[];
+  permissions: string[];
   employeeId: number | null;
 }
 
@@ -50,14 +52,52 @@ export const axiosClient = axios.create({
 });
 
 axiosClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    console.log('[axiosClient] Response success:', {
+      url: response.config?.url,
+      method: response.config?.method,
+      status: response.status,
+      statusText: response.statusText,
+      data: response.data,
+    });
+    return response;
+  },
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
     const status = error.response?.status;
     const message = extractApiErrorMessage(error, 'Request failed');
 
+    const logData: Record<string, unknown> = {
+      url: error.config?.url,
+      method: error.config?.method,
+      requestHeaders: error.config?.headers,
+      axiosErrorCode: error.code,
+      axiosErrorMessage: error.message,
+      stack: error.stack,
+    };
+
+    if (error.response) {
+      logData.responseStatus = error.response.status;
+      logData.responseStatusText = error.response.statusText;
+      logData.responseHeaders = error.response.headers;
+      logData.responseBody = error.response.data;
+
+      if (error.response.status === 403) {
+        logData.authHeadersPresent = !!error.config?.headers?.Authorization;
+      }
+
+      console.error('[axiosClient] Response error:', logData);
+    } else {
+      console.error('[axiosClient] Network/CORS error:', logData);
+    }
+
+    // Check if the request is to an auth endpoint that shouldn't trigger refresh/redirect
+    const isAuthEndpoint = originalRequest?.url?.includes('/auth/login') || 
+                           originalRequest?.url?.includes('/auth/register') || 
+                           originalRequest?.url?.includes('/auth/refresh');
+
     // Handle 401 errors with token refresh logic
-    if (status === 401 && originalRequest && !originalRequest._retry) {
+    if (status === 401 && originalRequest && !originalRequest._retry && !isAuthEndpoint) {
       if (isRefreshing) {
         // If already refreshing, queue this request
         return new Promise((resolve, reject) => {
@@ -116,21 +156,14 @@ axiosClient.interceptors.response.use(
 
     // Handle other errors
     if (typeof window !== 'undefined') {
-      if (status === 401) {
-        // 401 without retry capability - clear auth and redirect
+      if (status === 401 && !isAuthEndpoint) {
+        // 401 without retry capability - clear auth and redirect only for non-auth endpoints
         clearAuthState();
         if (window.location.pathname !== '/login') {
           window.location.assign('/login');
         }
-      } else if (status) {
+      } else if (status && !isAuthEndpoint) {
         toast.error('Request failed', message);
-      }
-
-      if (process.env.NODE_ENV !== 'production' && status === 403) {
-        console.debug('[axiosClient] Forbidden response', {
-          url: error.config?.url,
-          method: error.config?.method,
-        });
       }
     }
 

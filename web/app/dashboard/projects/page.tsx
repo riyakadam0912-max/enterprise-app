@@ -180,7 +180,8 @@ export default function ProjectsWorkflowPage() {
   const canEditTeam = isAdmin || isPrimaryManager || isCoManager;
   const canEditCoManagers = isAdmin || isPrimaryManager;
   const isAssignedEmployee = employeeId != null && (projectDetails?.assignedEmployees ?? []).some((employee) => employee.id === employeeId);
-  const canViewChat = isAdmin || isManager || isAssignedEmployee;
+  const hasAssignedTask = userId != null && (projectDetails?.tasks ?? []).some((task) => task.assignedToUserId === userId);
+  const canViewChat = isAdmin || isManager || isAssignedEmployee || hasAssignedTask;
 
   async function loadProjectDetails(projectId: number) {
     setProgress(null);
@@ -700,7 +701,9 @@ export default function ProjectsWorkflowPage() {
           </div>
 
           <div className="mb-5 flex flex-wrap gap-2 border-b border-slate-100 pb-3">
-            {tabs.map((tab) => (
+            {tabs
+              .filter((tab) => !(tab.id === 'chat' && !canViewChat))
+              .map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}

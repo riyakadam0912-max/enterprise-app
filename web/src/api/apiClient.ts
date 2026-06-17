@@ -1,4 +1,4 @@
-import { AxiosError, type AxiosRequestConfig } from 'axios';
+import axios, { AxiosError, type AxiosRequestConfig } from 'axios';
 import { axiosClient } from './axiosClient';
 import type { ApiResponseEnvelope } from '@/types/api';
 import { toast } from '@/providers/toast-provider';
@@ -74,8 +74,23 @@ export async function apiClient<T>(
     }
   }
 
+  console.log('[apiClient] Request:', {
+    endpoint,
+    method: config.method,
+    headers: config.headers,
+    data: config.data,
+  });
+
   try {
     const response = await axiosClient.request<ApiResponseEnvelope<T>>(config);
+    console.log('[apiClient] Response success:', {
+      endpoint,
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+      data: response.data,
+    });
+
     const payload = response.data;
 
     if (!payload || typeof payload !== 'object' || !('success' in payload)) {
@@ -88,40 +103,66 @@ export async function apiClient<T>(
 
     return payload.data;
   } catch (error: unknown) {
-    const axiosError = error as AxiosError<{ message?: string }>;
-    if (!axiosError.response) {
-      const requestUrl =
-        axiosError.config?.url ??
-        axiosError.config?.baseURL ??
-        'http://localhost:3000';
-      const message = `Backend not reachable at ${requestUrl}. Verify the NestJS API is running on port 3000 and CORS is configured correctly.`;
-      console.error('[apiClient] No response from API', {
-        url: requestUrl,
-        method: axiosError.config?.method,
-        message: axiosError.message,
-      });
-      toast.error('Backend unavailable', message);
-      throw new Error(message);
-    }
-
-    const apiError = new ApiError(
-      extractApiErrorMessage(axiosError, getErrorMessage(axiosError.response.status, axiosError.response.data, axiosError.message)),
-      axiosError.response.status,
-      axiosError.response,
-    );
-
-    if (typeof window !== 'undefined') {
-      toast.error('Request failed', apiError.message);
-    }
-
-    if (process.env.NODE_ENV !== 'production') {
-      console.debug('[apiClient] request failed', {
+    if (axios.isAxiosError(error)) {
+      const axiosError = error;
+      const logData: Record<string, unknown> = {
         endpoint,
-        status: axiosError.response.status,
-      });
-    }
+        requestUrl: axiosError.config?.url,
+        method: axiosError.config?.method,
+        requestHeaders: axiosError.config?.headers,
+        requestPayload: axiosError.config?.data,
+        axiosErrorCode: axiosError.code,
+        axiosErrorMessage: axiosError.message,
+        stack: axiosError.stack,
+      };
 
-    throw apiError;
+      if (axiosError.response) {
+        logData.responseStatus = axiosError.response.status;
+        logData.responseStatusText = axiosError.response.statusText;
+        logData.responseHeaders = axiosError.response.headers;
+        logData.responseBody = axiosError.response.data;
+
+        if (axiosError.response.status === 403) {
+          logData.authHeadersPresent = !!axiosError.config?.headers?.Authorization;
+        }
+
+        console.error('[apiClient] Response error:', logData);
+      } else {
+        console.error('[apiClient] Network/CORS error:', logData);
+      }
+
+      if (!axiosError.response) {
+        const requestUrl =
+          axiosError.config?.url ??
+          axiosError.config?.baseURL ??
+          'http://localhost:3000';
+        const message = `Backend not reachable at ${requestUrl}. Verify the NestJS API is running on port 3000 and CORS is configured correctly.`;
+        toast.error('Backend unavailable', message);
+        throw new Error(message);
+      }
+
+      const isAuthEndpoint = endpoint.includes('/auth/login') || 
+                             endpoint.includes('/auth/register') || 
+                             endpoint.includes('/auth/refresh');
+      
+      const apiError = new ApiError(
+        extractApiErrorMessage(axiosError, getErrorMessage(axiosError.response.status, axiosError.response.data, axiosError.message)),
+        axiosError.response.status,
+        axiosError.response,
+      );
+
+      if (typeof window !== 'undefined' && !isAuthEndpoint) {
+        toast.error('Request failed', apiError.message);
+      }
+
+      throw apiError;
+    } else {
+      console.error('[apiClient] Non-Axios error:', {
+        endpoint,
+        error,
+      });
+      throw error;
+    }
   }
 }
 
