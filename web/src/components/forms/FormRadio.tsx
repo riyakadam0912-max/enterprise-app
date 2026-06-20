@@ -22,6 +22,7 @@ export function FormRadio<TFieldValues extends FieldValues>({
   const { control } = useFormContext<TFieldValues>();
   const fieldState = useFormFieldState<TFieldValues>(name);
   const errorMessage = getErrorMessage(fieldState.error);
+  const describedBy = errorMessage ? `${name}-error` : helperText ? `${name}-help` : undefined;
 
   return (
     <div className={cn('space-y-3', className)}>
@@ -33,7 +34,7 @@ export function FormRadio<TFieldValues extends FieldValues>({
         control={control}
         name={name}
         render={({ field }) => (
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-invalid={Boolean(errorMessage)} aria-describedby={describedBy}>
             {options.map((option) => (
               <label key={option.value} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
                 <Radio
@@ -49,7 +50,8 @@ export function FormRadio<TFieldValues extends FieldValues>({
           </div>
         )}
       />
-      {errorMessage ? <p className="text-xs font-medium text-rose-600">{errorMessage}</p> : null}
+      {errorMessage ? <p id={`${name}-error`} className="text-xs font-medium text-rose-600">{errorMessage}</p> : null}
+      {!errorMessage && helperText ? <p id={`${name}-help`} className="text-xs text-slate-500">{helperText}</p> : null}
     </div>
   );
 }

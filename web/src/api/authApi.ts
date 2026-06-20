@@ -9,6 +9,8 @@ export interface AuthPayload {
     email: string;
   };
   role: UserRole;
+  roles: string[];
+  permissions: string[];
   employeeId: number | null;
 }
 
@@ -35,7 +37,10 @@ export async function getCurrentUser(): Promise<AuthPayload> {
   try {
     return await apiClient<AuthPayload>('/auth/me');
   } catch (error: unknown) {
-    throw error instanceof Error ? error : new Error('Unable to determine current user');
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error(`Unable to determine current user: ${String(error)}`);
   }
 }
 

@@ -464,8 +464,6 @@ export default function AttendancePage() {
   const updateAttendanceMutation = useUpdateAttendance();
 
   useEffect(() => {
-    if (!canManageShifts) return;
-
     async function loadShifts() {
       try {
         setShifts(await getShifts());
@@ -476,7 +474,7 @@ export default function AttendancePage() {
     }
 
     loadShifts();
-  }, [canManageShifts]);
+  }, []);
 
   useEffect(() => {
     if (!actionMode) return;
@@ -652,40 +650,99 @@ export default function AttendancePage() {
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-4">
           <h3 className="text-base font-semibold text-slate-900">Shift Management</h3>
           <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
-            <input
-              value={newShift.name}
-              onChange={(e) => setNewShift((prev) => ({ ...prev, name: e.target.value }))}
-              placeholder="Shift name"
-              className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
-            />
-            <select
-              value={newShift.type}
-              onChange={(e) => setNewShift((prev) => ({ ...prev, type: e.target.value as 'FIXED' | 'FLEXIBLE' | 'ROTATIONAL' }))}
-              className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
-            >
-              <option value="FIXED">Fixed</option>
-              <option value="FLEXIBLE">Flexible</option>
-              <option value="ROTATIONAL">Rotational</option>
-            </select>
-            <input type="time" value={newShift.startTime} onChange={(e) => setNewShift((prev) => ({ ...prev, startTime: e.target.value }))} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm" />
-            <input type="time" value={newShift.endTime} onChange={(e) => setNewShift((prev) => ({ ...prev, endTime: e.target.value }))} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm" />
-            <input type="number" value={newShift.requiredHours} onChange={(e) => setNewShift((prev) => ({ ...prev, requiredHours: e.target.value }))} placeholder="Hours" className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm" />
+            <label className="space-y-1">
+              <span className="sr-only">Shift name</span>
+              <input
+                id="new-shift-name"
+                name="new-shift-name"
+                value={newShift.name}
+                onChange={(e) => setNewShift((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Shift name"
+                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="sr-only">Shift type</span>
+              <select
+                id="new-shift-type"
+                name="new-shift-type"
+                value={newShift.type}
+                onChange={(e) => setNewShift((prev) => ({ ...prev, type: e.target.value as 'FIXED' | 'FLEXIBLE' | 'ROTATIONAL' }))}
+                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+              >
+                <option value="FIXED">Fixed</option>
+                <option value="FLEXIBLE">Flexible</option>
+                <option value="ROTATIONAL">Rotational</option>
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="sr-only">Start time</span>
+              <input
+                id="new-shift-start"
+                name="new-shift-start"
+                type="time"
+                value={newShift.startTime}
+                onChange={(e) => setNewShift((prev) => ({ ...prev, startTime: e.target.value }))}
+                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="sr-only">End time</span>
+              <input
+                id="new-shift-end"
+                name="new-shift-end"
+                type="time"
+                value={newShift.endTime}
+                onChange={(e) => setNewShift((prev) => ({ ...prev, endTime: e.target.value }))}
+                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="sr-only">Required hours</span>
+              <input
+                id="new-shift-hours"
+                name="new-shift-hours"
+                type="number"
+                value={newShift.requiredHours}
+                onChange={(e) => setNewShift((prev) => ({ ...prev, requiredHours: e.target.value }))}
+                placeholder="Hours"
+                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+              />
+            </label>
             <button onClick={handleCreateShift} className="rounded-xl bg-orange-500 px-3 py-2.5 text-sm font-semibold text-white hover:bg-orange-600">Create Shift</button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <select value={assignEmployeeId} onChange={(e) => setAssignEmployeeId(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm">
-              <option value="">Select employee</option>
-              {employeeOptions.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
-            </select>
-            <select value={assignShiftId} onChange={(e) => setAssignShiftId(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm">
-              <option value="">Select shift</option>
-              {shifts.map((shift) => <option key={shift.id} value={shift.id}>{shift.name} ({shift.type})</option>)}
-            </select>
+            <label className="space-y-1">
+              <span className="sr-only">Select employee</span>
+              <select
+                id="assign-shift-employee"
+                name="assign-shift-employee"
+                value={assignEmployeeId}
+                onChange={(e) => setAssignEmployeeId(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+              >
+                <option value="">Select employee</option>
+                {employeeOptions.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="sr-only">Select shift</span>
+              <select
+                id="assign-shift-shift"
+                name="assign-shift-shift"
+                value={assignShiftId}
+                onChange={(e) => setAssignShiftId(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+              >
+                <option value="">Select shift</option>
+                {shifts.map((shift) => <option key={shift.id} value={shift.id}>{shift.name} ({shift.type})</option>)}
+              </select>
+            </label>
             <button onClick={handleAssignShift} disabled={!assignEmployeeId || !assignShiftId} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Assign Shift</button>
           </div>
 
-          {shiftError && <p className="text-sm text-red-600">{shiftError}</p>}
+          {shiftError && <p id="shift-error" className="text-sm text-red-600">{shiftError}</p>}
           {shiftSuccess && <p className="text-sm text-emerald-600">{shiftSuccess}</p>}
         </div>
       )}

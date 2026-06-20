@@ -1,177 +1,293 @@
-import axios, { AxiosError, type AxiosRequestConfig } from 'axios';
+import axios, { type AxiosRequestConfig } from 'axios';
 import { axiosClient } from './axiosClient';
 import type { ApiResponseEnvelope } from '@/types/api';
-import { toast } from '@/providers/toast-provider';
-import { extractApiErrorMessage } from '@/lib/api-errors';
+import { extractApiErrorMessage, normalizeMessage } from '@/lib/api-errors';
 
 export class ApiError extends Error {
   status?: number;
-
   response?: unknown;
 
-  constructor(message: string, status?: number, response?: unknown) {
+  constructor(
+    message: string,
+    status?: number,
+    response?: unknown,
+  ) {
     super(message);
+
     this.name = 'ApiError';
     this.status = status;
     this.response = response;
   }
 }
 
-function getErrorMessage(status: number | undefined, responseData: unknown, fallbackMessage: string): string {
-  const serverMessage = typeof responseData === 'object' && responseData && 'message' in responseData
-    ? String((responseData as { message?: unknown }).message ?? '')
-    : '';
+function getErrorMessage(
+  status: number | undefined,
+  responseData: unknown,
+  fallbackMessage: string,
+): string {
+  // Extract message from response data if possible
+  let serverMessage = '';
+  if (
+    typeof responseData === 'object' &&
+    responseData &&
+    'message' in responseData
+  ) {
+    serverMessage = normalizeMessage(
+      (responseData as { message?: string | string[] | null | undefined }).message,
+      '',
+    );
+  }
 
   switch (status) {
     case 400:
-      return serverMessage || 'Invalid request. Please check your input and try again.';
+      return serverMessage || 'Invalid request. Please check your input.';
+
     case 401:
       return serverMessage || 'Your session has expired. Please sign in again.';
+
     case 403:
       return serverMessage || 'You do not have permission to perform this action.';
+
     case 404:
       return serverMessage || 'The requested resource was not found.';
+
     case 409:
       return serverMessage || 'This action conflicts with existing data.';
+
     case 422:
       return serverMessage || 'Validation failed. Please check your input.';
+
     case 429:
       return serverMessage || 'Too many requests. Please try again later.';
+
     case 500:
       return serverMessage || 'Server error. Please try again later.';
+
     case 502:
-      return serverMessage || 'Bad gateway. The server is temporarily unavailable.';
+      return serverMessage || 'Bad gateway.';
+
     case 503:
-      return serverMessage || 'Service temporarily unavailable. Please try again later.';
+      return serverMessage || 'Service temporarily unavailable.';
+
     case 504:
-      return serverMessage || 'Gateway timeout. The request took too long.';
+      return serverMessage || 'Gateway timeout.';
+
     default:
-      return serverMessage || fallbackMessage || 'Request failed. Please try again.';
+      return serverMessage || fallbackMessage || 'Request failed.';
   }
 }
 
 export async function apiClient<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<T> {
+
   const config: AxiosRequestConfig = {
+
     url: endpoint,
-    method: (options.method ?? 'GET') as AxiosRequestConfig['method'],
+
+    method:
+      (options.method ?? 'GET') as AxiosRequestConfig['method'],
+
     headers: {
-      ...(options.headers as Record<string, string> | undefined),
+      ...(options.headers as
+        | Record<string, string>
+        | undefined),
     },
   };
 
+
+
   if (options.body !== undefined) {
+
     if (typeof options.body === 'string') {
+
       try {
+
         config.data = JSON.parse(options.body);
+
       } catch {
+
         config.data = options.body;
+
       }
+
     } else {
+
       config.data = options.body;
+
     }
   }
 
-  console.log('[apiClient] Request:', {
+
+
+  console.log('[apiClient] Request', {
+
     endpoint,
+
     method: config.method,
+
     headers: config.headers,
+
     data: config.data,
+
   });
 
+
+
   try {
-    const response = await axiosClient.request<ApiResponseEnvelope<T>>(config);
-    console.log('[apiClient] Response success:', {
+
+    const response =
+      await axiosClient.request<ApiResponseEnvelope<T>>(
+        config,
+      );
+
+
+
+    console.log('[apiClient] Success', {
+
       endpoint,
+
       status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
+
       data: response.data,
+
     });
+
+
 
     const payload = response.data;
 
-    if (!payload || typeof payload !== 'object' || !('success' in payload)) {
-      throw new Error('Invalid API response format');
-    }
 
-    if (!payload.success) {
-      throw new Error(payload.message || 'API request failed');
-    }
 
-    return payload.data;
-  } catch (error: unknown) {
-    if (axios.isAxiosError(error)) {
-      const axiosError = error;
-      const logData: Record<string, unknown> = {
-        endpoint,
-        requestUrl: axiosError.config?.url,
-        method: axiosError.config?.method,
-        requestHeaders: axiosError.config?.headers,
-        requestPayload: axiosError.config?.data,
-        axiosErrorCode: axiosError.code,
-        axiosErrorMessage: axiosError.message,
-        stack: axiosError.stack,
-      };
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      !('success' in payload)
+    ) {
 
-      if (axiosError.response) {
-        logData.responseStatus = axiosError.response.status;
-        logData.responseStatusText = axiosError.response.statusText;
-        logData.responseHeaders = axiosError.response.headers;
-        logData.responseBody = axiosError.response.data;
-
-        if (axiosError.response.status === 403) {
-          logData.authHeadersPresent = !!axiosError.config?.headers?.Authorization;
-        }
-
-        console.error('[apiClient] Response error:', logData);
-      } else {
-        console.error('[apiClient] Network/CORS error:', logData);
-      }
-
-      if (!axiosError.response) {
-        const requestUrl =
-          axiosError.config?.url ??
-          axiosError.config?.baseURL ??
-          'http://localhost:3000';
-        const message = `Backend not reachable at ${requestUrl}. Verify the NestJS API is running on port 3000 and CORS is configured correctly.`;
-        toast.error('Backend unavailable', message);
-        throw new Error(message);
-      }
-
-      const isAuthEndpoint = endpoint.includes('/auth/login') || 
-                             endpoint.includes('/auth/register') || 
-                             endpoint.includes('/auth/refresh');
-      
-      const apiError = new ApiError(
-        extractApiErrorMessage(axiosError, getErrorMessage(axiosError.response.status, axiosError.response.data, axiosError.message)),
-        axiosError.response.status,
-        axiosError.response,
+      throw new ApiError(
+        'Invalid API response format',
       );
 
-      if (typeof window !== 'undefined' && !isAuthEndpoint) {
-        toast.error('Request failed', apiError.message);
+    }
+
+
+
+    if (!payload.success) {
+
+      throw new ApiError(
+        payload.message || 'API request failed',
+      );
+
+    }
+
+
+
+    return payload.data;
+
+  } catch (error: unknown) {
+
+    if (axios.isAxiosError(error)) {
+
+      const status = error.response?.status;
+
+
+
+      console.group('[apiClient] Error');
+
+      console.table({
+
+        endpoint,
+
+        status,
+
+        method: error.config?.method,
+
+        url: error.config?.url,
+
+        code: error.code,
+
+        message: error.message,
+
+      });
+
+      console.log(
+        'Response:',
+        error.response?.data,
+      );
+
+      console.groupEnd();
+
+
+
+      if (!error.response) {
+
+        throw new ApiError(
+
+          'Backend not reachable. Verify NestJS server is running.',
+
+          503,
+
+          error,
+        );
+
       }
 
-      throw apiError;
-    } else {
-      console.error('[apiClient] Non-Axios error:', {
-        endpoint,
-        error,
-      });
-      throw error;
+
+
+      throw new ApiError(
+
+        extractApiErrorMessage(
+          error,
+
+          getErrorMessage(
+
+            status,
+
+            error.response.data,
+
+            error.message,
+          ),
+        ),
+
+        status,
+
+        error.response,
+      );
+
     }
+
+
+
+    console.error(
+      '[apiClient] Non Axios Error',
+      error,
+    );
+
+
+
+    throw error;
   }
 }
+
+
 
 export function importData(
   endpoint: string,
   records: Record<string, unknown>[],
-): Promise<{ imported: number; errors: string[] }> {
-  return apiClient<{ imported: number; errors: string[] }>(endpoint, {
+): Promise<{
+  imported: number;
+  errors: string[];
+}> {
+
+  return apiClient(endpoint, {
+
     method: 'POST',
-    body: JSON.stringify({ records }),
+
+    body: JSON.stringify({
+      records,
+    }),
+
   });
 }

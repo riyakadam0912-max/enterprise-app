@@ -18,12 +18,16 @@ export type AuthUser = {
 
 export type AuthSession = {
   role: AuthRole;
+  roles: string[];
+  permissions: string[];
   user: AuthUser | null;
   employeeId: number | null;
 };
 
 type AuthSessionInput = {
   role?: string | null;
+  roles?: string[];
+  permissions?: string[];
   user?: AuthUser | null;
   employeeId?: number | string | null;
 };
@@ -32,6 +36,8 @@ const AUTH_STATE_EVENT = 'enterprise-auth-state-change';
 
 const SERVER_AUTH_SESSION: AuthSession = Object.freeze({
   role: 'EMPLOYEE',
+  roles: [],
+  permissions: [],
   user: null,
   employeeId: null,
 });
@@ -95,6 +101,8 @@ export function setAuthSession(session: AuthSessionInput): void {
 
   cachedSession = {
     role: normalizeRole(session.role),
+    roles: session.roles ?? [],
+    permissions: session.permissions ?? [],
     user: session.user ?? null,
     employeeId: parseEmployeeId(session.employeeId == null ? null : String(session.employeeId)),
   };
