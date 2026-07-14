@@ -146,9 +146,13 @@ export default function ExpensesPage() {
   }, [sessionRole]);
 
   const canSubmitExpense = sessionRole === 'EMPLOYEE' || sessionRole === 'MANAGER';
-  const canApproveExpense = sessionRole === 'ADMIN' || sessionRole === 'MANAGER';
   const selectedExpense = useMemo(() => expenses.find((expense) => expense.id === selectedExpenseId) ?? null, [expenses, selectedExpenseId]);
   const selectedStatus = selectedExpense ? normalizedExpenseStatus(selectedExpense.status) : null;
+  
+  function canActOnSelectedExpense() {
+    if (!selectedExpense) return false;
+    return canActOnExpense(selectedExpense);
+  }
 
   const categories = useMemo(() => {
     const unique = new Set<string>();
@@ -212,7 +216,7 @@ export default function ExpensesPage() {
       if (status === 'PENDING_HR') {
         const updated = await hrApproveExpense(expense.id);
         setExpenses((prev) => prev.map((row) => (row.id === expense.id ? updated : row)));
-      } else {
+      } else if (status === 'PENDING_MANAGER') {
         const updated = await managerApproveExpense(expense.id);
         setExpenses((prev) => prev.map((row) => (row.id === expense.id ? updated : row)));
       }
@@ -380,7 +384,7 @@ export default function ExpensesPage() {
                           >
                             {eyeIcon()}
                           </button>
-                          {canAct && uiStatus === 'PENDING' && !isRejecting ? (
+                          {canAct && !isRejecting ? (
                             <>
                               <button
                                 type="button"
@@ -502,7 +506,7 @@ export default function ExpensesPage() {
             ) : null}
           </div>
           <div className="border-t border-slate-200 px-5 py-4">
-            {canApproveExpense && selectedStatus === 'PENDING' ? (
+            {canActOnSelectedExpense() ? (
               <div className="space-y-3">
                 <button
                   type="button"

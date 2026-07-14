@@ -24,6 +24,7 @@ import { apiClient } from '@/api/apiClient';
 import { TaskDetailPanel } from '@/components/tasks/TaskDetailPanel';
 import { canAccessUsers } from '@/utils/auth/permissions';
 import { useStableNow } from '@/hooks/useStableNow';
+import { useAuthSession } from '@/stores/auth-store';
 
 type DashboardRole = 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
 type ProjectTab = 'overview' | 'tasks' | 'chat' | 'team';
@@ -106,30 +107,12 @@ function formatBudget(value?: number | null) {
   }).format(value)}`;
 }
 
-function parseCurrentUser() {
-  if (typeof window === 'undefined') {
-    return { role: 'EMPLOYEE' as DashboardRole, userId: null as number | null, employeeId: null as number | null, name: '' };
-  }
-
-  const role = (localStorage.getItem('role') ?? 'EMPLOYEE') as DashboardRole;
-  const employeeIdRaw = localStorage.getItem('employeeId');
-  try {
-    const raw = localStorage.getItem('currentUser');
-    const user = raw ? (JSON.parse(raw) as { id?: number; name?: string }) : null;
-    return {
-      role,
-      userId: user?.id ?? null,
-      employeeId: employeeIdRaw ? Number(employeeIdRaw) : null,
-      name: user?.name ?? '',
-    };
-  } catch {
-    return { role, userId: null, employeeId: employeeIdRaw ? Number(employeeIdRaw) : null, name: '' };
-  }
-}
-
 export default function ProjectsWorkflowPage() {
   const router = useRouter();
-  const [{ role, userId, employeeId }] = useState(parseCurrentUser);
+  const session = useAuthSession();
+  const role = session.role;
+  const userId = session.user?.id ?? null;
+  const employeeId = session.employeeId;
   const currentTime = useStableNow();
   const [activeTab, setActiveTab] = useState<ProjectTab>('overview');
   const [projects, setProjects] = useState<Project[]>([]);
@@ -183,6 +166,22 @@ export default function ProjectsWorkflowPage() {
   const hasAssignedTask = userId != null && (projectDetails?.tasks ?? []).some((task) => task.assignedToUserId === userId);
   const canViewChat = isAdmin || isManager || isAssignedEmployee || hasAssignedTask;
 
+  // Log canViewChat calculation
+  if (projectDetails) {
+    console.log('[ProjectsPage] canViewChat calculation:', {
+      projectId: projectDetails.id,
+      userId,
+      employeeId,
+      isAdmin,
+      isManager,
+      isAssignedEmployee,
+      hasAssignedTask,
+      canViewChat,
+      assignedEmployees: projectDetails.assignedEmployees,
+      tasks: projectDetails.tasks,
+    });
+  }
+
   async function loadProjectDetails(projectId: number) {
     setProgress(null);
     setMessages([]);
@@ -216,10 +215,13 @@ export default function ProjectsWorkflowPage() {
   }
 
   async function refreshProjects(initialProjectId?: number) {
+    console.log('[ProjectsPage] refreshProjects called with initialProjectId:', initialProjectId, 'session:', session);
     const list = await getProjects();
+    console.log('[ProjectsPage] getProjects returned:', list);
     setProjects(list);
 
     const targetId = initialProjectId ?? selectedProjectId ?? list[0]?.id ?? null;
+    console.log('[ProjectsPage] Setting selectedProjectId to:', targetId);
     setSelectedProjectId(targetId);
     if (targetId) {
       await loadProjectDetails(targetId);

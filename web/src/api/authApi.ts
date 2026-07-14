@@ -12,6 +12,7 @@ export interface AuthPayload {
   roles: string[];
   permissions: string[];
   employeeId: number | null;
+  organizationId: number | null;
 }
 
 export interface LoginResponse extends AuthPayload {

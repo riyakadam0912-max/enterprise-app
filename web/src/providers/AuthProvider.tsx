@@ -95,6 +95,8 @@ export function AuthProvider({
           permissions: current.permissions,
 
           employeeId: current.employeeId,
+          
+          organizationId: current.organizationId,
 
         });
 
@@ -187,6 +189,9 @@ export function AuthProvider({
 
         employeeId:
           data.employeeId,
+          
+        organizationId:
+          data.organizationId,
 
       });
 

@@ -22,6 +22,7 @@ export type AuthSession = {
   permissions: string[];
   user: AuthUser | null;
   employeeId: number | null;
+  organizationId: number | null;
 };
 
 type AuthSessionInput = {
@@ -30,9 +31,11 @@ type AuthSessionInput = {
   permissions?: string[];
   user?: AuthUser | null;
   employeeId?: number | string | null;
+  organizationId?: number | string | null;
 };
 
 const AUTH_STATE_EVENT = 'enterprise-auth-state-change';
+const STORAGE_KEY = 'enterprise-auth-session';
 
 const SERVER_AUTH_SESSION: AuthSession = Object.freeze({
   role: 'EMPLOYEE',
@@ -40,6 +43,7 @@ const SERVER_AUTH_SESSION: AuthSession = Object.freeze({
   permissions: [],
   user: null,
   employeeId: null,
+  organizationId: null,
 });
 
 let cachedSession: AuthSession = SERVER_AUTH_SESSION;
@@ -61,12 +65,58 @@ function parseEmployeeId(rawEmployeeId: string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseOrganizationId(rawOrganizationId: string | null): number | null {
+  if (!rawOrganizationId) {
+    return null;
+  }
+
+  const parsed = Number(rawOrganizationId);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function notifyAuthStateChange(): void {
   if (typeof window === 'undefined') {
     return;
   }
 
   window.dispatchEvent(new Event(AUTH_STATE_EVENT));
+}
+
+function loadSessionFromStorage(): AuthSession {
+  if (typeof window === 'undefined') {
+    return SERVER_AUTH_SESSION;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      return SERVER_AUTH_SESSION;
+    }
+
+    const parsed = JSON.parse(raw) as AuthSession;
+    return {
+      ...SERVER_AUTH_SESSION,
+      ...parsed,
+      role: normalizeRole(parsed.role),
+      employeeId: parseEmployeeId(parsed.employeeId == null ? null : String(parsed.employeeId)),
+      organizationId: parseOrganizationId(parsed.organizationId == null ? null : String(parsed.organizationId)),
+    };
+  } catch (e) {
+    console.warn('[auth-store] Failed to load session from storage:', e);
+    return SERVER_AUTH_SESSION;
+  }
+}
+
+function saveSessionToStorage(session: AuthSession): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  } catch (e) {
+    console.warn('[auth-store] Failed to save session to storage:', e);
+  }
 }
 
 function readSessionSnapshot(): AuthSession {
@@ -105,9 +155,12 @@ export function setAuthSession(session: AuthSessionInput): void {
     permissions: session.permissions ?? [],
     user: session.user ?? null,
     employeeId: parseEmployeeId(session.employeeId == null ? null : String(session.employeeId)),
+    organizationId: parseOrganizationId(session.organizationId == null ? null : String(session.organizationId)),
   };
 
+  saveSessionToStorage(cachedSession);
   notifyAuthStateChange();
+  console.log('[auth-store] Set auth session:', cachedSession);
 }
 
 export function clearAuthSession(): void {
@@ -115,6 +168,18 @@ export function clearAuthSession(): void {
     return;
   }
 
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch (e) {
+    console.warn('[auth-store] Failed to clear session from storage:', e);
+  }
+
   cachedSession = SERVER_AUTH_SESSION;
   notifyAuthStateChange();
+  console.log('[auth-store] Cleared auth session');
+}
+
+// Initialize cached session from storage
+if (typeof window !== 'undefined') {
+  cachedSession = loadSessionFromStorage();
 }
