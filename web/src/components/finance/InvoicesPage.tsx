@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { createPayment } from '@/api/paymentsApi';
-import { createInvoice, getInvoices, updateInvoice, type Invoice } from '@/api/invoicesApi';
+import { createInvoice, getInvoices, updateInvoice, sendInvoice, type Invoice } from '@/api/invoicesApi';
 import { useAuthSession } from '@/stores/auth-store';
 import { formatDate, formatInr, invoiceOutstanding, normalizeInvoiceStatus } from '@/utils/finance';
 
@@ -238,11 +238,26 @@ export default function InvoicesPage() {
 
   const selectedParsedNotes = useMemo(() => parseNotes(selectedInvoice?.notes), [selectedInvoice?.notes]);
 
-  async function handleInvoiceAction(invoice: Invoice, action: 'sent' | 'paid' | 'record-payment') {
+  async function handleInvoiceAction(invoice: Invoice, action: 'send' | 'sent' | 'paid' | 'record-payment') {
     try {
       setActionLoadingId(invoice.id);
       setMessage(null);
       setError(null);
+
+      if (action === 'send') {
+        const parsed = parseNotes(invoice.notes);
+        const to = invoice.clientEmail || parsed.clientEmail;
+        if (!to) {
+          setError('No client email stored on this invoice.');
+          return;
+        }
+        await sendInvoice(invoice.id, { to });
+        // Refresh the invoice list to get updated status
+        const rows = await getInvoices();
+        setInvoices(rows);
+        setMessage('Invoice sent successfully');
+        return;
+      }
 
       if (action === 'sent') {
         const updated = await updateInvoice(invoice.id, { status: 'ISSUED' });
@@ -284,6 +299,7 @@ export default function InvoicesPage() {
       const created = await createInvoice({
         invoiceNo: nextInvoiceNumber(invoices),
         customer: form.clientName.trim(),
+        clientEmail: form.clientEmail.trim(),
         issueDate: form.issueDate || undefined,
         dueDate: form.dueDate || undefined,
         status: form.status === 'SENT' ? 'ISSUED' : 'DRAFT',
@@ -446,11 +462,11 @@ export default function InvoicesPage() {
                           {canAct && uiStatus === 'DRAFT' ? (
                             <button
                               type="button"
-                              title="Mark sent"
-                              aria-label="Mark sent"
+                              title="Send invoice"
+                              aria-label="Send invoice"
                               onClick={(event) => {
                                 event.stopPropagation();
-                                void handleInvoiceAction(invoice, 'sent');
+                                void handleInvoiceAction(invoice, 'send');
                               }}
                               disabled={actionLoadingId === invoice.id}
                               className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-blue-600 transition hover:bg-blue-50 disabled:opacity-50"
@@ -622,11 +638,11 @@ export default function InvoicesPage() {
                 {selectedStatus === 'DRAFT' ? (
                   <button
                     type="button"
-                    onClick={() => void handleInvoiceAction(selectedInvoice, 'sent')}
+                    onClick={() => void handleInvoiceAction(selectedInvoice, 'send')}
                     disabled={actionLoadingId === selectedInvoice.id}
                     className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
                   >
-                    Mark as sent
+                    Send invoice
                   </button>
                 ) : null}
                 {selectedStatus === 'SENT' ? (

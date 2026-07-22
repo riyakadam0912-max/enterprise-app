@@ -19,6 +19,7 @@ export interface Invoice {
   dueDate: string | null;
   status: InvoiceStatus | string;
   customer: string | null;
+  clientEmail: string | null;
   totalAmount: number;
   taxAmount: number;
   discount: number;
@@ -37,6 +38,7 @@ export interface CreateInvoicePayload {
   dueDate?: string;
   status?: string;
   customer?: string;
+  clientEmail?: string;
   totalAmount?: number;
   taxAmount?: number;
   discount?: number;
@@ -72,4 +74,25 @@ export function deleteInvoice(id: number): Promise<void> {
 
 export function getInvoicesByStatus(): Promise<Record<string, Invoice[]>> {
   return apiClient<Record<string, Invoice[]>>('/invoices/by-status');
+}
+
+export interface SendInvoiceDto {
+  to?: string;
+  cc?: string[];
+  bcc?: string[];
+  subject?: string;
+  senderEmail?: string;
+  message?: string;
+  attachmentTypes?: string[];
+  paymentInstructions?: string;
+  terms?: string;
+  notes?: string;
+  companyName?: string;
+}
+
+export function sendInvoice(id: number, payload: SendInvoiceDto): Promise<{ success: boolean; message: string }> {
+  return apiClient<{ success: boolean; message: string }>(`/invoices/${id}/send`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }

@@ -18,6 +18,7 @@ export default function AddInvoicePage() {
     dueDate: '',
     status: 'DRAFT',
     customer: '',
+    clientEmail: '',
     totalAmount: '',
     taxAmount: '',
     discount: '',
@@ -45,6 +46,7 @@ export default function AddInvoicePage() {
         dueDate: form.dueDate || undefined,
         status: form.status || undefined,
         customer: form.customer || undefined,
+        clientEmail: form.clientEmail || undefined,
         totalAmount: form.totalAmount ? Number(form.totalAmount) : undefined,
         taxAmount: form.taxAmount ? Number(form.taxAmount) : undefined,
         discount: form.discount ? Number(form.discount) : undefined,
@@ -86,6 +88,10 @@ export default function AddInvoicePage() {
             <label className="space-y-2 text-sm">
               <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Customer</span>
               <input value={form.customer} onChange={(event) => set('customer', event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" placeholder="Customer name" />
+            </label>
+            <label className="space-y-2 text-sm">
+              <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Client email</span>
+              <input type="email" value={form.clientEmail} onChange={(event) => set('clientEmail', event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" placeholder="client@example.com" />
             </label>
             <label className="space-y-2 text-sm">
               <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Status</span>
