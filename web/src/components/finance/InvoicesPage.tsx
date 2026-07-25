@@ -7,7 +7,7 @@ import { createInvoice, getInvoices, updateInvoice, sendInvoice, type Invoice } 
 import { useAuthSession } from '@/stores/auth-store';
 import { formatDate, formatInr, invoiceOutstanding, normalizeInvoiceStatus } from '@/utils/finance';
 
-type DashboardRole = 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
+type DashboardRole = 'SUPER_ADMIN' | 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
 
 type InvoiceUiStatus = 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE';
 type InvoiceFormStatus = 'DRAFT' | 'SENT';

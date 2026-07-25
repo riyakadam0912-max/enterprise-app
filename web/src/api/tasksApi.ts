@@ -119,14 +119,10 @@ export async function reviewTask(
   id: number,
   payload: { status?: 'APPROVED' | 'REJECTED'; decision?: 'APPROVED' | 'REJECTED'; remarks?: string; comment?: string },
 ): Promise<Task> {
-  console.log('[tasksApi.reviewTask] Received payload:', payload);
-
   const finalPayload = {
     decision: (payload.decision ?? payload.status) as 'APPROVED' | 'REJECTED',
     remarks: payload.remarks ?? payload.comment ?? '',
   };
-
-  console.log('[tasksApi.reviewTask] Sending final payload to backend:', finalPayload);
 
   return request<Task>(`/tasks/${id}/review`, {
     method: 'PATCH',

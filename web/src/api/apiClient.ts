@@ -77,18 +77,34 @@ function getErrorMessage(
   }
 }
 
+function unwrapEnvelope<T>(payload: unknown): T {
+  let current = payload;
+  while (
+    current &&
+    typeof current === 'object' &&
+    'success' in current &&
+    typeof (current as Record<string, unknown>).success === 'boolean' &&
+    'data' in current
+  ) {
+    const rec = current as Record<string, unknown>;
+    if (rec.success === false) {
+      throw new ApiError(
+        typeof rec.message === 'string' ? rec.message : 'API request failed',
+      );
+    }
+    current = rec.data;
+  }
+  return current as T;
+}
+
 export async function apiClient<T>(
   endpoint: string,
   options: RequestInit = {},
 ): Promise<T> {
-
   const config: AxiosRequestConfig = {
-
     url: endpoint,
-
     method:
       (options.method ?? 'GET') as AxiosRequestConfig['method'],
-
     headers: {
       ...(options.headers as
         | Record<string, string>
@@ -96,176 +112,68 @@ export async function apiClient<T>(
     },
   };
 
-
-
   if (options.body !== undefined) {
-
     if (typeof options.body === 'string') {
-
       try {
-
         config.data = JSON.parse(options.body);
-
       } catch {
-
         config.data = options.body;
-
       }
-
     } else {
-
       config.data = options.body;
-
     }
   }
 
-
-
-  console.log('[apiClient] Request', {
-
-    endpoint,
-
-    method: config.method,
-
-    headers: config.headers,
-
-    data: config.data,
-
-  });
-
-
-
   try {
-
     const response =
       await axiosClient.request<ApiResponseEnvelope<T>>(
         config,
       );
 
-
-
-    console.log('[apiClient] Success', {
-
-      endpoint,
-
-      status: response.status,
-
-      data: response.data,
-
-    });
-
-
-
     const payload = response.data;
-
-
 
     if (
       !payload ||
       typeof payload !== 'object' ||
       !('success' in payload)
     ) {
-
       throw new ApiError(
         'Invalid API response format',
       );
-
     }
 
-
-
     if (!payload.success) {
-
       throw new ApiError(
         payload.message || 'API request failed',
       );
-
     }
 
-
-
-    return payload.data;
-
+    return unwrapEnvelope<T>(payload);
   } catch (error: unknown) {
-
     if (axios.isAxiosError(error)) {
-
       const status = error.response?.status;
 
-
-
-      console.group('[apiClient] Error');
-
-      console.table({
-
-        endpoint,
-
-        status,
-
-        method: error.config?.method,
-
-        url: error.config?.url,
-
-        code: error.code,
-
-        message: error.message,
-
-      });
-
-      console.log(
-        'Response:',
-        error.response?.data,
-      );
-
-      console.groupEnd();
-
-
-
       if (!error.response) {
-
         throw new ApiError(
-
           'Backend not reachable. Verify NestJS server is running.',
-
           503,
-
           error,
         );
-
       }
 
-
-
       throw new ApiError(
-
         extractApiErrorMessage(
           error,
-
           getErrorMessage(
-
             status,
-
             error.response.data,
-
             error.message,
           ),
         ),
-
         status,
-
         error.response,
       );
-
     }
-
-
-
-    console.error(
-      '[apiClient] Non Axios Error',
-      error,
-    );
-
-
 
     throw error;
   }

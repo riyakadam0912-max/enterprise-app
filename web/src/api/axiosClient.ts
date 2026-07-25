@@ -8,6 +8,8 @@ import { extractApiErrorMessage } from '@/lib/api-errors';
 import {
   clearAuthSession,
   setAuthSession,
+  setActiveOrganization,
+  getActiveOrganizationId,
   type AuthUser,
 } from '@/stores/auth-store';
 
@@ -21,6 +23,7 @@ interface AuthRefreshPayload {
   roles: string[];
   permissions: string[];
   employeeId: number | null;
+  organizationId: number | null;
 }
 
 interface AuthRefreshResponse {
@@ -68,13 +71,30 @@ export const axiosClient = axios.create({
 
 axiosClient.interceptors.request.use(
   (config) => {
-    console.log('[Axios Request]', {
-      url: config.url,
-      baseURL: config.baseURL,
-      method: config.method,
-      withCredentials: config.withCredentials,
-      headers: config.headers,
-    });
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = window.sessionStorage.getItem('activeOrganization');
+        if (raw) {
+          const org = JSON.parse(raw) as { id?: number } | null;
+          if (org?.id) {
+            config.headers = config.headers ?? {};
+            config.headers['X-Organization-Id'] = String(org.id);
+          }
+        }
+      } catch {
+        // Non-critical: proceed without organization header
+      }
+
+      const accessToken = (() => {
+        const token = window.localStorage.getItem('enterprise_access_token') ?? window.localStorage.getItem('access_token');
+        return token ?? null;
+      })();
+
+      if (accessToken) {
+        config.headers = config.headers ?? {};
+        config.headers.Authorization = `Bearer ${accessToken}`;
+      }
+    }
 
     return config;
   },
@@ -89,13 +109,6 @@ axiosClient.interceptors.request.use(
 axiosClient.interceptors.response.use(
 
   (response) => {
-    console.log('[Axios Success]', {
-      url: response.config.url,
-      method: response.config.method,
-      status: response.status,
-      data: response.data,
-    });
-
     return response;
   },
 
@@ -112,35 +125,6 @@ axiosClient.interceptors.response.use(
       error,
       'Request failed'
     );
-
-
-
-    /* ERROR LOGGING */
-
-    console.group('===== AXIOS ERROR =====');
-
-    console.error(error);
-
-    console.table({
-      message: error.message,
-
-      code: error.code,
-
-      status: error.response?.status,
-
-      url: error.config?.url,
-
-      baseURL: error.config?.baseURL,
-
-      method: error.config?.method,
-
-      withCredentials: error.config?.withCredentials,
-    });
-
-    console.log('Response Body:', error.response?.data);
-
-    console.groupEnd();
-
 
 
     /* AUTH ENDPOINTS */
@@ -199,6 +183,8 @@ axiosClient.interceptors.response.use(
 
         const payload = response.data?.data;
 
+        const previouslySelectedOrgId = getActiveOrganizationId();
+
         if (payload) {
 
           setAuthSession({
@@ -211,8 +197,17 @@ axiosClient.interceptors.response.use(
             permissions: payload.permissions,
 
             employeeId: payload.employeeId,
+
+            organizationId: payload.organizationId,
           });
 
+          if (
+            previouslySelectedOrgId != null &&
+            (payload.organizationId == null ||
+              Number(payload.organizationId) !== previouslySelectedOrgId)
+          ) {
+            setActiveOrganization(previouslySelectedOrgId);
+          }
         }
 
         processQueue(null);

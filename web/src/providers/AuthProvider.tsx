@@ -60,29 +60,10 @@ export function AuthProvider({
 
     let mounted = true;
 
-
-
     async function bootstrapAuth() {
-
       try {
-
-        console.log(
-          '[AuthProvider] Bootstrapping auth...',
-        );
-
-
-
         const current =
           await getCurrentUser();
-
-
-
-        console.log(
-          '[AuthProvider] Current user:',
-          current,
-        );
-
-
 
         setAuthSession({
 
@@ -112,21 +93,10 @@ export function AuthProvider({
 
         ) {
 
-          console.log(
-            '[AuthProvider] User not authenticated',
-          );
-
           clearAuthSession();
 
           return;
         }
-
-
-
-        console.error(
-          '[AuthProvider] bootstrapAuth failed:',
-          error,
-        );
       }
 
       finally {
@@ -140,11 +110,7 @@ export function AuthProvider({
       }
     }
 
-
-
     bootstrapAuth();
-
-
 
     return () => {
 
@@ -215,13 +181,8 @@ export function AuthProvider({
 
       }
 
-      catch (error) {
-
-        console.error(
-          '[AuthProvider] Logout failed:',
-          error,
-        );
-
+      catch {
+        // Ignore logout network errors; always clear local session
       }
 
       finally {

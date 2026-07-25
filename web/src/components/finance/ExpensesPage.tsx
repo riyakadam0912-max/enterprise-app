@@ -5,7 +5,7 @@ import { getExpenses, createExpense, managerApproveExpense, hrApproveExpense, re
 import { useAuthSession } from '@/stores/auth-store';
 import { formatDate, formatInr } from '@/utils/finance';
 
-type DashboardRole = 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
+type DashboardRole = 'SUPER_ADMIN' | 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
 type SessionState = DashboardRole | 'UNAUTHENTICATED' | null;
 type ExpenseUiStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 type ExpenseFormState = {

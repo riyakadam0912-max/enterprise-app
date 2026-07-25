@@ -22,7 +22,7 @@ const DashboardCharts = dynamic(() => import('./dashboard/DashboardCharts'), {
   loading: () => <DashboardChartsSkeleton />,
 });
 
-type DashboardRole = 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
+type DashboardRole = 'SUPER_ADMIN' | 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
 type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
 
 type Session = {

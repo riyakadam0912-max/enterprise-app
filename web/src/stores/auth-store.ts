@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from 'react';
 
-export type AuthRole = 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
+export type AuthRole = 'SUPER_ADMIN' | 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
 
 export type AuthUser = {
   id: number | null;
@@ -49,7 +49,7 @@ const SERVER_AUTH_SESSION: AuthSession = Object.freeze({
 let cachedSession: AuthSession = SERVER_AUTH_SESSION;
 
 function normalizeRole(role?: string | null): AuthRole {
-  if (role === 'EMPLOYEE' || role === 'MANAGER' || role === 'HR' || role === 'ADMIN') {
+  if (role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'HR' || role === 'MANAGER' || role === 'EMPLOYEE') {
     return role;
   }
 
@@ -160,7 +160,6 @@ export function setAuthSession(session: AuthSessionInput): void {
 
   saveSessionToStorage(cachedSession);
   notifyAuthStateChange();
-  console.log('[auth-store] Set auth session:', cachedSession);
 }
 
 export function clearAuthSession(): void {
@@ -170,13 +169,53 @@ export function clearAuthSession(): void {
 
   try {
     window.localStorage.removeItem(STORAGE_KEY);
+    window.sessionStorage.removeItem('activeOrganization');
   } catch (e) {
     console.warn('[auth-store] Failed to clear session from storage:', e);
   }
 
   cachedSession = SERVER_AUTH_SESSION;
   notifyAuthStateChange();
-  console.log('[auth-store] Cleared auth session');
+}
+
+export function setActiveOrganization(organizationId: number): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(
+      'activeOrganization',
+      JSON.stringify({ id: organizationId }),
+    );
+  } catch (e) {
+    console.warn('[auth-store] Failed to persist active organization:', e);
+  }
+
+  cachedSession = {
+    ...cachedSession,
+    organizationId: Number.isFinite(organizationId) ? organizationId : null,
+  };
+
+  saveSessionToStorage(cachedSession);
+  notifyAuthStateChange();
+}
+
+export function getActiveOrganizationId(): number | null {
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.sessionStorage.getItem('activeOrganization');
+      if (raw) {
+        const parsed = JSON.parse(raw) as { id?: number };
+        if (typeof parsed?.id === 'number' && Number.isFinite(parsed.id)) {
+          return parsed.id;
+        }
+      }
+    } catch (e) {
+      console.warn('[auth-store] Failed to read active organization:', e);
+    }
+  }
+  return cachedSession.organizationId;
 }
 
 // Initialize cached session from storage

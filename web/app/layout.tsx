@@ -4,8 +4,7 @@ import "./globals.css";
 import ReactQueryProvider from "@/components/providers/ReactQueryProvider";
 import BackendHealthProvider from "@/components/providers/BackendHealthProvider";
 import { DesignSystemProvider } from "@/providers/design-system-provider";
-import { AuthProvider } from '@/providers/AuthProvider';
-
+import { AuthProvider } from '@/providers/AuthProvider';import { OrganizationProvider } from '@/context/OrganizationContext';
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -30,7 +29,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" data-scroll-behavior="smooth">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >

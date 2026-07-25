@@ -3,6 +3,7 @@
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/providers/AuthProvider';
+import { getAuthSessionSnapshot } from '@/stores/auth-store';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,7 +21,13 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      router.push('/dashboard');
+      const snapshot = getAuthSessionSnapshot();
+      const needsOrganizationSelection = snapshot.organizationId == null;
+      if (needsOrganizationSelection) {
+        router.push('/select-organization');
+      } else {
+        router.push('/dashboard');
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {

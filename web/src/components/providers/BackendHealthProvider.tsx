@@ -10,17 +10,23 @@ export default function BackendHealthProvider({ children }: { children: React.Re
 
   useEffect(() => {
     let active = true;
+    const controllers: AbortController[] = [];
 
     const checkHealth = async () => {
+      const controller = new AbortController();
+      controllers.push(controller);
       try {
-        const response = await fetch(`${clientEnv.NEXT_PUBLIC_API_URL}/health`, { cache: 'no-store' });
+        const response = await fetch(`${clientEnv.NEXT_PUBLIC_API_URL}/health`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
         if (!active) {
           return;
         }
 
         setState(response.ok ? 'up' : 'down');
-      } catch {
-        if (active) {
+      } catch (err) {
+        if (active && !(err instanceof DOMException && err.name === 'AbortError')) {
           setState('down');
         }
       }
@@ -35,6 +41,12 @@ export default function BackendHealthProvider({ children }: { children: React.Re
     return () => {
       active = false;
       window.clearInterval(intervalId);
+      controllers.forEach((c) => {
+        try {
+          c.abort();
+        } catch {
+        }
+      });
     };
   }, []);
 
