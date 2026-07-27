@@ -1,0 +1,25 @@
+<h2 style="margin:0 0 12px 0;font-size:24px;color:#0f172a;">{{title}}</h2>
+<p style="margin:0 0 16px 0;font-size:16px;color:#334155;">Hello {{firstName}},</p>
+{{#if message}}
+  <p style="margin:0 0 16px 0;font-size:16px;color:#334155;">{{message}}</p>
+{{/if}}
+{{#if ctaUrl}}
+  <p style="margin:0 0 20px 0;">
+    {{> button url=ctaUrl text=ctaText}}
+  </p>
+{{/if}}
+{{#if organization}}
+  <p style="margin:0 0 8px 0;font-size:14px;color:#64748b;">Organization: {{organization}}</p>
+{{/if}}
+{{#if invoiceNumber}}
+  <p style="margin:0 0 8px 0;font-size:14px;color:#64748b;">Invoice: {{invoiceNumber}}</p>
+{{/if}}
+{{#if invoiceAmount}}
+  <p style="margin:0 0 8px 0;font-size:14px;color:#64748b;">Amount: {{invoiceAmount}}</p>
+{{/if}}
+{{#if resetLink}}
+  <p style="margin:0 0 8px 0;font-size:14px;color:#64748b;">Reset link: {{resetLink}}</p>
+{{/if}}
+{{#if verificationLink}}
+  <p style="margin:0 0 8px 0;font-size:14px;color:#64748b;">Verification link: {{verificationLink}}</p>
+{{/if}}

@@ -1,0 +1,14 @@
+-- This migration prepares the schema for password hashing repair.
+-- A companion Node.js script (repair-passwords.js) must be run after this migration
+-- to hash any plaintext passwords in the database.
+-- 
+-- The script will:
+-- 1. Identify users with plaintext passwords (not starting with $2a$, $2b$, $2x$, $2y$)
+-- 2. Hash them using bcrypt(password, 10)
+-- 3. Update the password field with the hash
+-- 4. Log the repairs to console
+--
+-- Run after migration: npm run repair-passwords
+
+-- No schema changes needed - the password column already exists and is a string.
+-- This migration serves as a checkpoint for the repair process.

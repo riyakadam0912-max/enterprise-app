@@ -1,0 +1,1803 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                      Int              @id @default(autoincrement())
+  name                    String
+  email                   String           @unique
+  password                String
+  role                    Role
+  isActive                Boolean          @default(true)
+  employeeId              Int?             @unique
+  managerId               Int?
+  organizationId          Int?
+  phone                   String?
+  address                 String?
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+  refreshToken            String?
+  deletedAt               DateTime?
+  activities              Activity[]
+  hrApprovedExpenses      Expense[]        @relation("ExpenseHrApprovedBy")
+  managerApprovedExpenses Expense[]        @relation("ExpenseManagerApprovedBy")
+  submittedExpenses       Expense[]        @relation("ExpenseSubmittedBy")
+  uploadedFiles           File[]           @relation("FileUploadedBy")
+  invoices                Invoice[]
+  ledgerEntries           LedgerEntry[]
+  notificationsCreated    Notification[]
+  managedProjects         Project[]        @relation("ProjectManager")
+  projectLinksCreated     ProjectLink[]
+  sentMessages            ProjectMessage[] @relation("ProjectMessageSender")
+  createdTasks            Task[]           @relation("TaskAssignedBy")
+  assignedTasks           Task[]           @relation("TaskAssignedTo")
+  reviewedTasks           Task[]           @relation("TaskReviewedBy")
+  employee                Employee?        @relation("UserEmployee", fields: [employeeId], references: [id])
+  manager                 User?            @relation("UserManager", fields: [managerId], references: [id])
+  teamMembers             User[]           @relation("UserManager")
+  coManagedProjects       Project[]        @relation("ProjectCoManagers")
+  userRoles               UserRole[]
+  organization            Organization?    @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+}
+
+model AppRole {
+  id              Int              @id @default(autoincrement())
+  name            String           @unique
+  description     String?
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+}
+
+model Organization {
+  id                Int                 @id @default(autoincrement())
+  name              String
+  code              String              @unique
+  slug              String              @unique
+  email             String?
+  phone             String?
+  logoUrl           String?
+  address           String?
+  city              String?
+  state             String?
+  country           String?
+  postalCode        String?
+  timezone          String              @default("UTC")
+  currency          String              @default("USD")
+  status            OrganizationStatus  @default(ACTIVE)
+  website           String?
+  gstNumber         String?
+  panNumber         String?
+  taxId             String?
+  industry          String?
+  employeeLimit     Int?
+  subscriptionPlan  String?
+  billingEmail      String?
+  billingAddress    String?
+  contactPerson     String?
+  contactPhone      String?
+  contactEmail      String?
+  trialStartDate    DateTime?
+  trialEndDate      DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  deletedAt         DateTime?
+
+  users             User[]
+  employees         Employee[]
+  shifts            Shift[]
+  attendances       Attendance[]
+  invoices          Invoice[]
+  ledgerEntries     LedgerEntry[]
+  leads             Lead[]
+  campaignLeads     CampaignLead[]
+  timesheets        Timesheet[]
+  deals             Deal[]
+  tasks             Task[]
+  leaveRequests     LeaveRequest[]
+  tickets           Ticket[]
+  formSubmissions   FormSubmission[]
+  marketingCampaigns MarketingCampaign[]
+  expenses          Expense[]
+  projects          Project[]
+  projectMessages   ProjectMessage[]
+  projectLinks      ProjectLink[]
+  projectMembers    ProjectMember[]
+  contacts          Contact[]
+  activities        Activity[]
+  quotes            Quote[]
+  quoteItems        QuoteItem[]
+  productCategories ProductCategory[]
+  products          Product[]
+  payments          Payment[]
+  notifications     Notification[]
+  notificationRecipients NotificationRecipient[]
+  notificationPreferences NotificationPreference[]
+  notificationDeliveryLogs NotificationDeliveryLog[]
+  fileAttachments   FileAttachment[]
+  files             File[]
+  fileActivities    FileActivity[]
+  auditLogs         AuditLog[]
+  activityTimelines ActivityTimeline[]
+  activityTimelineComments ActivityTimelineComment[]
+  events            Event[]
+  dynamicForms      DynamicForm[]
+  workflowInstances WorkflowInstance[]
+  workflowSteps     WorkflowStep[]
+  workflowActions   WorkflowAction[]
+  workflowComments  WorkflowComment[]
+  workflowAssignments WorkflowAssignment[]
+  workflowHistories WorkflowHistory[]
+  workflowNotifications WorkflowNotification[]
+  salaryStructures  SalaryStructure[]
+  payrollCycles     PayrollCycle[]
+  payrollEntries    PayrollEntry[]
+  payslips          Payslip[]
+  payrollEarnings   PayrollEarnings[]
+  payrollDeductions PayrollDeduction[]
+  taxDeclarations   TaxDeclaration[]
+  form16s           Form16[]
+  payrollConfigs    PayrollConfig[]
+  jobOpenings       JobOpening[]
+  candidates        Candidate[]
+  interviews        Interview[]
+  goalCycles        GoalCycle[]
+  goals             Goal[]
+  performanceReviews PerformanceReview[]
+  importLogs        ImportLog[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([slug])
+  @@index([code])
+  @@index([subscriptionPlan])
+}
+
+model Permission {
+  id              Int              @id @default(autoincrement())
+  key             String           @unique
+  description     String?
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  roleId       Int
+  permissionId Int
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  role         AppRole    @relation(fields: [roleId], references: [id])
+  createdAt    DateTime   @default(now())
+
+  @@id([roleId, permissionId])
+}
+
+model UserRole {
+  userId    Int
+  roleId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      AppRole  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, roleId])
+}
+
+model Employee {
+  id                    Int                 @id @default(autoincrement())
+  name                  String
+  phone                 String?
+  position              String?
+  salary                Float?
+  email                 String?
+  phoneNumber           String?
+  department            String?
+  designation           String?
+  hireDate              DateTime?
+  manager               String?
+  leaveBalance          Int?
+  status                String?
+  pan                   String?
+  shiftId               Int?
+  organizationId        Int
+  address               String?
+  emergencyContact      String?
+  emergencyContactPhone String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  deletedAt             DateTime?
+  attendances           Attendance[]
+  dealAssignments       Deal[]              @relation("DealAssignee")
+  shift                 Shift?              @relation(fields: [shiftId], references: [id])
+  expenseClaims         Expense[]
+  form16s               Form16[]
+  goals                 Goal[]
+  leadAssignments       Lead[]              @relation("LeadAssignee")
+  leaveRequests         LeaveRequest[]
+  payrollEntries        PayrollEntry[]
+  payslips              Payslip[]
+  performanceReviews    PerformanceReview[]
+  projectMemberships    ProjectMember[]
+  salaryStructures      SalaryStructure[]
+  taskAssignments       Task[]              @relation("TaskAssignee")
+  taxDeclarations       TaxDeclaration[]
+  user                  User?               @relation("UserEmployee")
+  organization          Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  assignedProjects      Project[]           @relation("ProjectAssignedEmployees")
+
+  @@index([organizationId])
+}
+
+model Shift {
+  id                 Int          @id @default(autoincrement())
+  name               String
+  type               ShiftType
+  startTime          String?
+  endTime            String?
+  requiredHours      Float        @default(8)
+  gracePeriodMinutes Int          @default(15)
+  rotationPattern    String?
+  isActive           Boolean      @default(true)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  deletedAt          DateTime?
+  organizationId        Int
+  attendances        Attendance[]
+  employees          Employee[]
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model Attendance {
+  id            Int              @id @default(autoincrement())
+  employeeId    Int
+  shiftId       Int?
+  date          DateTime
+  checkIn       DateTime?
+  checkOut      DateTime?
+  workingHours  Float?
+  lateMinutes   Int              @default(0)
+  overtimeHours Float            @default(0)
+  requiredHours Float?
+  isAutoClosed  Boolean          @default(false)
+  isPaidLeave   Boolean?
+  remarks       String?
+  status        AttendanceStatus
+  createdAt     DateTime         @default(now())
+  deletedAt     DateTime?
+  organizationId        Int
+  employee      Employee         @relation(fields: [employeeId], references: [id])
+  shift         Shift?           @relation(fields: [shiftId], references: [id])
+  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([employeeId, date])
+  @@index([date])
+  @@index([organizationId])
+}
+
+model Invoice {
+  id            Int       @id @default(autoincrement())
+  invoiceNo     String    @unique
+  issueDate     DateTime?
+  dueDate       DateTime?
+  status        String    @default("DRAFT")
+  customer      String?
+  clientEmail   String?
+  totalAmount   Float     @default(0)
+  taxAmount     Float     @default(0)
+  discount      Float     @default(0)
+  paymentMethod String?
+  notes         String?
+  userId        Int
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  organizationId        Int
+  user          User      @relation(fields: [userId], references: [id])
+  payments      Payment[]
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model LedgerEntry {
+  id          Int       @id @default(autoincrement())
+  date        DateTime?
+  description String?
+  debit       Float     @default(0)
+  credit      Float     @default(0)
+  account     String?
+  invoice     String?
+  expense     String?
+  balance     Float     @default(0)
+  reference   String?
+  userId      Int
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  organizationId        Int
+  user        User      @relation(fields: [userId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model Lead {
+  id               Int            @id @default(autoincrement())
+  name             String
+  company          String?
+  email            String?
+  phone            String?
+  status           String         @default("New")
+  source           String?
+  notes            String?
+  leadOwner        String?
+  contactedDate    DateTime?
+  nextFollowUp     DateTime?
+  assignedTo       String?
+  assignedToId     Int?
+  leadScore        Int?
+  createdBy        String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  deletedAt        DateTime?
+  organizationId        Int
+  activities       Activity[]
+  campaignLeads    CampaignLead[]
+  deals            Deal[]
+  assignedEmployee Employee?      @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  tasks            Task[]
+  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model CampaignLead {
+  id              Int       @id @default(autoincrement())
+  campaign        String
+  engagementScore Int?
+  sourceType      String?
+  lastInteraction DateTime?
+  status          String    @default("NEW")
+  notes           String?
+  leadId          Int?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+  organizationId        Int
+  lead            Lead?     @relation(fields: [leadId], references: [id])
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model Timesheet {
+  id        Int       @id @default(autoincrement())
+  task      String
+  project   String?
+  date      DateTime
+  hours     Float
+  status    String    @default("PENDING")
+  notes     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  organizationId        Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model Deal {
+  id               Int        @id @default(autoincrement())
+  title            String
+  value            Float
+  stage            String     @default("NEW")
+  probability      Float?
+  closeDate        DateTime?
+  actualCloseDate  DateTime?
+  contact          String?
+  owner            String?
+  assignedToId     Int?
+  pipeline         String?
+  leadId           Int?
+  contactId        Int?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  deletedAt        DateTime?
+  organizationId        Int
+  activities       Activity[]
+  assignedEmployee Employee?  @relation("DealAssignee", fields: [assignedToId], references: [id])
+  linkedContact    Contact?   @relation("ContactToDeals", fields: [contactId], references: [id])
+  lead             Lead?      @relation(fields: [leadId], references: [id])
+  quotes           Quote[]
+  tasks            Task[]
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model Task {
+  id               Int       @id @default(autoincrement())
+  taskName         String
+  project          String?
+  projectId        Int?
+  assignee         String?
+  assignedToId     Int?
+  assignedToUserId Int?
+  assignedByUserId Int?
+  dueDate          DateTime?
+  priority         String?
+  status           String    @default("PENDING")
+  estimatedHours   Float?
+  actualHours      Float?
+  notes            String?
+  submissionLink   String?
+  reviewComment    String?
+  leadId           Int?
+  dealId           Int?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+  organizationId        Int
+  category         String?
+  description      String?
+  links            String?
+  reviewedAt       DateTime?
+  reviewedBy       Int?
+  submissionNotes  String?
+  assignedByUser   User?     @relation("TaskAssignedBy", fields: [assignedByUserId], references: [id])
+  assignedEmployee Employee? @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  assignedToUser   User?     @relation("TaskAssignedTo", fields: [assignedToUserId], references: [id])
+  deal             Deal?     @relation(fields: [dealId], references: [id])
+  lead             Lead?     @relation(fields: [leadId], references: [id])
+  projectRef       Project?  @relation("ProjectTasks", fields: [projectId], references: [id])
+  reviewedByUser   User?     @relation("TaskReviewedBy", fields: [reviewedBy], references: [id])
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model LeaveRequest {
+  id            Int       @id @default(autoincrement())
+  employeeId    Int?
+  startDate     DateTime
+  endDate       DateTime
+  leaveType     String
+  reason        String?
+  status        String    @default("PENDING")
+  isPaid        Boolean   @default(true)
+  appliedOn     DateTime?
+  approvedBy    String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  approvalTrail Json?
+  organizationId        Int
+  employee      Employee? @relation(fields: [employeeId], references: [id])
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model TicketType {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  color     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  tickets   Ticket[]
+}
+
+model Ticket {
+  id           Int         @id @default(autoincrement())
+  event        String?
+  customer     String?
+  price        Float?
+  status       String      @default("RESERVED")
+  purchaseDate DateTime?
+  qrCode       String?
+  notes        String?
+  ticketTypeId Int?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  deletedAt    DateTime?
+  organizationId        Int
+  ticketType   TicketType? @relation(fields: [ticketTypeId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model FormSubmission {
+  id             Int       @id @default(autoincrement())
+  form           String
+  submittedBy    String?
+  submissionDate DateTime?
+  data           String?
+  status         String    @default("SUBMITTED")
+  reviewer       String?
+  reviewDate     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  organizationId        Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model MarketingCampaign {
+  id             Int       @id @default(autoincrement())
+  campaignName   String
+  channel        String?
+  startDate      DateTime?
+  endDate        DateTime?
+  objective      String?
+  budget         Float?
+  status         String    @default("PLANNED")
+  targetAudience String?
+  createdBy      String?
+  campaignOwner  String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  organizationId        Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model Expense {
+  id                      Int       @id @default(autoincrement())
+  expenseDate             DateTime?
+  category                String?
+  description             String?
+  amount                  Float?
+  currency                String?
+  receiptImage            String?
+  approvedBy              String?
+  status                  String    @default("PENDING")
+  employeeId              Int?
+  submittedByUserId       Int?
+  managerApprovalByUserId Int?
+  hrApprovalByUserId      Int?
+  approvedAt              DateTime?
+  rejectedAt              DateTime?
+  rejectionReason         String?
+  approvalTrail           Json?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  deletedAt               DateTime?
+  organizationId        Int
+  employee                Employee? @relation(fields: [employeeId], references: [id])
+  hrApprovalByUser        User?     @relation("ExpenseHrApprovedBy", fields: [hrApprovalByUserId], references: [id])
+  managerApprovalByUser   User?     @relation("ExpenseManagerApprovedBy", fields: [managerApprovalByUserId], references: [id])
+  submittedByUser         User?     @relation("ExpenseSubmittedBy", fields: [submittedByUserId], references: [id])
+  organization            Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model Project {
+  id                Int              @id @default(autoincrement())
+  projectName       String
+  projectCode       String?
+  startDate         DateTime?
+  endDate           DateTime?
+  manager           String?
+  managerId         Int?
+  status            String           @default("PLANNED")
+  budget            Float?
+  description       String?
+  client            String?
+  projectLead       String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  deletedAt         DateTime?
+  organizationId        Int
+  managerUser       User?            @relation("ProjectManager", fields: [managerId], references: [id])
+  links             ProjectLink[]
+  members           ProjectMember[]
+  messages          ProjectMessage[]
+  tasks             Task[]           @relation("ProjectTasks")
+  assignedEmployees Employee[]       @relation("ProjectAssignedEmployees")
+  coManagers        User[]           @relation("ProjectCoManagers")
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model ProjectMessage {
+  id        String   @id @default(cuid())
+  projectId Int
+  senderId  Int
+  content   String
+  createdAt DateTime @default(now())
+  organizationId        Int
+  project   Project  @relation(fields: [projectId], references: [id])
+  sender    User     @relation("ProjectMessageSender", fields: [senderId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([projectId])
+  @@index([senderId])
+  @@index([organizationId])
+}
+
+model ProjectLink {
+  id          Int       @id @default(autoincrement())
+  projectId   Int
+  title       String
+  url         String
+  createdById Int
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
+  organizationId        Int
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([projectId])
+  @@index([organizationId])
+}
+
+model ProjectMember {
+  projectId  Int
+  employeeId Int
+  role       String?
+  joinedAt   DateTime @default(now())
+  organizationId        Int
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([projectId, employeeId])
+  @@index([organizationId])
+}
+
+model Contact {
+  id            Int        @id @default(autoincrement())
+  contactName   String
+  email         String?
+  phoneNumber   String?
+  company       String?
+  jobTitle      String?
+  leadSource    String?
+  address       String?
+  website       String?
+  linkedin      String?
+  contactStatus String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  deletedAt     DateTime?
+  organizationId        Int
+  activities    Activity[]
+  deals         Deal[]     @relation("ContactToDeals")
+  quotes        Quote[]
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model Activity {
+  id          Int          @id @default(autoincrement())
+  type        ActivityType
+  description String
+  userId      Int
+  leadId      Int?
+  dealId      Int?
+  contactId   Int?
+  createdAt   DateTime     @default(now())
+  deletedAt   DateTime?
+  contact     Contact?     @relation(fields: [contactId], references: [id])
+  deal        Deal?        @relation(fields: [dealId], references: [id])
+  lead        Lead?        @relation(fields: [leadId], references: [id])
+  user        User         @relation(fields: [userId], references: [id])
+  organizationId        Int
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model Event {
+  id            Int       @id @default(autoincrement())
+  eventName     String
+  eventCode     String?
+  startDateTime DateTime?
+  endDateTime   DateTime?
+  location      String?
+  organizer     String?
+  status        String?
+  capacity      Int?
+  description   String?
+  eventType     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  organizationId        Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model DynamicForm {
+  id           Int       @id @default(autoincrement())
+  formName     String
+  formCode     String?
+  description  String?
+  createdBy    String?
+  status       String?
+  formType     String?
+  targetModule String?
+  createdOn    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  organizationId        Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model Quote {
+  id        Int         @id @default(autoincrement())
+  dealId    Int
+  contactId Int
+  total     Float
+  status    String      @default("DRAFT")
+  validTill DateTime
+  notes     String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  deletedAt DateTime?
+  organizationId        Int
+  contact   Contact     @relation(fields: [contactId], references: [id])
+  deal      Deal        @relation(fields: [dealId], references: [id])
+  items     QuoteItem[]
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model QuoteItem {
+  id        Int       @id @default(autoincrement())
+  quoteId   Int
+  name      String
+  quantity  Int
+  price     Float
+  deletedAt DateTime?
+  organizationId        Int
+  quote     Quote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model ProductCategory {
+  id        Int       @id @default(autoincrement())
+  name      String
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+  organizationId        Int
+  products  Product[]
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model Product {
+  id          Int              @id @default(autoincrement())
+  name        String
+  description String?
+  price       Float
+  sku         String?
+  categoryId  Int?
+  taxRate     Float?
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  deletedAt   DateTime?
+  organizationId        Int
+  category    ProductCategory? @relation(fields: [categoryId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model Payment {
+  id            Int       @id @default(autoincrement())
+  invoiceId     Int
+  amount        Float
+  paymentMethod String
+  transactionId String?
+  paymentDate   DateTime
+  status        String
+  createdAt     DateTime  @default(now())
+  deletedAt     DateTime?
+  organizationId        Int
+  invoice       Invoice   @relation(fields: [invoiceId], references: [id])
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model Notification {
+  id         Int                       @id @default(autoincrement())
+  title      String
+  message    String
+  createdAt  DateTime                  @default(now())
+  actionUrl  String?
+  category   String                    @default("SYSTEM")
+  createdBy  Int?
+  entityId   Int?
+  entityType String?
+  module     String?
+  priority   String                    @default("MEDIUM")
+  type       String                    @default("SYSTEM")
+  updatedAt  DateTime                  @default(now()) @updatedAt
+  organizationId        Int
+  creator    User?                     @relation(fields: [createdBy], references: [id])
+  deliveries NotificationDeliveryLog[]
+  recipients NotificationRecipient[]
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model NotificationRecipient {
+  id             Int          @id @default(autoincrement())
+  notificationId Int
+  userId         Int
+  isRead         Boolean      @default(false)
+  readAt         DateTime?
+  deliveredAt    DateTime?
+  channel        String       @default("IN_APP")
+  status         String       @default("PENDING")
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  organizationId        Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([notificationId, userId, channel])
+  @@index([userId, isRead])
+  @@index([notificationId])
+  @@index([organizationId])
+}
+
+model NotificationPreference {
+  id                    Int      @id @default(autoincrement())
+  userId                Int      @unique
+  emailEnabled          Boolean  @default(true)
+  pushEnabled           Boolean  @default(true)
+  inAppEnabled          Boolean  @default(true)
+  mentionNotifications  Boolean  @default(true)
+  approvalNotifications Boolean  @default(true)
+  reminderNotifications Boolean  @default(true)
+  criticalBypassMute    Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  organizationId        Int
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model NotificationTemplate {
+  id              Int      @id @default(autoincrement())
+  key             String   @unique
+  name            String
+  type            String
+  module          String?
+  subjectTemplate String
+  bodyTemplate    String
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model NotificationDeliveryLog {
+  id             Int          @id @default(autoincrement())
+  notificationId Int
+  recipientId    Int?
+  userId         Int?
+  channel        String
+  provider       String?
+  status         String
+  attempts       Int          @default(1)
+  errorMessage   String?
+  sentAt         DateTime     @default(now())
+  deliveredAt    DateTime?
+  metadata       Json?
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  organizationId        Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([notificationId, channel])
+  @@index([userId, status])
+  @@index([organizationId])
+}
+
+model FileAttachment {
+  id         Int       @id @default(autoincrement())
+  fileName   String
+  fileUrl    String
+  fileKey    String?
+  entityType String
+  entityId   Int
+  uploadedBy Int
+  createdAt  DateTime  @default(now())
+  deletedAt  DateTime?
+  organizationId        Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model File {
+  id              Int            @id @default(autoincrement())
+  originalName    String
+  storedName      String         @unique
+  mimeType        String
+  extension       String
+  size            Int
+  path            String
+  url             String
+  storageProvider String
+  uploadedBy      Int
+  module          String
+  entityType      String
+  entityId        Int
+  category        String
+  tags            String[]       @default([])
+  isPublic        Boolean        @default(false)
+  checksum        String?
+  version         Int            @default(1)
+  status          String         @default("ACTIVE")
+  familyId        String         @default(cuid())
+  parentFileId    Int?
+  thumbnailUrl    String?
+  previewUrl      String?
+  metadata        Json?
+  downloadCount   Int            @default(0)
+  previewCount    Int            @default(0)
+  lastAccessedAt  DateTime?
+  deletedAt       DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  parentFile      File?          @relation("FileVersions", fields: [parentFileId], references: [id])
+  versions        File[]         @relation("FileVersions")
+  uploadedByUser  User           @relation("FileUploadedBy", fields: [uploadedBy], references: [id])
+  activities      FileActivity[]
+  organizationId        Int
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([entityType, entityId])
+  @@index([module])
+  @@index([category])
+  @@index([uploadedBy])
+  @@index([familyId])
+  @@index([createdAt])
+  @@index([organizationId])
+}
+
+model FileActivity {
+  id        Int      @id @default(autoincrement())
+  fileId    Int
+  userId    Int?
+  action    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+  file      File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  organizationId        Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([fileId, action])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([organizationId])
+}
+
+model AuditLog {
+  id            Int      @id @default(autoincrement())
+  userId        Int?
+  action        String
+  entityId      Int?
+  createdAt     DateTime @default(now())
+  userName      String?
+  userRole      String?
+  module        String
+  entityType    String
+  fieldName     String?
+  oldValue      Json?
+  newValue      Json?
+  description   String?
+  ipAddress     String?
+  deviceInfo    String?
+  requestMethod String?
+  endpoint      String?
+  status        String   @default("SUCCESS")
+  organizationId        Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([userId])
+  @@index([module])
+  @@index([createdAt])
+  @@index([entityId])
+  @@index([organizationId])
+}
+
+model WorkflowDefinition {
+  id          Int                @id @default(autoincrement())
+  key         String             @unique
+  name        String
+  module      String
+  description String?
+  isActive    Boolean            @default(true)
+  settings    Json?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  instances   WorkflowInstance[]
+  rules       WorkflowRule[]
+  stages      WorkflowStage[]
+
+  @@index([module])
+}
+
+model WorkflowStage {
+  id                   Int                  @id @default(autoincrement())
+  workflowDefinitionId Int
+  key                  String
+  name                 String
+  order                Int
+  approvalType         WorkflowApprovalType @default(SEQUENTIAL)
+  approvalPolicy       Json?
+  assignmentRule       Json?
+  metadata             Json?
+  isActive             Boolean              @default(true)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  workflowDefinition   WorkflowDefinition   @relation(fields: [workflowDefinitionId], references: [id], onDelete: Cascade)
+  steps                WorkflowStep[]
+
+  @@unique([workflowDefinitionId, key])
+  @@index([workflowDefinitionId, order])
+}
+
+model WorkflowRule {
+  id                   Int                @id @default(autoincrement())
+  workflowDefinitionId Int
+  name                 String
+  priority             Int                @default(0)
+  condition            Json
+  action               Json
+  isActive             Boolean            @default(true)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  workflowDefinition   WorkflowDefinition @relation(fields: [workflowDefinitionId], references: [id], onDelete: Cascade)
+
+  @@index([workflowDefinitionId, priority])
+}
+
+model WorkflowInstance {
+  id                   Int                    @id @default(autoincrement())
+  workflowDefinitionId Int
+  entityType           String
+  entityId             Int
+  status               WorkflowStatus         @default(DRAFT)
+  currentStageOrder    Int                    @default(1)
+  initiatedBy          Int?
+  startedAt            DateTime?
+  completedAt          DateTime?
+  cancelledAt          DateTime?
+  lastActionAt         DateTime?
+  context              Json?
+  metadata             Json?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  organizationId        Int
+  actions              WorkflowAction[]
+  assignments          WorkflowAssignment[]
+  comments             WorkflowComment[]
+  history              WorkflowHistory[]
+  workflowDefinition   WorkflowDefinition     @relation(fields: [workflowDefinitionId], references: [id], onDelete: Cascade)
+  notifications        WorkflowNotification[]
+  steps                WorkflowStep[]
+  organization         Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([entityType, entityId])
+  @@index([workflowDefinitionId, status])
+  @@index([organizationId])
+}
+
+model WorkflowStep {
+  id                 Int                 @id @default(autoincrement())
+  workflowInstanceId Int
+  workflowStageId    Int
+  slotIndex          Int                 @default(1)
+  status             WorkflowStepStatus  @default(NOT_STARTED)
+  assignedToId       Int?
+  assignedRole       String?
+  decisionAction     WorkflowActionType?
+  decidedBy          Int?
+  decidedAt          DateTime?
+  dueAt              DateTime?
+  notes              String?
+  metadata           Json?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  workflowInstance   WorkflowInstance    @relation(fields: [workflowInstanceId], references: [id], onDelete: Cascade)
+  workflowStage      WorkflowStage       @relation(fields: [workflowStageId], references: [id], onDelete: Cascade)
+  organizationId        Int
+  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([workflowInstanceId, status])
+  @@index([workflowStageId, slotIndex])
+  @@index([organizationId])
+}
+
+model WorkflowAction {
+  id                 Int                @id @default(autoincrement())
+  workflowInstanceId Int
+  workflowStepId     Int?
+  actionType         WorkflowActionType
+  performedBy        Int?
+  comment            String?
+  metadata           Json?
+  createdAt          DateTime           @default(now())
+  workflowInstance   WorkflowInstance   @relation(fields: [workflowInstanceId], references: [id], onDelete: Cascade)
+  organizationId        Int
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([workflowInstanceId, actionType])
+  @@index([organizationId])
+}
+
+model WorkflowComment {
+  id                 Int              @id @default(autoincrement())
+  workflowInstanceId Int
+  authorId           Int?
+  comment            String
+  mentions           Json?
+  isInternal         Boolean          @default(false)
+  createdAt          DateTime         @default(now())
+  workflowInstance   WorkflowInstance @relation(fields: [workflowInstanceId], references: [id], onDelete: Cascade)
+  organizationId        Int
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([workflowInstanceId, createdAt])
+  @@index([organizationId])
+}
+
+model WorkflowAssignment {
+  id                 Int              @id @default(autoincrement())
+  workflowInstanceId Int
+  workflowStepId     Int?
+  assigneeId         Int?
+  assigneeRole       String?
+  assignmentReason   String?
+  assignedAt         DateTime         @default(now())
+  releasedAt         DateTime?
+  workflowInstance   WorkflowInstance @relation(fields: [workflowInstanceId], references: [id], onDelete: Cascade)
+  organizationId        Int
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([workflowInstanceId, assigneeId])
+  @@index([organizationId])
+}
+
+model WorkflowHistory {
+  id                 Int              @id @default(autoincrement())
+  workflowInstanceId Int
+  eventType          String
+  fromStatus         WorkflowStatus?
+  toStatus           WorkflowStatus?
+  fromStageOrder     Int?
+  toStageOrder       Int?
+  actorId            Int?
+  message            String?
+  metadata           Json?
+  createdAt          DateTime         @default(now())
+  workflowInstance   WorkflowInstance @relation(fields: [workflowInstanceId], references: [id], onDelete: Cascade)
+  organizationId        Int
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([workflowInstanceId, createdAt])
+  @@index([organizationId])
+}
+
+model WorkflowNotification {
+  id                 Int                         @id @default(autoincrement())
+  workflowInstanceId Int
+  recipientId        Int
+  channel            WorkflowNotificationChannel @default(IN_APP)
+  notificationType   String
+  title              String
+  message            String
+  isRead             Boolean                     @default(false)
+  sentAt             DateTime?
+  readAt             DateTime?
+  metadata           Json?
+  createdAt          DateTime                    @default(now())
+  workflowInstance   WorkflowInstance            @relation(fields: [workflowInstanceId], references: [id], onDelete: Cascade)
+  organizationId        Int
+  organization      Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([recipientId, isRead])
+  @@index([workflowInstanceId, createdAt])
+  @@index([organizationId])
+}
+
+model SalaryStructure {
+  id                  Int       @id @default(autoincrement())
+  employeeId          Int
+  basic               Float     @default(0)
+  hra                 Float     @default(0)
+  allowances          Float     @default(0)
+  deductions          Float     @default(0)
+  pf                  Float     @default(0)
+  esi                 Float     @default(0)
+  professionalTax     Float     @default(0)
+  tds                 Float     @default(0)
+  overtimeRatePerHour Float     @default(0)
+  allowedLateMarks    Int       @default(2)
+  lateMarkPenalty     Float     @default(0)
+  isActive            Boolean   @default(true)
+  effectiveFrom       DateTime  @default(now())
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletedAt           DateTime?
+  employee            Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  organizationId        Int
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([employeeId, isActive])
+  @@index([organizationId])
+}
+
+model PayrollCycle {
+  id        Int            @id @default(autoincrement())
+  name      String
+  month     Int
+  year      Int
+  status    String         @default("DRAFT")
+  runDate   DateTime?
+  notes     String?
+  createdBy Int?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  deletedAt DateTime?
+  entries   PayrollEntry[]
+  organizationId        Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([month, year])
+  @@index([organizationId])
+}
+
+model PayrollEntry {
+  id               Int               @id @default(autoincrement())
+  payrollCycleId   Int
+  employeeId       Int
+  grossPay         Float             @default(0)
+  totalDeductions  Float             @default(0)
+  netPay           Float             @default(0)
+  status           String            @default("PENDING")
+  totalPresentDays Float             @default(0)
+  totalAbsentDays  Float             @default(0)
+  lateCount        Int               @default(0)
+  overtimeHours    Float             @default(0)
+  paidAt           DateTime?
+  remarks          String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  deletedAt        DateTime?
+  deductions       PayrollDeduction?
+  earnings         PayrollEarnings?
+  employee         Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  payrollCycle     PayrollCycle      @relation(fields: [payrollCycleId], references: [id], onDelete: Cascade)
+  payslip          Payslip?
+  organizationId        Int
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([payrollCycleId, employeeId])
+  @@index([employeeId])
+  @@index([organizationId])
+}
+
+model Payslip {
+  id                  Int          @id @default(autoincrement())
+  payrollEntryId      Int          @unique
+  employeeId          Int
+  month               Int
+  year                Int
+  basicSalary         Float        @default(0)
+  hra                 Float        @default(0)
+  allowances          Float        @default(0)
+  bonus               Float        @default(0)
+  overtime            Float        @default(0)
+  reimbursements      Float        @default(0)
+  grossEarnings       Float        @default(0)
+  pfDeduction         Float        @default(0)
+  esiDeduction        Float        @default(0)
+  professionalTax     Float        @default(0)
+  tdsDeduction        Float        @default(0)
+  lossOfPay           Float        @default(0)
+  otherDeductions     Float        @default(0)
+  totalDeductions     Float        @default(0)
+  netPay              Float        @default(0)
+  workingDays         Int?
+  presentDays         Int?
+  absenceDays         Int?
+  paidLeaveTaken      Int?
+  unpaidLeaveTaken    Int?
+  lateCount           Int          @default(0)
+  overtimeHours       Float        @default(0)
+  overtimeBonus       Float        @default(0)
+  lateMarkPenalty     Float        @default(0)
+  taxRegime           String       @default("NEW")
+  annualTaxableIncome Float?
+  form16Generated     Boolean      @default(false)
+  form16Data          Json?
+  payslipUrl          String?
+  generatedAt         DateTime?
+  downloadedAt        DateTime?
+  emailSentAt         DateTime?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  deletedAt           DateTime?
+  employee            Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  payrollEntry        PayrollEntry @relation(fields: [payrollEntryId], references: [id], onDelete: Cascade)
+  organizationId        Int
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model PayrollEarnings {
+  id               Int          @id @default(autoincrement())
+  payrollEntryId   Int          @unique
+  basicSalary      Float        @default(0)
+  hra              Float        @default(0)
+  specialAllowance Float        @default(0)
+  da               Float        @default(0)
+  bonus            Float        @default(0)
+  overtime         Float        @default(0)
+  incentive        Float        @default(0)
+  reimbursements   Float        @default(0)
+  totalEarnings    Float        @default(0)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  deletedAt        DateTime?
+  payrollEntry     PayrollEntry @relation(fields: [payrollEntryId], references: [id], onDelete: Cascade)
+  organizationId        Int
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model PayrollDeduction {
+  id                     Int          @id @default(autoincrement())
+  payrollEntryId         Int          @unique
+  pfEmployeeContribution Float        @default(0)
+  pfEmployerContribution Float        @default(0)
+  esiContribution        Float        @default(0)
+  professionalTax        Float        @default(0)
+  tdsDeducted            Float        @default(0)
+  lossOfPay              Float        @default(0)
+  advanceRecovery        Float        @default(0)
+  otherDeductions        Float        @default(0)
+  totalDeductions        Float        @default(0)
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+  deletedAt              DateTime?
+  payrollEntry           PayrollEntry @relation(fields: [payrollEntryId], references: [id], onDelete: Cascade)
+  organizationId        Int
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model TaxDeclaration {
+  id                     Int       @id @default(autoincrement())
+  employeeId             Int
+  year                   Int
+  investment80C          Float     @default(0)
+  investment80D          Float     @default(0)
+  investment80CCD        Float     @default(0)
+  hraExemption           Float     @default(0)
+  standardDeduction      Float     @default(0)
+  otherIncome            Float     @default(0)
+  otherIncomeTaxed       Float     @default(0)
+  exerciseStock          Float     @default(0)
+  estimatedTaxableIncome Float?
+  approvalStatus         String    @default("PENDING")
+  approvedBy             Int?
+  approvedAt             DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  deletedAt              DateTime?
+  employee               Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  organizationId        Int
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([employeeId, year])
+  @@index([organizationId])
+}
+
+model PayrollConfig {
+  id                    Int      @id @default(autoincrement())
+  pfEmployeeRate        Float    @default(12)
+  pfEmployerRate        Float    @default(12)
+  pfWaiveLimit          Float    @default(15000)
+  esiRate               Float    @default(0.75)
+  esiSalaryLimit        Float    @default(21000)
+  esiApplicable         Boolean  @default(true)
+  ptApplicable          Boolean  @default(true)
+  ptState               String   @default("MAHARASHTRA")
+  ptSlabs               Json
+  standardDeduction2024 Float    @default(75000)
+  defaultLossOfPayRate  Float    @default(50)
+  financialYearStart    Int      @default(4)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  organizationId        Int
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model Form16 {
+  id                            Int       @id @default(autoincrement())
+  employeeId                    Int
+  year                          Int
+  panNumber                     String?
+  grossIncome                   Float     @default(0)
+  taxableIncome                 Float     @default(0)
+  totalTaxPaid                  Float     @default(0)
+  grossSalary                   Float     @default(0)
+  standardDeduction             Float     @default(0)
+  interestIncomeUnderSection80A Float     @default(0)
+  investmentUnder80C            Float     @default(0)
+  tfcData                       Json?
+  generatedAt                   DateTime?
+  pdfUrl                        String?
+  createdAt                     DateTime  @default(now())
+  updatedAt                     DateTime  @updatedAt
+  deletedAt                     DateTime?
+  employee                      Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  organizationId        Int
+  organization                  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([employeeId, year])
+  @@index([organizationId])
+}
+
+model JobOpening {
+  id             Int         @id @default(autoincrement())
+  title          String
+  department     String?
+  location       String?
+  employmentType String?
+  status         String      @default("OPEN")
+  openings       Int         @default(1)
+  description    String?
+  createdBy      Int?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  deletedAt      DateTime?
+  candidates     Candidate[]
+  organizationId        Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model Candidate {
+  id           Int         @id @default(autoincrement())
+  jobOpeningId Int
+  name         String
+  email        String?
+  phone        String?
+  resumeUrl    String?
+  source       String?
+  currentStage String      @default("APPLIED")
+  status       String      @default("ACTIVE")
+  remarks      String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  deletedAt    DateTime?
+  jobOpening   JobOpening  @relation(fields: [jobOpeningId], references: [id], onDelete: Cascade)
+  interviews   Interview[]
+  organizationId        Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([jobOpeningId, currentStage])
+  @@index([organizationId])
+}
+
+model Interview {
+  id            Int       @id @default(autoincrement())
+  candidateId   Int
+  scheduledAt   DateTime
+  interviewerId Int?
+  mode          String?
+  status        String    @default("SCHEDULED")
+  feedback      String?
+  outcome       String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  candidate     Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  organizationId        Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([candidateId, scheduledAt])
+  @@index([organizationId])
+}
+
+model GoalCycle {
+  id        Int                 @id @default(autoincrement())
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  status    String              @default("ACTIVE")
+  createdBy Int?
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  deletedAt DateTime?
+  goals     Goal[]
+  reviews   PerformanceReview[]
+  organizationId        Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+model Goal {
+  id              Int       @id @default(autoincrement())
+  employeeId      Int
+  goalCycleId     Int
+  title           String
+  description     String?
+  weightage       Float     @default(0)
+  targetMetric    String?
+  status          String    @default("NOT_STARTED")
+  managerComment  String?
+  employeeComment String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  goalCycle       GoalCycle @relation(fields: [goalCycleId], references: [id], onDelete: Cascade)
+  organizationId        Int
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([employeeId, goalCycleId])
+  @@index([organizationId])
+}
+
+model PerformanceReview {
+  id           Int       @id @default(autoincrement())
+  employeeId   Int
+  goalCycleId  Int
+  reviewerId   Int?
+  rating       Float?
+  summary      String?
+  strengths    String?
+  improvements String?
+  status       String    @default("DRAFT")
+  submittedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  goalCycle    GoalCycle @relation(fields: [goalCycleId], references: [id], onDelete: Cascade)
+  organizationId        Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([employeeId, goalCycleId])
+  @@index([organizationId])
+}
+
+model ImportLog {
+  id         String   @id
+  fileName   String
+  module     String
+  rowCount   Int
+  importedBy String
+  createdAt  DateTime @default(now())
+  organizationId        Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizationId])
+}
+
+enum FileStatus {
+  ACTIVE
+  ARCHIVED
+  DELETED
+  QUARANTINED
+}
+
+enum FileCategory {
+  EMPLOYEE_DOCUMENT
+  INVOICE
+  RESUME
+  CONTRACT
+  PROJECT_FILE
+  PAYSLIP
+  EXPENSE_RECEIPT
+  ASSET_DOCUMENT
+  GENERAL_ATTACHMENT
+}
+
+enum WorkflowStatus {
+  DRAFT
+  SUBMITTED
+  PENDING_APPROVAL
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  RETURNED
+  ESCALATED
+  COMPLETED
+  CANCELLED
+}
+
+enum WorkflowApprovalType {
+  SINGLE
+  MULTIPLE
+  UNANIMOUS
+  MAJORITY
+  SEQUENTIAL
+  PARALLEL
+}
+
+enum WorkflowStepStatus {
+  NOT_STARTED
+  PENDING
+  APPROVED
+  REJECTED
+  RETURNED
+  ESCALATED
+  SKIPPED
+  COMPLETED
+}
+
+enum WorkflowActionType {
+  START
+  SUBMIT
+  APPROVE
+  REJECT
+  RETURN
+  ESCALATE
+  COMMENT
+  ASSIGN
+  COMPLETE
+  CANCEL
+  REVIEW
+}
+
+enum WorkflowNotificationChannel {
+  IN_APP
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum AuditStatus {
+  SUCCESS
+  FAILURE
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  COMPLIANCE_MANAGER
+  HR
+  MANAGER
+  EMPLOYEE
+}
+
+enum ShiftType {
+  FIXED
+  FLEXIBLE
+  ROTATIONAL
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  LEAVE
+}
+
+enum ActivityType {
+  CALL
+  EMAIL
+  MEETING
+  NOTE
+  STATUS_CHANGE
+  DEAL_CREATED
+  LEAD_CONVERTED
+  QUOTE_SENT
+  INVOICE_PAID
+  TASK_DUE
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+  CANCELLED
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Activity Timeline models
+// Used by: src/activity-timeline/activity-timeline.service.ts
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ActivityTimeline {
+  id              Int                       @id @default(autoincrement())
+  module          String
+  entityType      String
+  entityId        Int
+  eventType       String
+  action          String
+  title           String
+  description     String?
+  oldValue        Json?
+  newValue        Json?
+  metadata        Json?
+  performedBy     Int?
+  performedByRole String?
+  assignedTo      Int?
+  status          String                    @default("OPEN")
+  priority        String                    @default("MEDIUM")
+  icon            String?
+  color           String?
+  ipAddress       String?
+  deviceInfo      String?
+  attachments     Json?
+  workflowStage   String?
+  approvalStatus  String?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  organizationId        Int
+
+  comments        ActivityTimelineComment[]
+  organization    Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([entityType, entityId])
+  @@index([module])
+  @@index([eventType])
+  @@index([performedBy])
+  @@index([assignedTo])
+  @@index([createdAt])
+  @@index([organizationId])
+}
+
+model ActivityTimelineComment {
+  id              Int              @id @default(autoincrement())
+  timelineId      Int
+  userId          Int?
+  userRole        String?
+  comment         String
+  parentCommentId Int?
+  mentions        Json?
+  isInternal      Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  organizationId        Int
+
+  timeline        ActivityTimeline @relation(fields: [timelineId], references: [id], onDelete: Cascade)
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([timelineId])
+  @@index([userId])
+  @@index([organizationId])
+}
+
+
