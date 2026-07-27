@@ -46,6 +46,8 @@ export class FileAttachmentsController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
+        // Temporary disk storage for Vercel compatibility.
+        // TODO: Replace this with S3-compatible in-memory upload handling.
         destination: (_req, _file, cb) => {
           if (!existsSync(FILE_ATTACHMENT_UPLOAD_ROOT)) {
             mkdirSync(FILE_ATTACHMENT_UPLOAD_ROOT, { recursive: true });
@@ -66,7 +68,7 @@ export class FileAttachmentsController {
     @Query('entityId', ParseIntPipe) entityId: number,
     @Req() req: AuthenticatedRequest,
   ) {
-    const fileUrl = `/tmp/${file.filename}`;
+    const fileUrl = `${FILE_ATTACHMENT_UPLOAD_ROOT}/${file.filename}`;
 
     return this.fileAttachmentsService.create(
       file.originalname,
