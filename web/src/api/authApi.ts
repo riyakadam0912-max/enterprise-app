@@ -1,6 +1,6 @@
 import { apiClient } from './apiClient';
 
-export type UserRole = 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
+export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
 
 export interface AuthPayload {
   user: {
@@ -13,6 +13,9 @@ export interface AuthPayload {
   permissions: string[];
   employeeId: number | null;
   organizationId: number | null;
+  organizationSlug: string | null;
+  isSuperAdmin: boolean;
+  isPlatformAdmin: boolean;
 }
 
 export interface LoginResponse extends AuthPayload {

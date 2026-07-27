@@ -7,6 +7,7 @@ import { addEmployee, removeEmployee } from '@/hooks/useEmployees';
 import { apiClient } from '@/api/apiClient';
 import { canAccessUsers } from '@/utils/auth/permissions';
 import { reportError } from '@/lib/error-handling';
+import { PasswordInput } from '@/components/ui/password-input';
 
 const DEPARTMENTS = ['Sales', 'Engineering', 'HR', 'Finance', 'Operations'] as const;
 const ROLES = ['EMPLOYEE', 'MANAGER', 'HR'] as const;
@@ -277,10 +278,9 @@ export default function AddEmployeePage() {
                 <label htmlFor="employee-password" className="block text-sm font-medium text-slate-700 mb-1">
                   Password <span className="text-red-500">*</span>
                 </label>
-                <input
+                <PasswordInput
                   id="employee-password"
                   name="password"
-                  type="password"
                   autoComplete="new-password"
                   value={form.password}
                   onChange={handleChange}

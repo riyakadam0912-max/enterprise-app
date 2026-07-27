@@ -93,10 +93,6 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
   const [modal, setModal] = useState<ModalState | null>(null);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const closeModal = useCallback(() => setModal(null), []);
 
   const openModal = useCallback((request: ModalRequest) => {
@@ -108,6 +104,7 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
   const api = useMemo<ModalApi>(() => ({ openModal, closeModal }), [closeModal, openModal]);
 
   useEffect(() => {
+    queueMicrotask(() => setMounted(true));
     globalModalApi = api;
     return () => {
       if (globalModalApi === api) {

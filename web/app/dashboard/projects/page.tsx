@@ -166,21 +166,7 @@ export default function ProjectsWorkflowPage() {
   const hasAssignedTask = userId != null && (projectDetails?.tasks ?? []).some((task) => task.assignedToUserId === userId);
   const canViewChat = isAdmin || isManager || isAssignedEmployee || hasAssignedTask;
 
-  // Log canViewChat calculation
-  if (projectDetails) {
-    console.log('[ProjectsPage] canViewChat calculation:', {
-      projectId: projectDetails.id,
-      userId,
-      employeeId,
-      isAdmin,
-      isManager,
-      isAssignedEmployee,
-      hasAssignedTask,
-      canViewChat,
-      assignedEmployees: projectDetails.assignedEmployees,
-      tasks: projectDetails.tasks,
-    });
-  }
+
 
   async function loadProjectDetails(projectId: number) {
     setProgress(null);
@@ -215,13 +201,10 @@ export default function ProjectsWorkflowPage() {
   }
 
   async function refreshProjects(initialProjectId?: number) {
-    console.log('[ProjectsPage] refreshProjects called with initialProjectId:', initialProjectId, 'session:', session);
     const list = await getProjects();
-    console.log('[ProjectsPage] getProjects returned:', list);
     setProjects(list);
 
     const targetId = initialProjectId ?? selectedProjectId ?? list[0]?.id ?? null;
-    console.log('[ProjectsPage] Setting selectedProjectId to:', targetId);
     setSelectedProjectId(targetId);
     if (targetId) {
       await loadProjectDetails(targetId);

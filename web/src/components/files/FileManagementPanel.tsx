@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { FileText, RefreshCw, Trash2, Download, Eye, BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,7 +17,7 @@ export function FileManagementPanel() {
   const [search, setSearch] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<ManagedFile | null>(null);
 
-  async function loadData(searchValue = search) {
+  const loadData = useCallback(async (searchValue = search) => {
     setLoading(true);
     try {
       const [dashboardResponse, filesResponse] = await Promise.all([
@@ -30,11 +30,11 @@ export function FileManagementPanel() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [search]);
 
   useEffect(() => {
     void loadData();
-  }, []);
+  }, [loadData]);
 
   return (
     <div className="space-y-6">

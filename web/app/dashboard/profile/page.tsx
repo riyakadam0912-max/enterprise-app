@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { apiClient } from '@/api/apiClient';
+import { PasswordInput } from '@/components/ui/password-input';
 
 type LocalUser = {
   id?: number;
@@ -416,10 +417,9 @@ export default function ProfilePage() {
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
               <label htmlFor="profile-current-password" className="mb-1 block text-sm font-medium text-slate-700">Current Password</label>
-              <input
+              <PasswordInput
                 id="profile-current-password"
                 name="currentPassword"
-                type="password"
                 autoComplete="current-password"
                 value={passwordForm.currentPassword}
                 onChange={(e) => setPasswordForm((prev) => ({ ...prev, currentPassword: e.target.value }))}
@@ -429,10 +429,9 @@ export default function ProfilePage() {
 
             <div>
               <label htmlFor="profile-new-password" className="mb-1 block text-sm font-medium text-slate-700">New Password</label>
-              <input
+              <PasswordInput
                 id="profile-new-password"
                 name="newPassword"
-                type="password"
                 autoComplete="new-password"
                 value={passwordForm.newPassword}
                 onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))}
@@ -442,10 +441,9 @@ export default function ProfilePage() {
 
             <div>
               <label htmlFor="profile-confirm-password" className="mb-1 block text-sm font-medium text-slate-700">Confirm Password</label>
-              <input
+              <PasswordInput
                 id="profile-confirm-password"
                 name="confirmPassword"
-                type="password"
                 autoComplete="new-password"
                 value={passwordForm.confirmPassword}
                 onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}

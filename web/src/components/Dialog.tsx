@@ -29,7 +29,7 @@ export function Dialog({
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
+    queueMicrotask(() => setMounted(true));
   }, []);
 
   if (!open || !mounted || typeof document === 'undefined') return null;

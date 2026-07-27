@@ -56,7 +56,10 @@ function downloadFile(name: string, content: string, type: string) {
 }
 
 export default function AuditLogsPage() {
-  const [role, setRole] = useState<string>('ADMIN');
+  const [role] = useState<string>(() => {
+    if (typeof window === 'undefined') return 'ADMIN';
+    return window.localStorage.getItem('role') ?? 'ADMIN';
+  });
   const [items, setItems] = useState<AuditLogEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -73,11 +76,6 @@ export default function AuditLogsPage() {
     from: '',
     to: '',
   });
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    setRole(localStorage.getItem('role') ?? 'ADMIN');
-  }, []);
 
   const canView = canAccessAuditLogs(role);
 
@@ -96,22 +94,24 @@ export default function AuditLogsPage() {
     if (!canView) return;
 
     let active = true;
-    setLoading(true);
-    setError(null);
+    const run = async () => {
+      setLoading(true);
+      setError(null);
 
-    getAuditLogs(query)
-      .then((response) => {
+      try {
+        const response = await getAuditLogs(query);
         if (!active) return;
         setItems(response.items);
         setTotal(response.total);
-      })
-      .catch((err: unknown) => {
+      } catch (err: unknown) {
         if (!active) return;
         setError(err instanceof Error ? err.message : 'Failed to load audit logs');
-      })
-      .finally(() => {
+      } finally {
         if (active) setLoading(false);
-      });
+      }
+    };
+
+    void run();
 
     return () => {
       active = false;

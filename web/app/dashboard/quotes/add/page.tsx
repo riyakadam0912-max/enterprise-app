@@ -6,8 +6,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { getDeals, type Deal } from '@/api/dealsApi';
 import { getContacts, type Contact } from '@/api/contactsApi';
 import { createQuote, getQuote, updateQuote } from '@/api/quotesApi';
-import { getErrorMessage, reportError } from '@/lib/error-handling';
-import { formatInr, QUOTE_STATUS_STYLES, quoteLineTotal, sumLineItems } from '@/utils/finance';
+import { reportError } from '@/lib/error-handling';
+import { formatInr, quoteLineTotal, sumLineItems } from '@/utils/finance';
 
 interface ItemRow {
   name: string;

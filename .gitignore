@@ -1,0 +1,42 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+!.env.test
+
+# Build outputs
+dist
+build
+.next
+
+# Dependencies
+node_modules
+
+# Test outputs
+coverage
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea
+*.swp
+*.swo
+
+# Temp
+.tmp
+.temp

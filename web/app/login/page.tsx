@@ -4,6 +4,7 @@ import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/providers/AuthProvider';
 import { getAuthSessionSnapshot } from '@/stores/auth-store';
+import { PasswordInput } from '@/components/ui/password-input';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -22,6 +23,10 @@ export default function LoginPage() {
     try {
       await login(email, password);
       const snapshot = getAuthSessionSnapshot();
+      if (snapshot.isSuperAdmin || snapshot.role === 'SUPER_ADMIN') {
+        router.replace('/super-admin/dashboard');
+        return;
+      }
       const needsOrganizationSelection = snapshot.organizationId == null;
       if (needsOrganizationSelection) {
         router.push('/select-organization');
@@ -71,10 +76,9 @@ export default function LoginPage() {
             <label htmlFor="login-password" className="block text-sm font-medium text-slate-700 mb-1">
               Password
             </label>
-            <input
+            <PasswordInput
               id="login-password"
               name="password"
-              type="password"
               autoComplete="current-password"
               required
               value={password}

@@ -1,6 +1,6 @@
 'use client';
 
-import { User, Camera } from 'lucide-react';
+import { Camera } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { Heading } from '@/components/typography/Heading';
 import { Caption } from '@/components/typography/Caption';
 import { Text } from '@/components/typography/Text';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/typography/Label';
 import { useAuthSession } from '@/stores/auth-store';
 
@@ -70,15 +71,15 @@ export default function SuperAdminProfile() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="current-password">Current Password</Label>
-                <Input id="current-password" type="password" />
+                <PasswordInput id="current-password" autoComplete="current-password" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="new-password">New Password</Label>
-                <Input id="new-password" type="password" />
+                <PasswordInput id="new-password" autoComplete="new-password" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="confirm-password">Confirm New Password</Label>
-                <Input id="confirm-password" type="password" />
+                <PasswordInput id="confirm-password" autoComplete="new-password" />
               </div>
             </div>
           </div>

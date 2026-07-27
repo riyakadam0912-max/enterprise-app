@@ -26,12 +26,6 @@ interface AuthRefreshPayload {
   organizationId: number | null;
 }
 
-interface AuthRefreshResponse {
-  success?: boolean;
-  message?: string;
-  data?: AuthRefreshPayload;
-}
-
 let isRefreshing = false;
 
 let failedQueue: Array<{

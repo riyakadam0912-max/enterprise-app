@@ -193,13 +193,13 @@ function TaskRow({
           {task.project && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 border border-slate-200">
               <IconProject />
-              <span className="truncate max-w-[120px]">{task.project}</span>
+              <span className="truncate max-w-30">{task.project}</span>
             </span>
           )}
           
           <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 border border-slate-200">
             <IconUser />
-            <span className="truncate max-w-[120px]">{task.assignedToUser?.name ?? task.assignee ?? 'Unassigned'}</span>
+            <span className="truncate max-w-30">{task.assignedToUser?.name ?? task.assignee ?? 'Unassigned'}</span>
           </span>
           
           <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 border border-slate-200">
@@ -257,69 +257,35 @@ function TaskDetailModal({
   const [chatMessagesByTask, setChatMessagesByTask] = useState<Record<number, ChatMessage[]>>({});
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const chatIntervalRef = useRef<number | null>(null);
-  const [isOpen, setIsOpen] = useState(false);
   const currentTime = useStableNow();
 
+  // Derive modal open state from task existence
+  const isOpen = Boolean(task);
+
+  // Reset form state when task changes
   useEffect(() => {
-    if (task) {
-      setIsOpen(true);
+    const timeout = window.setTimeout(() => {
       setShowSubmitForm(false);
       setSubmissionNote('');
       setSubmissionLink('');
       setReviewRemarks('');
-      setStatusDraft(normalizeTaskStatus(task.status));
-    } else {
-      setIsOpen(false);
-    }
-  }, [task?.id]);
+      setStatusDraft(normalizeTaskStatus(task?.status));
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [task?.id, task?.status]);
 
   const taskStatus = normalizeTaskStatus(task?.status);
-  const isEmployee = role === 'EMPLOYEE';
-  const isManagerOrAdmin = role === 'ADMIN' || role === 'MANAGER';
-  const isAssignee = Boolean(
-    task && 
-    currentUserId != null && 
-    Number(task.assignedToUserId) === Number(currentUserId)
-  );
-  const canEmployeeAct = isEmployee && isAssignee;
-  const canReview = isManagerOrAdmin && taskStatus === 'SUBMITTED';
-  const canChangeStatus = isManagerOrAdmin && taskStatus !== 'SUBMITTED';
-  const showEmployeeStart = canEmployeeAct && taskStatus === 'PENDING';
-  const showEmployeeSubmit = canEmployeeAct && (taskStatus === 'IN_PROGRESS' || taskStatus === 'REJECTED');
-  const showAwaitingReview = canEmployeeAct && taskStatus === 'SUBMITTED';
-  const showApproved = canEmployeeAct && taskStatus === 'APPROVED';
-  const referenceLinks = useMemo(() => parseLinks(task?.links), [task?.links]);
-  const submissionDate = task?.updatedAt ?? task?.createdAt ?? null;
-  const taskId = task?.id ?? null;
-  const chatMessages = useMemo(
-    () => (taskId == null ? [] : chatMessagesByTask[taskId] ?? []),
-    [chatMessagesByTask, taskId],
-  );
+  const chatMessages = useMemo(() => (task ? (chatMessagesByTask[task.id] ?? []) : []), [task, chatMessagesByTask]);
 
   useEffect(() => {
-    if (activeTab !== 'chat' || !task) {
-      if (chatIntervalRef.current) {
-        window.clearTimeout(chatIntervalRef.current);
-        chatIntervalRef.current = null;
-      }
-      return undefined;
-    }
-
-    if (chatIntervalRef.current) {
-      window.clearTimeout(chatIntervalRef.current);
-    }
-
-    chatIntervalRef.current = window.setTimeout(() => {
-      setChatMessagesByTask((prev) => ({ ...prev }));
-    }, 10000);
-
     return () => {
       if (chatIntervalRef.current) {
         window.clearTimeout(chatIntervalRef.current);
         chatIntervalRef.current = null;
       }
     };
-  }, [activeTab, task]);
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'chat' && chatEndRef.current && isOpen) {
@@ -356,6 +322,16 @@ function TaskDetailModal({
   const priorityClass = PRIORITY_BADGE[priority] ?? PRIORITY_BADGE.LOW;
   const category = activeTask.category?.trim() || 'Other';
   const pastDue = isOverdue(activeTask, currentTime);
+  const referenceLinks = parseLinks(activeTask.links ?? null);
+  const isAssignee = currentUserId != null && activeTask.assignedToUserId != null && currentUserId === activeTask.assignedToUserId;
+  const canEmployeeAct = isAssignee && ['PENDING', 'IN_PROGRESS', 'REJECTED'].includes(taskStatus);
+  const showEmployeeStart = isAssignee && taskStatus === 'PENDING';
+  const showEmployeeSubmit = isAssignee && ['IN_PROGRESS', 'REJECTED'].includes(taskStatus);
+  const showAwaitingReview = taskStatus === 'SUBMITTED' && !isAssignee;
+  const showApproved = taskStatus === 'APPROVED';
+  const canReview = role === 'ADMIN' || role === 'MANAGER';
+  const canChangeStatus = role === 'ADMIN' || role === 'MANAGER';
+  const submissionDate = activeTask.updatedAt ?? activeTask.createdAt;
 
   function upsertChatMessage(message: ChatMessage) {
     setChatMessagesByTask((prev) => ({
@@ -741,7 +717,7 @@ function TaskDetailModal({
             )}
 
             {activeTab === 'chat' && (
-              <div className="flex h-[500px] flex-col">
+              <div className="flex h-125 flex-col">
                 <div className="mb-4 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-5">
                   {chatMessages.length === 0 ? (
                     <div className="flex h-full items-center justify-center text-sm text-slate-500">
@@ -806,7 +782,7 @@ function TaskDetailModal({
 
 export default function AllTasksPage() {
   const authSession = useAuthSession();
-  const { session } = useAuth();
+  const { session: _session } = useAuth();
   
   const role = authSession.role;
   const currentUserId = authSession.user?.id ?? null;
@@ -948,23 +924,18 @@ export default function AllTasksPage() {
   }
 
   async function handleReview(taskId: number, payload: { status: 'APPROVED' | 'REJECTED'; remarks: string }) {
-    console.log('[handleReview] Received payload:', payload);
     setBusy(true);
     try {
       const task = tasks.find(t => t.id === taskId);
       if (!task) return;
       
       const currentStatus = normalizeTaskStatus(task.status);
-      console.log('[handleReview] Current task status:', currentStatus);
-      console.log('[handleReview] Requested decision:', payload.status);
       
       if (currentStatus === 'APPROVED' || currentStatus === 'REJECTED') {
-        console.log('[handleReview] Task is already reviewed - skipping API request');
         return;
       }
       
       if (currentStatus !== 'SUBMITTED') {
-        console.log('[handleReview] Task status is not SUBMITTED - cannot review');
         return;
       }
       

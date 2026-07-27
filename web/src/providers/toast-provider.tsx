@@ -54,10 +54,6 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
   const timersRef = useRef<Record<string, number>>({});
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const dismiss = useCallback((id: string) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
     const timer = timersRef.current[id];
@@ -94,6 +90,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }), [dismiss, push]);
 
   useEffect(() => {
+    queueMicrotask(() => setMounted(true));
     globalToastApi = api;
     return () => {
       if (globalToastApi === api) {

@@ -12,7 +12,6 @@ import {
 
 import { Card } from '@/components/ui/card';
 import { Heading } from '@/components/typography/Heading';
-import { Text } from '@/components/typography/Text';
 import { Caption } from '@/components/typography/Caption';
 
 const stats = [

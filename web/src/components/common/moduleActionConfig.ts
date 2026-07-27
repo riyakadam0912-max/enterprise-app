@@ -148,11 +148,6 @@ export const MODULE_ACTION_CONFIG: Record<string, ModuleActionConfig> = {
     exportFileName: 'payroll',
     supportsImport: false,
   },
-  products: {
-    label: 'Products',
-    exportFileName: 'products',
-    supportsImport: false,
-  },
 };
 
 export function getModuleActionConfig(moduleKey: string): ModuleActionConfig {

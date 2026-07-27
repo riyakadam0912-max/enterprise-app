@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createExpense } from '@/api/expensesApi';
 import { uploadFile, type ManagedFile } from '@/api/filesApi';
-import { FormFileUpload } from '@/components/forms/FormFileUpload';
 import { FormProvider, useForm } from 'react-hook-form';
 
 const CATEGORIES = ['Office Supplies', 'Marketing', 'Utilities', 'Training', 'Travel', 'Other'];
@@ -27,7 +26,6 @@ export default function AddExpensePage() {
 
     const formData = new FormData(e.currentTarget);
     try {
-      let receiptImageUrl: string | undefined = undefined;
       if (receiptFile) {
         const uploadFormData = new FormData();
         uploadFormData.append('file', receiptFile);

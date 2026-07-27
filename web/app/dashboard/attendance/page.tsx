@@ -356,10 +356,15 @@ function EditAttendanceModal(props: {
 
   useEffect(() => {
     if (!record) return;
-    setDate(formatDateInput(record.date));
-    setCheckIn(formatTimeInput(record.checkIn));
-    setCheckOut(formatTimeInput(record.checkOut));
-    setStatus(record.status);
+
+    const timeout = window.setTimeout(() => {
+      setDate(formatDateInput(record.date));
+      setCheckIn(formatTimeInput(record.checkIn));
+      setCheckOut(formatTimeInput(record.checkOut));
+      setStatus(record.status);
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [record]);
 
   if (!record) return null;
@@ -478,9 +483,14 @@ export default function AttendancePage() {
 
   useEffect(() => {
     if (!actionMode) return;
-    setActionEmployeeId(employeeId || '');
-    checkInMutation.setError(null);
-    checkOutMutation.setError(null);
+
+    const timeout = window.setTimeout(() => {
+      setActionEmployeeId(employeeId || '');
+      checkInMutation.setError(null);
+      checkOutMutation.setError(null);
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [actionMode, employeeId, checkInMutation, checkOutMutation]);
 
   const employeeOptions = useMemo(
@@ -495,8 +505,8 @@ export default function AttendancePage() {
   const resolvedEmployeeId = myTodayRow?.employeeId ?? session.employeeId;
   const accountLinked = isAdmin || Boolean(resolvedEmployeeId) || today.error !== 'Your login is not linked to an employee profile yet.';
 
-  const alreadyCheckedIn = Boolean(myTodayRow?.checkIn);
-  const alreadyCheckedOut = Boolean(myTodayRow?.checkOut);
+  const _alreadyCheckedIn = Boolean(myTodayRow?.checkIn);
+  const _alreadyCheckedOut = Boolean(myTodayRow?.checkOut);
 
   async function handleActionSubmit() {
     try {

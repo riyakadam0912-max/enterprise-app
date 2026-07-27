@@ -76,8 +76,10 @@ export function AuthProvider({
           permissions: current.permissions,
 
           employeeId: current.employeeId,
-          
           organizationId: current.organizationId,
+          organizationSlug: current.organizationSlug,
+          isSuperAdmin: current.isSuperAdmin,
+          isPlatformAdmin: current.isPlatformAdmin,
 
         });
 
@@ -155,9 +157,14 @@ export function AuthProvider({
 
         employeeId:
           data.employeeId,
-          
         organizationId:
           data.organizationId,
+        organizationSlug:
+          data.organizationSlug,
+        isSuperAdmin:
+          data.isSuperAdmin,
+        isPlatformAdmin:
+          data.isPlatformAdmin,
 
       });
 

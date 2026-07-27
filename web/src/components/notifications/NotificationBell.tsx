@@ -153,7 +153,7 @@ export default function NotificationBell({ className = '' }: NotificationBellPro
               <div className="px-4 py-12 text-center">
                 <BellIcon className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                 <p className="text-sm text-slate-500 font-medium">No notifications</p>
-                <p className="text-xs text-slate-400 mt-1">You're all caught up!</p>
+                <p className="text-xs text-slate-400 mt-1">You&apos;re all caught up!</p>
               </div>
             ) : (
               <div className="divide-y divide-slate-100">

@@ -67,7 +67,11 @@ export default function SelectOrganizationPage() {
     try {
       setSubmitting(true);
       setActiveOrganization(selectedId);
-      router.push('/dashboard');
+      if (session.isSuperAdmin || session.role === 'SUPER_ADMIN') {
+        router.replace('/dashboard');
+      } else {
+        router.replace('/dashboard');
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to select organization');
     } finally {

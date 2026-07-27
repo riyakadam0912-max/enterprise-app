@@ -7,6 +7,9 @@ export interface Organization {
   slug: string;
   status: string;
   createdAt: string;
+  number?: string | null;
+  subscriptionPlan?: string | null;
+  adminUser?: string | null;
 }
 
 export async function listOrganizations(): Promise<Organization[]> {

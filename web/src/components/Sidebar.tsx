@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Link from 'next/link';
+import { ChevronLeft, ChevronRight, Menu } from 'lucide-react';
 import { logout } from '@/utils/logout';
 import { useAuthSession } from '@/stores/auth-store';
 
@@ -28,7 +29,6 @@ function EventsIcon()     { return <svg viewBox="0 0 24 24" className="w-4.25 h-
 function TrendingUpIcon() { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" {...stroke}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>; }
 function TagIcon()        { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" {...stroke}><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>; }
 function LeadsIcon()      { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" {...stroke}><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.58-7 8-7s8 3 8 7"/><path d="M18 14l2 2 4-4"/></svg>; }
-function ShoppingBagIcon()  { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>; }
 function CreditCardIcon()   { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>; }
 function BarChartIcon()     { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>; }
 function ShieldAlertIcon()  { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>; }
@@ -102,13 +102,6 @@ const navConfig: NavItem[] = [
     children: [
       { label: '+ New Quote', href: '/dashboard/quotes/add', icon: <PlusCircleIcon /> },
       { label: 'All Quotes',  href: '/dashboard/quotes',     icon: <ReportIcon /> },
-    ],
-  },
-  {
-    type: 'dropdown', id: 'products', label: 'Products', icon: <ShoppingBagIcon />,
-    children: [
-      { label: '+ Add Product',  href: '/dashboard/products/add', icon: <PlusCircleIcon /> },
-      { label: 'All Products',   href: '/dashboard/products',     icon: <ReportIcon /> },
     ],
   },
   {
@@ -280,6 +273,15 @@ export default function Sidebar({ currentPath }: SidebarProps) {
   const session = useAuthSession();
   const role = session.role;
   const currentUser = session.user;
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    return window.localStorage.getItem('sidebar-collapsed') === 'true';
+  });
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const closeMobile = useCallback(() => setMobileOpen(false), []);
   const [openMenu, setOpenMenu] = useState<string | null>(() => {
     const initialItems = role === 'EMPLOYEE'
       ? navConfig.filter((item) => EMPLOYEE_VISIBLE_LABELS.has(item.label))
@@ -290,6 +292,10 @@ export default function Sidebar({ currentPath }: SidebarProps) {
   });
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    window.localStorage.setItem('sidebar-collapsed', String(isCollapsed));
+  }, [isCollapsed]);
 
   const visibleNavConfig = useMemo(
     () => {
@@ -320,24 +326,96 @@ export default function Sidebar({ currentPath }: SidebarProps) {
     return () => document.removeEventListener('mousedown', onOutsideClick);
   }, []);
 
+  const touchStartX = useRef<number | null>(null);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMobileOpen(false);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (mobileOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [mobileOpen]);
+
+  useEffect(() => {
+    queueMicrotask(() => setMobileOpen(false));
+  }, [currentPath]);
+
+  const sidebarWidthClass = isCollapsed ? 'w-20' : 'w-72';
+
   return (
-    <aside key={role} className="sidebar-shell w-65 flex flex-col h-full overflow-hidden shrink-0">
+    <>
+      <button
+        type="button"
+        aria-label="Open navigation"
+        className="fixed left-4 top-4 z-50 rounded-full border border-slate-200 bg-white/90 p-2 shadow-sm backdrop-blur lg:hidden"
+        onClick={() => setMobileOpen(true)}
+      >
+        <Menu className="h-5 w-5 text-slate-700" />
+      </button>
 
-      {/* ── Brand ── */}
-      <div className="sidebar-brand px-5 py-4">
-        <div className="flex items-center gap-3">
-          <div className="sidebar-brand-mark w-9 h-9 bg-orange-500 rounded-xl flex items-center justify-center shrink-0">
-            <span className="text-white text-base font-bold">E</span>
+      {mobileOpen ? (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          className="fixed inset-0 z-40 bg-slate-950/50 lg:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      ) : null}
+
+      <aside
+        key={role}
+        className={`sidebar-shell ${sidebarWidthClass} fixed inset-y-0 left-0 z-50 flex h-screen flex-col overflow-hidden border-r border-slate-800/70 shadow-2xl transition-all duration-300 ease-out lg:static lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
+        onTouchStart={(event) => {
+          touchStartX.current = event.touches[0]?.clientX ?? null;
+        }}
+        onTouchEnd={(event) => {
+          if (touchStartX.current == null) {
+            return;
+          }
+          const delta = (event.changedTouches[0]?.clientX ?? 0) - touchStartX.current;
+          if (delta > 60) {
+            setMobileOpen(true);
+          } else if (delta < -60) {
+            setMobileOpen(false);
+          }
+          touchStartX.current = null;
+        }}
+      >
+        <div className="sidebar-brand flex items-center justify-between px-4 py-4 lg:px-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="sidebar-brand-mark flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-500">
+              <span className="text-base font-bold text-white">E</span>
+            </div>
+            <div className={`min-w-0 transition-all duration-300 ${isCollapsed ? 'hidden' : 'block'}`}>
+              <p className="sidebar-brand-title truncate">Enterprise</p>
+              <p className="sidebar-brand-subtitle">Management System</p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="sidebar-brand-title truncate">Enterprise</p>
-            <p className="sidebar-brand-subtitle">Management System</p>
-          </div>
+          <button
+            type="button"
+            aria-label={isCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+            className="hidden rounded-full border border-slate-700/70 p-1.5 text-slate-300 transition hover:bg-slate-800 lg:inline-flex"
+            onClick={() => setIsCollapsed((value) => !value)}
+          >
+            {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          </button>
         </div>
-      </div>
 
-      {/* ── Navigation ── */}
-<nav className="sidebar-nav flex-1 overflow-y-auto py-3 px-2.5 scrollbar-hide">
+        {/* ── Navigation ── */}
+        <nav className="sidebar-nav flex-1 overflow-y-auto py-3 px-2.5 scrollbar-hide">
   {visibleNavConfig.map((item) => {
 
     // ── Flat link ──
@@ -355,9 +433,11 @@ export default function Sidebar({ currentPath }: SidebarProps) {
               ? 'sidebar-item--active'
               : ''
           }`}
+          title={isCollapsed ? item.label : undefined}
+          onClick={closeMobile}
         >
           {item.icon}
-          {item.label}
+          <span className={`truncate transition-all duration-300 ${isCollapsed ? 'hidden' : 'inline'}`}>{item.label}</span>
         </Link>
       );
     }
@@ -381,15 +461,16 @@ export default function Sidebar({ currentPath }: SidebarProps) {
                 ? 'sidebar-item--open'
                 : ''
           }`}
+          title={isCollapsed ? item.label : undefined}
         >
           {item.icon}
-          <span className="flex-1 text-left">{item.label}</span>
+          <span className={`flex-1 text-left transition-all duration-300 ${isCollapsed ? 'hidden' : 'inline'}`}>{item.label}</span>
           <ChevronRightIcon
             className={`sidebar-chevron transition-transform duration-200 ${
               isOpen ? 'rotate-90' : ''
             } ${
               isAnyChildActive && !isOpen ? 'sidebar-chevron--active' : ''
-            }`}
+            } ${isCollapsed ? 'hidden' : ''}`}
           />
         </button>
 
@@ -414,6 +495,8 @@ export default function Sidebar({ currentPath }: SidebarProps) {
                       ? 'sidebar-subitem--active'
                       : ''
                   }`}
+                  title={isCollapsed ? child.label : undefined}
+                  onClick={closeMobile}
                 >
                   {child.icon ? (
                     <span className="sidebar-subitem-icon">
@@ -426,7 +509,7 @@ export default function Sidebar({ currentPath }: SidebarProps) {
                       }`}
                     />
                   )}
-                  {child.label}
+                  <span className={`truncate transition-all duration-300 ${isCollapsed ? 'hidden' : 'inline'}`}>{child.label}</span>
                 </Link>
               );
             })}
@@ -450,6 +533,7 @@ export default function Sidebar({ currentPath }: SidebarProps) {
           <Link
             href="/dashboard/profile"
             className="sidebar-user-link"
+            onClick={closeMobile}
           >
             <svg viewBox="0 0 24 24" className="w-4 h-4 shrink-0" {...stroke}><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             Profile
@@ -469,12 +553,13 @@ export default function Sidebar({ currentPath }: SidebarProps) {
           className={`sidebar-user-trigger w-full px-3 py-2 ${
             userMenuOpen ? 'sidebar-user-trigger--open' : ''
           }`}
+          title={isCollapsed ? currentUser?.name ?? 'User' : undefined}
         >
           <div className="sidebar-user-avatar relative w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center shrink-0">
             <span className="text-white text-xs font-bold">{(currentUser?.name?.charAt(0) ?? 'U').toUpperCase()}</span>
             <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-[#111827]" />
           </div>
-          <div className="flex-1 text-left min-w-0 leading-tight">
+          <div className={`flex-1 text-left min-w-0 leading-tight transition-all duration-300 ${isCollapsed ? 'hidden' : 'block'}`}>
             <p className="sidebar-user-name truncate">{currentUser?.name ?? 'User'}</p>
             <p className="sidebar-user-role truncate">
               {currentUser?.jobTitle ?? currentUser?.designation ?? currentUser?.position ?? currentUser?.role ?? role}
@@ -491,5 +576,6 @@ export default function Sidebar({ currentPath }: SidebarProps) {
       </div>
 
     </aside>
+    </>
   );
 }

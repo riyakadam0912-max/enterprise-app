@@ -23,6 +23,9 @@ export type AuthSession = {
   user: AuthUser | null;
   employeeId: number | null;
   organizationId: number | null;
+  organizationSlug: string | null;
+  isSuperAdmin: boolean;
+  isPlatformAdmin: boolean;
 };
 
 type AuthSessionInput = {
@@ -32,6 +35,9 @@ type AuthSessionInput = {
   user?: AuthUser | null;
   employeeId?: number | string | null;
   organizationId?: number | string | null;
+  organizationSlug?: string | null;
+  isSuperAdmin?: boolean;
+  isPlatformAdmin?: boolean;
 };
 
 const AUTH_STATE_EVENT = 'enterprise-auth-state-change';
@@ -44,6 +50,9 @@ const SERVER_AUTH_SESSION: AuthSession = Object.freeze({
   user: null,
   employeeId: null,
   organizationId: null,
+  organizationSlug: null,
+  isSuperAdmin: false,
+  isPlatformAdmin: false,
 });
 
 let cachedSession: AuthSession = SERVER_AUTH_SESSION;
@@ -100,6 +109,9 @@ function loadSessionFromStorage(): AuthSession {
       role: normalizeRole(parsed.role),
       employeeId: parseEmployeeId(parsed.employeeId == null ? null : String(parsed.employeeId)),
       organizationId: parseOrganizationId(parsed.organizationId == null ? null : String(parsed.organizationId)),
+      organizationSlug: parsed.organizationSlug ?? null,
+      isSuperAdmin: parsed.isSuperAdmin === true,
+      isPlatformAdmin: parsed.isPlatformAdmin === true,
     };
   } catch (e) {
     console.warn('[auth-store] Failed to load session from storage:', e);
@@ -156,6 +168,9 @@ export function setAuthSession(session: AuthSessionInput): void {
     user: session.user ?? null,
     employeeId: parseEmployeeId(session.employeeId == null ? null : String(session.employeeId)),
     organizationId: parseOrganizationId(session.organizationId == null ? null : String(session.organizationId)),
+    organizationSlug: session.organizationSlug ?? null,
+    isSuperAdmin: session.isSuperAdmin === true,
+    isPlatformAdmin: session.isPlatformAdmin === true,
   };
 
   saveSessionToStorage(cachedSession);
@@ -195,6 +210,26 @@ export function setActiveOrganization(organizationId: number): void {
   cachedSession = {
     ...cachedSession,
     organizationId: Number.isFinite(organizationId) ? organizationId : null,
+  };
+
+  saveSessionToStorage(cachedSession);
+  notifyAuthStateChange();
+}
+
+export function clearActiveOrganization(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.sessionStorage.removeItem('activeOrganization');
+  } catch (e) {
+    console.warn('[auth-store] Failed to clear active organization:', e);
+  }
+
+  cachedSession = {
+    ...cachedSession,
+    organizationId: null,
   };
 
   saveSessionToStorage(cachedSession);

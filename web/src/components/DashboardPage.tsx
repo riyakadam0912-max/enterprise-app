@@ -7,7 +7,6 @@ import { DashboardStats, getDashboardStats } from '@/api/dashboardApi';
 import { checkIn, checkOut, getMyAttendanceSnapshot, getTodayAttendance, type MyAttendanceResponse, type TodayAttendanceResponse } from '@/api/attendanceApi';
 import { getEmployee, getEmployees, type Employee } from '@/api/employeesApi';
 import { getLeaveRequests, type LeaveRequest } from '@/api/leaveRequestsApi';
-import { getEmployeePayslips } from '@/api/payrollApi';
 import { getTasks, type Task } from '@/api/tasksApi';
 import { formatInrCurrency } from '@/utils/formatCurrency';
 import { useAnalyticsSummary } from '@/hooks/useAnalyticsSummary';
@@ -142,7 +141,6 @@ function AdminDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [statsError, setStatsError] = useState<string | null>(null);
   const todayAttendance = useTodayAttendance();
-  const attendanceSummary = useAttendanceSummary(new Date().toISOString().slice(0, 7));
   const analyticsSummary = useAnalyticsSummary();
 
   const refreshAnalytics = useCallback(() => {
@@ -161,9 +159,23 @@ function AdminDashboard() {
   );
 
   useEffect(() => {
-    getDashboardStats()
-      .then(setStats)
-      .catch((err) => setStatsError(err instanceof Error ? err.message : 'Failed to load dashboard stats'));
+    let active = true;
+    const timeout = window.setTimeout(() => {
+      void getDashboardStats()
+        .then((nextStats) => {
+          if (!active) return;
+          setStats(nextStats);
+        })
+        .catch((err) => {
+          if (!active) return;
+          setStatsError(err instanceof Error ? err.message : 'Failed to load dashboard stats');
+        });
+    }, 0);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
   }, []);
 
   if (!stats && !statsError) {
@@ -306,7 +318,7 @@ function ManagerDashboard() {
   }, []);
 
   useEffect(() => {
-    void loadDashboard();
+    queueMicrotask(() => void loadDashboard());
   }, [loadDashboard]);
 
   const reviewQueue = useMemo(() => sortByDueDate(tasks).filter((task) => normalizeTaskStatus(task.status) === 'SUBMITTED').slice(0, 6), [tasks]);

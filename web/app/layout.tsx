@@ -4,7 +4,7 @@ import "./globals.css";
 import ReactQueryProvider from "@/components/providers/ReactQueryProvider";
 import BackendHealthProvider from "@/components/providers/BackendHealthProvider";
 import { DesignSystemProvider } from "@/providers/design-system-provider";
-import { AuthProvider } from '@/providers/AuthProvider';import { OrganizationProvider } from '@/context/OrganizationContext';
+import { AuthProvider } from '@/providers/AuthProvider';
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],

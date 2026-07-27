@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 
 type Org = { id: number; name: string } | null;
 
@@ -11,17 +11,18 @@ type OrgContext = {
 const OrganizationContext = createContext<OrgContext | undefined>(undefined);
 
 export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [activeOrganization, setActiveOrganizationState] = useState<Org>(null);
+  const [activeOrganization, setActiveOrganizationState] = useState<Org>(() => {
+    if (typeof window === 'undefined') return null;
 
-  useEffect(() => {
-    // Hydration: read from sessionStorage if present
-    const raw = sessionStorage.getItem('activeOrganization');
-    if (raw) {
-      try {
-        setActiveOrganizationState(JSON.parse(raw));
-      } catch {}
+    const raw = window.sessionStorage.getItem('activeOrganization');
+    if (!raw) return null;
+
+    try {
+      return JSON.parse(raw) as Org;
+    } catch {
+      return null;
     }
-  }, []);
+  });
 
   const setActiveOrganization = (org: Org) => {
     setActiveOrganizationState(org);

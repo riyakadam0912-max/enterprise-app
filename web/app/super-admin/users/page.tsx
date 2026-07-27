@@ -1,6 +1,6 @@
 'use client';
 
-import { Search, Filter } from 'lucide-react';
+import { Search } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
 import { Heading } from '@/components/typography/Heading';

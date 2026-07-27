@@ -4,7 +4,9 @@ import { useEffect, useState, useTransition } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import Topbar from '@/components/Topbar';
+import ImpersonationBanner from '@/components/super-admin/ImpersonationBanner';
 import { useAuth } from '@/providers/AuthProvider';
+import { getActiveOrganizationId } from '@/stores/auth-store';
 
 const EMPLOYEE_ALLOWED_EXACT_PATHS = ['/dashboard'];
 const EMPLOYEE_ALLOWED_PATH_PREFIXES = [
@@ -60,6 +62,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
 
     const role = session.role;
+    const isSuperAdmin = role === 'SUPER_ADMIN' || session.isSuperAdmin;
+    const isImpersonating = isSuperAdmin && getActiveOrganizationId() != null;
+
+    if (isSuperAdmin && !isImpersonating) {
+      router.replace('/super-admin/dashboard');
+      return;
+    }
 
     if (role === 'EMPLOYEE' && !isEmployeePathAllowed(pathname)) {
       router.replace('/dashboard');
@@ -72,7 +81,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
 
     startTransition(() => setChecked(true));
-  }, [authenticated, loading, pathname, router, session.role, startTransition]);
+  }, [authenticated, loading, pathname, router, session.role, session.isSuperAdmin, startTransition]);
 
   if (loading || !checked) {
     return (
@@ -88,6 +97,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="flex flex-col flex-1 overflow-hidden">
         <Topbar />
         <main className="flex-1 overflow-y-auto">
+          <ImpersonationBanner />
           {children}
         </main>
       </div>

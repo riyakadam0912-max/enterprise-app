@@ -171,7 +171,11 @@ export default function NotificationAdminPage() {
   }, []);
 
   useEffect(() => {
-    loadData();
+    const timeout = window.setTimeout(() => {
+      void loadData();
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [activeTab, loadData]);
 
   const getStatusColor = (status: string) => {
@@ -187,13 +191,11 @@ export default function NotificationAdminPage() {
     }
   };
 
-  const handleRetry = async (logId: number) => {
-    console.log('Retrying notification:', logId);
+  const handleRetry = async (_logId: number) => {
     // Implement retry logic
   };
 
   const handleRetryAll = async () => {
-    console.log('Retrying all failed notifications');
     // Implement retry all logic
   };
 

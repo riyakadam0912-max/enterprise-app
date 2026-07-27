@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useForm, FormProvider } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Eye, EyeOff, Lock, User } from 'lucide-react';
+import { Lock, User } from 'lucide-react';
 
 import { useAuth } from '@/providers/AuthProvider';
 import { getAuthSessionSnapshot } from '@/stores/auth-store';
@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/typography/Label';
 import { Heading } from '@/components/typography/Heading';
 import { Caption } from '@/components/typography/Caption';
+import { PasswordInput } from '@/components/ui/password-input';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -26,7 +27,6 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 export default function SuperAdminLoginPage() {
   const router = useRouter();
   const { login } = useAuth();
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -45,6 +45,10 @@ export default function SuperAdminLoginPage() {
     try {
       await login(values.email, values.password);
       const snapshot = getAuthSessionSnapshot();
+      if (snapshot.isSuperAdmin || snapshot.role === 'SUPER_ADMIN') {
+        router.replace('/super-admin/dashboard');
+        return;
+      }
       const needsOrganizationSelection = snapshot.organizationId == null;
       if (needsOrganizationSelection) {
         router.push('/select-organization');
@@ -98,20 +102,12 @@ export default function SuperAdminLoginPage() {
               <Label htmlFor="password">Password</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <Input
+                <PasswordInput
                   id="password"
-                  type={showPassword ? 'text' : 'password'}
                   placeholder="••••••••"
                   className="pl-10 pr-10"
                   {...methods.register('password')}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
               </div>
               {methods.formState.errors.password && (
                 <Caption className="text-rose-600">

@@ -22,9 +22,8 @@ export default function ESSPayslipsPage() {
     }
   };
 
-  const handleDownload = (id: number) => {
+  const handleDownload = (_id: number) => {
     // Generate PDF or download functionality
-    console.log('Download payslip:', id);
   };
 
   return (
