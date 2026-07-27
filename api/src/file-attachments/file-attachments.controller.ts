@@ -28,16 +28,14 @@ import {
 } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../common/types/request';
 
-if (!existsSync(FILE_ATTACHMENT_UPLOAD_ROOT)) {
-  mkdirSync(FILE_ATTACHMENT_UPLOAD_ROOT, { recursive: true });
-}
-
 @UseGuards(JwtAuthGuard)
 @ApiTags('System - File Attachments')
 @ApiBearerAuth()
 @Controller('file-attachments')
 export class FileAttachmentsController {
-  constructor(private readonly fileAttachmentsService: FileAttachmentsService) {}
+  constructor(
+    private readonly fileAttachmentsService: FileAttachmentsService,
+  ) {}
 
   @ApiOperation({ summary: 'POST upload' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
@@ -48,7 +46,12 @@ export class FileAttachmentsController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
-        destination: FILE_ATTACHMENT_UPLOAD_ROOT,
+        destination: (_req, _file, cb) => {
+          if (!existsSync(FILE_ATTACHMENT_UPLOAD_ROOT)) {
+            mkdirSync(FILE_ATTACHMENT_UPLOAD_ROOT, { recursive: true });
+          }
+          cb(null, FILE_ATTACHMENT_UPLOAD_ROOT);
+        },
         filename: (_req, file, cb) => {
           const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
           cb(null, `${uniqueSuffix}${extname(file.originalname)}`);
