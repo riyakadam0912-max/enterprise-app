@@ -33,14 +33,6 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       if (request.__isPlatformAdmin === true) {
         user.isPlatformAdmin = true;
       }
-
-      console.error(
-        `[DEBUG JWT-GUARD] url=${request.path} final: userId=${user.userId ?? user.id} ` +
-          `role=${user.role} roles=${JSON.stringify(user.roles ?? [])} ` +
-          `permissions.length=${(user.permissions ?? []).length} ` +
-          `orgId=${user.organizationId ?? 'null'} empId=${user.employeeId ?? 'null'} ` +
-          `isPlatformAdmin=${user.isPlatformAdmin}`,
-      );
     }
 
     return canActivate;

@@ -5,7 +5,8 @@ const { banner, COLORS, ensurePortsFree, logStep } = devUtils;
 
 async function waitForBackend(timeoutMs = 120000, intervalMs = 1500) {
   const startedAt = Date.now();
-  const healthUrl = 'http://127.0.0.1:3000/api/v1/health';
+  const apiOrigin = (process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:3000').replace(/\/$/, '');
+  const healthUrl = `${apiOrigin}/api/v1/health`;
 
   logStep('WEB', `Waiting for backend health at ${healthUrl}`, COLORS.cyan);
 

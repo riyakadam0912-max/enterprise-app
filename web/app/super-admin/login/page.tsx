@@ -8,7 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Lock, User } from 'lucide-react';
 
 import { useAuth } from '@/providers/AuthProvider';
-import { getAuthSessionSnapshot } from '@/stores/auth-store';
+import { getAuthSessionSnapshot, isSuperAdminSession } from '@/stores/auth-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/typography/Label';
@@ -45,7 +45,7 @@ export default function SuperAdminLoginPage() {
     try {
       await login(values.email, values.password);
       const snapshot = getAuthSessionSnapshot();
-      if (snapshot.isSuperAdmin || snapshot.role === 'SUPER_ADMIN') {
+      if (isSuperAdminSession(snapshot)) {
         router.replace('/super-admin/dashboard');
         return;
       }

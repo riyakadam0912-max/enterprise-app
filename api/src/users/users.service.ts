@@ -4,8 +4,10 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { Role } from '../common/enums/role.enum';
 import { AuthUser } from '../common/types/auth';
 import { hashPassword } from './utils/hash-password';
@@ -64,16 +66,45 @@ export class UsersService {
 
     const hashedPassword = await hashPassword(createUserDto.password);
 
-    return this.prisma.user.create({
-      data: {
-        organizationId,
-        name: createUserDto.name,
-        email: createUserDto.email,
-        password: hashedPassword,
-        role: createUserDto.role,
-        employeeId: createUserDto.employeeId,
-        managerId: createUserDto.managerId,
-      },
+    try {
+      return await this.prisma.user.create({
+        data: {
+          organizationId,
+          name: createUserDto.name,
+          email: createUserDto.email,
+          password: hashedPassword,
+          role: createUserDto.role,
+          employeeId: createUserDto.employeeId,
+          managerId: createUserDto.managerId,
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          isActive: true,
+          employeeId: true,
+          managerId: true,
+          manager: { select: { id: true, name: true } },
+          createdAt: true,
+        },
+      });
+    } catch (err: unknown) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException('Email already in use');
+      }
+      throw err;
+    }
+  }
+
+  async findAll(user: AuthUser) {
+    const organizationId = this.validateOrganization(user);
+    return this.prisma.user.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: 'desc' },
       select: {
         id: true,
         name: true,
@@ -88,11 +119,286 @@ export class UsersService {
     });
   }
 
-  async findAll(user: AuthUser) {
+  async findOne(id: number, user: AuthUser) {
     const organizationId = this.validateOrganization(user);
-    return this.prisma.user.findMany({
-      where: { organizationId },
-      orderBy: { createdAt: 'desc' },
+    const existing = await this.prisma.user.findFirst({
+      where: { id, organizationId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        employeeId: true,
+        managerId: true,
+        manager: { select: { id: true, name: true } },
+        createdAt: true,
+      },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('User not found');
+    }
+
+    return existing;
+  }
+
+  async update(id: number, updateUserDto: UpdateUserDto, user: AuthUser) {
+    const organizationId = this.validateOrganization(user);
+    const existing = await this.prisma.user.findFirst({
+      where: { id, organizationId },
+    });
+    if (!existing) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (updateUserDto.email && updateUserDto.email !== existing.email) {
+      const duplicate = await this.prisma.user.findFirst({
+        where: { email: updateUserDto.email, NOT: { id } },
+      });
+      if (duplicate) {
+        throw new ConflictException('Email already in use');
+      }
+    }
+
+    const data: Record<string, unknown> = {};
+    if (updateUserDto.name !== undefined) data.name = updateUserDto.name;
+    if (updateUserDto.email !== undefined) data.email = updateUserDto.email;
+    if (updateUserDto.role !== undefined) data.role = updateUserDto.role;
+    if (updateUserDto.employeeId !== undefined)
+      data.employeeId = updateUserDto.employeeId;
+    if (updateUserDto.managerId !== undefined)
+      data.managerId = updateUserDto.managerId;
+    if (updateUserDto.organizationId !== undefined)
+      data.organizationId = updateUserDto.organizationId;
+    if (updateUserDto.isActive !== undefined)
+      data.isActive = updateUserDto.isActive;
+    if (updateUserDto.password) {
+      data.password = await hashPassword(updateUserDto.password);
+    }
+
+    try {
+      return await this.prisma.user.update({
+        where: { id },
+        data,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          isActive: true,
+          employeeId: true,
+          managerId: true,
+          manager: { select: { id: true, name: true } },
+          createdAt: true,
+        },
+      });
+    } catch (err: unknown) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException('Email already in use');
+      }
+      throw err;
+    }
+  }
+
+  async remove(id: number, user: AuthUser) {
+    const organizationId = this.validateOrganization(user);
+    const existing = await this.prisma.user.findFirst({
+      where: { id, organizationId },
+    });
+    if (!existing) {
+      throw new NotFoundException('User not found');
+    }
+
+    await this.prisma.user.delete({ where: { id } });
+    return { success: true, message: 'User deleted successfully' };
+  }
+
+  async activate(id: number, user: AuthUser) {
+    const organizationId = this.validateOrganization(user);
+    const existing = await this.prisma.user.findFirst({
+      where: { id, organizationId },
+    });
+    if (!existing) {
+      throw new NotFoundException('User not found');
+    }
+
+    return this.prisma.user.update({
+      where: { id },
+      data: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        employeeId: true,
+        managerId: true,
+        manager: { select: { id: true, name: true } },
+        createdAt: true,
+      },
+    });
+  }
+
+  async deactivate(id: number, user: AuthUser) {
+    const organizationId = this.validateOrganization(user);
+    const existing = await this.prisma.user.findFirst({
+      where: { id, organizationId },
+    });
+    if (!existing) {
+      throw new NotFoundException('User not found');
+    }
+
+    return this.prisma.user.update({
+      where: { id },
+      data: { isActive: false },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        employeeId: true,
+        managerId: true,
+        manager: { select: { id: true, name: true } },
+        createdAt: true,
+      },
+    });
+  }
+
+  async resetPassword(id: number, password: string, user: AuthUser) {
+    const organizationId = this.validateOrganization(user);
+    const existing = await this.prisma.user.findFirst({
+      where: { id, organizationId },
+    });
+    if (!existing) {
+      throw new NotFoundException('User not found');
+    }
+
+    const hashedPassword = await hashPassword(password);
+    await this.prisma.user.update({
+      where: { id },
+      data: { password: hashedPassword },
+    });
+    return { success: true, message: 'Password reset successfully' };
+  }
+
+  async unlock(id: number, user: AuthUser) {
+    const organizationId = this.validateOrganization(user);
+    const existing = await this.prisma.user.findFirst({
+      where: { id, organizationId },
+    });
+    if (!existing) {
+      throw new NotFoundException('User not found');
+    }
+
+    return this.prisma.user.update({
+      where: { id },
+      data: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        employeeId: true,
+        managerId: true,
+        manager: { select: { id: true, name: true } },
+        createdAt: true,
+      },
+    });
+  }
+
+  async assignOrganization(id: number, organizationId: number, user: AuthUser) {
+    const currentOrganizationId = this.validateOrganization(user);
+    const existing = await this.prisma.user.findFirst({
+      where: { id, organizationId: currentOrganizationId },
+    });
+    if (!existing) {
+      throw new NotFoundException('User not found');
+    }
+
+    return this.prisma.user.update({
+      where: { id },
+      data: { organizationId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        employeeId: true,
+        managerId: true,
+        manager: { select: { id: true, name: true } },
+        createdAt: true,
+      },
+    });
+  }
+
+  async assignRoles(id: number, roleIds: number[], user: AuthUser) {
+    const organizationId = this.validateOrganization(user);
+    const existing = await this.prisma.user.findFirst({
+      where: { id, organizationId },
+    });
+    if (!existing) {
+      throw new NotFoundException('User not found');
+    }
+
+    const roles = await this.prisma.appRole.findMany({
+      where: { id: { in: roleIds } },
+      select: { id: true },
+    });
+    if (roles.length !== roleIds.length) {
+      throw new NotFoundException('One or more roles were not found');
+    }
+
+    await this.prisma.userRole.deleteMany({ where: { userId: id } });
+    await this.prisma.userRole.createMany({
+      data: roleIds.map((roleId) => ({ userId: id, roleId })),
+    });
+
+    return { success: true, message: 'Roles assigned successfully' };
+  }
+
+  async assignDepartment(id: number, department: string, user: AuthUser) {
+    const organizationId = this.validateOrganization(user);
+    const existing = await this.prisma.user.findFirst({
+      where: { id, organizationId },
+    });
+    if (!existing) {
+      throw new NotFoundException('User not found');
+    }
+
+    return this.prisma.user.update({
+      where: { id },
+      data: { role: existing.role },
+    });
+  }
+
+  async assignManager(id: number, managerId: number | null, user: AuthUser) {
+    const organizationId = this.validateOrganization(user);
+    const existing = await this.prisma.user.findFirst({
+      where: { id, organizationId },
+    });
+    if (!existing) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (managerId) {
+      const manager = await this.prisma.user.findFirst({
+        where: { id: managerId, organizationId },
+      });
+      if (!manager) {
+        throw new NotFoundException('Manager user not found');
+      }
+    }
+
+    return this.prisma.user.update({
+      where: { id },
+      data: { managerId },
       select: {
         id: true,
         name: true,

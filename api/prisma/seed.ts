@@ -416,6 +416,44 @@ async function createEmployeesUsersAndTeams(shiftId: number) {
     records.push({ employee, user, department: dept, isManager: false });
   }
 
+  // Create dedicated HR user (1 total)
+  const hrEmployee = await prisma.employee.create({
+    data: {
+      name: 'HR User',
+      email: 'hr@enterprise.local',
+      phone: randomPhone(),
+      position: 'HR Manager',
+      designation: 'HR Manager',
+      department: 'HR',
+      salary: randomFloat(70000, 120000),
+      hireDate: addDays(new Date(), -randomInt(60, 900)),
+      leaveBalance: randomInt(6, 24),
+      status: 'Active',
+      pan: `PAN${randomInt(100000, 999999)}`,
+      shiftId,
+      organizationId: defaultOrganization.id,
+    },
+  });
+
+  const hrUser = await prisma.user.create({
+    data: {
+      name: hrEmployee.name,
+      email: 'hr@enterprise.local',
+      password: userPasswordHash,
+      role: Role.HR,
+      isActive: true,
+      employeeId: hrEmployee.id,
+      organizationId: defaultOrganization.id,
+    },
+  });
+
+  records.push({
+    employee: hrEmployee,
+    user: hrUser,
+    department: 'HR',
+    isManager: false,
+  });
+
   return {
     records,
     terminatedEmployeeIds: [],
@@ -639,6 +677,7 @@ async function createAttendanceHistory(
         }
 
         rows.push({
+          organizationId: 1,
           employeeId: record.employee.id,
           shiftId,
           date: startOfDay(current),

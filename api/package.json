@@ -28,7 +28,14 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "dotenv -e .env.test -- jest --config ./test/jest-e2e.json",
     "seed": "ts-node prisma/seed.ts",
-    "repair-passwords": "ts-node scripts/repair-passwords.ts"
+    "check-user": "node scripts/check-user.js",
+    "list-users": "node scripts/list-users.js",
+    "inspect:orgs": "node scripts/inspect-orgs.js",
+    "dashboard:test": "node scripts/dashboard-smoke-test.js",
+    "verify:leave": "node scripts/verify-leave-workflow.js",
+    "repair-passwords": "ts-node scripts/repair-passwords.ts",
+    "email:render": "ts-node scripts/render-email-template.ts",
+    "email:test": "ts-node scripts/send-test-email.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

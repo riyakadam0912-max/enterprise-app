@@ -305,6 +305,9 @@ export default function Sidebar({ currentPath }: SidebarProps) {
       if (role === 'MANAGER') {
         return navConfig.filter((item) => MANAGER_VISIBLE_LABELS.has(item.label));
       }
+      if (role === 'HR') {
+        return navConfig.filter((item) => item.label !== 'User Management');
+      }
       return navConfig;
     },
     [role],

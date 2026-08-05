@@ -13,6 +13,7 @@ import type { AuthUser } from '../types/auth';
 interface RequestWithUser {
   user?: AuthUser;
   url: string;
+  method?: string;
 }
 
 @Injectable()

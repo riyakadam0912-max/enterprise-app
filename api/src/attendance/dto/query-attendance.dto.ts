@@ -8,7 +8,7 @@ import {
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
-const STATUSES = ['PRESENT', 'ABSENT', 'HALF_DAY', 'LEAVE'] as const;
+const STATUSES = ['PRESENT', 'ABSENT', 'HALF_DAY', 'LEAVE', 'LATE'] as const;
 
 export class QueryAttendanceDto {
   @IsOptional()
@@ -38,6 +38,18 @@ export class QueryAttendanceDto {
   @IsDateString()
   @ApiPropertyOptional({ example: '2026-04-14' })
   date?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @ApiPropertyOptional({ example: 2026 })
+  year?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @ApiPropertyOptional({ example: 8 })
+  month?: number;
 
   @IsOptional()
   @IsIn(STATUSES)

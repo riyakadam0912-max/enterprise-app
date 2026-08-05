@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '@/providers/AuthProvider';
-import { useAuthSession, clearAuthSession } from '@/stores/auth-store';
+import { useAuthSession, clearAuthSession, isSuperAdminSession } from '@/stores/auth-store';
 import { Heading } from '@/components/typography/Heading';
 import { Caption } from '@/components/typography/Caption';
 
@@ -58,13 +58,13 @@ export default function SuperAdminLayout({
       return;
     }
 
-    if (session.role !== 'SUPER_ADMIN' && !session.isSuperAdmin) {
+    if (!isSuperAdminSession(session)) {
       router.replace('/dashboard');
       return;
     }
 
     startTransition(() => setChecked(true));
-  }, [authenticated, loading, pathname, router, session.role, session.isSuperAdmin, startTransition]);
+  }, [authenticated, loading, pathname, router, session, session.role, session.roles, session.isSuperAdmin, session.isPlatformAdmin, startTransition]);
 
   const handleLogout = async () => {
     await logout();

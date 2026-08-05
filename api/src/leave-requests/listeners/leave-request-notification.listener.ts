@@ -52,11 +52,14 @@ export class LeaveRequestNotificationListener {
       `${event.leaveType} leave from ${event.startDate.toDateString()} to ${leaveEndDate.toDateString()}. ` +
       `Reason: ${event.reason || 'Not specified'}`;
 
-    await this.notificationsService.create({
-      userId: event.managerId ?? undefined,
-      title: `Review Leave Request - ${event.employeeName}`,
-      message: notificationMessage,
-    });
+    await this.notificationsService.create(
+      {
+        userId: event.managerId ?? undefined,
+        title: `Review Leave Request - ${event.employeeName}`,
+        message: notificationMessage,
+      },
+      event.organizationId,
+    );
 
     this.logger.log(`Notification created for manager ID: ${event.managerId}`);
   }
@@ -71,7 +74,7 @@ export class LeaveRequestNotificationListener {
       return;
     }
 
-    const managerEmail = event.employeeEmail || 'manager@company.com';
+    const managerEmail = event.managerEmail || 'manager@company.com';
 
     await this.mailService.sendLeaveRequestNotification(
       managerEmail,

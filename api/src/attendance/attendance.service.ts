@@ -285,18 +285,24 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     return linked.employeeId;
   }
 
+  private shouldUseCrossOrganizationScope(user: AttendanceUser) {
+    return user.role === Role.SUPER_ADMIN;
+  }
+
+  private buildOrganizationScope(user: AttendanceUser) {
+    if (this.shouldUseCrossOrganizationScope(user)) {
+      return {};
+    }
+
+    return { organizationId: user.organizationId };
+  }
+
   private async resolveScopedEmployeeId(
     user: AttendanceUser,
     requestedEmployeeId?: number | null,
   ) {
-    if (user.role === Role.ADMIN || user.role === Role.HR) {
-      if (!requestedEmployeeId) {
-        throw new BadRequestException('employeeId is required');
-      }
-      return requestedEmployeeId;
-    }
-
     const employeeId = await this.resolveCurrentEmployeeId(user);
+
     if (requestedEmployeeId && requestedEmployeeId !== employeeId) {
       throw new ForbiddenException('You can only access your own attendance');
     }
@@ -320,7 +326,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     user?: AttendanceUser,
     requestedEmployeeId?: number,
   ): Promise<number[] | null> {
-    if (!user || user.role === Role.ADMIN || user.role === Role.HR) {
+    if (
+      !user ||
+      user.role === Role.ADMIN ||
+      user.role === Role.HR ||
+      user.role === Role.SUPER_ADMIN
+    ) {
       return requestedEmployeeId ? [requestedEmployeeId] : null;
     }
 
@@ -348,8 +359,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const employee = await this.prisma.employee.findFirst({
       where: {
         id: employeeId,
-        organizationId: user.organizationId,
         deletedAt: null,
+        ...this.buildOrganizationScope(user),
       },
       include: { shift: true },
     });
@@ -637,7 +648,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   ) {
     const employees = await this.prisma.employee.findMany({
       where: {
-        organizationId: user.organizationId,
+        ...this.buildOrganizationScope(user),
         ...(employeeIds ? { id: { in: employeeIds } } : {}),
       },
       orderBy: { name: 'asc' },
@@ -796,7 +807,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     }
 
     const employee = await this.prisma.employee.findFirst({
-      where: { id: employeeId, organizationId: user.organizationId },
+      where: {
+        id: employeeId,
+        ...this.buildOrganizationScope(user),
+      },
       include: { shift: true },
     });
 
@@ -968,7 +982,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     const where = {
       date: { gte: monthStart, lte: monthEnd },
-      organizationId: user.organizationId,
+      ...this.buildOrganizationScope(user),
     } as const;
 
     const whereWithEmployee = scopedIds
@@ -1022,9 +1036,142 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  async getMonthlyReport(query: QueryAttendanceDto, user: AttendanceUser) {
+    const targetYear = query.year ?? new Date().getFullYear();
+    const targetMonth = query.month
+      ? Number(query.month)
+      : new Date().getMonth() + 1;
+    const monthStart = new Date(targetYear, targetMonth - 1, 1);
+    const monthEnd = new Date(targetYear, targetMonth, 0, 23, 59, 59, 999);
+
+    const scopedEmployeeIds = await this.getScopedEmployeeFilter(
+      user,
+      query.employeeId,
+    );
+
+    const employees = await this.prisma.employee.findMany({
+      where: {
+        deletedAt: null,
+        ...this.buildOrganizationScope(user),
+        ...(scopedEmployeeIds ? { id: { in: scopedEmployeeIds } } : {}),
+        ...(query.employeeId ? { id: query.employeeId } : {}),
+        ...(query.department
+          ? { department: { contains: query.department, mode: 'insensitive' } }
+          : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        department: true,
+        designation: true,
+        position: true,
+        user: { select: { role: true } },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    if (employees.length === 0) {
+      return {
+        month: `${targetYear}-${String(targetMonth).padStart(2, '0')}`,
+        year: targetYear,
+        rows: [],
+        total: 0,
+      };
+    }
+
+    const employeeIds = employees.map((employee) => employee.id);
+    const attendanceRows = await this.prisma.attendance.findMany({
+      where: {
+        employeeId: { in: employeeIds },
+        date: { gte: monthStart, lte: monthEnd },
+        ...this.buildOrganizationScope(user),
+      },
+      select: {
+        employeeId: true,
+        status: true,
+        lateMinutes: true,
+      },
+      orderBy: [{ employeeId: 'asc' }, { date: 'asc' }],
+    });
+
+    const grouped = new Map<
+      number,
+      {
+        employeeId: number;
+        employeeName: string;
+        department: string | null;
+        role: string;
+        presentCount: number;
+        absentCount: number;
+        lateCount: number;
+        halfDayCount: number;
+        leaveCount: number;
+        workingDays: number;
+        attendancePercent: number;
+      }
+    >();
+
+    for (const employee of employees) {
+      grouped.set(employee.id, {
+        employeeId: employee.id,
+        employeeName: employee.name,
+        department: employee.department ?? null,
+        role:
+          employee.user?.role ??
+          employee.designation ??
+          employee.position ??
+          'EMPLOYEE',
+        presentCount: 0,
+        absentCount: 0,
+        lateCount: 0,
+        halfDayCount: 0,
+        leaveCount: 0,
+        workingDays: 0,
+        attendancePercent: 0,
+      });
+    }
+
+    for (const row of attendanceRows) {
+      const entry = grouped.get(row.employeeId);
+      if (!entry) continue;
+
+      const matchesStatus =
+        query.status === 'LATE'
+          ? (row.lateMinutes ?? 0) > 0
+          : query.status
+            ? row.status === query.status
+            : true;
+
+      if (!matchesStatus) continue;
+
+      entry.workingDays += 1;
+
+      if (row.status === AttendanceStatus.PRESENT) entry.presentCount += 1;
+      if (row.status === AttendanceStatus.ABSENT) entry.absentCount += 1;
+      if (row.status === AttendanceStatus.HALF_DAY) entry.halfDayCount += 1;
+      if (row.status === AttendanceStatus.LEAVE) entry.leaveCount += 1;
+      if ((row.lateMinutes ?? 0) > 0) entry.lateCount += 1;
+    }
+
+    const rows = Array.from(grouped.values()).map((entry) => ({
+      ...entry,
+      attendancePercent:
+        entry.workingDays > 0
+          ? Number(((entry.presentCount / entry.workingDays) * 100).toFixed(2))
+          : 0,
+    }));
+
+    return {
+      month: `${targetYear}-${String(targetMonth).padStart(2, '0')}`,
+      year: targetYear,
+      rows,
+      total: rows.length,
+    };
+  }
+
   async update(id: number, dto: UpdateAttendanceDto, user: AttendanceUser) {
     const record = await this.prisma.attendance.findFirst({
-      where: { id, organizationId: user.organizationId },
+      where: { id, ...this.buildOrganizationScope(user) },
       include: { employee: { include: { shift: true } }, shift: true },
     });
 

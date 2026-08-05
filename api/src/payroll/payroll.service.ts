@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   Inject,
   Injectable,
   NotFoundException,
@@ -271,6 +272,23 @@ export class PayrollService {
     user: AuthUser,
   ): Promise<Prisma.PayrollCycleGetPayload<object>> {
     const organizationId = this.validateOrganization(user);
+
+    const existingCycle = await this.prisma.payrollCycle.findFirst({
+      where: {
+        deletedAt: null,
+        organizationId,
+        month: dto.month,
+        year: dto.year,
+      },
+      select: { id: true },
+    });
+
+    if (existingCycle) {
+      throw new ConflictException(
+        `Payroll cycle for ${dto.month}/${dto.year} already exists`,
+      );
+    }
+
     const result = await this.prisma.payrollCycle.create({
       data: {
         organizationId,

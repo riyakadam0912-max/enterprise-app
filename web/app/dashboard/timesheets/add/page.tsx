@@ -44,17 +44,18 @@ export default function AddTimesheetPage() {
     setSaving(true);
     setError(null);
     try {
+      const payload = {
+        task: form.task.trim(),
+        date: form.date,
+        hours: Number.parseFloat(form.hours),
+        status: form.status.toUpperCase(),
+        project: form.project.trim() || undefined,
+        notes: form.notes.trim() || undefined,
+      };
+
       await apiClient('/timesheets', {
         method: 'POST',
-        body: JSON.stringify({
-          employeeId: form.employeeId ? parseInt(form.employeeId) : undefined,
-          task: form.task,
-          date: form.date,
-          hours: parseFloat(form.hours),
-          status: form.status.toUpperCase(),
-          project: form.project || undefined,
-          notes: form.notes || undefined,
-        }),
+        body: JSON.stringify(payload),
       });
       router.push('/dashboard/timesheets');
     } catch (err: unknown) {
@@ -94,9 +95,11 @@ export default function AddTimesheetPage() {
                 onChange={(e) => set('employeeId', e.target.value)}
                 className={fieldClass}
               >
-                <option value=""></option>
+                <option value="">Select employee</option>
                 {employees.map((emp) => (
-                  <option key={emp.id} value={String(emp.id)}>{emp.id}</option>
+                  <option key={emp.id} value={String(emp.id)}>
+                    {emp.name} {emp.email ? `(${emp.email})` : ''}
+                  </option>
                 ))}
               </select>
             </div>

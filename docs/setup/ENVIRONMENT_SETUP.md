@@ -1,32 +1,32 @@
-# Environment Setup
+# Environment setup
 
-This repo uses three environment layers.
+## Purpose
 
-1. Root `.env` for shared development defaults and orchestration values.
-2. `api/.env` for backend-specific runtime settings.
-3. `web/.env.local` for frontend build-time client variables.
+This page explains the environment files used by the project.
 
-Backend variables.
+## Who should read this
 
-1. `DATABASE_URL` is required.
-2. `PORT` is standardized to 3000.
-3. `FRONTEND_URL` and related aliases are used for CORS and links.
-4. `REDIS_HOST` and `REDIS_PORT` enable queue-backed processors when Redis is available.
-5. JWT secrets are present for local development defaults.
+This guide is for developers, administrators, and DevOps engineers.
 
-Frontend variables.
+## Environment layers
 
-1. `NEXT_PUBLIC_API_URL` defaults to `/api/v1` and is rewritten to the backend.
-2. `NEXT_PUBLIC_NOTIFICATION_WS_URL` defaults to `http://localhost:3000`.
+- Root `.env` for shared development settings
+- `api/.env` for backend runtime settings
+- `web/.env.local` for frontend public variables
 
-Validation.
+## Important settings
 
-1. The backend validates its environment on startup through a Nest config validator.
-2. The frontend validates public env variables through a Zod schema.
-3. Invalid or missing config fails fast instead of producing partial startup behavior.
+- `DATABASE_URL` is required for the backend
+- API port is standardized to 3000
+- Web port is standardized to 3001
+- The frontend uses public environment variables for API and notification endpoints
 
-Practical guidance.
+## Notes
 
-1. Keep the same database URL in the root and backend env files during local development.
-2. Do not change the fixed ports unless you also update the orchestrator, rewrite, and docs together.
-3. When moving to Docker, map the same 3000/3001 contract instead of changing the app internals.
+Keep the database connection aligned between the root and backend environment files during local development. The fixed ports should remain stable unless the runtime contract is intentionally changed.
+
+## Related documents
+
+- [Development setup](./DEVELOPMENT_SETUP.md)
+- [Getting started](../02-Getting-Started/README.md)
+- [Troubleshooting guide](../09-Troubleshooting/README.md)

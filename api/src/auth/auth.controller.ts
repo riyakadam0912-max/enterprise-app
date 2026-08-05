@@ -255,10 +255,6 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @Get('me')
   getCurrentUser(@Req() req: AuthenticatedRequest) {
-    this.logger.log(
-      '[getCurrentUser] req.user:',
-      JSON.stringify(req.user, null, 2),
-    );
     const response = {
       user: {
         id: req.user.userId ?? req.user.id,
@@ -274,10 +270,6 @@ export class AuthController {
       isSuperAdmin: req.user.isSuperAdmin ?? false,
       isPlatformAdmin: req.user.isPlatformAdmin ?? false,
     };
-    this.logger.log(
-      '[getCurrentUser] returning response:',
-      JSON.stringify(response, null, 2),
-    );
     return {
       success: true,
       data: response,

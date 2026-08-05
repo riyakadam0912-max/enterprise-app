@@ -7,7 +7,7 @@ import {
   IsIn,
   IsUrl,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export const TASK_STATUSES = [
   'PENDING',
@@ -19,9 +19,10 @@ export const TASK_STATUSES = [
 export const TASK_PRIORITIES = ['LOW', 'MEDIUM', 'HIGH'] as const;
 
 export class CreateTaskDto {
+  @IsOptional()
   @IsString()
-  @ApiProperty({ example: 'sample-title' })
-  title!: string;
+  @ApiPropertyOptional({ example: 'sample-title' })
+  title?: string;
 
   @IsOptional()
   @IsString()

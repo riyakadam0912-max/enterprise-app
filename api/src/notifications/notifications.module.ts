@@ -7,9 +7,10 @@ import { NotificationsGateway } from './notifications.gateway';
 import { NotificationEventListener } from './notification-event.listener';
 import { NotificationTemplateService } from './notification-template.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [PrismaModule, AuditLogsModule, MailModule],
+  imports: [PrismaModule, AuditLogsModule, MailModule, AuthModule],
   controllers: [NotificationsController],
   providers: [
     NotificationsService,

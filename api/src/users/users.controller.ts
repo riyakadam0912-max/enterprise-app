@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -7,6 +18,7 @@ import { Permission } from '../common/enums/permissions.enum';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { Role } from '../common/enums/role.enum';
 import {
   ApiBearerAuth,
@@ -40,7 +52,7 @@ export class UsersController {
     return this.usersService.create(createUserDto, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.HR, Role.MANAGER)
+  @Roles(Role.ADMIN)
   @RequirePermissions(Permission.USER_READ)
   @ApiOperation({ summary: 'GET /' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
@@ -52,7 +64,7 @@ export class UsersController {
     return this.usersService.findAll(req.user);
   }
 
-  @Roles(Role.ADMIN, Role.HR, Role.MANAGER)
+  @Roles(Role.ADMIN)
   @RequirePermissions(Permission.USER_READ)
   @ApiOperation({ summary: 'GET assignable' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
@@ -62,5 +74,131 @@ export class UsersController {
   @Get('assignable')
   findAssignable(@Req() req: AuthenticatedRequest) {
     return this.usersService.findAssignable(req.user);
+  }
+
+  @Roles(Role.ADMIN)
+  @RequirePermissions(Permission.USER_READ)
+  @ApiOperation({ summary: 'GET /:id' })
+  @ApiResponse({ status: 200, description: 'GET request successful.' })
+  @ApiResponse({ status: 400, description: 'Bad request.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @ApiResponse({ status: 404, description: 'Resource not found.' })
+  @Get(':id')
+  findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.usersService.findOne(parseInt(id, 10), req.user);
+  }
+
+  @Roles(Role.ADMIN)
+  @RequirePermissions(Permission.USER_UPDATE)
+  @Put(':id')
+  update(
+    @Param('id') id: string,
+    @Body() updateUserDto: UpdateUserDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.usersService.update(parseInt(id, 10), updateUserDto, req.user);
+  }
+
+  @Roles(Role.ADMIN)
+  @RequirePermissions(Permission.USER_DELETE)
+  @Delete(':id')
+  remove(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.usersService.remove(parseInt(id, 10), req.user);
+  }
+
+  @Roles(Role.ADMIN)
+  @RequirePermissions(Permission.USER_UPDATE)
+  @Patch(':id/activate')
+  activate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.usersService.activate(parseInt(id, 10), req.user);
+  }
+
+  @Roles(Role.ADMIN)
+  @RequirePermissions(Permission.USER_UPDATE)
+  @Patch(':id/deactivate')
+  deactivate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.usersService.deactivate(parseInt(id, 10), req.user);
+  }
+
+  @Roles(Role.ADMIN)
+  @RequirePermissions(Permission.USER_UPDATE)
+  @Patch(':id/reset-password')
+  resetPassword(
+    @Param('id') id: string,
+    @Body() body: { password: string },
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.usersService.resetPassword(
+      parseInt(id, 10),
+      body.password,
+      req.user,
+    );
+  }
+
+  @Roles(Role.ADMIN)
+  @RequirePermissions(Permission.USER_UPDATE)
+  @Patch(':id/unlock')
+  unlock(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.usersService.unlock(parseInt(id, 10), req.user);
+  }
+
+  @Roles(Role.ADMIN)
+  @RequirePermissions(Permission.USER_UPDATE)
+  @Patch(':id/assign-organization')
+  assignOrganization(
+    @Param('id') id: string,
+    @Body() body: { organizationId: number },
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.usersService.assignOrganization(
+      parseInt(id, 10),
+      body.organizationId,
+      req.user,
+    );
+  }
+
+  @Roles(Role.ADMIN)
+  @RequirePermissions(Permission.USER_UPDATE)
+  @Patch(':id/assign-roles')
+  assignRoles(
+    @Param('id') id: string,
+    @Body() body: { roleIds: number[] },
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.usersService.assignRoles(
+      parseInt(id, 10),
+      body.roleIds,
+      req.user,
+    );
+  }
+
+  @Roles(Role.ADMIN)
+  @RequirePermissions(Permission.USER_UPDATE)
+  @Patch(':id/assign-department')
+  assignDepartment(
+    @Param('id') id: string,
+    @Body() body: { department: string },
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.usersService.assignDepartment(
+      parseInt(id, 10),
+      body.department,
+      req.user,
+    );
+  }
+
+  @Roles(Role.ADMIN)
+  @RequirePermissions(Permission.USER_UPDATE)
+  @Patch(':id/assign-manager')
+  assignManager(
+    @Param('id') id: string,
+    @Body() body: { managerId: number | null },
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.usersService.assignManager(
+      parseInt(id, 10),
+      body.managerId,
+      req.user,
+    );
   }
 }

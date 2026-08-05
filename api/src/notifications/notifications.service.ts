@@ -207,7 +207,27 @@ export class NotificationsService {
   }
 
   async sendNotification(payload: NotificationPayload) {
-    const organizationId = this.validateOrganization(payload.organizationId);
+    this.logger.debug('Notification send payload resolved', {
+      payloadOrganizationId: payload.organizationId,
+      payloadUserId: payload.userId,
+      recipientIds: payload.recipientIds,
+    });
+    const fallbackUserId =
+      typeof payload.userId === 'number'
+        ? payload.userId
+        : payload.recipientIds?.[0];
+    const organizationId =
+      typeof payload.organizationId === 'number' &&
+      Number.isInteger(payload.organizationId) &&
+      payload.organizationId > 0
+        ? payload.organizationId
+        : fallbackUserId != null
+          ? await this.resolveOrganizationId(
+              fallbackUserId,
+              payload.organizationId,
+            )
+          : this.validateOrganization(payload.organizationId);
+
     const recipientIds = normalizeRecipients(
       payload.recipientIds,
       payload.userId,

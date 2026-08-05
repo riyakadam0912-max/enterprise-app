@@ -340,6 +340,104 @@ describe('UsersService', () => {
     });
   });
 
+  describe('update', () => {
+    it('should update an existing user successfully', async () => {
+      const authUser = createMockAuthUser(Role.ADMIN);
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      const updatedUser = {
+        id: 1,
+        name: 'Updated Name',
+        email: 'updated@example.com',
+        role: Role.MANAGER,
+        isActive: true,
+        employeeId: null,
+        managerId: null,
+        manager: null,
+        createdAt: new Date(),
+      };
+
+      userDelegate.findFirst.mockResolvedValueOnce({
+        id: 1,
+        email: 'old@example.com',
+      });
+      userDelegate.findFirst.mockResolvedValueOnce(null);
+      userDelegate.update.mockResolvedValue(updatedUser);
+
+      const result = await service.update(
+        1,
+        {
+          name: 'Updated Name',
+          email: 'updated@example.com',
+          role: Role.MANAGER,
+        },
+        authUser,
+      );
+
+      expect(userDelegate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 1 },
+          data: expect.objectContaining({
+            name: 'Updated Name',
+            email: 'updated@example.com',
+            role: Role.MANAGER,
+          }),
+        }),
+      );
+      expect(result).toEqual(updatedUser);
+    });
+  });
+
+  describe('resetPassword', () => {
+    it('should hash and persist a new password', async () => {
+      const authUser = createMockAuthUser(Role.ADMIN);
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+
+      userDelegate.findFirst.mockResolvedValue({
+        id: 1,
+        email: 'user@example.com',
+      });
+      userDelegate.update.mockResolvedValue({});
+
+      await service.resetPassword(1, 'new-password', authUser);
+
+      expect(mockHashPassword).toHaveBeenCalledWith('new-password');
+      expect(userDelegate.update).toHaveBeenCalledWith({
+        where: { id: 1 },
+        data: { password: 'hashed-password-123' },
+      });
+    });
+  });
+
+  describe('assignRoles', () => {
+    it('should replace the user role assignments', async () => {
+      const authUser = createMockAuthUser(Role.ADMIN);
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      const appRoleDelegate = getPrismaDelegate(mockPrisma, 'appRole');
+      const userRoleDelegate = getPrismaDelegate(mockPrisma, 'userRole');
+
+      userDelegate.findFirst.mockResolvedValue({ id: 1 });
+      appRoleDelegate.findMany.mockResolvedValue([{ id: 2 }, { id: 3 }]);
+      userRoleDelegate.deleteMany.mockResolvedValue({ count: 1 });
+      userRoleDelegate.createMany.mockResolvedValue({ count: 2 });
+
+      const result = await service.assignRoles(1, [2, 3], authUser);
+
+      expect(userRoleDelegate.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 1 },
+      });
+      expect(userRoleDelegate.createMany).toHaveBeenCalledWith({
+        data: [
+          { userId: 1, roleId: 2 },
+          { userId: 1, roleId: 3 },
+        ],
+      });
+      expect(result).toEqual({
+        success: true,
+        message: 'Roles assigned successfully',
+      });
+    });
+  });
+
   describe('findAssignable', () => {
     it('should return all active non-admin users for ADMIN role', async () => {
       // Arrange

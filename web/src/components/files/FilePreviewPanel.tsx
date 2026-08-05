@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { ExternalLink, FileText, Image as ImageIcon, Download } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/cn';
@@ -58,7 +59,16 @@ export function FilePreviewPanel({ file, className }: { file: ManagedFile | null
       <CardContent className="space-y-4">
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-950/95">
           {kind === 'image' ? (
-            <img src={previewUrl} alt={file.originalName} className="max-h-115 w-full object-contain bg-slate-950" />
+            <div className="relative h-115 w-full bg-slate-950">
+              <Image
+                src={previewUrl}
+                alt={file.originalName}
+                fill
+                unoptimized
+                sizes="(max-width: 768px) 100vw, 80vw"
+                className="object-contain"
+              />
+            </div>
           ) : kind === 'pdf' ? (
             <iframe title={file.originalName} src={previewUrl} className="h-115 w-full bg-white" />
           ) : kind === 'text' ? (

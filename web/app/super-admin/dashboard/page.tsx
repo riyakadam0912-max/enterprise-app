@@ -1,218 +1,75 @@
 'use client';
 
-import {
-  Building2,
-  Users,
-  TrendingUp,
-  Activity,
-  CheckCircle2,
-  XCircle,
-  Clock,
-} from 'lucide-react';
-
+import { ArrowRight, CircleAlert, Sparkles } from 'lucide-react';
+import { SuperAdminPageShell } from '@/components/super-admin/SuperAdminPageShell';
+import { SuperAdminOverviewCards } from '@/components/super-admin/SuperAdminOverviewCards';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Heading } from '@/components/typography/Heading';
-import { Caption } from '@/components/typography/Caption';
 
-const stats = [
-  {
-    label: 'Total Organizations',
-    value: '128',
-    icon: Building2,
-    color: 'bg-blue-500',
-  },
-  {
-    label: 'Active Organizations',
-    value: '115',
-    icon: CheckCircle2,
-    color: 'bg-emerald-500',
-  },
-  {
-    label: 'Inactive Organizations',
-    value: '13',
-    icon: XCircle,
-    color: 'bg-rose-500',
-  },
-  {
-    label: 'Total Users',
-    value: '2,450',
-    icon: Users,
-    color: 'bg-indigo-500',
-  },
-  {
-    label: "Today's Logins",
-    value: '342',
-    icon: Activity,
-    color: 'bg-orange-500',
-  },
-  {
-    label: 'Monthly Revenue',
-    value: '$45,280',
-    icon: TrendingUp,
-    color: 'bg-purple-500',
-  },
-];
-
-const recentActivities = [
-  {
-    id: 1,
-    action: 'New organization created',
-    organization: 'Acme Corp',
-    time: '2 minutes ago',
-    status: 'success',
-  },
-  {
-    id: 2,
-    action: 'User role updated',
-    organization: 'TechStart Inc',
-    time: '15 minutes ago',
-    status: 'info',
-  },
-  {
-    id: 3,
-    action: 'Subscription renewed',
-    organization: 'Global Solutions',
-    time: '1 hour ago',
-    status: 'success',
-  },
-  {
-    id: 4,
-    action: 'Organization suspended',
-    organization: 'Old Ventures',
-    time: '2 hours ago',
-    status: 'warning',
-  },
-];
-
-const recentOrganizations = [
-  {
-    id: 1,
-    name: 'Acme Corp',
-    plan: 'Enterprise',
-    users: 234,
-    status: 'Active',
-    created: '2024-01-15',
-  },
-  {
-    id: 2,
-    name: 'TechStart Inc',
-    plan: 'Professional',
-    users: 89,
-    status: 'Active',
-    created: '2024-01-14',
-  },
-  {
-    id: 3,
-    name: 'Global Solutions',
-    plan: 'Enterprise',
-    users: 512,
-    status: 'Active',
-    created: '2024-01-12',
-  },
-  {
-    id: 4,
-    name: 'Old Ventures',
-    plan: 'Basic',
-    users: 12,
-    status: 'Suspended',
-    created: '2023-11-20',
-  },
+const activityFeed = [
+  { title: 'New tenant onboarded', detail: 'Northwind Labs provisioned a new workspace', time: '2m ago', tone: 'emerald' },
+  { title: 'Subscription renewed', detail: 'Acme Corp renewed Enterprise', time: '18m ago', tone: 'indigo' },
+  { title: 'Security review pending', detail: '3 elevated audit events need triage', time: '1h ago', tone: 'amber' },
 ];
 
 export default function SuperAdminDashboard() {
   return (
-    <div className="space-y-6">
-      {/* Stats grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {stats.map((stat, index) => {
-          const Icon = stat.icon;
-          return (
-            <Card key={index} className="p-6">
-              <div className="flex items-center gap-4">
-                <div className={`p-3 rounded-xl ${stat.color}`}>
-                  <Icon className="h-6 w-6 text-white" />
-                </div>
-                <div>
-                  <Caption className="text-slate-500">{stat.label}</Caption>
-                  <p className="font-bold text-slate-900 text-2xl">
-                    {stat.value}
-                  </p>
-                </div>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
-
-      {/* Two column layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Activity */}
-        <Card className="p-6">
-          <Heading level={3} className="mb-4 text-lg">
-            Recent Activity
-          </Heading>
-          <div className="space-y-4">
-            {recentActivities.map((activity) => (
-              <div key={activity.id} className="flex items-start gap-4">
-                <div
-                  className={`mt-1 w-2 h-2 rounded-full ${
-                    activity.status === 'success'
-                      ? 'bg-emerald-500'
-                      : activity.status === 'warning'
-                      ? 'bg-amber-500'
-                      : 'bg-blue-500'
-                  }`}
-                />
+    <SuperAdminPageShell
+      title="Platform Command Center"
+      description="A premium overview of platform health, tenant momentum, and system operations."
+      actions={
+        <>
+          <Button variant="outline">Export snapshot</Button>
+          <Button>Open console</Button>
+        </>
+      }
+    >
+      <SuperAdminOverviewCards />
+      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <Card className="border-slate-200/80 bg-white/80 p-6 shadow-[0_16px_45px_-24px_rgba(15,23,42,0.35)] backdrop-blur">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-950">Live platform activity</h2>
+              <p className="mt-1 text-sm text-slate-500">Recent administrative events across every tenant.</p>
+            </div>
+            <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">Operational</div>
+          </div>
+          <div className="mt-6 space-y-3">
+            {activityFeed.map((item) => (
+              <div key={item.title} className="flex items-start gap-3 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4">
+                <div className={`mt-0.5 h-2.5 w-2.5 rounded-full ${item.tone === 'emerald' ? 'bg-emerald-500' : item.tone === 'indigo' ? 'bg-indigo-500' : 'bg-amber-500'}`} />
                 <div className="flex-1">
-                  <p className="font-medium text-slate-900 text-sm">
-                    {activity.action}
-                  </p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Caption className="text-slate-500">{activity.organization}</Caption>
-                    <span className="text-slate-300">•</span>
-                    <div className="flex items-center gap-1 text-slate-500">
-                      <Clock className="h-3 w-3" />
-                      <Caption>{activity.time}</Caption>
-                    </div>
-                  </div>
+                  <p className="font-medium text-slate-900">{item.title}</p>
+                  <p className="mt-1 text-sm text-slate-500">{item.detail}</p>
                 </div>
+                <p className="text-sm text-slate-400">{item.time}</p>
               </div>
             ))}
           </div>
         </Card>
-
-        {/* Recent Organizations */}
-        <Card className="p-6">
-          <Heading level={3} className="mb-4 text-lg">
-            Recent Organizations
-          </Heading>
-          <div className="space-y-4">
-            {recentOrganizations.map((org) => (
-              <div key={org.id} className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-slate-900 text-sm">
-                    {org.name}
-                  </p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Caption className="text-slate-500">{org.plan}</Caption>
-                    <span className="text-slate-300">•</span>
-                    <Caption className="text-slate-500">{org.users} users</Caption>
-                  </div>
-                </div>
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    org.status === 'Active'
-                      ? 'bg-emerald-50 text-emerald-700'
-                      : 'bg-rose-50 text-rose-700'
-                  }`}
-                >
-                  {org.status}
-                </span>
-              </div>
-            ))}
-          </div>
-        </Card>
+        <div className="space-y-6">
+          <Card className="border-slate-200/80 bg-linear-to-br from-slate-950 via-slate-900 to-indigo-900 p-6 text-white shadow-[0_24px_60px_-24px_rgba(15,23,42,0.65)]">
+            <div className="flex items-center gap-2 text-sm font-medium text-indigo-200">
+              <Sparkles className="h-4 w-4" />
+              Premium operations
+            </div>
+            <h3 className="mt-4 text-xl font-semibold">Multi-tenant admin experience</h3>
+            <p className="mt-2 text-sm text-slate-300">Coordinate organization launches, security posture, and lifecycle events from one polished control surface.</p>
+            <Button className="mt-5 bg-white text-slate-900 hover:bg-slate-100">Review alerts <ArrowRight className="h-4 w-4" /></Button>
+          </Card>
+          <Card className="border-slate-200/80 bg-white/80 p-6 shadow-[0_16px_45px_-24px_rgba(15,23,42,0.35)] backdrop-blur">
+            <div className="flex items-center gap-2">
+              <CircleAlert className="h-5 w-5 text-amber-500" />
+              <h3 className="font-semibold text-slate-950">System cautions</h3>
+            </div>
+            <ul className="mt-4 space-y-3 text-sm text-slate-600">
+              <li className="flex items-center justify-between rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2"><span>Backup retention</span><span className="font-medium text-slate-900">Healthy</span></li>
+              <li className="flex items-center justify-between rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2"><span>Pending approvals</span><span className="font-medium text-slate-900">12</span></li>
+              <li className="flex items-center justify-between rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2"><span>Audit queue</span><span className="font-medium text-slate-900">6 new</span></li>
+            </ul>
+          </Card>
+        </div>
       </div>
-    </div>
+    </SuperAdminPageShell>
   );
 }

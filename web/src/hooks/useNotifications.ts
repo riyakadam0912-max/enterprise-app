@@ -55,12 +55,10 @@ export function useNotifications() {
   }, [page]);
 
   useEffect(() => {
-    const userId = session.user?.id ?? null;
-    if (!userId) return;
+    if (!session.user?.id) return;
 
     const socketUrl = clientEnv.NEXT_PUBLIC_NOTIFICATION_WS_URL;
     const client = io(`${socketUrl}/notifications`, {
-      auth: { userId },
       withCredentials: true,
       reconnection: true,
       reconnectionAttempts: 5,
@@ -68,15 +66,13 @@ export function useNotifications() {
       timeout: 8000,
     });
 
-    client.on('connect_error', (connectionError) => {
-      if (process.env.NODE_ENV !== 'production') {
-        console.debug('[useNotifications] socket connect error', connectionError.message);
-      }
+    client.on('connect_error', () => {
+      setError('Notification socket connection failed');
     });
 
     client.on('disconnect', (reason) => {
-      if (process.env.NODE_ENV !== 'production' && reason !== 'io client disconnect') {
-        console.debug('[useNotifications] socket disconnected', reason);
+      if (reason !== 'io client disconnect') {
+        setError('Notification socket disconnected');
       }
     });
 

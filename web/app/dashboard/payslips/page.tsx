@@ -3,43 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { downloadPayslip, getEmployeePayslips, type Payslip } from '@/api/payrollApi';
+import { useAuthSession } from '@/stores/auth-store';
 
 type DashboardRole = 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
-
-type Session = {
-  role: DashboardRole;
-  userId: number | null;
-  employeeId: number | null;
-  name: string;
-};
-
-function readSession(): Session {
-  if (typeof window === 'undefined') {
-    return { role: 'ADMIN', userId: null, employeeId: null, name: 'User' };
-  }
-
-  const role = (localStorage.getItem('role') ?? 'ADMIN') as DashboardRole;
-  let userId: number | null = null;
-  let employeeId: number | null = null;
-  let name = 'User';
-
-  try {
-    const rawUser = localStorage.getItem('currentUser');
-    if (rawUser) {
-      const parsed = JSON.parse(rawUser) as { id?: number; name?: string };
-      userId = parsed.id ?? null;
-      name = parsed.name ?? 'User';
-    }
-    const employeeIdRaw = localStorage.getItem('employeeId');
-    employeeId = employeeIdRaw ? Number(employeeIdRaw) : null;
-  } catch {
-    userId = null;
-    employeeId = null;
-    name = 'User';
-  }
-
-  return { role, userId, employeeId, name };
-}
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
@@ -50,7 +16,13 @@ function formatMonthYear(month: number, year: number) {
 }
 
 export default function PayslipsPage() {
-  const session = readSession();
+  const auth = useAuthSession();
+  const session = {
+    role: auth.role as DashboardRole,
+    userId: auth.user?.id ?? null,
+    employeeId: auth.employeeId,
+    name: auth.user?.name ?? 'User',
+  };
   const [payslips, setPayslips] = useState<Payslip[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

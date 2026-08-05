@@ -6,19 +6,23 @@ import Sidebar from '@/components/Sidebar';
 import Topbar from '@/components/Topbar';
 import ImpersonationBanner from '@/components/super-admin/ImpersonationBanner';
 import { useAuth } from '@/providers/AuthProvider';
-import { getActiveOrganizationId } from '@/stores/auth-store';
+import { getActiveOrganizationId, isSuperAdminSession } from '@/stores/auth-store';
 
 const EMPLOYEE_ALLOWED_EXACT_PATHS = ['/dashboard'];
 const EMPLOYEE_ALLOWED_PATH_PREFIXES = [
-  '/dashboard/tasks',
-  '/dashboard/projects',
-  '/dashboard/timesheets',
   '/dashboard/attendance',
-  '/dashboard/leave',
-  '/dashboard/requests',
+  '/dashboard/contacts',
   '/dashboard/expenses',
+  '/dashboard/files',
+  '/dashboard/leave',
+  '/dashboard/notifications',
+  '/dashboard/payroll',
   '/dashboard/payslips',
   '/dashboard/profile',
+  '/dashboard/projects',
+  '/dashboard/requests',
+  '/dashboard/tasks',
+  '/dashboard/timesheets',
 ];
 
 const MANAGER_ALLOWED_EXACT_PATHS = ['/dashboard'];
@@ -62,7 +66,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
 
     const role = session.role;
-    const isSuperAdmin = role === 'SUPER_ADMIN' || session.isSuperAdmin;
+    const isSuperAdmin = isSuperAdminSession(session);
     const isImpersonating = isSuperAdmin && getActiveOrganizationId() != null;
 
     if (isSuperAdmin && !isImpersonating) {
@@ -81,7 +85,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
 
     startTransition(() => setChecked(true));
-  }, [authenticated, loading, pathname, router, session.role, session.isSuperAdmin, startTransition]);
+  }, [authenticated, loading, pathname, router, session, session.role, session.roles, session.isSuperAdmin, session.isPlatformAdmin, startTransition]);
 
   if (loading || !checked) {
     return (

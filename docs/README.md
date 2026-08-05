@@ -1,34 +1,36 @@
 # Documentation
 
-Welcome to the Enterprise App documentation! Here's how this folder is organized:
+## Purpose
 
-## Folder Structure
+This documentation set explains the product, how to run it locally, and how the main parts of the system fit together.
 
-### [architecture](./architecture/)
-All architecture diagrams and analysis documents.
+## Who should read this
 
-### [authentication](./authentication/)
-Authentication, RBAC, and security refactoring docs.
+This guide is for business users, administrators, developers, QA engineers, and support teams.
 
-### [frontend](./frontend/)
-Frontend setup, architecture, and refactoring docs.
+## Documentation map
 
-### [api](./api/)
-Backend API documentation, event listeners, and implementation guides.
+### Start here
 
-### [notifications](./notifications/)
-Notification system plans and implementation guides.
+- [Introduction](./01-Introduction/README.md)
+- [Getting started](./02-Getting-Started/README.md)
+- [Architecture overview](./03-Architecture/README.md)
 
-### [reports](./reports/)
-Reports and analytics docs.
+### Operational guides
 
-### [setup](./setup/)
-Environment and development setup guides.
+- [Administration](./05-Administration/README.md)
+- [Development](./06-Development/README.md)
+- [Deployment](./07-Deployment/README.md)
+- [Testing](./08-Testing/README.md)
+- [Troubleshooting](./09-Troubleshooting/README.md)
 
-### [audit](./audit/)
-Project audit reports.
+### Reference
 
----
+- [Changelog](./10-Changelog/README.md)
+- [Archive](./Archive/README.md)
 
-## Key Documents
-- [ERP Documentation](./ERP_DOCUMENTATION.md)
+## Quick links
+
+- [Local setup](./02-Getting-Started/LOCAL-SETUP.md)
+- [Documentation audit](./01-Introduction/DOCUMENTATION-AUDIT.md)
+- [Cross-reference validation](./01-Introduction/CROSS-REFERENCE-VALIDATION.md)

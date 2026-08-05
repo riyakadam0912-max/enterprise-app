@@ -65,6 +65,66 @@ function normalizeRole(role?: string | null): AuthRole {
   return 'EMPLOYEE';
 }
 
+function normalizeRoleList(roles?: string[] | null): string[] {
+  if (!Array.isArray(roles)) {
+    return [];
+  }
+
+  return roles
+    .map((role) => (typeof role === 'string' ? role.trim().toUpperCase() : ''))
+    .filter(Boolean);
+}
+
+function resolveAccessFlags(input: {
+  role?: string | null;
+  roles?: string[] | null;
+  isSuperAdmin?: boolean;
+  isPlatformAdmin?: boolean;
+}): {
+  role: AuthRole;
+  roles: string[];
+  isSuperAdmin: boolean;
+  isPlatformAdmin: boolean;
+} {
+  const normalizedRoles = normalizeRoleList(input.roles);
+  const normalizedRole = normalizeRole(input.role);
+
+  const primaryRole =
+    normalizedRole !== 'EMPLOYEE'
+      ? normalizedRole
+      : (['SUPER_ADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE'] as AuthRole[]).find((candidate) =>
+          normalizedRoles.includes(candidate),
+        ) ?? 'EMPLOYEE';
+
+  const hasSuperAdminRole = normalizedRoles.includes('SUPER_ADMIN') || primaryRole === 'SUPER_ADMIN';
+  const hasPlatformAdminRole =
+    normalizedRoles.includes('SUPER_ADMIN') ||
+    normalizedRoles.includes('ADMIN') ||
+    primaryRole === 'SUPER_ADMIN' ||
+    primaryRole === 'ADMIN';
+
+  return {
+    role: primaryRole,
+    roles: normalizedRoles,
+    isSuperAdmin: input.isSuperAdmin === true || hasSuperAdminRole,
+    isPlatformAdmin: input.isPlatformAdmin === true || hasSuperAdminRole || hasPlatformAdminRole,
+  };
+}
+
+export function isSuperAdminSession(session?: Partial<AuthSession>): boolean {
+  const normalizedRole = normalizeRole(session?.role);
+  const normalizedRoles = normalizeRoleList(session?.roles);
+
+  return session?.isSuperAdmin === true || normalizedRole === 'SUPER_ADMIN' || normalizedRoles.includes('SUPER_ADMIN');
+}
+
+export function isPlatformAdminSession(session?: Partial<AuthSession>): boolean {
+  const normalizedRole = normalizeRole(session?.role);
+  const normalizedRoles = normalizeRoleList(session?.roles);
+
+  return session?.isPlatformAdmin === true || normalizedRole === 'SUPER_ADMIN' || normalizedRole === 'ADMIN' || normalizedRoles.includes('SUPER_ADMIN') || normalizedRoles.includes('ADMIN');
+}
+
 function parseEmployeeId(rawEmployeeId: string | null): number | null {
   if (!rawEmployeeId) {
     return null;
@@ -103,15 +163,20 @@ function loadSessionFromStorage(): AuthSession {
     }
 
     const parsed = JSON.parse(raw) as AuthSession;
+    const resolved = resolveAccessFlags({
+      role: parsed.role,
+      roles: parsed.roles,
+      isSuperAdmin: parsed.isSuperAdmin,
+      isPlatformAdmin: parsed.isPlatformAdmin,
+    });
+
     return {
       ...SERVER_AUTH_SESSION,
       ...parsed,
-      role: normalizeRole(parsed.role),
+      ...resolved,
       employeeId: parseEmployeeId(parsed.employeeId == null ? null : String(parsed.employeeId)),
       organizationId: parseOrganizationId(parsed.organizationId == null ? null : String(parsed.organizationId)),
       organizationSlug: parsed.organizationSlug ?? null,
-      isSuperAdmin: parsed.isSuperAdmin === true,
-      isPlatformAdmin: parsed.isPlatformAdmin === true,
     };
   } catch (e) {
     console.warn('[auth-store] Failed to load session from storage:', e);
@@ -131,7 +196,19 @@ function saveSessionToStorage(session: AuthSession): void {
   }
 }
 
+function initializeSession() {
+  if (cachedSession === SERVER_AUTH_SESSION && typeof window !== 'undefined') {
+    cachedSession = loadSessionFromStorage();
+  }
+}
+
 function readSessionSnapshot(): AuthSession {
+  initializeSession();
+  return cachedSession;
+}
+
+export function getAuthSessionSnapshot(): AuthSession {
+  initializeSession();
   return cachedSession;
 }
 
@@ -152,25 +229,23 @@ export function useAuthSession(): AuthSession {
   return useSyncExternalStore(subscribeAuthState, readSessionSnapshot, () => SERVER_AUTH_SESSION);
 }
 
-export function getAuthSessionSnapshot(): AuthSession {
-  return readSessionSnapshot();
-}
-
 export function setAuthSession(session: AuthSessionInput): void {
   if (typeof window === 'undefined') {
     return;
   }
 
+  const resolved = resolveAccessFlags(session);
+
   cachedSession = {
-    role: normalizeRole(session.role),
-    roles: session.roles ?? [],
+    role: resolved.role,
+    roles: resolved.roles,
     permissions: session.permissions ?? [],
     user: session.user ?? null,
     employeeId: parseEmployeeId(session.employeeId == null ? null : String(session.employeeId)),
     organizationId: parseOrganizationId(session.organizationId == null ? null : String(session.organizationId)),
     organizationSlug: session.organizationSlug ?? null,
-    isSuperAdmin: session.isSuperAdmin === true,
-    isPlatformAdmin: session.isPlatformAdmin === true,
+    isSuperAdmin: resolved.isSuperAdmin,
+    isPlatformAdmin: resolved.isPlatformAdmin,
   };
 
   saveSessionToStorage(cachedSession);

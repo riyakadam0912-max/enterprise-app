@@ -1,13 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { assignShift, AttendanceRecord, AttendanceStatus, createShift, getShifts, ShiftRecord } from '@/api/attendanceApi';
+import { assignShift, AttendanceRecord, AttendanceStatus, createShift, getMonthlyAttendanceReport, getShifts, ShiftRecord } from '@/api/attendanceApi';
 import { useAttendance, useCheckIn, useCheckOut, useTodayAttendance, useUpdateAttendance } from '@/hooks/useAttendance';
 import { useEmployees } from '@/hooks/useEmployees';
 import TableActions from '@/components/common/TableActions';
 import { reportError } from '@/lib/error-handling';
+import { useAuthSession } from '@/stores/auth-store';
 
 const STATUS_STYLES: Record<AttendanceStatus, string> = {
   PRESENT: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -16,45 +17,32 @@ const STATUS_STYLES: Record<AttendanceStatus, string> = {
   HALF_DAY: 'bg-amber-50 text-amber-700 border-amber-200',
 };
 
-type SessionUser = {
-  role: 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
-  employeeId: number | null;
-  name: string;
-};
+type MonthlyReportStatus = AttendanceStatus | 'LATE' | '';
+
+interface MonthlyAttendanceReportRow {
+  employeeId: number;
+  employeeName: string;
+  department: string | null;
+  role: string;
+  presentCount: number;
+  absentCount: number;
+  lateCount: number;
+  halfDayCount: number;
+  leaveCount: number;
+  workingDays: number;
+  attendancePercent: number;
+}
+
+interface MonthlyAttendanceReportResponse {
+  month: string;
+  year: number;
+  rows: MonthlyAttendanceReportRow[];
+  total: number;
+}
 
 function todayString() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
-function getSessionUser(): SessionUser {
-  if (typeof window === 'undefined') {
-    return { role: 'ADMIN', employeeId: null, name: 'User' };
-  }
-
-  const storedRole = localStorage.getItem('role');
-  const role =
-    storedRole === 'EMPLOYEE' || storedRole === 'HR' || storedRole === 'MANAGER'
-      ? storedRole
-      : 'ADMIN';
-  const employeeIdRaw = localStorage.getItem('employeeId');
-  const rawUser = localStorage.getItem('currentUser');
-
-  let name = 'User';
-  if (rawUser) {
-    try {
-      const parsed = JSON.parse(rawUser) as { name?: string };
-      name = parsed.name ?? 'User';
-    } catch {
-      name = 'User';
-    }
-  }
-
-  return {
-    role,
-    employeeId: employeeIdRaw ? Number(employeeIdRaw) : null,
-    name,
-  };
 }
 
 function formatTime(value: string | null) {
@@ -202,145 +190,6 @@ function EmployeeAttendancePanel(props: {
   );
 }
 
-function SearchableEmployeeSelect(props: {
-  employees: Array<{ id: number; name: string; email?: string | null }>;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  allowAll?: boolean;
-}) {
-  const { employees, value, onChange, placeholder, allowAll = false } = props;
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const deferredQuery = useDeferredValue(query);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener('mousedown', handleOutside);
-    return () => document.removeEventListener('mousedown', handleOutside);
-  }, []);
-
-  const filteredEmployees = useMemo(() => {
-    const normalized = deferredQuery.trim().toLowerCase();
-    if (!normalized) return employees;
-    return employees.filter((employee) => `${employee.name} ${employee.email ?? ''}`.toLowerCase().includes(normalized));
-  }, [deferredQuery, employees]);
-
-  const selectedEmployee = employees.find((employee) => String(employee.id) === value);
-
-  return (
-    <div className="relative" ref={containerRef}>
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-left text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-500"
-      >
-        <span className={selectedEmployee ? 'text-slate-900' : 'text-slate-400'}>
-          {selectedEmployee?.name ?? placeholder}
-        </span>
-      </button>
-
-      {open && (
-        <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-20 rounded-2xl border border-slate-200 bg-white shadow-xl">
-          <div className="border-b border-slate-100 p-3">
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search employee"
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-            />
-          </div>
-
-          <div className="max-h-64 overflow-y-auto p-2">
-            {allowAll && (
-              <button
-                type="button"
-                onClick={() => {
-                  onChange('');
-                  setOpen(false);
-                  setQuery('');
-                }}
-                className="mb-1 w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-              >
-                All employees
-              </button>
-            )}
-
-            {filteredEmployees.length === 0 ? (
-              <p className="px-3 py-6 text-center text-sm text-slate-400">No matching employees</p>
-            ) : (
-              filteredEmployees.map((employee) => (
-                <button
-                  type="button"
-                  key={employee.id}
-                  onClick={() => {
-                    onChange(String(employee.id));
-                    setOpen(false);
-                    setQuery('');
-                  }}
-                  className="mb-1 w-full rounded-xl px-3 py-2 text-left hover:bg-slate-50"
-                >
-                  <p className="text-sm font-medium text-slate-900">{employee.name}</p>
-                  {employee.email && <p className="text-xs text-slate-400">{employee.email}</p>}
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function AttendanceActionModal(props: {
-  mode: 'in' | 'out' | null;
-  employees: Array<{ id: number; name: string; email?: string | null }>;
-  employeeId: string;
-  onEmployeeChange: (value: string) => void;
-  onClose: () => void;
-  onSubmit: () => void;
-  loading: boolean;
-  error: string | null;
-}) {
-  const { mode, employees, employeeId, onEmployeeChange, onClose, onSubmit, loading, error } = props;
-  if (!mode) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">{mode === 'in' ? 'Check In Employee' : 'Check Out Employee'}</h2>
-            <p className="text-xs text-slate-500 mt-1">Select the employee whose attendance you want to update.</p>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
-        </div>
-
-        <div className="px-5 py-5 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Employee</label>
-            <SearchableEmployeeSelect employees={employees} value={employeeId} onChange={onEmployeeChange} placeholder="Select employee" />
-          </div>
-          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error}</p>}
-        </div>
-
-        <div className="px-5 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
-          <button onClick={onSubmit} disabled={loading || !employeeId} className="px-4 py-2 rounded-lg bg-orange-500 text-sm font-medium text-white hover:bg-orange-600 disabled:opacity-50">
-            {loading ? 'Saving…' : mode === 'in' ? 'Check In' : 'Check Out'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function EditAttendanceModal(props: {
   record: AttendanceRecord | null;
   loading: boolean;
@@ -424,7 +273,12 @@ function EditAttendanceModal(props: {
 
 export default function AttendancePage() {
   const searchParams = useSearchParams();
-  const [session] = useState<SessionUser>(() => getSessionUser());
+  const authSession = useAuthSession();
+  const session = {
+    role: (authSession.role as 'SUPER_ADMIN' | 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE') ?? 'EMPLOYEE',
+    employeeId: authSession.employeeId ?? null,
+    name: authSession.user?.name ?? 'User',
+  };
   const isAdmin = session.role !== 'EMPLOYEE';
   const canManageShifts = session.role === 'ADMIN' || session.role === 'HR';
   const initialPage = Number(searchParams.get('page')) || 1;
@@ -435,8 +289,6 @@ export default function AttendancePage() {
   const [department, setDepartment] = useState(searchParams.get('department') || '');
   const [date, setDate] = useState(searchParams.get('date') || todayString());
   const [status, setStatus] = useState(searchParams.get('status') || '');
-  const [actionMode, setActionMode] = useState<'in' | 'out' | null>(null);
-  const [actionEmployeeId, setActionEmployeeId] = useState('');
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
   const [shifts, setShifts] = useState<ShiftRecord[]>([]);
   const [newShift, setNewShift] = useState({
@@ -451,17 +303,18 @@ export default function AttendancePage() {
   const [assignShiftId, setAssignShiftId] = useState('');
   const [shiftError, setShiftError] = useState<string | null>(null);
   const [shiftSuccess, setShiftSuccess] = useState<string | null>(null);
-  const { employees } = useEmployees(isAdmin);
+  const canViewAdminAttendance = session.role === 'SUPER_ADMIN' || session.role === 'ADMIN' || session.role === 'HR';
+  const { employees } = useEmployees(canViewAdminAttendance);
   const { data, loading, error, refetch } = useAttendance(
     {
       page,
       limit,
-      employeeId: isAdmin && employeeId ? Number(employeeId) : undefined,
-      department: isAdmin && department ? department : undefined,
+      employeeId: canViewAdminAttendance && employeeId ? Number(employeeId) : undefined,
+      department: canViewAdminAttendance && department ? department : undefined,
       date,
       status: status ? (status as AttendanceStatus) : undefined,
     },
-    isAdmin ? 'all' : 'me',
+    canViewAdminAttendance ? 'all' : 'me',
   );
   const today = useTodayAttendance();
   const checkInMutation = useCheckIn();
@@ -481,49 +334,17 @@ export default function AttendancePage() {
     loadShifts();
   }, []);
 
-  useEffect(() => {
-    if (!actionMode) return;
-
-    const timeout = window.setTimeout(() => {
-      setActionEmployeeId(employeeId || '');
-      checkInMutation.setError(null);
-      checkOutMutation.setError(null);
-    }, 0);
-
-    return () => window.clearTimeout(timeout);
-  }, [actionMode, employeeId, checkInMutation, checkOutMutation]);
-
   const employeeOptions = useMemo(
     () => employees.map((employee) => ({ id: employee.id, name: employee.name, email: employee.email ?? null })),
     [employees],
   );
 
   const myTodayRow = useMemo(() => {
-    if (isAdmin) return null;
-    return today.data?.rows[0] ?? null;
-  }, [isAdmin, today.data]);
+    if (canViewAdminAttendance) return null;
+    return today.data?.rows.find((row) => row.employeeId === session.employeeId) ?? today.data?.rows[0] ?? null;
+  }, [canViewAdminAttendance, session.employeeId, today.data]);
   const resolvedEmployeeId = myTodayRow?.employeeId ?? session.employeeId;
-  const accountLinked = isAdmin || Boolean(resolvedEmployeeId) || today.error !== 'Your login is not linked to an employee profile yet.';
-
-  const _alreadyCheckedIn = Boolean(myTodayRow?.checkIn);
-  const _alreadyCheckedOut = Boolean(myTodayRow?.checkOut);
-
-  async function handleActionSubmit() {
-    try {
-      if (actionMode === 'in') {
-        await checkInMutation.mutate(actionEmployeeId ? { employeeId: Number(actionEmployeeId) } : {});
-      }
-
-      if (actionMode === 'out') {
-        await checkOutMutation.mutate(actionEmployeeId ? { employeeId: Number(actionEmployeeId) } : {});
-      }
-
-      await Promise.all([refetch(), today.refetch()]);
-      setActionMode(null);
-    } catch {
-      // Errors are mapped in the hooks and shown in the UI.
-    }
-  }
+  const accountLinked = canViewAdminAttendance || Boolean(resolvedEmployeeId) || today.error !== 'Your login is not linked to an employee profile yet.';
 
   async function handleEmployeeAction(mode: 'in' | 'out') {
     try {
@@ -562,6 +383,83 @@ export default function AttendancePage() {
     setDate(todayString());
     setStatus('');
     setPage(1);
+  }
+
+  const [monthlyReport, setMonthlyReport] = useState<MonthlyAttendanceReportResponse | null>(null);
+  const [monthlyReportLoading, setMonthlyReportLoading] = useState(false);
+  const [monthlyReportError, setMonthlyReportError] = useState<string | null>(null);
+  const [reportMonth, setReportMonth] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
+  const [reportYear, setReportYear] = useState(String(new Date().getFullYear()));
+  const [reportEmployeeId, setReportEmployeeId] = useState('');
+  const [reportDepartment, setReportDepartment] = useState('');
+  const [reportStatus, setReportStatus] = useState<MonthlyReportStatus>('');
+
+  useEffect(() => {
+    if (!canViewAdminAttendance) {
+      setMonthlyReport(null);
+      return;
+    }
+
+    let cancelled = false;
+    async function loadMonthlyReport() {
+      setMonthlyReportLoading(true);
+      setMonthlyReportError(null);
+      try {
+        const response = await getMonthlyAttendanceReport({
+          month: reportMonth,
+          year: reportYear,
+          employeeId: reportEmployeeId ? Number(reportEmployeeId) : undefined,
+          department: reportDepartment || undefined,
+          status: reportStatus || undefined,
+        });
+        if (!cancelled) {
+          setMonthlyReport(response);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setMonthlyReportError(err instanceof Error ? err.message : 'Unable to load monthly attendance report.');
+          setMonthlyReport(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setMonthlyReportLoading(false);
+        }
+      }
+    }
+
+    void loadMonthlyReport();
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewAdminAttendance, reportDepartment, reportEmployeeId, reportMonth, reportStatus, reportYear]);
+
+  function exportMonthlyReport() {
+    const rows = monthlyReport?.rows ?? [];
+    if (rows.length === 0) return;
+
+    const headers = ['Employee Name', 'Employee ID', 'Department', 'Role', 'Total Present', 'Total Absent', 'Late Count', 'Half Days', 'Leaves', 'Working Days', 'Attendance %'];
+    const body = rows.map((row) => [
+      row.employeeName,
+      row.employeeId,
+      row.department ?? '',
+      row.role,
+      row.presentCount,
+      row.absentCount,
+      row.lateCount,
+      row.halfDayCount,
+      row.leaveCount,
+      row.workingDays,
+      `${row.attendancePercent}%`,
+    ].map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','));
+
+    const csv = [headers.join(','), ...body].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `attendance-${monthlyReport?.month ?? 'report'}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / (data?.limit ?? limit)));
@@ -611,20 +509,15 @@ export default function AttendancePage() {
 
         <div className="flex flex-wrap items-center gap-3">
           <TableActions moduleKey="attendance" rows={attendanceRows} onRefresh={refetch} />
-          {isAdmin ? (
-            <>
-              <button onClick={() => setActionMode('in')} className="px-4 py-2 rounded-xl bg-orange-500 text-white text-sm font-medium shadow-sm hover:bg-orange-600">
-                Check In
-              </button>
-              <button onClick={() => setActionMode('out')} className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-medium shadow-sm hover:bg-slate-50">
-                Check Out
-              </button>
-            </>
+          {canViewAdminAttendance ? (
+            <button onClick={exportMonthlyReport} disabled={monthlyReport?.rows.length === 0} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
+              Export CSV
+            </button>
           ) : null}
         </div>
       </div>
 
-      {!isAdmin && (
+      {!canViewAdminAttendance && (
         <EmployeeAttendancePanel
           name={session.name}
           employeeId={resolvedEmployeeId}
@@ -638,7 +531,7 @@ export default function AttendancePage() {
         />
       )}
 
-      {!isAdmin && (checkInMutation.error || checkOutMutation.error) && (
+      {!canViewAdminAttendance && (checkInMutation.error || checkOutMutation.error) && (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {checkInMutation.error || checkOutMutation.error}
         </div>
@@ -655,6 +548,85 @@ export default function AttendancePage() {
         <StatCard label="Late Count" value={today.data?.summary.lateCount ?? 0} tone="bg-yellow-100 text-yellow-700" icon="!" />
         <StatCard label="Overtime (hrs)" value={Number(today.data?.summary.overtimeHours ?? 0)} tone="bg-indigo-100 text-indigo-700" icon="+" />
       </div>
+
+      {canViewAdminAttendance && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h3 className="text-base font-semibold text-slate-900">Monthly Attendance Report</h3>
+              <p className="text-sm text-slate-500">Filter and export attendance trends for the selected month.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select value={reportMonth} onChange={(event) => setReportMonth(event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm">
+                {Array.from({ length: 12 }, (_, index) => (
+                  <option key={index + 1} value={String(index + 1).padStart(2, '0')}>{new Date(2024, index, 1).toLocaleString([], { month: 'long' })}</option>
+                ))}
+              </select>
+              <input type="number" min="2000" max="2100" value={reportYear} onChange={(event) => setReportYear(event.target.value)} className="w-24 rounded-xl border border-slate-300 px-3 py-2.5 text-sm" />
+              <select value={reportEmployeeId} onChange={(event) => setReportEmployeeId(event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm">
+                <option value="">All employees</option>
+                {employeeOptions.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
+              </select>
+              <input value={reportDepartment} onChange={(event) => setReportDepartment(event.target.value)} placeholder="Department" className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm" />
+              <select value={reportStatus} onChange={(event) => setReportStatus(event.target.value as MonthlyReportStatus)} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm">
+                <option value="">All statuses</option>
+                <option value="PRESENT">Present</option>
+                <option value="ABSENT">Absent</option>
+                <option value="LATE">Late</option>
+                <option value="HALF_DAY">Half Day</option>
+                <option value="LEAVE">Leave</option>
+              </select>
+            </div>
+          </div>
+
+          {monthlyReportLoading ? (
+            <div className="py-8 text-center text-sm text-slate-500">Loading monthly attendance…</div>
+          ) : monthlyReportError ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{monthlyReportError}</div>
+          ) : (
+            <div className="overflow-auto rounded-2xl border border-slate-200">
+              <table className="min-w-240 w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Employee Name</th>
+                    <th className="px-4 py-3">Employee ID</th>
+                    <th className="px-4 py-3">Department</th>
+                    <th className="px-4 py-3">Role</th>
+                    <th className="px-4 py-3">Total Present</th>
+                    <th className="px-4 py-3">Total Absent</th>
+                    <th className="px-4 py-3">Late Count</th>
+                    <th className="px-4 py-3">Half Days</th>
+                    <th className="px-4 py-3">Leaves</th>
+                    <th className="px-4 py-3">Working Days</th>
+                    <th className="px-4 py-3">Attendance %</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {monthlyReport?.rows.length ? monthlyReport.rows.map((row) => (
+                    <tr key={row.employeeId} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 font-medium text-slate-900">{row.employeeName}</td>
+                      <td className="px-4 py-3 text-slate-600">{row.employeeId}</td>
+                      <td className="px-4 py-3 text-slate-600">{row.department ?? '—'}</td>
+                      <td className="px-4 py-3 text-slate-600">{row.role}</td>
+                      <td className="px-4 py-3 text-slate-600">{row.presentCount}</td>
+                      <td className="px-4 py-3 text-slate-600">{row.absentCount}</td>
+                      <td className="px-4 py-3 text-slate-600">{row.lateCount}</td>
+                      <td className="px-4 py-3 text-slate-600">{row.halfDayCount}</td>
+                      <td className="px-4 py-3 text-slate-600">{row.leaveCount}</td>
+                      <td className="px-4 py-3 text-slate-600">{row.workingDays}</td>
+                      <td className="px-4 py-3 text-slate-600">{row.attendancePercent}%</td>
+                    </tr>
+                  )) : (
+                    <tr>
+                      <td colSpan={11} className="px-4 py-10 text-center text-sm text-slate-500">No monthly report rows match the current filters.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {canManageShifts && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-4">
@@ -758,24 +730,25 @@ export default function AttendancePage() {
       )}
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
-        <div className={`grid grid-cols-1 gap-3 ${isAdmin ? 'md:grid-cols-5' : 'md:grid-cols-3'}`}>
-          {isAdmin && (
+        <div className={`grid grid-cols-1 gap-3 ${canViewAdminAttendance ? 'md:grid-cols-5' : 'md:grid-cols-3'}`}>
+          {canViewAdminAttendance && (
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Employee</label>
-              <SearchableEmployeeSelect
-                employees={employeeOptions}
+              <select
                 value={employeeId}
-                onChange={(value) => {
-                  setEmployeeId(value);
+                onChange={(event) => {
+                  setEmployeeId(event.target.value);
                   setPage(1);
                 }}
-                placeholder="All employees"
-                allowAll
-              />
+                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+              >
+                <option value="">All employees</option>
+                {employeeOptions.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
+              </select>
             </div>
           )}
 
-          {isAdmin && (
+          {canViewAdminAttendance && (
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Department</label>
               <input
@@ -834,7 +807,7 @@ export default function AttendancePage() {
           <table className="min-w-full text-sm">
             <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
               <tr>
-                {isAdmin && <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Employee</th>}
+                {canViewAdminAttendance && <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Employee</th>}
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Date</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Check In</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Check Out</th>
@@ -843,23 +816,23 @@ export default function AttendancePage() {
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Late</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Overtime</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
-                {isAdmin && <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>}
+                {canViewAdminAttendance && <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={isAdmin ? 10 : 8} className="px-5 py-12 text-center text-slate-400">Loading attendance…</td>
+                  <td colSpan={canViewAdminAttendance ? 10 : 8} className="px-5 py-12 text-center text-slate-400">Loading attendance…</td>
                 </tr>
               ) : showEmptyState ? (
                 <tr>
-                  <td colSpan={isAdmin ? 10 : 8} className="p-0">
+                  <td colSpan={canViewAdminAttendance ? 10 : 8} className="p-0">
                     <EmptyState title="No attendance records found" description="Try changing date or filters." />
                   </td>
                 </tr>
               ) : data?.data.map((row) => (
                 <tr key={`${row.employeeId}-${row.date}`} className="hover:bg-slate-50 transition-colors">
-                  {isAdmin && (
+                  {canViewAdminAttendance && (
                     <td className="px-5 py-4">
                       <Link href={`/dashboard/attendance/employee/${row.employeeId}`} className="font-medium text-slate-900 hover:text-orange-600">
                         {row.employee.name}
@@ -881,7 +854,7 @@ export default function AttendancePage() {
                   </td>
                   <td className="px-5 py-4 text-slate-700">{row.overtimeHours > 0 ? `+${row.overtimeHours.toFixed(2)} hrs` : '—'}</td>
                   <td className="px-5 py-4"><StatusBadge status={row.status} /></td>
-                  {isAdmin && (
+                  {canViewAdminAttendance && (
                     <td className="px-5 py-4 text-right">
                       {row.id ? (
                         <button
@@ -913,20 +886,7 @@ export default function AttendancePage() {
         </div>
       </div>
 
-      {isAdmin && (
-        <AttendanceActionModal
-          mode={actionMode}
-          employees={employeeOptions}
-          employeeId={actionEmployeeId}
-          onEmployeeChange={setActionEmployeeId}
-          onClose={() => setActionMode(null)}
-          onSubmit={handleActionSubmit}
-          loading={checkInMutation.loading || checkOutMutation.loading}
-          error={checkInMutation.error || checkOutMutation.error}
-        />
-      )}
-
-      {isAdmin && (
+      {canViewAdminAttendance && (
         <EditAttendanceModal
           record={editingRecord}
           loading={updateAttendanceMutation.loading}

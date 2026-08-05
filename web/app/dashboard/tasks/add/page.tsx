@@ -7,6 +7,7 @@ import { getProjects, type Project } from '@/api/projectsApi';
 import { apiClient } from '@/api/apiClient';
 import { canManageProjects } from '@/utils/auth/permissions';
 import { reportError } from '@/lib/error-handling';
+import { useAuthSession } from '@/stores/auth-store';
 
 const PRIORITIES = ['High', 'Low', 'Medium', 'Critical'];
 const STATUSES   = ['PENDING', 'IN_PROGRESS', 'SUBMITTED', 'APPROVED', 'REJECTED'];
@@ -15,18 +16,9 @@ const field = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-g
 
 export default function AddTaskPage() {
   const router = useRouter();
-  const role = typeof window !== 'undefined' ? localStorage.getItem('role') : null;
-  const currentUserId = (() => {
-    if (typeof window === 'undefined') return null;
-    const rawUser = localStorage.getItem('currentUser');
-    if (!rawUser) return null;
-    try {
-      const parsed = JSON.parse(rawUser) as { id?: number };
-      return parsed.id ?? null;
-    } catch {
-      return null;
-    }
-  })();
+  const authSession = useAuthSession();
+  const role = authSession.role;
+  const currentUserId = authSession.user?.id ?? null;
   const [projects, setProjects] = useState<Project[]>([]);
   const [assignableUsers, setAssignableUsers] = useState<Array<{ id: number; name: string; role: string; managerId?: number | null }>>([]);
 
@@ -66,8 +58,8 @@ export default function AddTaskPage() {
           setAssignableUsers(users.filter((user) => user.role === 'EMPLOYEE' && user.managerId === currentUserId));
           return;
         }
-        if (role === 'ADMIN') {
-          setAssignableUsers(users.filter((user) => user.role !== 'ADMIN'));
+        if (role === 'ADMIN' || role === 'SUPER_ADMIN') {
+          setAssignableUsers(users.filter((user) => user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN'));
           return;
         }
         setAssignableUsers([]);

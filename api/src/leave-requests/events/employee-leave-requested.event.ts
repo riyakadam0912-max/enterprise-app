@@ -10,6 +10,7 @@ export class EmployeeLeaveRequestedEvent {
     public readonly employeeEmail: string | null,
     public readonly managerId: number | null,
     public readonly managerName: string | null,
+    public readonly managerEmail: string | null,
     public readonly leaveType: string,
     public readonly startDate: Date,
     public readonly endDate: Date,

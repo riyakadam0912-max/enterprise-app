@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { AttendanceStatus } from '@/api/attendanceApi';
 import { useEmployeeAttendance } from '@/hooks/useAttendance';
+import { useAuthSession } from '@/stores/auth-store';
 
 const DAY_HEADERS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -46,16 +47,11 @@ export default function EmployeeAttendancePage() {
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const [month, setMonth] = useState(defaultMonth);
-  const session = useMemo(() => {
-    if (typeof window === 'undefined') {
-      return { role: 'ADMIN' as const, employeeId: null as number | null };
-    }
-
-    return {
-      role: localStorage.getItem('role') === 'EMPLOYEE' ? ('EMPLOYEE' as const) : ('ADMIN' as const),
-      employeeId: localStorage.getItem('employeeId') ? Number(localStorage.getItem('employeeId')) : null,
-    };
-  }, []);
+  const authSession = useAuthSession();
+  const session = useMemo(() => ({
+    role: (authSession.role as 'SUPER_ADMIN' | 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE') ?? 'EMPLOYEE',
+    employeeId: authSession.employeeId ?? null,
+  }), [authSession.role, authSession.employeeId]);
   const employeeId = session.role === 'EMPLOYEE' && session.employeeId ? session.employeeId : routeEmployeeId;
   const { data, loading, error } = useEmployeeAttendance(employeeId, month);
 

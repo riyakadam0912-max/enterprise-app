@@ -1,17 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   BarChart3,
-  Bell,
   Building2,
+  ChevronLeft,
+  ChevronRight,
   CreditCard,
   FileText,
   LayoutDashboard,
   LogOut,
-  Menu,
   Settings,
   Shield,
   User,
@@ -19,10 +19,10 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '@/providers/AuthProvider';
-import { clearAuthSession, useAuthSession } from '@/stores/auth-store';
-import { Caption } from '@/components/typography/Caption';
+import { clearAuthSession, isSuperAdminSession, useAuthSession } from '@/stores/auth-store';
 import { Heading } from '@/components/typography/Heading';
 import ImpersonationBanner from '@/components/super-admin/ImpersonationBanner';
+import { SuperAdminHeader } from '@/components/super-admin/SuperAdminHeader';
 
 const superAdminNavItems = [
   { label: 'Dashboard', href: '/super-admin/dashboard', icon: LayoutDashboard },
@@ -44,6 +44,10 @@ export default function SuperAdminShell({ children }: { children: React.ReactNod
   const [checked, setChecked] = useState(false);
   const [, startTransition] = useTransition();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('super-admin-sidebar-collapsed') === 'true';
+  });
 
   useEffect(() => {
     if (loading) {
@@ -55,13 +59,31 @@ export default function SuperAdminShell({ children }: { children: React.ReactNod
       return;
     }
 
-    if (session.role !== 'SUPER_ADMIN' && !session.isSuperAdmin) {
+    if (!isSuperAdminSession(session)) {
       router.replace('/dashboard');
       return;
     }
 
     startTransition(() => setChecked(true));
-  }, [authenticated, loading, pathname, router, session.role, session.isSuperAdmin, startTransition]);
+  }, [authenticated, loading, pathname, router, session, session.role, session.roles, session.isSuperAdmin, session.isPlatformAdmin, startTransition]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b') {
+        event.preventDefault();
+        setSidebarCollapsed((current) => !current);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('super-admin-sidebar-collapsed', sidebarCollapsed ? 'true' : 'false');
+    }
+  }, [sidebarCollapsed]);
 
   const handleLogout = async () => {
     await logout();
@@ -69,10 +91,9 @@ export default function SuperAdminShell({ children }: { children: React.ReactNod
     router.push('/super-admin/login');
   };
 
-  const activeNavItem = useMemo(
-    () => superAdminNavItems.find((item) => pathname === item.href || pathname.startsWith(item.href + '/')),
-    [pathname],
-  );
+  const handleToggleSidebar = () => {
+    setSidebarCollapsed((current) => !current);
+  };
 
   if (loading || !checked) {
     return (
@@ -83,7 +104,7 @@ export default function SuperAdminShell({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="flex h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.08),transparent_32%),linear-gradient(135deg,#f8fafc_0%,#eef2ff_100%)]">
       {mobileMenuOpen && (
         <div
           className="fixed inset-0 bg-slate-900/50 z-40 lg:hidden"
@@ -92,26 +113,38 @@ export default function SuperAdminShell({ children }: { children: React.ReactNod
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white transform transition-transform duration-300 lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 transform border-r border-slate-200/70 bg-slate-950 text-white shadow-[0_20px_60px_-30px_rgba(15,23,42,0.85)] transition-all duration-300 ease-out lg:static lg:translate-x-0 ${
           mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
+        } ${sidebarCollapsed ? 'w-24' : 'w-72'}`}
       >
         <div className="flex flex-col h-full">
-          <div className="p-6 border-b border-slate-800">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
-                <Shield className="h-6 w-6 text-white" />
+          <div className="border-b border-slate-800/80 p-4">
+            <div className="flex items-center justify-between">
+              <div className={`flex items-center gap-3 ${sidebarCollapsed ? 'justify-center' : ''}`}>
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-linear-to-br from-indigo-500 via-violet-500 to-sky-500 shadow-lg shadow-indigo-500/20">
+                  <Shield className="h-5 w-5 text-white" />
+                </div>
+                {!sidebarCollapsed ? (
+                  <div>
+                    <Heading level={2} className="text-lg font-semibold text-white">
+                      Super Admin
+                    </Heading>
+                    <p className="text-sm text-slate-400">Global Console</p>
+                  </div>
+                ) : null}
               </div>
-              <div>
-                <Heading level={2} className="font-bold text-white text-lg">
-                  Super Admin
-                </Heading>
-                <Caption className="text-slate-400">Global Console</Caption>
-              </div>
+              <button
+                type="button"
+                onClick={handleToggleSidebar}
+                className="hidden rounded-xl border border-slate-800 bg-slate-900/70 p-2 text-slate-300 transition hover:bg-slate-800 lg:inline-flex"
+                aria-label="Collapse sidebar"
+              >
+                {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+              </button>
             </div>
           </div>
 
-          <nav className="flex-1 overflow-y-auto p-4 space-y-1">
+          <nav className="flex-1 overflow-y-auto p-3 space-y-1">
             {superAdminNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
@@ -120,70 +153,43 @@ export default function SuperAdminShell({ children }: { children: React.ReactNod
                   key={item.href}
                   href={item.href}
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                    isActive ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800'
-                  }`}
+                  className={`flex items-center gap-3 rounded-2xl px-3 py-3 transition-all ${
+                    isActive ? 'bg-white/10 text-white shadow-lg shadow-indigo-950/20' : 'text-slate-300 hover:bg-slate-900/70 hover:text-white'
+                  } ${sidebarCollapsed ? 'justify-center px-2' : ''}`}
                 >
-                  <Icon className="h-5 w-5" />
-                  <span className="font-medium">{item.label}</span>
+                  <Icon className="h-5 w-5 shrink-0" />
+                  {!sidebarCollapsed ? <span className="font-medium">{item.label}</span> : null}
                 </Link>
               );
             })}
           </nav>
 
-          <div className="p-4 border-t border-slate-800 space-y-2">
+          <div className="space-y-2 border-t border-slate-800/80 p-3">
             <Link
               href="/super-admin/profile"
               onClick={() => setMobileMenuOpen(false)}
-              className="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-300 hover:bg-slate-800 transition-colors"
+              className={`flex items-center gap-3 rounded-2xl px-3 py-3 text-slate-300 transition hover:bg-slate-900/70 hover:text-white ${sidebarCollapsed ? 'justify-center px-2' : ''}`}
             >
-              <User className="h-5 w-5" />
-              <span className="font-medium">Profile</span>
+              <User className="h-5 w-5 shrink-0" />
+              {!sidebarCollapsed ? <span className="font-medium">Profile</span> : null}
             </Link>
             <button
               onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-slate-300 hover:bg-slate-800 transition-colors"
+              className={`flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-slate-300 transition hover:bg-slate-900/70 hover:text-white ${sidebarCollapsed ? 'justify-center px-2' : ''}`}
             >
-              <LogOut className="h-5 w-5" />
-              <span className="font-medium">Logout</span>
+              <LogOut className="h-5 w-5 shrink-0" />
+              {!sidebarCollapsed ? <span className="font-medium">Logout</span> : null}
             </button>
           </div>
         </div>
       </aside>
 
       <div className="flex flex-col flex-1 overflow-hidden">
-        <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setMobileMenuOpen(true)}
-              className="lg:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg"
-            >
-              <Menu className="h-6 w-6" />
-            </button>
-            <Heading level={3} className="font-semibold text-slate-900 text-lg">
-              {activeNavItem?.label ?? 'Super Admin'}
-            </Heading>
-          </div>
-          <div className="flex items-center gap-4">
-            <button className="relative p-2 text-slate-600 hover:bg-slate-100 rounded-lg">
-              <Bell className="h-6 w-6" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full" />
-            </button>
-            <div className="flex items-center gap-3">
-              <div className="text-right hidden sm:block">
-                <p className="font-medium text-slate-900 text-sm">{session.user?.name || 'Super Admin'}</p>
-                <Caption className="text-slate-500">Global Super Admin</Caption>
-              </div>
-              <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white font-semibold">
-                {(session.user?.name?.charAt(0) || 'S').toUpperCase()}
-              </div>
-            </div>
-          </div>
-        </header>
+        <SuperAdminHeader onMenuToggle={() => setMobileMenuOpen(true)} />
 
         <main className="flex-1 overflow-y-auto">
           <ImpersonationBanner />
-          <div className="p-6">{children}</div>
+          <div className="p-4 sm:p-6">{children}</div>
         </main>
       </div>
     </div>

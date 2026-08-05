@@ -8,7 +8,14 @@ import {
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
-export const PROJECT_STATUSES = ['ACTIVE', 'COMPLETED'] as const;
+export const PROJECT_STATUSES = [
+  'ACTIVE',
+  'COMPLETED',
+  'PLANNING',
+  'PLANNED',
+  'IN PROGRESS',
+  'ON HOLD',
+] as const;
 
 export class CreateProjectDto {
   @IsOptional()

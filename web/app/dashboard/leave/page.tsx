@@ -18,6 +18,7 @@ import { FormTextarea } from '@/components/forms/FormTextarea';
 import { SearchBar } from '@/components/navigation/SearchBar';
 import { FilterPanel } from '@/components/navigation/FilterPanel';
 import { toast } from '@/providers/toast-provider';
+import { useAuthSession } from '@/stores/auth-store';
 import {
   createLeaveRequest,
   getLeaveRequests,
@@ -67,16 +68,17 @@ function formatDate(value?: string | null) {
 }
 
 export default function LeavePage() {
+  const session = useAuthSession();
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [role, setRole] = useState('');
-  const [employeeId, setEmployeeId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | LeaveStatus>('all');
   const [createOpen, setCreateOpen] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<LeaveRequest | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
+  const role = session.role ?? '';
+  const employeeId = session.employeeId;
   const isEmployee = role.toUpperCase() === 'EMPLOYEE';
   const isManager = ['MANAGER', 'ADMIN', 'HR'].includes(role.toUpperCase());
 
@@ -89,12 +91,6 @@ export default function LeavePage() {
       reason: '',
     },
   });
-
-  useEffect(() => {
-    setRole(localStorage.getItem('role') ?? '');
-    const storedEmployeeId = localStorage.getItem('employeeId');
-    setEmployeeId(storedEmployeeId ? Number(storedEmployeeId) || null : null);
-  }, []);
 
   useEffect(() => {
     async function load() {
@@ -112,7 +108,7 @@ export default function LeavePage() {
     if (role) {
       void load();
     }
-  }, [isEmployee, role]);
+  }, [role]);
 
   const filteredRequests = useMemo(() => {
     return requests.filter((request) => {

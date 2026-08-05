@@ -6,6 +6,7 @@ import { createProject } from '@/api/projectsApi';
 import { apiClient } from '@/api/apiClient';
 import { canAccessUsers } from '@/utils/auth/permissions';
 import { reportError } from '@/lib/error-handling';
+import { getAuthSessionSnapshot } from '@/stores/auth-store';
 
 const STATUSES = ['ACTIVE', 'COMPLETED'];
 
@@ -18,14 +19,11 @@ function parseSession() {
     return { role: 'EMPLOYEE' as DashboardRole, userId: null as number | null, name: '' };
   }
 
-  const role = (localStorage.getItem('role') ?? 'EMPLOYEE') as DashboardRole;
-  try {
-    const raw = localStorage.getItem('currentUser');
-    const user = raw ? (JSON.parse(raw) as { id?: number; name?: string }) : null;
-    return { role, userId: user?.id ?? null, name: user?.name ?? '' };
-  } catch {
-    return { role, userId: null, name: '' };
-  }
+  const snapshot = getAuthSessionSnapshot();
+  const role = (snapshot.role === 'MANAGER' || snapshot.role === 'ADMIN' ? snapshot.role : 'EMPLOYEE') as DashboardRole;
+  const user = snapshot.user;
+
+  return { role, userId: user?.id ?? null, name: user?.name ?? '' };
 }
 
 export default function AddProjectPage() {

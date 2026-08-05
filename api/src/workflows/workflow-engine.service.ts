@@ -502,11 +502,14 @@ export class WorkflowEngineService implements OnModuleInit {
 
     await Promise.all(
       params.recipients.map((recipientId: number) =>
-        this.notificationsService.create({
-          userId: recipientId,
-          title: params.title,
-          message: params.message,
-        }),
+        this.notificationsService.create(
+          {
+            userId: recipientId,
+            title: params.title,
+            message: params.message,
+          },
+          params.organizationId,
+        ),
       ),
     );
   }
@@ -726,6 +729,45 @@ export class WorkflowEngineService implements OnModuleInit {
     };
   }
 
+  private async ensureStageSteps(
+    transaction: PrismaClient,
+    instance: WorkflowInstanceWithIncludes,
+    stage: WorkflowStage,
+    organizationId: number,
+  ): Promise<WorkflowStep[]> {
+    const existingSteps = instance.steps.filter(
+      (step: WorkflowStep) => step.workflowStageId === stage.id,
+    );
+
+    if (existingSteps.length) {
+      return existingSteps;
+    }
+
+    const policy = stagePolicy(stage);
+    const rule = assignmentRule(stage);
+    const slotCount = Math.max(1, policy.expectedApproverCount);
+
+    return Promise.all(
+      Array.from({ length: slotCount }, (_, index) =>
+        transaction.workflowStep.create({
+          data: {
+            workflowInstanceId: instance.id,
+            workflowStageId: stage.id,
+            slotIndex: index + 1,
+            status: 'PENDING',
+            assignedRole:
+              rule.value ?? (rule.type === 'MANAGER' ? 'MANAGER' : null),
+            metadata: toJsonValue({
+              mode: policy.mode,
+              expectedApproverCount: policy.expectedApproverCount,
+            }),
+            organizationId,
+          },
+        }),
+      ),
+    );
+  }
+
   async approveWorkflow(dto: {
     definitionKey: string;
     entityType: string;
@@ -762,20 +804,24 @@ export class WorkflowEngineService implements OnModuleInit {
       throw new Error('No active workflow stage is available for approval');
     }
 
-    const stageSteps = instance.steps.filter(
-      (step: WorkflowStep) => step.workflowStageId === activeStage.id,
-    );
-    const pendingStep =
-      stageSteps.find(
-        (step: WorkflowStep) =>
-          step.status === 'PENDING' || step.status === 'NOT_STARTED',
-      ) ?? stageSteps[0];
-    if (!pendingStep) {
-      throw new Error('No pending workflow step is available for approval');
-    }
-
     const updatedInstance = await this.prisma.$transaction(
       async (transaction: PrismaClient) => {
+        const stageSteps = await this.ensureStageSteps(
+          transaction,
+          instance,
+          activeStage,
+          instance.organizationId,
+        );
+
+        const pendingStep =
+          stageSteps.find(
+            (step: WorkflowStep) =>
+              step.status === 'PENDING' || step.status === 'NOT_STARTED',
+          ) ?? stageSteps[0];
+        if (!pendingStep) {
+          throw new Error('No pending workflow step is available for approval');
+        }
+
         await transaction.workflowStep.update({
           where: { id: pendingStep.id },
           data: {

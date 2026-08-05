@@ -24,6 +24,8 @@ interface AuthRefreshPayload {
   permissions: string[];
   employeeId: number | null;
   organizationId: number | null;
+  isSuperAdmin?: boolean;
+  isPlatformAdmin?: boolean;
 }
 
 let isRefreshing = false;
@@ -77,16 +79,6 @@ axiosClient.interceptors.request.use(
         }
       } catch {
         // Non-critical: proceed without organization header
-      }
-
-      const accessToken = (() => {
-        const token = window.localStorage.getItem('enterprise_access_token') ?? window.localStorage.getItem('access_token');
-        return token ?? null;
-      })();
-
-      if (accessToken) {
-        config.headers = config.headers ?? {};
-        config.headers.Authorization = `Bearer ${accessToken}`;
       }
     }
 
@@ -193,6 +185,8 @@ axiosClient.interceptors.response.use(
             employeeId: payload.employeeId,
 
             organizationId: payload.organizationId,
+            isSuperAdmin: payload.isSuperAdmin,
+            isPlatformAdmin: payload.isPlatformAdmin,
           });
 
           if (

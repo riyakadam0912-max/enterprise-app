@@ -82,11 +82,14 @@ export class CompletionNotificationInterceptor implements NestInterceptor {
             const actorUserId = req.user?.userId ?? ownerUserId;
             const summary = `${entity} #${entityId} status changed from ${previousStatus ?? 'UNKNOWN'} to ${updatedStatus}.`;
 
-            await this.notificationsService.create({
-              userId: ownerUserId,
-              title: `${entity} completed`,
-              message: summary,
-            });
+            await this.notificationsService.create(
+              {
+                userId: ownerUserId,
+                title: `${entity} completed`,
+                message: summary,
+              },
+              req.user?.organizationId ?? undefined,
+            );
 
             await this.auditLogsService.create({
               userId: actorUserId,

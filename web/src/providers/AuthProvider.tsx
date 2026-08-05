@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -47,6 +48,7 @@ export function AuthProvider({
   children: React.ReactNode;
 }) {
   const session = useAuthSession();
+  const bootstrapAttemptedRef = useRef(false);
 
   const [loading, setLoading] =
     useState(true);
@@ -57,6 +59,12 @@ export function AuthProvider({
 
 
   useEffect(() => {
+
+    if (bootstrapAttemptedRef.current) {
+      return;
+    }
+
+    bootstrapAttemptedRef.current = true;
 
     let mounted = true;
 
@@ -94,7 +102,6 @@ export function AuthProvider({
           error.status === 401
 
         ) {
-
           clearAuthSession();
 
           return;

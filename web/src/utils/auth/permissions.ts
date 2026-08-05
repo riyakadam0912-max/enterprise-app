@@ -30,7 +30,7 @@ export function canManageProjects(role?: string | null): boolean {
 
 export function canAccessUsers(role?: string | null): boolean {
   const normalized = normalizeRole(role);
-  return normalized === 'SUPER_ADMIN' || normalized === 'ADMIN' || normalized === 'COMPLIANCE_MANAGER' || normalized === 'HR' || normalized === 'MANAGER';
+  return normalized === 'SUPER_ADMIN' || normalized === 'ADMIN' || normalized === 'COMPLIANCE_MANAGER';
 }
 
 export function canAccessAuditLogs(role?: string | null): boolean {

@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const clientEnvSchema = z.object({
   NEXT_PUBLIC_API_URL: z.string().min(1).default('/api/v1'),
-  NEXT_PUBLIC_NOTIFICATION_WS_URL: z.string().min(1).default('http://localhost:3000'),
+  NEXT_PUBLIC_NOTIFICATION_WS_URL: z.string().min(1).default('http://127.0.0.1:3000'),
 });
 
 export type ClientEnv = z.infer<typeof clientEnvSchema>;

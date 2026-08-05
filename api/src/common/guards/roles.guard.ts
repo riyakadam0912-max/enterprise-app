@@ -12,6 +12,7 @@ import type { AuthUser } from '../types/auth';
 interface RequestWithUser {
   user?: AuthUser;
   url: string;
+  method?: string;
 }
 
 @Injectable()
@@ -27,12 +28,7 @@ export class RolesGuard implements CanActivate {
       [context.getHandler(), context.getClass()],
     );
 
-    console.error(
-      `[DEBUG ROLES-GUARD] url=${request.url} requiredRoles=${JSON.stringify(requiredRoles ?? [])} ` +
-        `user.role=${user?.role ?? 'null'} user.roles=${JSON.stringify(user?.roles ?? [])} user?.userId=${user?.userId ?? user?.id ?? 'null'}`,
-    );
-
-    // ADMIN and SUPER_ADMIN bypass everything
+    // Platform admins bypass role checks for privileged routes.
     const isPlatformAdmin =
       user?.role === Role.ADMIN ||
       user?.role === Role.SUPER_ADMIN ||
@@ -43,9 +39,6 @@ export class RolesGuard implements CanActivate {
           user.roles.includes(Role.SUPER_ADMIN)));
 
     if (isPlatformAdmin) {
-      console.error(
-        `[DEBUG ROLES-GUARD] url=${request.url} BYPASS (ADMIN/SUPER_ADMIN role)`,
-      );
       return true;
     }
 
@@ -64,9 +57,6 @@ export class RolesGuard implements CanActivate {
         user.roles.some((role: string) => requiredRoles.includes(role)));
 
     if (!hasRole) {
-      console.error(
-        `[DEBUG ROLES-GUARD] url=${request.url} THROW Forbidden required=${JSON.stringify(requiredRoles)} have=${JSON.stringify({ role: user.role, roles: user.roles })}`,
-      );
       throw new ForbiddenException('Access denied');
     }
 

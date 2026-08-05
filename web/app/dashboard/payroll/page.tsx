@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { getSalaryStructures, createSalaryStructure, getPayrollCycles, createPayrollCycle, runPayrollCycle, getPayrollCycleEntries, markPayrollEntryPaid, generatePayslips, createTaxDeclaration, generateForm16, type SalaryStructure, type PayrollCycle, type PayrollEntry } from '@/api/payrollApi';
 import TableActions from '@/components/common/TableActions';
+import { useAuthSession } from '@/stores/auth-store';
 
 type Role = 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
 
@@ -10,7 +11,8 @@ const monthName = (m: number) => new Date(2024, m - 1).toLocaleString('default',
 const money = (v: number) => `₹ ${(v || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
 export default function PayrollPage() {
-  const [role, setRole] = useState<Role>('EMPLOYEE');
+  const session = useAuthSession();
+  const role = session.role as Role;
   const [activeTab, setActiveTab] = useState<'structures' | 'cycles' | 'entries' | 'taxes' | 'form16'>('structures');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,11 +50,6 @@ export default function PayrollPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  useEffect(() => {
-    const storedRole = (localStorage.getItem('role') || 'EMPLOYEE') as Role;
-    setRole(storedRole);
   }, []);
 
   useEffect(() => {

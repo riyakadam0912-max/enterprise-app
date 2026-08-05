@@ -132,6 +132,35 @@ export interface AttendanceFilters {
   status?: AttendanceStatus;
 }
 
+export interface MonthlyAttendanceReportRow {
+  employeeId: number;
+  employeeName: string;
+  department: string | null;
+  role: string;
+  presentCount: number;
+  absentCount: number;
+  lateCount: number;
+  halfDayCount: number;
+  leaveCount: number;
+  workingDays: number;
+  attendancePercent: number;
+}
+
+export interface MonthlyAttendanceReportResponse {
+  month: string;
+  year: number;
+  rows: MonthlyAttendanceReportRow[];
+  total: number;
+}
+
+export interface MonthlyAttendanceReportFilters {
+  month?: string;
+  year?: string;
+  employeeId?: number;
+  department?: string;
+  status?: 'PRESENT' | 'ABSENT' | 'LATE' | 'HALF_DAY' | 'LEAVE' | '';
+}
+
 export interface AttendanceActionPayload {
   employeeId?: number;
   date?: string;
@@ -192,6 +221,16 @@ export function getEmployeeAttendance(employeeId: number, month?: string): Promi
 
 export function getAttendanceSummary(month?: string, employeeId?: number): Promise<AttendanceMonthlySummary> {
   return apiClient<AttendanceMonthlySummary>(`/attendance/summary${buildQuery({ month, employeeId })}`);
+}
+
+export function getMonthlyAttendanceReport(filters: MonthlyAttendanceReportFilters = {}): Promise<MonthlyAttendanceReportResponse> {
+  return apiClient<MonthlyAttendanceReportResponse>(`/attendance/monthly-report${buildQuery({
+    month: filters.month,
+    year: filters.year,
+    employeeId: filters.employeeId,
+    department: filters.department,
+    status: filters.status,
+  })}`);
 }
 
 export function getShifts(): Promise<ShiftRecord[]> {

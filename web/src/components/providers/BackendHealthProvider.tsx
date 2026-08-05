@@ -1,20 +1,27 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { clientEnv } from '@/config/env';
 
 type BackendHealthState = 'checking' | 'up' | 'down';
 
 export default function BackendHealthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<BackendHealthState>('checking');
+  const skipStrictEffectRun = useRef(process.env.NODE_ENV === 'development');
 
   useEffect(() => {
+    if (skipStrictEffectRun.current) {
+      skipStrictEffectRun.current = false;
+      return;
+    }
+
     let active = true;
-    const controllers: AbortController[] = [];
+    let controller: AbortController | null = null;
 
     const checkHealth = async () => {
-      const controller = new AbortController();
-      controllers.push(controller);
+      controller?.abort();
+      controller = new AbortController();
+
       try {
         const response = await fetch(`${clientEnv.NEXT_PUBLIC_API_URL}/health`, {
           cache: 'no-store',
@@ -26,9 +33,15 @@ export default function BackendHealthProvider({ children }: { children: React.Re
 
         setState(response.ok ? 'up' : 'down');
       } catch (err) {
-        if (active && !(err instanceof DOMException && err.name === 'AbortError')) {
-          setState('down');
+        if (!active) {
+          return;
         }
+
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return;
+        }
+
+        setState('down');
       }
     };
 
@@ -40,13 +53,8 @@ export default function BackendHealthProvider({ children }: { children: React.Re
 
     return () => {
       active = false;
+      controller?.abort();
       window.clearInterval(intervalId);
-      controllers.forEach((c) => {
-        try {
-          c.abort();
-        } catch {
-        }
-      });
     };
   }, []);
 

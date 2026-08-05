@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import type { Cache } from 'cache-manager';
 import { AttendanceStatus } from '@prisma/client';
 import { AttendanceService } from './attendance.service';
@@ -247,6 +247,38 @@ describe('AttendanceService', () => {
       ['Ben', AttendanceStatus.LEAVE],
       ['Cara', AttendanceStatus.ABSENT],
     ]);
+  });
+
+  it('allows a super admin to view attendance without forcing a single organization scope', async () => {
+    prisma.attendance.findMany.mockResolvedValue([]);
+
+    await service.getSummary(
+      { month: '2026-03' },
+      {
+        ...mockUser,
+        role: Role.SUPER_ADMIN,
+        organizationId: 42,
+      },
+    );
+
+    expect(prisma.attendance.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.not.objectContaining({ organizationId: 42 }),
+      }),
+    );
+  });
+
+  it("blocks employees from requesting another employee's monthly report", async () => {
+    await expect(
+      service.getMonthlyReport(
+        { employeeId: 99 },
+        {
+          ...mockUser,
+          role: Role.EMPLOYEE,
+          employeeId: 7,
+        },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('returns monthly employee attendance data for calendar rendering', async () => {

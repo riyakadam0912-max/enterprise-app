@@ -1,51 +1,46 @@
-# Development Setup
+# Development setup
 
-The monorepo now starts from the root with one command:
+## Purpose
+
+This page explains how to start the project for local development.
+
+## Who should read this
+
+This guide is for developers, QA engineers, and administrators.
+
+## Start the stack
+
+Run the following command from the repository root:
 
 ```bash
 npm run dev
 ```
 
-That command performs three things in a predictable order.
+This starts the API and the web app together.
 
-1. It checks that ports 3000 and 3001 are free.
-2. It starts the API and WEB services with labeled terminal output.
-3. The web app waits for the API health endpoint before booting Next.js.
+## Runtime contract
 
-Service ownership is fixed.
+- API: port 3000
+- Web: port 3001
+- API prefix: /api/v1
 
-1. API: port 3000.
-2. WEB: port 3001.
-3. No silent fallback ports are allowed.
+## Common commands
 
-Startup sequence.
+```bash
+npm run dev
+npm run dev:clean
+npm run kill:ports
+npm run typecheck
+```
 
-1. `api/scripts/dev.js` validates the port, runs Prisma generate, applies migrations, and starts NestJS in watch mode.
-2. `web/scripts/dev.mjs` validates port 3001, waits for `http://127.0.0.1:3000/api/v1/health`, then starts Next.js.
-3. The root orchestrator keeps both services attached and exits them together on `SIGINT` or `SIGTERM`.
+## Troubleshooting
 
-Redis-backed queues are optional in local development.
+- If a port is already in use, stop the conflicting process or run `npm run kill:ports`.
+- If the web app does not finish starting, confirm that the API is healthy and the database is available.
+- If the database connection fails, check the local database and the `DATABASE_URL` value.
 
-1. Leave `REDIS_ENABLED=false` for a clean API startup without Redis.
-2. Set `REDIS_ENABLED=true` and configure `REDIS_URL` or `REDIS_HOST`/`REDIS_PORT` when you want BullMQ jobs locally.
+## Related documents
 
-Useful commands.
-
-1. `npm run dev` starts the full stack.
-2. `npm run dev:clean` kills ports 3000 and 3001, then starts again.
-3. `npm run kill:ports` frees both dev ports without starting anything.
-4. `npm run typecheck` validates both packages.
-
-Troubleshooting.
-
-1. If the API fails on port 3000, use `npm run kill:ports` or identify the blocking PID from the error output.
-2. If the web app waits forever, the backend is not healthy yet or Prisma/database startup failed.
-3. If Prisma migrate fails, check `DATABASE_URL` and whether the local database is running.
-4. If sockets do not connect, confirm the API is running and `NEXT_PUBLIC_NOTIFICATION_WS_URL` points to port 3000.
-
-Notes for Docker readiness.
-
-1. The port map is explicit and stable.
-2. Health checks are exposed through the API `/health` endpoint.
-3. Environment variables are split by service boundary.
-4. Prisma generation and migration are part of the backend startup path.
+- [Environment setup](./ENVIRONMENT_SETUP.md)
+- [Getting started](../02-Getting-Started/README.md)
+- [Troubleshooting guide](../09-Troubleshooting/README.md)

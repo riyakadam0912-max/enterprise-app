@@ -36,7 +36,7 @@ import {
 export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
 
-  @Roles(Role.ADMIN, Role.EMPLOYEE)
+  @Roles(Role.EMPLOYEE)
   @ApiOperation({ summary: 'POST check-in' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -59,7 +59,7 @@ export class AttendanceController {
     return this.attendanceService.checkIn(dto, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.EMPLOYEE)
+  @Roles(Role.EMPLOYEE)
   @ApiOperation({ summary: 'POST check-out' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -82,7 +82,7 @@ export class AttendanceController {
     return this.attendanceService.checkOut(dto, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'POST shifts' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -105,7 +105,7 @@ export class AttendanceController {
     return this.attendanceService.createShift(dto, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'GET shifts' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -126,7 +126,7 @@ export class AttendanceController {
     return this.attendanceService.listShifts(req.user);
   }
 
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'POST shifts/assign' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -149,7 +149,7 @@ export class AttendanceController {
     return this.attendanceService.assignShift(dto, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'GET /' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -214,7 +214,7 @@ export class AttendanceController {
     return this.attendanceService.getMySnapshot(req.user);
   }
 
-  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'GET summary' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -236,7 +236,7 @@ export class AttendanceController {
     return this.attendanceService.getSummary(query, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'GET today' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -258,12 +258,28 @@ export class AttendanceController {
     return this.attendanceService.getToday(req.user, date);
   }
 
-  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'GET employee/:id' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
+  @Get('monthly-report')
+  monthlyReport(
+    @Query() query: QueryAttendanceDto,
+    @Req()
+    req: {
+      user: {
+        userId: number;
+        role: Role;
+        employeeId?: number | null;
+        organizationId: number;
+      };
+    },
+  ) {
+    return this.attendanceService.getMonthlyReport(query, req.user);
+  }
+
   @Get('employee/:id')
   findByEmployee(
     @Param('id', ParseIntPipe) id: number,
@@ -281,7 +297,7 @@ export class AttendanceController {
     return this.attendanceService.getEmployeeAttendance(id, req.user, month);
   }
 
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'PATCH :id' })
   @ApiResponse({ status: 200, description: 'PATCH request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -305,7 +321,7 @@ export class AttendanceController {
     return this.attendanceService.update(id, dto, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'POST automation/run' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })

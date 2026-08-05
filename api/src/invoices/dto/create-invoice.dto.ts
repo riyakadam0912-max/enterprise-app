@@ -5,7 +5,9 @@ import {
   IsDateString,
   IsIn,
   IsEmail,
+  IsNotEmpty,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 const STATUSES = [
@@ -28,7 +30,9 @@ const PAYMENT_METHODS = [
 ] as const;
 
 export class CreateInvoiceDto {
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
+  @IsNotEmpty()
   @ApiProperty({ example: 'sample-invoiceNo' })
   invoiceNo!: string;
 

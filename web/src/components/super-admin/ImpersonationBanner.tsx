@@ -3,14 +3,14 @@
 import { useRouter } from 'next/navigation';
 import { ArrowRightLeft, Building2, ShieldCheck } from 'lucide-react';
 
-import { clearActiveOrganization, getActiveOrganizationId, useAuthSession } from '@/stores/auth-store';
+import { clearActiveOrganization, getActiveOrganizationId, isSuperAdminSession, useAuthSession } from '@/stores/auth-store';
 
 export default function ImpersonationBanner() {
   const router = useRouter();
   const session = useAuthSession();
   const activeOrganizationId = getActiveOrganizationId();
 
-  const isImpersonating = session.isSuperAdmin && activeOrganizationId != null;
+  const isImpersonating = isSuperAdminSession(session) && activeOrganizationId != null;
 
   if (!isImpersonating) {
     return null;

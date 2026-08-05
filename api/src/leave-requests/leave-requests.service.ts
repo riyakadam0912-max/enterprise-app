@@ -192,7 +192,7 @@ export class LeaveRequestsService {
           ? null
           : await this.prisma.user.findUnique({
               where: { id: empUser.managerId },
-              select: { name: true },
+              select: { name: true, email: true },
             });
 
       const event = new EmployeeLeaveRequestedEvent(
@@ -202,6 +202,7 @@ export class LeaveRequestsService {
         empUser.email,
         empUser.managerId,
         managerUser?.name ?? null,
+        managerUser?.email ?? null,
         dto.leaveType,
         leaveRequest.startDate,
         leaveRequest.endDate,

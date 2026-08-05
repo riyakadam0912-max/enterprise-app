@@ -3,7 +3,7 @@
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/providers/AuthProvider';
-import { getAuthSessionSnapshot } from '@/stores/auth-store';
+import { getAuthSessionSnapshot, isSuperAdminSession } from '@/stores/auth-store';
 import { PasswordInput } from '@/components/ui/password-input';
 
 export default function LoginPage() {
@@ -23,7 +23,7 @@ export default function LoginPage() {
     try {
       await login(email, password);
       const snapshot = getAuthSessionSnapshot();
-      if (snapshot.isSuperAdmin || snapshot.role === 'SUPER_ADMIN') {
+      if (isSuperAdminSession(snapshot)) {
         router.replace('/super-admin/dashboard');
         return;
       }

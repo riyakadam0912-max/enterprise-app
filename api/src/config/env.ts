@@ -16,7 +16,7 @@ type ServerEnv = {
   JWT_ACCESS_EXPIRES_IN: string;
   JWT_REFRESH_EXPIRES_IN: string;
   COOKIE_DOMAIN: string;
-  COOKIE_SAME_SITE: string;
+  COOKIE_SAME_SITE: 'lax' | 'strict' | 'none';
   COOKIE_SECURE: boolean;
   EMAIL_PROVIDER: string;
   EMAIL_FALLBACK_PROVIDER?: string;
@@ -119,7 +119,45 @@ function readOptionalBoolean(
   );
 }
 
+function readCookieSameSite(
+  env: Record<string, unknown>,
+  key: string,
+  fallback: 'lax' | 'strict' | 'none' = 'lax',
+): 'lax' | 'strict' | 'none' {
+  const value = env[key];
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (
+      normalized === 'lax' ||
+      normalized === 'strict' ||
+      normalized === 'none'
+    ) {
+      return normalized;
+    }
+  }
+
+  throw new Error(
+    `Invalid environment variable ${key}: expected one of "lax", "strict", "none"`,
+  );
+}
+
 export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
+  const COOKIE_SECURE = readOptionalBoolean(
+    env,
+    'COOKIE_SECURE',
+    process.env.NODE_ENV === 'production',
+  );
+  const COOKIE_SAME_SITE = readCookieSameSite(env, 'COOKIE_SAME_SITE', 'lax');
+  if (COOKIE_SAME_SITE === 'none' && !COOKIE_SECURE) {
+    throw new Error(
+      'Invalid cookie configuration: COOKIE_SAME_SITE="none" requires COOKIE_SECURE=true',
+    );
+  }
+
   return {
     DATABASE_URL: readRequiredString(env, 'DATABASE_URL'),
     PORT: readOptionalNumber(env, 'PORT', 3000),
@@ -150,12 +188,8 @@ export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
       '7d',
     ),
     COOKIE_DOMAIN: readOptionalString(env, 'COOKIE_DOMAIN'),
-    COOKIE_SAME_SITE: readOptionalString(env, 'COOKIE_SAME_SITE', 'lax'),
-    COOKIE_SECURE: readOptionalBoolean(
-      env,
-      'COOKIE_SECURE',
-      process.env.NODE_ENV === 'production',
-    ),
+    COOKIE_SAME_SITE,
+    COOKIE_SECURE,
     EMAIL_PROVIDER: readOptionalString(env, 'EMAIL_PROVIDER', 'NONE'),
     EMAIL_FALLBACK_PROVIDER: readOptionalString(env, 'EMAIL_FALLBACK_PROVIDER'),
     SENDGRID_API_KEY: readOptionalString(env, 'SENDGRID_API_KEY'),

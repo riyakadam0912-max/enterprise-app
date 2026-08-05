@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiClient } from '@/api/apiClient';
+import { useAuthSession } from '@/stores/auth-store';
 import { canAccessUsers } from '@/utils/auth/permissions';
 
 interface UserAccount {
@@ -16,13 +18,9 @@ interface UserAccount {
 }
 
 export default function UsersPage() {
-  const [role] = useState(() => {
-    if (typeof window === 'undefined') {
-      return 'EMPLOYEE' as UserAccount['role'];
-    }
-
-    return (localStorage.getItem('role') ?? 'EMPLOYEE') as UserAccount['role'];
-  });
+  const router = useRouter();
+  const session = useAuthSession();
+  const role = session.role;
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +32,7 @@ export default function UsersPage() {
     if (!canAccessUsers(role)) {
       setUsers([]);
       setError('You do not have permission to view user accounts.');
+      router.replace('/dashboard');
       setLoading(false);
       return;
     }
@@ -46,7 +45,7 @@ export default function UsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [role]);
+  }, [role, router]);
 
   useEffect(() => {
     void loadData();

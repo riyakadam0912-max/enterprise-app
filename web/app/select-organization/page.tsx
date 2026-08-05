@@ -8,6 +8,7 @@ import { listOrganizations, type Organization } from '@/api/organizationsApi';
 import { useAuth } from '@/providers/AuthProvider';
 import {
   getActiveOrganizationId,
+  isSuperAdminSession,
   setActiveOrganization,
   useAuthSession,
 } from '@/stores/auth-store';
@@ -67,7 +68,7 @@ export default function SelectOrganizationPage() {
     try {
       setSubmitting(true);
       setActiveOrganization(selectedId);
-      if (session.isSuperAdmin || session.role === 'SUPER_ADMIN') {
+      if (isSuperAdminSession(session)) {
         router.replace('/dashboard');
       } else {
         router.replace('/dashboard');
@@ -85,7 +86,7 @@ export default function SelectOrganizationPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-orange-50 flex items-center justify-center px-4 py-10">
+    <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-orange-50 flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-3xl">
         <div className="mb-8 text-center">
           <div className="inline-flex items-center justify-center w-14 h-14 bg-orange-500 rounded-2xl mb-4 shadow-sm">

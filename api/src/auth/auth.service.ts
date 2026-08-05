@@ -15,7 +15,7 @@ import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { MailService } from '../mail/mail.service';
 import type ms from 'ms';
 
-type AuthTokenPayload = {
+export type AuthTokenPayload = {
   sub: number;
   userId: number;
   email: string;
