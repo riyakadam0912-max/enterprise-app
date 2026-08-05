@@ -151,7 +151,13 @@ export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
     'COOKIE_SECURE',
     process.env.NODE_ENV === 'production',
   );
-  const COOKIE_SAME_SITE = readCookieSameSite(env, 'COOKIE_SAME_SITE', 'lax');
+  const cookieSameSiteDefault: 'lax' | 'strict' | 'none' =
+    process.env.NODE_ENV === 'production' ? 'none' : 'lax';
+  const COOKIE_SAME_SITE = readCookieSameSite(
+    env,
+    'COOKIE_SAME_SITE',
+    cookieSameSiteDefault,
+  );
   if (COOKIE_SAME_SITE === 'none' && !COOKIE_SECURE) {
     throw new Error(
       'Invalid cookie configuration: COOKIE_SAME_SITE="none" requires COOKIE_SECURE=true',

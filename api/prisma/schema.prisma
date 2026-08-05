@@ -14,15 +14,15 @@ model User {
   password                String
   role                    Role
   isActive                Boolean          @default(true)
-  employeeId              Int?             @unique
-  managerId               Int?
-  organizationId          Int?
-  phone                   String?
-  address                 String?
   createdAt               DateTime         @default(now())
   updatedAt               DateTime         @updatedAt
-  refreshToken            String?
+  employeeId              Int?             @unique
   deletedAt               DateTime?
+  organizationId          Int?
+  address                 String?
+  managerId               Int?
+  phone                   String?
+  refreshToken            String?
   activities              Activity[]
   hrApprovedExpenses      Expense[]        @relation("ExpenseHrApprovedBy")
   managerApprovedExpenses Expense[]        @relation("ExpenseManagerApprovedBy")
@@ -40,9 +40,9 @@ model User {
   employee                Employee?        @relation("UserEmployee", fields: [employeeId], references: [id])
   manager                 User?            @relation("UserManager", fields: [managerId], references: [id])
   teamMembers             User[]           @relation("UserManager")
-  coManagedProjects       Project[]        @relation("ProjectCoManagers")
-  userRoles               UserRole[]
   organization            Organization?    @relation(fields: [organizationId], references: [id])
+  userRoles               UserRole[]
+  coManagedProjects       Project[]        @relation("ProjectCoManagers")
 
   @@index([organizationId])
 }
@@ -56,101 +56,100 @@ model AppRole {
 }
 
 model Organization {
-  id                Int                 @id @default(autoincrement())
-  name              String
-  code              String              @unique
-  slug              String              @unique
-  email             String?
-  phone             String?
-  logoUrl           String?
-  address           String?
-  city              String?
-  state             String?
-  country           String?
-  postalCode        String?
-  timezone          String              @default("UTC")
-  currency          String              @default("USD")
-  status            OrganizationStatus  @default(ACTIVE)
-  website           String?
-  gstNumber         String?
-  panNumber         String?
-  taxId             String?
-  industry          String?
-  employeeLimit     Int?
-  subscriptionPlan  String?
-  billingEmail      String?
-  billingAddress    String?
-  contactPerson     String?
-  contactPhone      String?
-  contactEmail      String?
-  trialStartDate    DateTime?
-  trialEndDate      DateTime?
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  deletedAt         DateTime?
-
-  users             User[]
-  employees         Employee[]
-  shifts            Shift[]
-  attendances       Attendance[]
-  invoices          Invoice[]
-  ledgerEntries     LedgerEntry[]
-  leads             Lead[]
-  campaignLeads     CampaignLead[]
-  timesheets        Timesheet[]
-  deals             Deal[]
-  tasks             Task[]
-  leaveRequests     LeaveRequest[]
-  tickets           Ticket[]
-  formSubmissions   FormSubmission[]
-  marketingCampaigns MarketingCampaign[]
-  expenses          Expense[]
-  projects          Project[]
-  projectMessages   ProjectMessage[]
-  projectLinks      ProjectLink[]
-  projectMembers    ProjectMember[]
-  contacts          Contact[]
-  activities        Activity[]
-  quotes            Quote[]
-  quoteItems        QuoteItem[]
-  productCategories ProductCategory[]
-  products          Product[]
-  payments          Payment[]
-  notifications     Notification[]
-  notificationRecipients NotificationRecipient[]
-  notificationPreferences NotificationPreference[]
-  notificationDeliveryLogs NotificationDeliveryLog[]
-  fileAttachments   FileAttachment[]
-  files             File[]
-  fileActivities    FileActivity[]
-  auditLogs         AuditLog[]
-  activityTimelines ActivityTimeline[]
+  id                       Int                       @id @default(autoincrement())
+  name                     String
+  code                     String                    @unique
+  slug                     String                    @unique
+  email                    String?
+  phone                    String?
+  logoUrl                  String?
+  address                  String?
+  city                     String?
+  state                    String?
+  country                  String?
+  postalCode               String?
+  timezone                 String                    @default("UTC")
+  currency                 String                    @default("USD")
+  status                   OrganizationStatus        @default(ACTIVE)
+  website                  String?
+  gstNumber                String?
+  panNumber                String?
+  taxId                    String?
+  industry                 String?
+  employeeLimit            Int?
+  subscriptionPlan         String?
+  billingEmail             String?
+  billingAddress           String?
+  contactPerson            String?
+  contactPhone             String?
+  contactEmail             String?
+  trialStartDate           DateTime?
+  trialEndDate             DateTime?
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  deletedAt                DateTime?
+  activities               Activity[]
+  activityTimelines        ActivityTimeline[]
   activityTimelineComments ActivityTimelineComment[]
-  events            Event[]
-  dynamicForms      DynamicForm[]
-  workflowInstances WorkflowInstance[]
-  workflowSteps     WorkflowStep[]
-  workflowActions   WorkflowAction[]
-  workflowComments  WorkflowComment[]
-  workflowAssignments WorkflowAssignment[]
-  workflowHistories WorkflowHistory[]
-  workflowNotifications WorkflowNotification[]
-  salaryStructures  SalaryStructure[]
-  payrollCycles     PayrollCycle[]
-  payrollEntries    PayrollEntry[]
-  payslips          Payslip[]
-  payrollEarnings   PayrollEarnings[]
-  payrollDeductions PayrollDeduction[]
-  taxDeclarations   TaxDeclaration[]
-  form16s           Form16[]
-  payrollConfigs    PayrollConfig[]
-  jobOpenings       JobOpening[]
-  candidates        Candidate[]
-  interviews        Interview[]
-  goalCycles        GoalCycle[]
-  goals             Goal[]
-  performanceReviews PerformanceReview[]
-  importLogs        ImportLog[]
+  attendances              Attendance[]
+  auditLogs                AuditLog[]
+  campaignLeads            CampaignLead[]
+  candidates               Candidate[]
+  contacts                 Contact[]
+  deals                    Deal[]
+  dynamicForms             DynamicForm[]
+  employees                Employee[]
+  events                   Event[]
+  expenses                 Expense[]
+  files                    File[]
+  fileActivities           FileActivity[]
+  fileAttachments          FileAttachment[]
+  form16s                  Form16[]
+  formSubmissions          FormSubmission[]
+  goals                    Goal[]
+  goalCycles               GoalCycle[]
+  importLogs               ImportLog[]
+  interviews               Interview[]
+  invoices                 Invoice[]
+  jobOpenings              JobOpening[]
+  leads                    Lead[]
+  leaveRequests            LeaveRequest[]
+  ledgerEntries            LedgerEntry[]
+  marketingCampaigns       MarketingCampaign[]
+  notifications            Notification[]
+  notificationDeliveryLogs NotificationDeliveryLog[]
+  notificationPreferences  NotificationPreference[]
+  notificationRecipients   NotificationRecipient[]
+  payments                 Payment[]
+  payrollConfigs           PayrollConfig[]
+  payrollCycles            PayrollCycle[]
+  payrollDeductions        PayrollDeduction[]
+  payrollEarnings          PayrollEarnings[]
+  payrollEntries           PayrollEntry[]
+  payslips                 Payslip[]
+  performanceReviews       PerformanceReview[]
+  products                 Product[]
+  productCategories        ProductCategory[]
+  projects                 Project[]
+  projectLinks             ProjectLink[]
+  projectMembers           ProjectMember[]
+  projectMessages          ProjectMessage[]
+  quotes                   Quote[]
+  quoteItems               QuoteItem[]
+  salaryStructures         SalaryStructure[]
+  shifts                   Shift[]
+  tasks                    Task[]
+  taxDeclarations          TaxDeclaration[]
+  tickets                  Ticket[]
+  timesheets               Timesheet[]
+  users                    User[]
+  workflowActions          WorkflowAction[]
+  workflowAssignments      WorkflowAssignment[]
+  workflowComments         WorkflowComment[]
+  workflowHistories        WorkflowHistory[]
+  workflowInstances        WorkflowInstance[]
+  workflowNotifications    WorkflowNotification[]
+  workflowSteps            WorkflowStep[]
 
   @@index([status])
   @@index([createdAt])
@@ -169,9 +168,9 @@ model Permission {
 model RolePermission {
   roleId       Int
   permissionId Int
+  createdAt    DateTime   @default(now())
   permission   Permission @relation(fields: [permissionId], references: [id])
   role         AppRole    @relation(fields: [roleId], references: [id])
-  createdAt    DateTime   @default(now())
 
   @@id([roleId, permissionId])
 }
@@ -179,38 +178,39 @@ model RolePermission {
 model UserRole {
   userId    Int
   roleId    Int
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role      AppRole  @relation(fields: [roleId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+  role      AppRole  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([userId, roleId])
 }
 
 model Employee {
   id                    Int                 @id @default(autoincrement())
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  department            String?
+  designation           String?
+  email                 String?
+  hireDate              DateTime?
+  leaveBalance          Int?
+  manager               String?
   name                  String
+  phoneNumber           String?
+  status                String?
   phone                 String?
   position              String?
   salary                Float?
-  email                 String?
-  phoneNumber           String?
-  department            String?
-  designation           String?
-  hireDate              DateTime?
-  manager               String?
-  leaveBalance          Int?
-  status                String?
-  pan                   String?
-  shiftId               Int?
+  deletedAt             DateTime?
   organizationId        Int
   address               String?
   emergencyContact      String?
   emergencyContactPhone String?
-  createdAt             DateTime            @default(now())
-  updatedAt             DateTime            @updatedAt
-  deletedAt             DateTime?
+  pan                   String?
+  shiftId               Int?
   attendances           Attendance[]
   dealAssignments       Deal[]              @relation("DealAssignee")
+  organization          Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   shift                 Shift?              @relation(fields: [shiftId], references: [id])
   expenseClaims         Expense[]
   form16s               Form16[]
@@ -225,7 +225,6 @@ model Employee {
   taskAssignments       Task[]              @relation("TaskAssignee")
   taxDeclarations       TaxDeclaration[]
   user                  User?               @relation("UserEmployee")
-  organization          Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   assignedProjects      Project[]           @relation("ProjectAssignedEmployees")
 
   @@index([organizationId])
@@ -244,35 +243,35 @@ model Shift {
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
   deletedAt          DateTime?
-  organizationId        Int
+  organizationId     Int
   attendances        Attendance[]
   employees          Employee[]
-  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
 }
 
 model Attendance {
-  id            Int              @id @default(autoincrement())
-  employeeId    Int
-  shiftId       Int?
-  date          DateTime
-  checkIn       DateTime?
-  checkOut      DateTime?
-  workingHours  Float?
-  lateMinutes   Int              @default(0)
-  overtimeHours Float            @default(0)
-  requiredHours Float?
-  isAutoClosed  Boolean          @default(false)
-  isPaidLeave   Boolean?
-  remarks       String?
-  status        AttendanceStatus
-  createdAt     DateTime         @default(now())
-  deletedAt     DateTime?
-  organizationId        Int
-  employee      Employee         @relation(fields: [employeeId], references: [id])
-  shift         Shift?           @relation(fields: [shiftId], references: [id])
-  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int              @id @default(autoincrement())
+  employeeId     Int
+  date           DateTime
+  checkIn        DateTime?
+  checkOut       DateTime?
+  workingHours   Float?
+  status         AttendanceStatus
+  createdAt      DateTime         @default(now())
+  shiftId        Int?
+  deletedAt      DateTime?
+  isAutoClosed   Boolean          @default(false)
+  isPaidLeave    Boolean?
+  lateMinutes    Int              @default(0)
+  overtimeHours  Float            @default(0)
+  remarks        String?
+  requiredHours  Float?
+  organizationId Int
+  employee       Employee         @relation(fields: [employeeId], references: [id])
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  shift          Shift?           @relation(fields: [shiftId], references: [id])
 
   @@unique([employeeId, date])
   @@index([date])
@@ -280,48 +279,48 @@ model Attendance {
 }
 
 model Invoice {
-  id            Int       @id @default(autoincrement())
-  invoiceNo     String    @unique
-  issueDate     DateTime?
-  dueDate       DateTime?
-  status        String    @default("DRAFT")
-  customer      String?
-  clientEmail   String?
-  totalAmount   Float     @default(0)
-  taxAmount     Float     @default(0)
-  discount      Float     @default(0)
-  paymentMethod String?
-  notes         String?
-  userId        Int
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime?
-  organizationId        Int
-  user          User      @relation(fields: [userId], references: [id])
-  payments      Payment[]
-  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int          @id @default(autoincrement())
+  invoiceNo      String       @unique
+  totalAmount    Float        @default(0)
+  status         String       @default("DRAFT")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  userId         Int
+  customer       String?
+  discount       Float        @default(0)
+  dueDate        DateTime?
+  issueDate      DateTime?
+  notes          String?
+  paymentMethod  String?
+  taxAmount      Float        @default(0)
+  deletedAt      DateTime?
+  clientEmail    String?
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id])
+  payments       Payment[]
 
   @@index([organizationId])
 }
 
 model LedgerEntry {
-  id          Int       @id @default(autoincrement())
-  date        DateTime?
-  description String?
-  debit       Float     @default(0)
-  credit      Float     @default(0)
-  account     String?
-  invoice     String?
-  expense     String?
-  balance     Float     @default(0)
-  reference   String?
-  userId      Int
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
-  organizationId        Int
-  user        User      @relation(fields: [userId], references: [id])
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int          @id @default(autoincrement())
+  date           DateTime?
+  description    String?
+  debit          Float        @default(0)
+  credit         Float        @default(0)
+  account        String?
+  invoice        String?
+  expense        String?
+  balance        Float        @default(0)
+  reference      String?
+  userId         Int
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id])
 
   @@index([organizationId])
 }
@@ -329,157 +328,157 @@ model LedgerEntry {
 model Lead {
   id               Int            @id @default(autoincrement())
   name             String
-  company          String?
   email            String?
   phone            String?
   status           String         @default("New")
-  source           String?
-  notes            String?
-  leadOwner        String?
-  contactedDate    DateTime?
-  nextFollowUp     DateTime?
-  assignedTo       String?
-  assignedToId     Int?
-  leadScore        Int?
-  createdBy        String?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
+  company          String?
+  notes            String?
+  source           String?
+  assignedTo       String?
+  contactedDate    DateTime?
+  createdBy        String?
+  leadOwner        String?
+  leadScore        Int?
+  nextFollowUp     DateTime?
+  assignedToId     Int?
   deletedAt        DateTime?
-  organizationId        Int
+  organizationId   Int
   activities       Activity[]
   campaignLeads    CampaignLead[]
   deals            Deal[]
   assignedEmployee Employee?      @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   tasks            Task[]
-  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([organizationId])
 }
 
 model CampaignLead {
-  id              Int       @id @default(autoincrement())
+  id              Int          @id @default(autoincrement())
   campaign        String
   engagementScore Int?
   sourceType      String?
   lastInteraction DateTime?
-  status          String    @default("NEW")
+  status          String       @default("NEW")
   notes           String?
   leadId          Int?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
   deletedAt       DateTime?
-  organizationId        Int
-  lead            Lead?     @relation(fields: [leadId], references: [id])
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId  Int
+  lead            Lead?        @relation(fields: [leadId], references: [id])
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
 }
 
 model Timesheet {
-  id        Int       @id @default(autoincrement())
-  task      String
-  project   String?
-  date      DateTime
-  hours     Float
-  status    String    @default("PENDING")
-  notes     String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-  organizationId        Int
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int          @id @default(autoincrement())
+  task           String
+  project        String?
+  date           DateTime
+  hours          Float
+  status         String       @default("PENDING")
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
 }
 
 model Deal {
-  id               Int        @id @default(autoincrement())
+  id               Int          @id @default(autoincrement())
   title            String
   value            Float
-  stage            String     @default("NEW")
+  stage            String       @default("NEW")
   probability      Float?
   closeDate        DateTime?
+  leadId           Int?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
   actualCloseDate  DateTime?
   contact          String?
   owner            String?
-  assignedToId     Int?
   pipeline         String?
-  leadId           Int?
   contactId        Int?
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  assignedToId     Int?
   deletedAt        DateTime?
-  organizationId        Int
+  organizationId   Int
   activities       Activity[]
-  assignedEmployee Employee?  @relation("DealAssignee", fields: [assignedToId], references: [id])
-  linkedContact    Contact?   @relation("ContactToDeals", fields: [contactId], references: [id])
-  lead             Lead?      @relation(fields: [leadId], references: [id])
+  assignedEmployee Employee?    @relation("DealAssignee", fields: [assignedToId], references: [id])
+  linkedContact    Contact?     @relation("ContactToDeals", fields: [contactId], references: [id])
+  lead             Lead?        @relation(fields: [leadId], references: [id])
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   quotes           Quote[]
   tasks            Task[]
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([organizationId])
 }
 
 model Task {
-  id               Int       @id @default(autoincrement())
-  taskName         String
-  project          String?
-  projectId        Int?
-  assignee         String?
-  assignedToId     Int?
-  assignedToUserId Int?
-  assignedByUserId Int?
-  dueDate          DateTime?
-  priority         String?
-  status           String    @default("PENDING")
-  estimatedHours   Float?
+  id               Int          @id @default(autoincrement())
+  status           String       @default("PENDING")
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
   actualHours      Float?
+  assignee         String?
+  dueDate          DateTime?
+  estimatedHours   Float?
   notes            String?
+  priority         String?
+  project          String?
+  taskName         String
+  dealId           Int?
+  leadId           Int?
+  assignedToId     Int?
   submissionLink   String?
   reviewComment    String?
-  leadId           Int?
-  dealId           Int?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
   deletedAt        DateTime?
-  organizationId        Int
+  assignedByUserId Int?
+  assignedToUserId Int?
   category         String?
   description      String?
   links            String?
+  projectId        Int?
   reviewedAt       DateTime?
   reviewedBy       Int?
   submissionNotes  String?
-  assignedByUser   User?     @relation("TaskAssignedBy", fields: [assignedByUserId], references: [id])
-  assignedEmployee Employee? @relation("TaskAssignee", fields: [assignedToId], references: [id])
-  assignedToUser   User?     @relation("TaskAssignedTo", fields: [assignedToUserId], references: [id])
-  deal             Deal?     @relation(fields: [dealId], references: [id])
-  lead             Lead?     @relation(fields: [leadId], references: [id])
-  projectRef       Project?  @relation("ProjectTasks", fields: [projectId], references: [id])
-  reviewedByUser   User?     @relation("TaskReviewedBy", fields: [reviewedBy], references: [id])
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId   Int
+  assignedByUser   User?        @relation("TaskAssignedBy", fields: [assignedByUserId], references: [id])
+  assignedEmployee Employee?    @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  assignedToUser   User?        @relation("TaskAssignedTo", fields: [assignedToUserId], references: [id])
+  deal             Deal?        @relation(fields: [dealId], references: [id])
+  lead             Lead?        @relation(fields: [leadId], references: [id])
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectRef       Project?     @relation("ProjectTasks", fields: [projectId], references: [id])
+  reviewedByUser   User?        @relation("TaskReviewedBy", fields: [reviewedBy], references: [id])
 
   @@index([organizationId])
 }
 
 model LeaveRequest {
-  id            Int       @id @default(autoincrement())
-  employeeId    Int?
-  startDate     DateTime
-  endDate       DateTime
-  leaveType     String
-  reason        String?
-  status        String    @default("PENDING")
-  isPaid        Boolean   @default(true)
-  appliedOn     DateTime?
-  approvedBy    String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime?
-  approvalTrail Json?
-  organizationId        Int
-  employee      Employee? @relation(fields: [employeeId], references: [id])
-  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int          @id @default(autoincrement())
+  startDate      DateTime
+  endDate        DateTime
+  leaveType      String
+  reason         String?
+  status         String       @default("PENDING")
+  appliedOn      DateTime?
+  approvedBy     String?
+  approvalTrail  Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  employeeId     Int?
+  deletedAt      DateTime?
+  isPaid         Boolean      @default(true)
+  organizationId Int
+  employee       Employee?    @relation(fields: [employeeId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
 }
@@ -495,66 +494,66 @@ model TicketType {
 }
 
 model Ticket {
-  id           Int         @id @default(autoincrement())
-  event        String?
-  customer     String?
-  price        Float?
-  status       String      @default("RESERVED")
-  purchaseDate DateTime?
-  qrCode       String?
-  notes        String?
-  ticketTypeId Int?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  deletedAt    DateTime?
-  organizationId        Int
-  ticketType   TicketType? @relation(fields: [ticketTypeId], references: [id])
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int          @id @default(autoincrement())
+  event          String?
+  customer       String?
+  price          Float?
+  status         String       @default("RESERVED")
+  purchaseDate   DateTime?
+  qrCode         String?
+  notes          String?
+  ticketTypeId   Int?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ticketType     TicketType?  @relation(fields: [ticketTypeId], references: [id])
 
   @@index([organizationId])
 }
 
 model FormSubmission {
-  id             Int       @id @default(autoincrement())
+  id             Int          @id @default(autoincrement())
   form           String
   submittedBy    String?
   submissionDate DateTime?
   data           String?
-  status         String    @default("SUBMITTED")
+  status         String       @default("SUBMITTED")
   reviewer       String?
   reviewDate     DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
   deletedAt      DateTime?
-  organizationId        Int
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
 }
 
 model MarketingCampaign {
-  id             Int       @id @default(autoincrement())
+  id             Int          @id @default(autoincrement())
   campaignName   String
   channel        String?
   startDate      DateTime?
   endDate        DateTime?
   objective      String?
   budget         Float?
-  status         String    @default("PLANNED")
+  status         String       @default("PLANNED")
   targetAudience String?
   createdBy      String?
   campaignOwner  String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
   deletedAt      DateTime?
-  organizationId        Int
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
 }
 
 model Expense {
-  id                      Int       @id @default(autoincrement())
+  id                      Int          @id @default(autoincrement())
   expenseDate             DateTime?
   category                String?
   description             String?
@@ -562,7 +561,9 @@ model Expense {
   currency                String?
   receiptImage            String?
   approvedBy              String?
-  status                  String    @default("PENDING")
+  status                  String       @default("PENDING")
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
   employeeId              Int?
   submittedByUserId       Int?
   managerApprovalByUserId Int?
@@ -571,15 +572,13 @@ model Expense {
   rejectedAt              DateTime?
   rejectionReason         String?
   approvalTrail           Json?
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
   deletedAt               DateTime?
-  organizationId        Int
-  employee                Employee? @relation(fields: [employeeId], references: [id])
-  hrApprovalByUser        User?     @relation("ExpenseHrApprovedBy", fields: [hrApprovalByUserId], references: [id])
-  managerApprovalByUser   User?     @relation("ExpenseManagerApprovedBy", fields: [managerApprovalByUserId], references: [id])
-  submittedByUser         User?     @relation("ExpenseSubmittedBy", fields: [submittedByUserId], references: [id])
-  organization            Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId          Int
+  employee                Employee?    @relation(fields: [employeeId], references: [id])
+  hrApprovalByUser        User?        @relation("ExpenseHrApprovedBy", fields: [hrApprovalByUserId], references: [id])
+  managerApprovalByUser   User?        @relation("ExpenseManagerApprovedBy", fields: [managerApprovalByUserId], references: [id])
+  organization            Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  submittedByUser         User?        @relation("ExpenseSubmittedBy", fields: [submittedByUserId], references: [id])
 
   @@index([organizationId])
 }
@@ -591,7 +590,6 @@ model Project {
   startDate         DateTime?
   endDate           DateTime?
   manager           String?
-  managerId         Int?
   status            String           @default("PLANNED")
   budget            Float?
   description       String?
@@ -600,29 +598,30 @@ model Project {
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   deletedAt         DateTime?
-  organizationId        Int
+  managerId         Int?
+  organizationId    Int
   managerUser       User?            @relation("ProjectManager", fields: [managerId], references: [id])
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   links             ProjectLink[]
   members           ProjectMember[]
   messages          ProjectMessage[]
   tasks             Task[]           @relation("ProjectTasks")
   assignedEmployees Employee[]       @relation("ProjectAssignedEmployees")
   coManagers        User[]           @relation("ProjectCoManagers")
-  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([organizationId])
 }
 
 model ProjectMessage {
-  id        String   @id @default(cuid())
-  projectId Int
-  senderId  Int
-  content   String
-  createdAt DateTime @default(now())
-  organizationId        Int
-  project   Project  @relation(fields: [projectId], references: [id])
-  sender    User     @relation("ProjectMessageSender", fields: [senderId], references: [id])
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             String       @id @default(cuid())
+  projectId      Int
+  senderId       Int
+  content        String
+  createdAt      DateTime     @default(now())
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project        Project      @relation(fields: [projectId], references: [id])
+  sender         User         @relation("ProjectMessageSender", fields: [senderId], references: [id])
 
   @@index([projectId])
   @@index([senderId])
@@ -630,220 +629,220 @@ model ProjectMessage {
 }
 
 model ProjectLink {
-  id          Int       @id @default(autoincrement())
-  projectId   Int
-  title       String
-  url         String
-  createdById Int
-  createdAt   DateTime  @default(now())
-  deletedAt   DateTime?
-  organizationId        Int
-  createdBy   User      @relation(fields: [createdById], references: [id])
-  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int          @id @default(autoincrement())
+  projectId      Int
+  title          String
+  url            String
+  createdById    Int
+  createdAt      DateTime     @default(now())
+  deletedAt      DateTime?
+  organizationId Int
+  createdBy      User         @relation(fields: [createdById], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@index([organizationId])
 }
 
 model ProjectMember {
-  projectId  Int
-  employeeId Int
-  role       String?
-  joinedAt   DateTime @default(now())
-  organizationId        Int
-  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId      Int
+  employeeId     Int
+  role           String?
+  joinedAt       DateTime     @default(now())
+  organizationId Int
+  employee       Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@id([projectId, employeeId])
   @@index([organizationId])
 }
 
 model Contact {
-  id            Int        @id @default(autoincrement())
-  contactName   String
-  email         String?
-  phoneNumber   String?
-  company       String?
-  jobTitle      String?
-  leadSource    String?
-  address       String?
-  website       String?
-  linkedin      String?
-  contactStatus String?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  deletedAt     DateTime?
-  organizationId        Int
-  activities    Activity[]
-  deals         Deal[]     @relation("ContactToDeals")
-  quotes        Quote[]
-  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int          @id @default(autoincrement())
+  contactName    String
+  email          String?
+  phoneNumber    String?
+  company        String?
+  jobTitle       String?
+  leadSource     String?
+  address        String?
+  website        String?
+  linkedin       String?
+  contactStatus  String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organizationId Int
+  activities     Activity[]
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deals          Deal[]       @relation("ContactToDeals")
+  quotes         Quote[]
 
   @@index([organizationId])
 }
 
 model Activity {
-  id          Int          @id @default(autoincrement())
-  type        ActivityType
-  description String
-  userId      Int
-  leadId      Int?
-  dealId      Int?
-  contactId   Int?
-  createdAt   DateTime     @default(now())
-  deletedAt   DateTime?
-  contact     Contact?     @relation(fields: [contactId], references: [id])
-  deal        Deal?        @relation(fields: [dealId], references: [id])
-  lead        Lead?        @relation(fields: [leadId], references: [id])
-  user        User         @relation(fields: [userId], references: [id])
-  organizationId        Int
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int          @id @default(autoincrement())
+  type           ActivityType
+  description    String
+  userId         Int
+  leadId         Int?
+  dealId         Int?
+  contactId      Int?
+  createdAt      DateTime     @default(now())
+  deletedAt      DateTime?
+  organizationId Int
+  contact        Contact?     @relation(fields: [contactId], references: [id])
+  deal           Deal?        @relation(fields: [dealId], references: [id])
+  lead           Lead?        @relation(fields: [leadId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id])
 
   @@index([organizationId])
 }
 
 model Event {
-  id            Int       @id @default(autoincrement())
-  eventName     String
-  eventCode     String?
-  startDateTime DateTime?
-  endDateTime   DateTime?
-  location      String?
-  organizer     String?
-  status        String?
-  capacity      Int?
-  description   String?
-  eventType     String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime?
-  organizationId        Int
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int          @id @default(autoincrement())
+  eventName      String
+  eventCode      String?
+  startDateTime  DateTime?
+  endDateTime    DateTime?
+  location       String?
+  organizer      String?
+  status         String?
+  capacity       Int?
+  description    String?
+  eventType      String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
 }
 
 model DynamicForm {
-  id           Int       @id @default(autoincrement())
-  formName     String
-  formCode     String?
-  description  String?
-  createdBy    String?
-  status       String?
-  formType     String?
-  targetModule String?
-  createdOn    DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
-  organizationId        Int
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int          @id @default(autoincrement())
+  formName       String
+  formCode       String?
+  description    String?
+  createdBy      String?
+  status         String?
+  formType       String?
+  targetModule   String?
+  createdOn      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
 }
 
 model Quote {
-  id        Int         @id @default(autoincrement())
-  dealId    Int
-  contactId Int
-  total     Float
-  status    String      @default("DRAFT")
-  validTill DateTime
-  notes     String?
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  deletedAt DateTime?
-  organizationId        Int
-  contact   Contact     @relation(fields: [contactId], references: [id])
-  deal      Deal        @relation(fields: [dealId], references: [id])
-  items     QuoteItem[]
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int          @id @default(autoincrement())
+  dealId         Int
+  contactId      Int
+  total          Float
+  status         String       @default("DRAFT")
+  validTill      DateTime
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organizationId Int
+  contact        Contact      @relation(fields: [contactId], references: [id])
+  deal           Deal         @relation(fields: [dealId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  items          QuoteItem[]
 
   @@index([organizationId])
 }
 
 model QuoteItem {
-  id        Int       @id @default(autoincrement())
-  quoteId   Int
-  name      String
-  quantity  Int
-  price     Float
-  deletedAt DateTime?
-  organizationId        Int
-  quote     Quote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int          @id @default(autoincrement())
+  quoteId        Int
+  name           String
+  quantity       Int
+  price          Float
+  deletedAt      DateTime?
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quote          Quote        @relation(fields: [quoteId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
 }
 
 model ProductCategory {
-  id        Int       @id @default(autoincrement())
-  name      String
-  createdAt DateTime  @default(now())
-  deletedAt DateTime?
-  organizationId        Int
-  products  Product[]
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int          @id @default(autoincrement())
+  name           String
+  createdAt      DateTime     @default(now())
+  deletedAt      DateTime?
+  organizationId Int
+  products       Product[]
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
 }
 
 model Product {
-  id          Int              @id @default(autoincrement())
-  name        String
-  description String?
-  price       Float
-  sku         String?
-  categoryId  Int?
-  taxRate     Float?
-  isActive    Boolean          @default(true)
-  createdAt   DateTime         @default(now())
-  deletedAt   DateTime?
-  organizationId        Int
-  category    ProductCategory? @relation(fields: [categoryId], references: [id])
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int              @id @default(autoincrement())
+  name           String
+  description    String?
+  price          Float
+  sku            String?
+  categoryId     Int?
+  taxRate        Float?
+  isActive       Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  deletedAt      DateTime?
+  organizationId Int
+  category       ProductCategory? @relation(fields: [categoryId], references: [id])
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
 }
 
 model Payment {
-  id            Int       @id @default(autoincrement())
-  invoiceId     Int
-  amount        Float
-  paymentMethod String
-  transactionId String?
-  paymentDate   DateTime
-  status        String
-  createdAt     DateTime  @default(now())
-  deletedAt     DateTime?
-  organizationId        Int
-  invoice       Invoice   @relation(fields: [invoiceId], references: [id])
-  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int          @id @default(autoincrement())
+  invoiceId      Int
+  amount         Float
+  paymentMethod  String
+  transactionId  String?
+  paymentDate    DateTime
+  status         String
+  createdAt      DateTime     @default(now())
+  deletedAt      DateTime?
+  organizationId Int
+  invoice        Invoice      @relation(fields: [invoiceId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
 }
 
 model Notification {
-  id         Int                       @id @default(autoincrement())
-  title      String
-  message    String
-  createdAt  DateTime                  @default(now())
-  actionUrl  String?
-  category   String                    @default("SYSTEM")
-  createdBy  Int?
-  entityId   Int?
-  entityType String?
-  module     String?
-  priority   String                    @default("MEDIUM")
-  type       String                    @default("SYSTEM")
-  updatedAt  DateTime                  @default(now()) @updatedAt
-  organizationId        Int
-  creator    User?                     @relation(fields: [createdBy], references: [id])
-  deliveries NotificationDeliveryLog[]
-  recipients NotificationRecipient[]
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int                       @id @default(autoincrement())
+  title          String
+  message        String
+  createdAt      DateTime                  @default(now())
+  actionUrl      String?
+  category       String                    @default("SYSTEM")
+  createdBy      Int?
+  entityId       Int?
+  entityType     String?
+  module         String?
+  priority       String                    @default("MEDIUM")
+  type           String                    @default("SYSTEM")
+  updatedAt      DateTime                  @default(now()) @updatedAt
+  organizationId Int
+  creator        User?                     @relation(fields: [createdBy], references: [id])
+  organization   Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deliveries     NotificationDeliveryLog[]
+  recipients     NotificationRecipient[]
 
   @@index([organizationId])
 }
@@ -857,9 +856,9 @@ model NotificationRecipient {
   deliveredAt    DateTime?
   channel        String       @default("IN_APP")
   status         String       @default("PENDING")
+  organizationId Int
   notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
-  organizationId        Int
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([notificationId, userId, channel])
   @@index([userId, isRead])
@@ -868,19 +867,19 @@ model NotificationRecipient {
 }
 
 model NotificationPreference {
-  id                    Int      @id @default(autoincrement())
-  userId                Int      @unique
-  emailEnabled          Boolean  @default(true)
-  pushEnabled           Boolean  @default(true)
-  inAppEnabled          Boolean  @default(true)
-  mentionNotifications  Boolean  @default(true)
-  approvalNotifications Boolean  @default(true)
-  reminderNotifications Boolean  @default(true)
-  criticalBypassMute    Boolean  @default(true)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                    Int          @id @default(autoincrement())
+  userId                Int          @unique
+  emailEnabled          Boolean      @default(true)
+  pushEnabled           Boolean      @default(true)
+  inAppEnabled          Boolean      @default(true)
+  mentionNotifications  Boolean      @default(true)
+  approvalNotifications Boolean      @default(true)
+  reminderNotifications Boolean      @default(true)
+  criticalBypassMute    Boolean      @default(true)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
   organizationId        Int
-  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
 }
@@ -911,9 +910,9 @@ model NotificationDeliveryLog {
   sentAt         DateTime     @default(now())
   deliveredAt    DateTime?
   metadata       Json?
+  organizationId Int
   notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
-  organizationId        Int
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([notificationId, channel])
   @@index([userId, status])
@@ -921,17 +920,17 @@ model NotificationDeliveryLog {
 }
 
 model FileAttachment {
-  id         Int       @id @default(autoincrement())
-  fileName   String
-  fileUrl    String
-  fileKey    String?
-  entityType String
-  entityId   Int
-  uploadedBy Int
-  createdAt  DateTime  @default(now())
-  deletedAt  DateTime?
-  organizationId        Int
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int          @id @default(autoincrement())
+  fileName       String
+  fileUrl        String
+  entityType     String
+  entityId       Int
+  uploadedBy     Int
+  createdAt      DateTime     @default(now())
+  deletedAt      DateTime?
+  organizationId Int
+  fileKey        String?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
 }
@@ -967,12 +966,12 @@ model File {
   deletedAt       DateTime?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
+  organizationId  Int
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   parentFile      File?          @relation("FileVersions", fields: [parentFileId], references: [id])
   versions        File[]         @relation("FileVersions")
   uploadedByUser  User           @relation("FileUploadedBy", fields: [uploadedBy], references: [id])
   activities      FileActivity[]
-  organizationId        Int
-  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([entityType, entityId])
   @@index([module])
@@ -984,15 +983,15 @@ model File {
 }
 
 model FileActivity {
-  id        Int      @id @default(autoincrement())
-  fileId    Int
-  userId    Int?
-  action    String
-  metadata  Json?
-  createdAt DateTime @default(now())
-  file      File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
-  organizationId        Int
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int          @id @default(autoincrement())
+  fileId         Int
+  userId         Int?
+  action         String
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+  organizationId Int
+  file           File         @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([fileId, action])
   @@index([userId])
@@ -1001,26 +1000,26 @@ model FileActivity {
 }
 
 model AuditLog {
-  id            Int      @id @default(autoincrement())
-  userId        Int?
-  action        String
-  entityId      Int?
-  createdAt     DateTime @default(now())
-  userName      String?
-  userRole      String?
-  module        String
-  entityType    String
-  fieldName     String?
-  oldValue      Json?
-  newValue      Json?
-  description   String?
-  ipAddress     String?
-  deviceInfo    String?
-  requestMethod String?
-  endpoint      String?
-  status        String   @default("SUCCESS")
-  organizationId        Int
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int          @id @default(autoincrement())
+  userId         Int?
+  action         String
+  entityId       Int?
+  createdAt      DateTime     @default(now())
+  userName       String?
+  userRole       String?
+  module         String
+  entityType     String
+  fieldName      String?
+  oldValue       Json?
+  newValue       Json?
+  description    String?
+  ipAddress      String?
+  deviceInfo     String?
+  requestMethod  String?
+  endpoint       String?
+  status         String       @default("SUCCESS")
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([module])
@@ -1097,15 +1096,15 @@ model WorkflowInstance {
   metadata             Json?
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
-  organizationId        Int
+  organizationId       Int
   actions              WorkflowAction[]
   assignments          WorkflowAssignment[]
   comments             WorkflowComment[]
   history              WorkflowHistory[]
+  organization         Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   workflowDefinition   WorkflowDefinition     @relation(fields: [workflowDefinitionId], references: [id], onDelete: Cascade)
   notifications        WorkflowNotification[]
   steps                WorkflowStep[]
-  organization         Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([entityType, entityId])
   @@index([workflowDefinitionId, status])
@@ -1128,10 +1127,10 @@ model WorkflowStep {
   metadata           Json?
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
+  organizationId     Int
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   workflowInstance   WorkflowInstance    @relation(fields: [workflowInstanceId], references: [id], onDelete: Cascade)
   workflowStage      WorkflowStage       @relation(fields: [workflowStageId], references: [id], onDelete: Cascade)
-  organizationId        Int
-  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([workflowInstanceId, status])
   @@index([workflowStageId, slotIndex])
@@ -1147,9 +1146,9 @@ model WorkflowAction {
   comment            String?
   metadata           Json?
   createdAt          DateTime           @default(now())
+  organizationId     Int
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   workflowInstance   WorkflowInstance   @relation(fields: [workflowInstanceId], references: [id], onDelete: Cascade)
-  organizationId        Int
-  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([workflowInstanceId, actionType])
   @@index([organizationId])
@@ -1163,9 +1162,9 @@ model WorkflowComment {
   mentions           Json?
   isInternal         Boolean          @default(false)
   createdAt          DateTime         @default(now())
+  organizationId     Int
+  organization       Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   workflowInstance   WorkflowInstance @relation(fields: [workflowInstanceId], references: [id], onDelete: Cascade)
-  organizationId        Int
-  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([workflowInstanceId, createdAt])
   @@index([organizationId])
@@ -1180,9 +1179,9 @@ model WorkflowAssignment {
   assignmentReason   String?
   assignedAt         DateTime         @default(now())
   releasedAt         DateTime?
+  organizationId     Int
+  organization       Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   workflowInstance   WorkflowInstance @relation(fields: [workflowInstanceId], references: [id], onDelete: Cascade)
-  organizationId        Int
-  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([workflowInstanceId, assigneeId])
   @@index([organizationId])
@@ -1200,9 +1199,9 @@ model WorkflowHistory {
   message            String?
   metadata           Json?
   createdAt          DateTime         @default(now())
+  organizationId     Int
+  organization       Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   workflowInstance   WorkflowInstance @relation(fields: [workflowInstanceId], references: [id], onDelete: Cascade)
-  organizationId        Int
-  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([workflowInstanceId, createdAt])
   @@index([organizationId])
@@ -1221,9 +1220,9 @@ model WorkflowNotification {
   readAt             DateTime?
   metadata           Json?
   createdAt          DateTime                    @default(now())
+  organizationId     Int
+  organization       Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   workflowInstance   WorkflowInstance            @relation(fields: [workflowInstanceId], references: [id], onDelete: Cascade)
-  organizationId        Int
-  organization      Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([recipientId, isRead])
   @@index([workflowInstanceId, createdAt])
@@ -1231,47 +1230,47 @@ model WorkflowNotification {
 }
 
 model SalaryStructure {
-  id                  Int       @id @default(autoincrement())
+  id                  Int          @id @default(autoincrement())
   employeeId          Int
-  basic               Float     @default(0)
-  hra                 Float     @default(0)
-  allowances          Float     @default(0)
-  deductions          Float     @default(0)
-  pf                  Float     @default(0)
-  esi                 Float     @default(0)
-  professionalTax     Float     @default(0)
-  tds                 Float     @default(0)
-  overtimeRatePerHour Float     @default(0)
-  allowedLateMarks    Int       @default(2)
-  lateMarkPenalty     Float     @default(0)
-  isActive            Boolean   @default(true)
-  effectiveFrom       DateTime  @default(now())
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  basic               Float        @default(0)
+  hra                 Float        @default(0)
+  allowances          Float        @default(0)
+  deductions          Float        @default(0)
+  pf                  Float        @default(0)
+  esi                 Float        @default(0)
+  professionalTax     Float        @default(0)
+  tds                 Float        @default(0)
+  isActive            Boolean      @default(true)
+  effectiveFrom       DateTime     @default(now())
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
   deletedAt           DateTime?
-  employee            Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  organizationId        Int
-  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  allowedLateMarks    Int          @default(2)
+  lateMarkPenalty     Float        @default(0)
+  overtimeRatePerHour Float        @default(0)
+  organizationId      Int
+  employee            Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([employeeId, isActive])
   @@index([organizationId])
 }
 
 model PayrollCycle {
-  id        Int            @id @default(autoincrement())
-  name      String
-  month     Int
-  year      Int
-  status    String         @default("DRAFT")
-  runDate   DateTime?
-  notes     String?
-  createdBy Int?
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-  deletedAt DateTime?
-  entries   PayrollEntry[]
-  organizationId        Int
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int            @id @default(autoincrement())
+  name           String
+  month          Int
+  year           Int
+  status         String         @default("DRAFT")
+  runDate        DateTime?
+  notes          String?
+  createdBy      Int?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  deletedAt      DateTime?
+  organizationId Int
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entries        PayrollEntry[]
 
   @@unique([month, year])
   @@index([organizationId])
@@ -1285,22 +1284,22 @@ model PayrollEntry {
   totalDeductions  Float             @default(0)
   netPay           Float             @default(0)
   status           String            @default("PENDING")
-  totalPresentDays Float             @default(0)
-  totalAbsentDays  Float             @default(0)
-  lateCount        Int               @default(0)
-  overtimeHours    Float             @default(0)
   paidAt           DateTime?
   remarks          String?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   deletedAt        DateTime?
+  lateCount        Int               @default(0)
+  overtimeHours    Float             @default(0)
+  totalAbsentDays  Float             @default(0)
+  totalPresentDays Float             @default(0)
+  organizationId   Int
   deductions       PayrollDeduction?
   earnings         PayrollEarnings?
   employee         Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   payrollCycle     PayrollCycle      @relation(fields: [payrollCycleId], references: [id], onDelete: Cascade)
   payslip          Payslip?
-  organizationId        Int
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@unique([payrollCycleId, employeeId])
   @@index([employeeId])
@@ -1348,10 +1347,10 @@ model Payslip {
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
   deletedAt           DateTime?
+  organizationId      Int
   employee            Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   payrollEntry        PayrollEntry @relation(fields: [payrollEntryId], references: [id], onDelete: Cascade)
-  organizationId        Int
-  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([organizationId])
 }
@@ -1371,9 +1370,9 @@ model PayrollEarnings {
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
   deletedAt        DateTime?
+  organizationId   Int
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   payrollEntry     PayrollEntry @relation(fields: [payrollEntryId], references: [id], onDelete: Cascade)
-  organizationId        Int
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([organizationId])
 }
@@ -1393,225 +1392,283 @@ model PayrollDeduction {
   createdAt              DateTime     @default(now())
   updatedAt              DateTime     @updatedAt
   deletedAt              DateTime?
+  organizationId         Int
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   payrollEntry           PayrollEntry @relation(fields: [payrollEntryId], references: [id], onDelete: Cascade)
-  organizationId        Int
-  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([organizationId])
 }
 
 model TaxDeclaration {
-  id                     Int       @id @default(autoincrement())
+  id                     Int          @id @default(autoincrement())
   employeeId             Int
   year                   Int
-  investment80C          Float     @default(0)
-  investment80D          Float     @default(0)
-  investment80CCD        Float     @default(0)
-  hraExemption           Float     @default(0)
-  standardDeduction      Float     @default(0)
-  otherIncome            Float     @default(0)
-  otherIncomeTaxed       Float     @default(0)
-  exerciseStock          Float     @default(0)
+  investment80C          Float        @default(0)
+  investment80D          Float        @default(0)
+  investment80CCD        Float        @default(0)
+  hraExemption           Float        @default(0)
+  standardDeduction      Float        @default(0)
+  otherIncome            Float        @default(0)
+  otherIncomeTaxed       Float        @default(0)
+  exerciseStock          Float        @default(0)
   estimatedTaxableIncome Float?
-  approvalStatus         String    @default("PENDING")
+  approvalStatus         String       @default("PENDING")
   approvedBy             Int?
   approvedAt             DateTime?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
   deletedAt              DateTime?
-  employee               Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  organizationId        Int
-  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId         Int
+  employee               Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([employeeId, year])
   @@index([organizationId])
 }
 
 model PayrollConfig {
-  id                    Int      @id @default(autoincrement())
-  pfEmployeeRate        Float    @default(12)
-  pfEmployerRate        Float    @default(12)
-  pfWaiveLimit          Float    @default(15000)
-  esiRate               Float    @default(0.75)
-  esiSalaryLimit        Float    @default(21000)
-  esiApplicable         Boolean  @default(true)
-  ptApplicable          Boolean  @default(true)
-  ptState               String   @default("MAHARASHTRA")
+  id                    Int          @id @default(autoincrement())
+  pfEmployeeRate        Float        @default(12)
+  pfEmployerRate        Float        @default(12)
+  pfWaiveLimit          Float        @default(15000)
+  esiRate               Float        @default(0.75)
+  esiSalaryLimit        Float        @default(21000)
+  esiApplicable         Boolean      @default(true)
+  ptApplicable          Boolean      @default(true)
+  ptState               String       @default("MAHARASHTRA")
   ptSlabs               Json
-  standardDeduction2024 Float    @default(75000)
-  defaultLossOfPayRate  Float    @default(50)
-  financialYearStart    Int      @default(4)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  standardDeduction2024 Float        @default(75000)
+  defaultLossOfPayRate  Float        @default(50)
+  financialYearStart    Int          @default(4)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
   organizationId        Int
-  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
 }
 
 model Form16 {
-  id                            Int       @id @default(autoincrement())
+  id                            Int          @id @default(autoincrement())
   employeeId                    Int
   year                          Int
   panNumber                     String?
-  grossIncome                   Float     @default(0)
-  taxableIncome                 Float     @default(0)
-  totalTaxPaid                  Float     @default(0)
-  grossSalary                   Float     @default(0)
-  standardDeduction             Float     @default(0)
-  interestIncomeUnderSection80A Float     @default(0)
-  investmentUnder80C            Float     @default(0)
+  grossIncome                   Float        @default(0)
+  taxableIncome                 Float        @default(0)
+  totalTaxPaid                  Float        @default(0)
+  grossSalary                   Float        @default(0)
+  standardDeduction             Float        @default(0)
+  interestIncomeUnderSection80A Float        @default(0)
+  investmentUnder80C            Float        @default(0)
   tfcData                       Json?
   generatedAt                   DateTime?
   pdfUrl                        String?
-  createdAt                     DateTime  @default(now())
-  updatedAt                     DateTime  @updatedAt
+  createdAt                     DateTime     @default(now())
+  updatedAt                     DateTime     @updatedAt
   deletedAt                     DateTime?
-  employee                      Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  organizationId        Int
-  organization                  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId                Int
+  employee                      Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  organization                  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([employeeId, year])
   @@index([organizationId])
 }
 
 model JobOpening {
-  id             Int         @id @default(autoincrement())
+  id             Int          @id @default(autoincrement())
   title          String
   department     String?
   location       String?
   employmentType String?
-  status         String      @default("OPEN")
-  openings       Int         @default(1)
+  status         String       @default("OPEN")
+  openings       Int          @default(1)
   description    String?
   createdBy      Int?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
   deletedAt      DateTime?
+  organizationId Int
   candidates     Candidate[]
-  organizationId        Int
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
 }
 
 model Candidate {
-  id           Int         @id @default(autoincrement())
-  jobOpeningId Int
-  name         String
-  email        String?
-  phone        String?
-  resumeUrl    String?
-  source       String?
-  currentStage String      @default("APPLIED")
-  status       String      @default("ACTIVE")
-  remarks      String?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  deletedAt    DateTime?
-  jobOpening   JobOpening  @relation(fields: [jobOpeningId], references: [id], onDelete: Cascade)
-  interviews   Interview[]
-  organizationId        Int
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int          @id @default(autoincrement())
+  jobOpeningId   Int
+  name           String
+  email          String?
+  phone          String?
+  resumeUrl      String?
+  source         String?
+  currentStage   String       @default("APPLIED")
+  status         String       @default("ACTIVE")
+  remarks        String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organizationId Int
+  jobOpening     JobOpening   @relation(fields: [jobOpeningId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  interviews     Interview[]
 
   @@index([jobOpeningId, currentStage])
   @@index([organizationId])
 }
 
 model Interview {
-  id            Int       @id @default(autoincrement())
-  candidateId   Int
-  scheduledAt   DateTime
-  interviewerId Int?
-  mode          String?
-  status        String    @default("SCHEDULED")
-  feedback      String?
-  outcome       String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime?
-  candidate     Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  organizationId        Int
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int          @id @default(autoincrement())
+  candidateId    Int
+  scheduledAt    DateTime
+  interviewerId  Int?
+  mode           String?
+  status         String       @default("SCHEDULED")
+  feedback       String?
+  outcome        String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organizationId Int
+  candidate      Candidate    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([candidateId, scheduledAt])
   @@index([organizationId])
 }
 
 model GoalCycle {
-  id        Int                 @id @default(autoincrement())
-  name      String
-  startDate DateTime
-  endDate   DateTime
-  status    String              @default("ACTIVE")
-  createdBy Int?
-  createdAt DateTime            @default(now())
-  updatedAt DateTime            @updatedAt
-  deletedAt DateTime?
-  goals     Goal[]
-  reviews   PerformanceReview[]
-  organizationId        Int
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int                 @id @default(autoincrement())
+  name           String
+  startDate      DateTime
+  endDate        DateTime
+  status         String              @default("ACTIVE")
+  createdBy      Int?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  deletedAt      DateTime?
+  organizationId Int
+  goals          Goal[]
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reviews        PerformanceReview[]
 
   @@index([organizationId])
 }
 
 model Goal {
-  id              Int       @id @default(autoincrement())
+  id              Int          @id @default(autoincrement())
   employeeId      Int
   goalCycleId     Int
   title           String
   description     String?
-  weightage       Float     @default(0)
+  weightage       Float        @default(0)
   targetMetric    String?
-  status          String    @default("NOT_STARTED")
+  status          String       @default("NOT_STARTED")
   managerComment  String?
   employeeComment String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
   deletedAt       DateTime?
-  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  goalCycle       GoalCycle @relation(fields: [goalCycleId], references: [id], onDelete: Cascade)
-  organizationId        Int
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId  Int
+  employee        Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  goalCycle       GoalCycle    @relation(fields: [goalCycleId], references: [id], onDelete: Cascade)
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([employeeId, goalCycleId])
   @@index([organizationId])
 }
 
 model PerformanceReview {
-  id           Int       @id @default(autoincrement())
-  employeeId   Int
-  goalCycleId  Int
-  reviewerId   Int?
-  rating       Float?
-  summary      String?
-  strengths    String?
-  improvements String?
-  status       String    @default("DRAFT")
-  submittedAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
-  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  goalCycle    GoalCycle @relation(fields: [goalCycleId], references: [id], onDelete: Cascade)
-  organizationId        Int
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             Int          @id @default(autoincrement())
+  employeeId     Int
+  goalCycleId    Int
+  reviewerId     Int?
+  rating         Float?
+  summary        String?
+  strengths      String?
+  improvements   String?
+  status         String       @default("DRAFT")
+  submittedAt    DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organizationId Int
+  employee       Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  goalCycle      GoalCycle    @relation(fields: [goalCycleId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([employeeId, goalCycleId])
   @@index([organizationId])
 }
 
 model ImportLog {
-  id         String   @id
-  fileName   String
-  module     String
-  rowCount   Int
-  importedBy String
-  createdAt  DateTime @default(now())
-  organizationId        Int
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id             String       @id
+  fileName       String
+  module         String
+  rowCount       Int
+  importedBy     String
+  createdAt      DateTime     @default(now())
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  @@index([organizationId])
+}
+
+model ActivityTimeline {
+  id              Int                       @id @default(autoincrement())
+  module          String
+  entityType      String
+  entityId        Int
+  eventType       String
+  action          String
+  title           String
+  description     String?
+  oldValue        Json?
+  newValue        Json?
+  metadata        Json?
+  performedBy     Int?
+  performedByRole String?
+  assignedTo      Int?
+  status          String                    @default("OPEN")
+  priority        String                    @default("MEDIUM")
+  icon            String?
+  color           String?
+  ipAddress       String?
+  deviceInfo      String?
+  attachments     Json?
+  workflowStage   String?
+  approvalStatus  String?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  organizationId  Int
+  organization    Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  comments        ActivityTimelineComment[]
+
+  @@index([entityType, entityId])
+  @@index([module])
+  @@index([eventType])
+  @@index([performedBy])
+  @@index([assignedTo])
+  @@index([createdAt])
+  @@index([organizationId])
+}
+
+model ActivityTimelineComment {
+  id              Int              @id @default(autoincrement())
+  timelineId      Int
+  userId          Int?
+  userRole        String?
+  comment         String
+  parentCommentId Int?
+  mentions        Json?
+  isInternal      Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  organizationId  Int
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  timeline        ActivityTimeline @relation(fields: [timelineId], references: [id], onDelete: Cascade)
+
+  @@index([timelineId])
+  @@index([userId])
   @@index([organizationId])
 }
 
@@ -1694,12 +1751,12 @@ enum AuditStatus {
 }
 
 enum Role {
-  SUPER_ADMIN
   ADMIN
-  COMPLIANCE_MANAGER
-  HR
-  MANAGER
   EMPLOYEE
+  HR
+  SUPER_ADMIN
+  COMPLIANCE_MANAGER
+  MANAGER
 }
 
 enum ShiftType {
@@ -1734,70 +1791,3 @@ enum OrganizationStatus {
   INACTIVE
   CANCELLED
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Activity Timeline models
-// Used by: src/activity-timeline/activity-timeline.service.ts
-// ─────────────────────────────────────────────────────────────────────────────
-
-model ActivityTimeline {
-  id              Int                       @id @default(autoincrement())
-  module          String
-  entityType      String
-  entityId        Int
-  eventType       String
-  action          String
-  title           String
-  description     String?
-  oldValue        Json?
-  newValue        Json?
-  metadata        Json?
-  performedBy     Int?
-  performedByRole String?
-  assignedTo      Int?
-  status          String                    @default("OPEN")
-  priority        String                    @default("MEDIUM")
-  icon            String?
-  color           String?
-  ipAddress       String?
-  deviceInfo      String?
-  attachments     Json?
-  workflowStage   String?
-  approvalStatus  String?
-  createdAt       DateTime                  @default(now())
-  updatedAt       DateTime                  @updatedAt
-  organizationId        Int
-
-  comments        ActivityTimelineComment[]
-  organization    Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-
-  @@index([entityType, entityId])
-  @@index([module])
-  @@index([eventType])
-  @@index([performedBy])
-  @@index([assignedTo])
-  @@index([createdAt])
-  @@index([organizationId])
-}
-
-model ActivityTimelineComment {
-  id              Int              @id @default(autoincrement())
-  timelineId      Int
-  userId          Int?
-  userRole        String?
-  comment         String
-  parentCommentId Int?
-  mentions        Json?
-  isInternal      Boolean          @default(false)
-  createdAt       DateTime         @default(now())
-  organizationId        Int
-
-  timeline        ActivityTimeline @relation(fields: [timelineId], references: [id], onDelete: Cascade)
-  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-
-  @@index([timelineId])
-  @@index([userId])
-  @@index([organizationId])
-}
-
-

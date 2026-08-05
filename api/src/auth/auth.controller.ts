@@ -9,7 +9,7 @@ import {
   Patch,
   Req,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
@@ -44,11 +44,50 @@ export class AuthController {
     private readonly configService: ConfigService,
   ) {}
 
-  private getCookieOptions(maxAgeMs: number) {
-    const secure = this.configService.get<boolean>('COOKIE_SECURE');
+  private resolveCookieDomain(req: Request): string | undefined {
+    const configured = (this.configService.get<string>('COOKIE_DOMAIN') ?? '')
+      .trim()
+      .toLowerCase();
+    if (!configured) {
+      return undefined;
+    }
+
+    const withoutProtocol = configured.replace(/^https?:\/\//, '');
+    const hostWithOptionalPort = withoutProtocol.split('/')[0] ?? '';
+    const hostOnly = (hostWithOptionalPort.split(':')[0] ?? '')
+      .trim()
+      .replace(/^\./, '');
+
+    if (!hostOnly) {
+      return undefined;
+    }
+
+    const requestHost = (req.hostname ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/:\d+$/, '');
+
+    if (!requestHost) {
+      return undefined;
+    }
+
+    const matches =
+      requestHost === hostOnly || requestHost.endsWith(`.${hostOnly}`);
+
+    if (!matches) {
+      return undefined;
+    }
+
+    return configured.startsWith('.') ? configured : `.${hostOnly}`;
+  }
+
+  private getCookieOptions(maxAgeMs: number, req: Request) {
+    const secure =
+      this.configService.get<boolean>('COOKIE_SECURE') ??
+      process.env.NODE_ENV === 'production';
     const sameSite = (this.configService.get<string>('COOKIE_SAME_SITE') ??
       'lax') as 'lax' | 'strict' | 'none';
-    const domain = this.configService.get<string>('COOKIE_DOMAIN') || undefined;
+    const domain = this.resolveCookieDomain(req);
 
     return {
       httpOnly: true,
@@ -86,6 +125,7 @@ export class AuthController {
     res: Response,
     accessToken: string,
     refreshToken: string,
+    req: Request,
   ) {
     const accessMaxAge = this.parseExpiresInMs(
       this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ?? '1d',
@@ -97,18 +137,18 @@ export class AuthController {
     res.cookie(
       'enterprise_access_token',
       accessToken,
-      this.getCookieOptions(accessMaxAge),
+      this.getCookieOptions(accessMaxAge, req),
     );
     res.cookie(
       'enterprise_refresh_token',
       refreshToken,
-      this.getCookieOptions(refreshMaxAge),
+      this.getCookieOptions(refreshMaxAge, req),
     );
   }
 
-  private clearAuthCookies(res: Response) {
-    res.clearCookie('enterprise_access_token', this.getCookieOptions(0));
-    res.clearCookie('enterprise_refresh_token', this.getCookieOptions(0));
+  private clearAuthCookies(res: Response, req: Request) {
+    res.clearCookie('enterprise_access_token', this.getCookieOptions(0, req));
+    res.clearCookie('enterprise_refresh_token', this.getCookieOptions(0, req));
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -225,6 +265,7 @@ export class AuthController {
   @Post('login')
   async login(
     @Body() body: { email: string; password: string },
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.authService.login(body.email, body.password);
@@ -232,6 +273,7 @@ export class AuthController {
       res,
       result.access_token,
       result.refresh_token ?? result.access_token,
+      req,
     );
     const data = {
       message: result.message,
@@ -285,15 +327,17 @@ export class AuthController {
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Post('refresh')
   async refresh(
-    @Req() req: { cookies?: Record<string, string> },
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const refreshToken = req.cookies?.enterprise_refresh_token ?? '';
+    const refreshToken =
+      (req.cookies?.enterprise_refresh_token as string | undefined) ?? '';
     const result = await this.authService.refreshTokens(refreshToken);
     this.setAuthCookies(
       res,
       result.access_token,
       result.refresh_token ?? result.access_token,
+      req,
     );
     const data = {
       message: result.message,
@@ -330,10 +374,10 @@ export class AuthController {
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Post('logout')
   logout(
-    @Req() req: { user: { userId?: number; id?: number } },
+    @Req() req: Request & { user: { userId?: number; id?: number } },
     @Res({ passthrough: true }) res: Response,
   ) {
-    this.clearAuthCookies(res);
+    this.clearAuthCookies(res, req);
     return this.authService.logout(req.user.userId ?? req.user.id ?? 0);
   }
 }
