@@ -18,7 +18,7 @@ import type {
 import type { AuthUser } from '../common/types/auth';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN', 'HR', 'MANAGER', 'EMPLOYEE')
+@Roles('SUPER_ADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE')
 @ApiTags('Analytics - Reports')
 @ApiBearerAuth()
 @Controller('reports')

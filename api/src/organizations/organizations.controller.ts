@@ -30,6 +30,17 @@ import { UpdateOrganizationDto } from './dto/update-organization.dto';
 export class OrganizationsController {
   constructor(private readonly organizationsService: OrganizationsService) {}
 
+  @ApiOperation({ summary: 'Get super admin platform statistics' })
+  @ApiResponse({ status: 200, description: 'Platform statistics returned.' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden: requires platform admin.',
+  })
+  @Get('platform-stats')
+  getPlatformStats(@Req() req: AuthenticatedRequest) {
+    return this.organizationsService.getPlatformStats(req.user);
+  }
+
   @ApiOperation({ summary: 'List organizations available to the current user' })
   @ApiResponse({ status: 200, description: 'Organizations list returned.' })
   @ApiResponse({ status: 401, description: 'Unauthorized.' })

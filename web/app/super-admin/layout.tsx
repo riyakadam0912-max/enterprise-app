@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '@/providers/AuthProvider';
-import { useAuthSession, clearAuthSession, isSuperAdminSession } from '@/stores/auth-store';
+import { useAuthSession, clearAuthSession, isSuperAdminSession, clearActiveOrganization } from '@/stores/auth-store';
 import { Heading } from '@/components/typography/Heading';
 import { Caption } from '@/components/typography/Caption';
 
@@ -49,12 +49,16 @@ export default function SuperAdminLayout({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
+    clearActiveOrganization();
+  }, []);
+
+  useEffect(() => {
     if (loading) {
       return;
     }
 
     if (!authenticated) {
-      router.replace('/super-admin/login');
+      router.replace('/login');
       return;
     }
 
@@ -69,7 +73,7 @@ export default function SuperAdminLayout({
   const handleLogout = async () => {
     await logout();
     clearAuthSession();
-    router.push('/super-admin/login');
+    router.push('/login');
   };
 
   if (loading || !checked) {

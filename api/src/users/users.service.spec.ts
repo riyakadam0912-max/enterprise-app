@@ -7,11 +7,7 @@ import {
 } from '../../test/helpers/mocks.helper';
 import { CreateUserDto } from './dto/create-user.dto';
 import { Role } from '../common/enums/role.enum';
-import {
-  ConflictException,
-  ForbiddenException,
-  NotFoundException,
-} from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { AuthUser } from '../common/types/auth';
 import { hashPassword } from './utils/hash-password';
 
@@ -71,24 +67,6 @@ describe('UsersService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
-  });
-
-  describe('validateOrganization (private)', () => {
-    it('should throw ForbiddenException when organizationId is null', () => {
-      const testUser = createMockAuthUser(Role.ADMIN, { organizationId: null });
-
-      expect(() => {
-        // Use any to access private method for testing
-        (service as any).validateOrganization(testUser);
-      }).toThrow(ForbiddenException);
-    });
-
-    it('should return organizationId when it exists', () => {
-      const testUser = createMockAuthUser(Role.ADMIN, { organizationId: 123 });
-
-      const result = (service as any).validateOrganization(testUser);
-      expect(result).toBe(123);
-    });
   });
 
   describe('create', () => {
@@ -333,6 +311,42 @@ describe('UsersService', () => {
       // Assert
       expect(userDelegate.findMany).toHaveBeenCalledWith({
         where: { organizationId: 1 },
+        orderBy: { createdAt: 'desc' },
+        select: expect.any(Object),
+      });
+      expect(result).toEqual(expectedUsers);
+    });
+
+    it('should return all users across organizations for platform admin', async () => {
+      // Arrange
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      const platformAdmin = createMockAuthUser(Role.ADMIN, {
+        isPlatformAdmin: true,
+        organizationId: null,
+      });
+      const expectedUsers = [
+        {
+          id: 1,
+          name: 'User 1',
+          email: 'user1@example.com',
+          role: Role.EMPLOYEE,
+        },
+        {
+          id: 2,
+          name: 'User 2',
+          email: 'user2@example.com',
+          role: Role.MANAGER,
+        },
+      ];
+
+      userDelegate.findMany.mockResolvedValue(expectedUsers);
+
+      // Act
+      const result = await service.findAll(platformAdmin);
+
+      // Assert
+      expect(userDelegate.findMany).toHaveBeenCalledWith({
+        where: {},
         orderBy: { createdAt: 'desc' },
         select: expect.any(Object),
       });

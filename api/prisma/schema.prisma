@@ -1791,3 +1791,14 @@ enum OrganizationStatus {
   INACTIVE
   CANCELLED
 }
+
+model SystemSetting {
+  key         String   @id
+  value       String?  @db.Text
+  description String?
+  updatedBy   Int?
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@index([updatedBy])
+}

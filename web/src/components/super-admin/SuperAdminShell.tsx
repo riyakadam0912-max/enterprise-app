@@ -55,7 +55,7 @@ export default function SuperAdminShell({ children }: { children: React.ReactNod
     }
 
     if (!authenticated) {
-      router.replace('/super-admin/login');
+      router.replace('/login');
       return;
     }
 
@@ -88,7 +88,7 @@ export default function SuperAdminShell({ children }: { children: React.ReactNod
   const handleLogout = async () => {
     await logout();
     clearAuthSession();
-    router.push('/super-admin/login');
+    router.push('/login');
   };
 
   const handleToggleSidebar = () => {

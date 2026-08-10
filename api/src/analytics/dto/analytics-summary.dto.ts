@@ -55,3 +55,49 @@ export class AnalyticsSummaryDto {
   @IsObject()
   revenueVelocity!: RevenueVelocitySummaryDto;
 }
+
+export class SuperAdminSummaryDto {
+  @ApiProperty({ example: 128 })
+  @IsNumber()
+  totalOrganizations!: number;
+
+  @ApiProperty({ example: 115 })
+  @IsNumber()
+  activeOrganizations!: number;
+
+  @ApiProperty({ example: 3 })
+  @IsNumber()
+  suspendedOrganizations!: number;
+
+  @ApiProperty({ example: 5 })
+  @IsNumber()
+  inactiveOrganizations!: number;
+
+  @ApiProperty({ example: 2400 })
+  @IsNumber()
+  totalUsers!: number;
+
+  @ApiProperty({ example: 2280 })
+  @IsNumber()
+  totalEmployees!: number;
+
+  @ApiProperty({ example: 1840 })
+  @IsNumber()
+  activeEmployees!: number;
+
+  @ApiProperty({ example: 24 })
+  @IsNumber()
+  securityEvents!: number;
+
+  @ApiProperty({ example: 3 })
+  @IsNumber()
+  pendingSecurityReviews!: number;
+
+  @ApiProperty({ example: 12 })
+  @IsNumber()
+  pendingApprovals!: number;
+
+  @ApiProperty({ example: 6 })
+  @IsNumber()
+  newAuditEvents!: number;
+}

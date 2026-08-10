@@ -16,17 +16,31 @@ import { hashPassword } from './utils/hash-password';
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private validateOrganization(user: AuthUser): number {
-    if (!user.organizationId) {
-      throw new ForbiddenException('User has no associated organization');
+  private isPlatformAdmin(user: AuthUser): boolean {
+    return (
+      user?.isPlatformAdmin === true ||
+      user?.isSuperAdmin === true ||
+      user?.role === Role.SUPER_ADMIN ||
+      (Array.isArray(user?.roles) && user.roles.includes(Role.SUPER_ADMIN))
+    );
+  }
+
+  private buildOrganizationFilter(user: AuthUser) {
+    if (user.organizationId != null) {
+      return { organizationId: user.organizationId };
     }
-    return user.organizationId;
+
+    if (this.isPlatformAdmin(user)) {
+      return {};
+    }
+
+    throw new ForbiddenException('User has no associated organization');
   }
 
   async create(createUserDto: CreateUserDto, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationFilter = this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
-      where: { email: createUserDto.email, organizationId },
+      where: { email: createUserDto.email, ...organizationFilter },
     });
     if (existing) {
       throw new ConflictException('Email already in use');
@@ -34,14 +48,14 @@ export class UsersService {
 
     if (createUserDto.employeeId) {
       const employee = await this.prisma.employee.findUnique({
-        where: { id: createUserDto.employeeId, organizationId },
+        where: { id: createUserDto.employeeId, ...organizationFilter },
       });
       if (!employee) {
         throw new NotFoundException('Employee not found');
       }
 
       const mapped = await this.prisma.user.findFirst({
-        where: { employeeId: createUserDto.employeeId, organizationId },
+        where: { employeeId: createUserDto.employeeId, ...organizationFilter },
       });
       if (mapped) {
         throw new ConflictException('Employee already has a login account');
@@ -50,7 +64,7 @@ export class UsersService {
 
     if (createUserDto.managerId) {
       const manager = await this.prisma.user.findUnique({
-        where: { id: createUserDto.managerId, organizationId },
+        where: { id: createUserDto.managerId, ...organizationFilter },
         select: { id: true, role: true },
       });
       if (!manager) {
@@ -69,7 +83,7 @@ export class UsersService {
     try {
       return await this.prisma.user.create({
         data: {
-          organizationId,
+          organizationId: user.organizationId ?? undefined,
           name: createUserDto.name,
           email: createUserDto.email,
           password: hashedPassword,
@@ -101,9 +115,9 @@ export class UsersService {
   }
 
   async findAll(user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationFilter = this.buildOrganizationFilter(user);
     return this.prisma.user.findMany({
-      where: { organizationId },
+      where: { ...organizationFilter },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -120,9 +134,9 @@ export class UsersService {
   }
 
   async findOne(id: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationFilter = this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
-      where: { id, organizationId },
+      where: { id, ...organizationFilter },
       select: {
         id: true,
         name: true,
@@ -144,9 +158,9 @@ export class UsersService {
   }
 
   async update(id: number, updateUserDto: UpdateUserDto, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationFilter = this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
-      where: { id, organizationId },
+      where: { id, ...organizationFilter },
     });
     if (!existing) {
       throw new NotFoundException('User not found');
@@ -205,9 +219,9 @@ export class UsersService {
   }
 
   async remove(id: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationFilter = this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
-      where: { id, organizationId },
+      where: { id, ...organizationFilter },
     });
     if (!existing) {
       throw new NotFoundException('User not found');
@@ -218,9 +232,9 @@ export class UsersService {
   }
 
   async activate(id: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationFilter = this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
-      where: { id, organizationId },
+      where: { id, ...organizationFilter },
     });
     if (!existing) {
       throw new NotFoundException('User not found');
@@ -244,9 +258,9 @@ export class UsersService {
   }
 
   async deactivate(id: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationFilter = this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
-      where: { id, organizationId },
+      where: { id, ...organizationFilter },
     });
     if (!existing) {
       throw new NotFoundException('User not found');
@@ -270,9 +284,9 @@ export class UsersService {
   }
 
   async resetPassword(id: number, password: string, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationFilter = this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
-      where: { id, organizationId },
+      where: { id, ...organizationFilter },
     });
     if (!existing) {
       throw new NotFoundException('User not found');
@@ -287,9 +301,9 @@ export class UsersService {
   }
 
   async unlock(id: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationFilter = this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
-      where: { id, organizationId },
+      where: { id, ...organizationFilter },
     });
     if (!existing) {
       throw new NotFoundException('User not found');
@@ -313,9 +327,9 @@ export class UsersService {
   }
 
   async assignOrganization(id: number, organizationId: number, user: AuthUser) {
-    const currentOrganizationId = this.validateOrganization(user);
+    const organizationFilter = this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
-      where: { id, organizationId: currentOrganizationId },
+      where: { id, ...organizationFilter },
     });
     if (!existing) {
       throw new NotFoundException('User not found');
@@ -339,9 +353,9 @@ export class UsersService {
   }
 
   async assignRoles(id: number, roleIds: number[], user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationFilter = this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
-      where: { id, organizationId },
+      where: { id, ...organizationFilter },
     });
     if (!existing) {
       throw new NotFoundException('User not found');
@@ -364,9 +378,9 @@ export class UsersService {
   }
 
   async assignDepartment(id: number, department: string, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationFilter = this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
-      where: { id, organizationId },
+      where: { id, ...organizationFilter },
     });
     if (!existing) {
       throw new NotFoundException('User not found');
@@ -379,9 +393,9 @@ export class UsersService {
   }
 
   async assignManager(id: number, managerId: number | null, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationFilter = this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
-      where: { id, organizationId },
+      where: { id, ...organizationFilter },
     });
     if (!existing) {
       throw new NotFoundException('User not found');
@@ -389,7 +403,7 @@ export class UsersService {
 
     if (managerId) {
       const manager = await this.prisma.user.findFirst({
-        where: { id: managerId, organizationId },
+        where: { id: managerId, ...organizationFilter },
       });
       if (!manager) {
         throw new NotFoundException('Manager user not found');
@@ -414,10 +428,18 @@ export class UsersService {
   }
 
   async findAssignable(user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
-    if (user.role === Role.ADMIN || user.role === Role.HR) {
+    const organizationFilter = this.buildOrganizationFilter(user);
+    if (
+      user.role === Role.ADMIN ||
+      user.role === Role.HR ||
+      this.isPlatformAdmin(user)
+    ) {
       return this.prisma.user.findMany({
-        where: { isActive: true, role: { not: Role.ADMIN }, organizationId },
+        where: {
+          isActive: true,
+          role: { not: Role.ADMIN },
+          ...organizationFilter,
+        },
         select: { id: true, name: true, role: true, managerId: true },
         orderBy: { name: 'asc' },
       });
@@ -429,7 +451,7 @@ export class UsersService {
           isActive: true,
           role: Role.EMPLOYEE,
           managerId: user.userId,
-          organizationId,
+          ...organizationFilter,
         },
         select: { id: true, name: true, role: true, managerId: true },
         orderBy: { name: 'asc' },

@@ -49,12 +49,12 @@ describe('UsersController', () => {
     expect(roles).toEqual([Role.ADMIN]);
   });
 
-  it('restricts assignable-user lookup to admins only', () => {
+  it('restricts assignable-user lookup to privileged roles only', () => {
     const roles = reflector.getAllAndOverride<string[]>(ROLES_KEY, [
       UsersController.prototype.findAssignable,
       UsersController,
     ]);
 
-    expect(roles).toEqual([Role.ADMIN]);
+    expect(roles).toEqual([Role.ADMIN, Role.HR, Role.MANAGER]);
   });
 });
