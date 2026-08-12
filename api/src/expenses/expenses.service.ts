@@ -92,15 +92,23 @@ export class ExpensesService {
 
   async create(dto: CreateExpenseDto, user: AuthUser) {
     const organizationId = this.validateOrganization(user);
-    const employeeId =
-      dto.employeeId ?? (await this.resolveCurrentEmployeeId(user));
+    const currentEmployeeId = user.employeeId ?? null;
+    const employeeId = dto.employeeId ?? currentEmployeeId;
+
     if (user.role === Role.EMPLOYEE) {
-      const ownEmployeeId = await this.resolveCurrentEmployeeId(user);
-      if (employeeId !== ownEmployeeId) {
+      const ownEmployeeId =
+        currentEmployeeId ?? (await this.resolveCurrentEmployeeId(user));
+      if (dto.employeeId !== undefined && dto.employeeId !== ownEmployeeId) {
         throw new ForbiddenException(
           'Employees can only create expenses for themselves',
         );
       }
+    }
+
+    if (employeeId === null || employeeId === undefined) {
+      throw new ForbiddenException(
+        'Employee identifier is required to create an expense',
+      );
     }
 
     const expense = await this.prisma.expense.create({
@@ -112,8 +120,7 @@ export class ExpensesService {
         amount: dto.amount,
         currency: dto.currency,
         receiptImage: dto.receiptImage,
-        approvedBy: dto.approvedBy,
-        status: dto.status ?? 'PENDING_MANAGER',
+        status: 'PENDING_MANAGER',
         employee: { connect: { id: employeeId } },
         submittedByUser: { connect: { id: user.userId } },
         ...createSubmittedApprovalState(user.userId),

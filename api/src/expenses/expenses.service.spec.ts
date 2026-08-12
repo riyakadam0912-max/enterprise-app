@@ -118,11 +118,26 @@ describe('ExpensesService', () => {
       );
 
       const result = await service.create(
-        { category: 'Test', amount: 100, employeeId: 101 } as CreateExpenseDto,
+        {
+          category: 'Test',
+          amount: 100,
+          employeeId: 101,
+          status: 'APPROVED',
+          approvedBy: 'ADMIN',
+          receiptImage: 'http://evil.example/receipt.png',
+        } as unknown as CreateExpenseDto,
         mockAdminUser,
       );
       expect(result).toBeDefined();
       expect(expenseDelegate.create).toHaveBeenCalledTimes(1);
+      expect(expenseDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'PENDING_MANAGER',
+            receiptImage: 'http://evil.example/receipt.png',
+          }),
+        }),
+      );
       expect(mockWorkflowEngine.submitWorkflow).toHaveBeenCalledTimes(1);
       expect(mockCacheManager.del).toHaveBeenCalledTimes(1);
     });

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { addPayment, usePayments } from '@/hooks/usePayments';
+import { addPayment, updatePayment, usePayments } from '@/hooks/usePayments';
 import { getInvoices, type Invoice } from '@/api/invoicesApi';
 import { reportError } from '@/lib/error-handling';
 import { formatDate, formatInr, PAYMENT_STATUS_STYLES } from '@/utils/finance';
@@ -102,6 +102,20 @@ export default function PaymentsPage() {
       await refetch();
     } catch (err: unknown) {
       setSaveErr(err instanceof Error ? err.message : 'Failed to record payment');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleStatusUpdate(paymentId: number, status: string) {
+    setSaving(true);
+    setSaveErr(null);
+
+    try {
+      await updatePayment(paymentId, { status });
+      await refetch();
+    } catch (err: unknown) {
+      setSaveErr(err instanceof Error ? err.message : 'Failed to update payment status');
     } finally {
       setSaving(false);
     }
@@ -215,10 +229,19 @@ export default function PaymentsPage() {
                     <td className="px-5 py-4 text-slate-500">{formatDate(payment.paymentDate)}</td>
                     <td className="px-5 py-4"><StatusBadge status={payment.status} /></td>
                     <td className="px-5 py-4">
-                      <div className="flex items-center justify-end gap-1.5">
+                      <div className="flex flex-col items-end gap-1.5">
                         <Link href={`/dashboard/payments/${payment.id}`} className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900">
                           Open
                         </Link>
+                        <select
+                          value={payment.status}
+                          onChange={(event) => void handleStatusUpdate(payment.id, event.target.value)}
+                          className="mt-1 rounded-xl border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 outline-none transition focus:border-orange-400"
+                        >
+                          {STATUS_FILTERS.filter((status) => status !== 'ALL').map((status) => (
+                            <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>
+                          ))}
+                        </select>
                       </div>
                     </td>
                   </tr>

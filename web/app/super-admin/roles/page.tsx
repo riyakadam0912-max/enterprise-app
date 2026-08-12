@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Search, Pencil, ShieldPlus, X, CheckCircle2 } from 'lucide-react';
+import { Plus, Search, Pencil, ShieldPlus, CheckCircle2 } from 'lucide-react';
 import {
   listPermissions,
   listRoles,
@@ -283,6 +283,7 @@ export default function SuperAdminRoles() {
         description="Define a new role that can be assigned permissions across modules."
         onClose={() => setCreateRoleOpen(false)}
         onConfirm={createHandleSubmit(handleCreateSubmit)}
+        confirmLoading={createRoleSubmitting}
         confirmLabel="Create role"
       >
         <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
@@ -314,6 +315,7 @@ export default function SuperAdminRoles() {
         description={editingRole ? `Update metadata for "${editingRole.name}".` : undefined}
         onClose={() => setEditRoleOpen(false)}
         onConfirm={editHandleSubmit(handleEditSave)}
+        confirmLoading={editRoleSubmitting}
         confirmLabel="Save changes"
       >
         <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
@@ -335,6 +337,7 @@ export default function SuperAdminRoles() {
         description={assignRole ? `Manage the permission set assigned to "${assignRole.name}".` : undefined}
         onClose={() => setAssignPermsOpen(false)}
         onConfirm={handleAssignSave}
+        confirmLoading={assignSubmitting}
         confirmLabel="Save permissions"
       >
         <div className="space-y-4">

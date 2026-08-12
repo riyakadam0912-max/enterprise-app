@@ -1,5 +1,5 @@
-import { ActivityTimelineFeed } from '@/components/activity-timeline/ActivityTimelineFeed';
+import { redirect } from 'next/navigation';
 
 export default function ActivityTimelinePage() {
-  return <ActivityTimelineFeed />;
+  redirect('/dashboard/audit-logs');
 }

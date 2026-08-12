@@ -15,6 +15,7 @@ export function Dialog({
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   destructive = false,
+  confirmLoading = false,
 }: {
   open: boolean;
   title: string;
@@ -25,6 +26,7 @@ export function Dialog({
   confirmLabel?: string;
   cancelLabel?: string;
   destructive?: boolean;
+  confirmLoading?: boolean;
 }) {
   const [mounted, setMounted] = useState(false);
 
@@ -46,7 +48,15 @@ export function Dialog({
         <div className="border-t border-slate-200 px-6 py-4">
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="outline" onClick={onClose}>{cancelLabel}</Button>
-            {onConfirm ? <Button variant={destructive ? 'destructive' : 'default'} onClick={onConfirm}>{confirmLabel}</Button> : null}
+            {onConfirm ? (
+              <Button
+                variant={destructive ? 'destructive' : 'default'}
+                onClick={onConfirm}
+                loading={confirmLoading}
+              >
+                {confirmLabel}
+              </Button>
+            ) : null}
           </div>
         </div>
       </div>

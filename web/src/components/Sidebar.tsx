@@ -116,7 +116,6 @@ const navConfig: NavItem[] = [
     type: 'dropdown', id: 'accounts', label: 'Accounts', icon: <CoinsIcon />,
     children: [
       { label: 'Accounts Overview', href: '/dashboard/accounts', icon: <ReportIcon /> },
-      { label: 'Invoices', href: '/dashboard/invoices', icon: <FileTextIcon /> },
       { label: 'Expenses', href: '/dashboard/expenses', icon: <RupeeIcon /> },
     ],
   },
@@ -128,9 +127,6 @@ const navConfig: NavItem[] = [
   },
   {
     type: 'link', label: 'Reports', href: '/dashboard/reports', icon: <BarChartIcon />,
-  },
-  {
-    type: 'link', label: 'Activity Timeline', href: '/dashboard/activity-timeline', icon: <EventsIcon />,
   },
   {
     type: 'link', label: 'Audit Logs', href: '/dashboard/audit-logs', icon: <ShieldAlertIcon />,

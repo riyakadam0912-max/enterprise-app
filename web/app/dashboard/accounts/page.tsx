@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { getExpenses, type Expense } from '@/api/expensesApi';
 import { getInvoices, type Invoice } from '@/api/invoicesApi';
 import { formatDate, formatInr, invoiceOutstanding, normalizeInvoiceStatus } from '@/utils/finance';
+import { useAuthSession } from '@/stores/auth-store';
 
 type DashboardRole = 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
 
@@ -189,16 +190,15 @@ export default function AccountsPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  const authSession = useAuthSession();
+
   useEffect(() => {
-    const storedRole = typeof window !== 'undefined' ? localStorage.getItem('role') : null;
-    if (storedRole === 'ADMIN' || storedRole === 'HR') {
-      setSession(storedRole);
-    } else if (storedRole === 'MANAGER' || storedRole === 'EMPLOYEE') {
-      setSession('UNAUTHENTICATED');
+    if (authSession.role === 'ADMIN' || authSession.role === 'HR') {
+      setSession(authSession.role);
     } else {
       setSession('UNAUTHENTICATED');
     }
-  }, []);
+  }, [authSession.role]);
 
   useEffect(() => {
     let active = true;

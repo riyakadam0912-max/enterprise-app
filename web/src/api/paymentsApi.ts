@@ -37,4 +37,7 @@ export interface CreatePaymentPayload {
 
 export function getPayments(): Promise<Payment[]>                              { return apiClient<Payment[]>('/payments'); }
 export function createPayment(data: CreatePaymentPayload): Promise<Payment>    { return apiClient<Payment>('/payments', { method: 'POST', body: JSON.stringify(data) }); }
+export function updatePayment(id: number, data: Partial<CreatePaymentPayload>): Promise<Payment> {
+  return apiClient<Payment>(`/payments/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
 export function getInvoicePayments(invoiceId: number): Promise<InvoicePaymentSummary> { return apiClient<InvoicePaymentSummary>(`/payments/invoice/${invoiceId}`); }

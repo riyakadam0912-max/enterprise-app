@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { BarChart3, Download, Filter, RotateCcw, TrendingUp, X } from 'lucide-react';
+import { BarChart3, Download, Filter, RotateCcw, TrendingUp } from 'lucide-react';
 import { getReportsDashboard, type ReportsDashboard, type ReportsFilters } from '@/api/reportsApi';
 import { SuperAdminPageShell } from '@/components/super-admin/SuperAdminPageShell';
 import { Button } from '@/components/ui/button';
@@ -280,6 +280,7 @@ export default function SuperAdminReports() {
         description="Refine the reporting window and scope before exporting or drilling into charts."
         onClose={() => setFiltersOpen(false)}
         onConfirm={applyFilters}
+        confirmLoading={applyLoading}
         confirmLabel="Apply filters"
       >
         <div className="grid gap-4 sm:grid-cols-2">

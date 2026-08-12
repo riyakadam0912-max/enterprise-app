@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createExpense } from '@/api/expensesApi';
+import { createExpense, updateExpense } from '@/api/expensesApi';
 import { uploadFile, type ManagedFile } from '@/api/filesApi';
 import { FormProvider, useForm } from 'react-hook-form';
 
@@ -26,28 +26,17 @@ export default function AddExpensePage() {
 
     const formData = new FormData(e.currentTarget);
     try {
-      if (receiptFile) {
-        const uploadFormData = new FormData();
-        uploadFormData.append('file', receiptFile);
-        uploadFormData.append('module', 'Expenses');
-        uploadFormData.append('entityType', 'Expense');
-        // We'll set entityId after we create the expense
-        uploadFormData.append('category', 'Receipt');
-        uploadFormData.append('isPublic', 'false');
-        // We can't upload here because we don't have the expense ID yet, so we'll upload after creating the expense
-      }
       const expense = await createExpense({
         expenseDate: formData.get('expenseDate') as string || undefined,
         category: formData.get('category') as string || undefined,
         description: (formData.get('description') as string).trim() || undefined,
         amount: formData.get('amount') ? parseFloat(formData.get('amount') as string) : undefined,
         currency: (formData.get('currency') as string).trim() || undefined,
-        receiptImage: uploadedReceipt?.url || (formData.get('receiptImage') as string || undefined),
+        receiptImage: (formData.get('receiptImage') as string).trim() || undefined,
         approvedBy: (formData.get('approvedBy') as string).trim() || undefined,
         status: (formData.get('status') as string) || undefined,
       });
-      
-      // Now upload the receipt file if we have one
+
       if (receiptFile && expense.id) {
         const uploadFormData = new FormData();
         uploadFormData.append('file', receiptFile);
@@ -58,6 +47,9 @@ export default function AddExpensePage() {
         uploadFormData.append('isPublic', 'false');
         const uploadedFile = await uploadFile(uploadFormData);
         setUploadedReceipt(uploadedFile);
+        await updateExpense(expense.id, {
+          receiptImage: uploadedFile.url || uploadedFile.downloadUrl || undefined,
+        });
       }
 
       router.push('/dashboard/expenses');

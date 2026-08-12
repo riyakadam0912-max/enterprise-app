@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import {
-  getPayments, createPayment, getInvoicePayments,
+  getPayments, createPayment, updatePayment as apiUpdatePayment, getInvoicePayments,
   Payment, InvoicePaymentSummary, CreatePaymentPayload,
 } from '@/api/paymentsApi';
 
@@ -39,3 +39,4 @@ export function useInvoicePayments(invoiceId: number) {
 }
 
 export async function addPayment(payload: CreatePaymentPayload) { return createPayment(payload); }
+export async function updatePayment(id: number, payload: Partial<CreatePaymentPayload>) { return apiUpdatePayment(id, payload); }

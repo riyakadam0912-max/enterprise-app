@@ -160,10 +160,14 @@ describe('LeaveRequestsService', () => {
           startDate: '2026-01-01',
           endDate: '2026-01-02',
           leaveType: 'SICK',
+          status: 'APPROVED',
+          approvedBy: 'ADMIN',
+          appliedOn: '2026-01-01',
           employeeId: 101,
-        } as CreateLeaveRequestDto,
+        } as unknown as CreateLeaveRequestDto,
         mockAdminUser,
       );
+
       expect(result).toEqual({
         id: 1,
         employeeId: 101,
@@ -172,6 +176,14 @@ describe('LeaveRequestsService', () => {
         endDate: expect.any(Date),
       });
       expect(leaveRequestDelegate.create).toHaveBeenCalledTimes(1);
+      expect(leaveRequestDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'PENDING_MANAGER',
+            appliedOn: expect.any(Date),
+          }),
+        }),
+      );
     });
   });
 

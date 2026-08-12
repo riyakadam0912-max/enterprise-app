@@ -3,9 +3,12 @@ export type FileStorageProviderName = 'local' | 's3' | 'cloudinary';
 export type FileUserContext = {
   userId: number;
   role?: string;
+  roles?: string[];
   employeeId?: number | null;
   userName?: string | null;
   organizationId?: number | null;
+  isPlatformAdmin?: boolean;
+  isSuperAdmin?: boolean;
 };
 
 export type StorageUploadInput = {

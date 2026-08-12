@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import type { AuthUser } from '../common/types/auth';
@@ -55,5 +55,38 @@ export class PaymentsService {
       paidAmount: paid,
       remainingAmount: (invoice?.totalAmount ?? 0) - paid,
     };
+  }
+
+  async update(id: number, dto: Partial<CreatePaymentDto>, user: AuthUser) {
+    const organizationId = this.validateOrganization(user);
+    const existing = await this.prisma.payment.findUnique({
+      where: { id },
+      include: { invoice: true },
+    });
+
+    if (!existing || existing.organizationId !== organizationId) {
+      throw new ForbiddenException('Payment not found');
+    }
+
+    const updated = await this.prisma.payment.update({
+      where: { id },
+      data: {
+        ...(dto.invoiceId !== undefined && { invoiceId: dto.invoiceId }),
+        ...(dto.amount !== undefined && { amount: dto.amount }),
+        ...(dto.paymentMethod !== undefined && {
+          paymentMethod: dto.paymentMethod,
+        }),
+        ...(dto.transactionId !== undefined && {
+          transactionId: dto.transactionId,
+        }),
+        ...(dto.paymentDate !== undefined && {
+          paymentDate: new Date(dto.paymentDate),
+        }),
+        ...(dto.status !== undefined && { status: dto.status }),
+      },
+      include: { invoice: true },
+    });
+
+    return updated;
   }
 }

@@ -39,9 +39,12 @@ function mapAuthUserToFileContext(user: AuthUser): FileUserContext {
   return {
     userId: user.userId,
     role: user.role,
+    roles: user.roles,
     employeeId: user.employeeId,
     userName: user.name,
     organizationId: user.organizationId,
+    isPlatformAdmin: user.isPlatformAdmin,
+    isSuperAdmin: user.isSuperAdmin,
   };
 }
 

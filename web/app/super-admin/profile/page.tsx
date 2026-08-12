@@ -1,7 +1,5 @@
 'use client';
 
-import { Camera } from 'lucide-react';
-
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Heading } from '@/components/typography/Heading';
@@ -11,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/typography/Label';
 import { useAuthSession } from '@/stores/auth-store';
+import { ProfileAvatarUploader } from '@/components/profile/ProfileAvatarUploader';
 
 export default function SuperAdminProfile() {
   const session = useAuthSession();
@@ -27,14 +26,12 @@ export default function SuperAdminProfile() {
 
       <Card className="p-6">
         <div className="flex items-center gap-6 mb-8">
-          <div className="relative">
-            <div className="w-24 h-24 bg-indigo-600 rounded-full flex items-center justify-center text-white text-2xl font-bold">
-              {(session.user?.name?.charAt(0) || 'S').toUpperCase()}
-            </div>
-            <button className="absolute bottom-0 right-0 w-8 h-8 bg-white border border-slate-200 rounded-full flex items-center justify-center shadow-md hover:shadow-lg transition-shadow">
-              <Camera className="h-4 w-4 text-slate-600" />
-            </button>
-          </div>
+          <ProfileAvatarUploader
+            userName={session.user?.name}
+            userEmail={session.user?.email}
+            userId={session.user?.id ?? null}
+            size="lg"
+          />
           <div>
             <Text className="font-bold text-slate-900">
               {session.user?.name || 'Super Admin'}

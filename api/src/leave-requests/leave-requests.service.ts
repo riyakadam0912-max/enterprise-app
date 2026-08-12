@@ -121,16 +121,23 @@ export class LeaveRequestsService {
 
   async create(dto: CreateLeaveRequestDto, user: AuthUser) {
     const organizationId = this.getOrganizationId(user);
-    const employeeId =
-      dto.employeeId ?? (await this.resolveCurrentEmployeeId(user));
+    const currentEmployeeId = user.employeeId ?? null;
+    const employeeId = dto.employeeId ?? currentEmployeeId;
 
     if (user.role === Role.EMPLOYEE) {
-      const ownId = await this.resolveCurrentEmployeeId(user);
-      if (employeeId !== ownId) {
+      const ownEmployeeId =
+        currentEmployeeId ?? (await this.resolveCurrentEmployeeId(user));
+      if (dto.employeeId !== undefined && dto.employeeId !== ownEmployeeId) {
         throw new ForbiddenException(
           'Employees can only create leave requests for themselves',
         );
       }
+    }
+
+    if (employeeId === null || employeeId === undefined) {
+      throw new ForbiddenException(
+        'Employee identifier is required to create a leave request',
+      );
     }
 
     // Fetch employee details for event emission
@@ -155,9 +162,8 @@ export class LeaveRequestsService {
         endDate: new Date(dto.endDate),
         leaveType: dto.leaveType,
         reason: dto.reason,
-        status: dto.status ?? 'PENDING_MANAGER',
-        appliedOn: dto.appliedOn ? new Date(dto.appliedOn) : new Date(),
-        approvedBy: dto.approvedBy,
+        status: 'PENDING_MANAGER',
+        appliedOn: new Date(),
         ...createSubmittedApprovalState(user.userId),
       },
       include: { employee: true },

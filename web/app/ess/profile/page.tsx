@@ -2,11 +2,14 @@
 
 import React, { useState } from 'react';
 import { useMyProfile, useUpdateProfile } from '@/hooks/useEss';
-import { User, AlertCircle, CheckCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle } from 'lucide-react';
+import { ProfileAvatarUploader } from '@/components/profile/ProfileAvatarUploader';
+import { useAuthSession } from '@/stores/auth-store';
 
 export default function ESSProfilePage() {
   const { data: profile, loading: profileLoading, refetch: refetchProfile } = useMyProfile();
   const { update, loading: updateLoading } = useUpdateProfile();
+  const session = useAuthSession();
 
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
@@ -101,9 +104,12 @@ export default function ESSProfilePage() {
         <div className="bg-white rounded-lg border border-gray-200 p-8 mb-8">
           <div className="flex items-start justify-between mb-6">
             <div className="flex items-center gap-4">
-              <div className="bg-blue-100 rounded-full p-4">
-                <User className="w-8 h-8 text-blue-600" />
-              </div>
+              <ProfileAvatarUploader
+                userName={profile?.name ?? session.user?.name}
+                userEmail={profile?.email ?? session.user?.email}
+                userId={session.user?.id ?? profile?.id ?? null}
+                size="lg"
+              />
               <div>
                 <h2 className="text-2xl font-bold text-gray-900">{profile?.name}</h2>
                 <p className="text-gray-600">{profile?.email}</p>

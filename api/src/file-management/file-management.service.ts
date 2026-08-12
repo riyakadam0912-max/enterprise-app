@@ -52,11 +52,33 @@ export class FileManagementService {
     private readonly storageProvider: StorageProviderModule.StorageProvider,
   ) {}
 
-  private validateOrganization(user?: Partial<FileUserContext>): number {
-    if (!user?.organizationId) {
-      throw new ForbiddenException('User has no associated organization');
+  private async validateOrganization(
+    user?: Partial<FileUserContext>,
+  ): Promise<number> {
+    if (user?.organizationId != null) {
+      return user.organizationId;
     }
-    return user.organizationId;
+
+    const role = String(user?.role ?? '').toUpperCase();
+    const isPlatformAdmin =
+      role === 'SUPER_ADMIN' ||
+      user?.isPlatformAdmin === true ||
+      user?.isSuperAdmin === true ||
+      user?.roles?.includes?.('SUPER_ADMIN') === true;
+
+    if (isPlatformAdmin) {
+      const org = await this.prisma.organization.findFirst({
+        where: { status: 'ACTIVE', deletedAt: null },
+        orderBy: { id: 'asc' },
+        select: { id: true },
+      });
+
+      if (org?.id) {
+        return org.id;
+      }
+    }
+
+    throw new ForbiddenException('User has no associated organization');
   }
 
   async uploadFile(
@@ -97,7 +119,7 @@ export class FileManagementService {
   }
 
   async findAll(query: FileListQuery = {}, user?: Partial<FileUserContext>) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = await this.validateOrganization(user);
     const where: Prisma.FileWhereInput = {
       deletedAt: null,
       organizationId,
@@ -150,7 +172,7 @@ export class FileManagementService {
     entityId: number,
     user?: Partial<FileUserContext>,
   ) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = await this.validateOrganization(user);
     const files = await this.prisma.file.findMany({
       where: {
         entityType,
@@ -167,7 +189,7 @@ export class FileManagementService {
   }
 
   async findRecordById(id: number, user: Partial<FileUserContext>) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = await this.validateOrganization(user);
     return this.prisma.file.findFirst({
       where: {
         id,
@@ -178,7 +200,7 @@ export class FileManagementService {
   }
 
   async findOne(id: number, user?: Partial<FileUserContext>) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = await this.validateOrganization(user);
     const scopedUser: Partial<FileUserContext> = { ...user, organizationId };
     const file = await this.findRecordById(id, scopedUser);
     if (!file) {
@@ -201,7 +223,7 @@ export class FileManagementService {
     },
     user?: Partial<FileUserContext>,
   ) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = await this.validateOrganization(user);
     const scopedUser: Partial<FileUserContext> = { ...user, organizationId };
     const file = await this.findRecordById(id, scopedUser);
     if (!file) throw new NotFoundException('File not found');
@@ -248,7 +270,7 @@ export class FileManagementService {
   }
 
   async remove(id: number, user?: Partial<FileUserContext>) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = await this.validateOrganization(user);
     const scopedUser: Partial<FileUserContext> = { ...user, organizationId };
     const file = await this.findRecordById(id, scopedUser);
     if (!file) throw new NotFoundException('File not found');
@@ -290,7 +312,7 @@ export class FileManagementService {
     user?: Partial<FileUserContext>,
     inline = false,
   ): Promise<StreamableFile> {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = await this.validateOrganization(user);
     const scopedUser: Partial<FileUserContext> = { ...user, organizationId };
     await this.findOne(id, scopedUser);
     const record = await this.findRecordById(id, scopedUser);
@@ -316,7 +338,7 @@ export class FileManagementService {
     id: number,
     user?: Partial<FileUserContext>,
   ): Promise<StreamableFile> {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = await this.validateOrganization(user);
     const scopedUser: Partial<FileUserContext> = { ...user, organizationId };
     const record = await this.findRecordById(id, scopedUser);
     if (!record) throw new NotFoundException('File not found');
@@ -340,7 +362,7 @@ export class FileManagementService {
   }
 
   async dashboard(user?: Partial<FileUserContext>) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = await this.validateOrganization(user);
     const baseWhere: Prisma.FileWhereInput = {
       deletedAt: null,
       organizationId,
@@ -445,7 +467,7 @@ export class FileManagementService {
     },
     user: FileUserContext,
   ) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = await this.validateOrganization(user);
     const current = await this.findRecordById(sourceFileId, user);
     if (!current) throw new NotFoundException('File not found');
     if (!this.canUserAccessFile(current, user))
@@ -479,7 +501,7 @@ export class FileManagementService {
     previous?: File,
   ) {
     if (!file) throw new BadRequestException('A file is required');
-    const organizationId = this.validateOrganization(user);
+    const organizationId = await this.validateOrganization(user);
 
     assertSupportedFile(file.originalname, file.mimetype);
 

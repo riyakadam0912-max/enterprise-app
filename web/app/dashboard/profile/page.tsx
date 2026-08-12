@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { apiClient } from '@/api/apiClient';
+import { listFilesByEntity } from '@/api/filesApi';
+import { ProfileAvatarUploader } from '@/components/profile/ProfileAvatarUploader';
 import { PasswordInput } from '@/components/ui/password-input';
+import { useAuthSession } from '@/stores/auth-store';
 
 type LocalUser = {
   id?: number;
@@ -105,12 +108,14 @@ function formatDateTime(value?: string | null) {
 
 export default function ProfilePage() {
   const storedUser = useMemo(() => readStoredUser(), []);
+  const session = useAuthSession();
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingDetails, setSavingDetails] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [details, setDetails] = useState({
     fullName: storedUser?.name ?? 'User',
     email: storedUser?.email ?? '',
@@ -145,6 +150,16 @@ export default function ProfilePage() {
           location: data.address ?? prev.location,
           role: data.user?.role ?? prev.role,
         }));
+
+        const userId = data.user?.id ?? data.id;
+        if (userId) {
+          const files = await listFilesByEntity('User', userId);
+          if (!cancelled) {
+            const preferredAvatar = files.find((file) => file.category === 'Profile Photo') ?? files[0];
+            const nextUrl = preferredAvatar?.url || preferredAvatar?.downloadUrl || preferredAvatar?.previewUrl || null;
+            setAvatarUrl(nextUrl);
+          }
+        }
       } catch {
         if (!cancelled) {
           setProfile(null);
@@ -166,10 +181,10 @@ export default function ProfilePage() {
   const displayRole = profile?.user?.role ?? details.role;
   const displayDepartment = profile?.department ?? details.department;
   const displayTitle = profile?.designation ?? profile?.position ?? storedUser?.designation ?? storedUser?.position ?? displayRole;
-  const initials = (details.fullName?.trim().charAt(0) ?? 'U').toUpperCase();
   const accountActive = profile?.user?.isActive ?? storedUser?.isActive ?? true;
   const joinedAt = profile?.user?.createdAt ?? profile?.hireDate ?? storedUser?.createdAt ?? null;
   const lastLogin = storedUser?.lastLogin ?? null;
+  const profileUserId = session.user?.id ?? profile?.user?.id ?? profile?.id ?? storedUser?.id ?? null;
 
   async function handleDetailsSave() {
     setError(null);
@@ -177,11 +192,6 @@ export default function ProfilePage() {
     setSavingDetails(true);
 
     try {
-      const token = typeof window === 'undefined' ? null : localStorage.getItem('token');
-      if (!token) {
-        throw new Error('Please sign in again.');
-      }
-
       if (profile?.id) {
         await apiClient('/employee-self-service/profile/update', {
           method: 'PUT',
@@ -266,9 +276,14 @@ export default function ProfilePage() {
             </div>
           ) : (
             <div className="flex items-start gap-4">
-              <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xl font-bold text-white shadow-sm">
-                {initials}
-              </div>
+              <ProfileAvatarUploader
+                userName={details.fullName || storedUser?.name || session.user?.name}
+                userEmail={details.email || storedUser?.email || session.user?.email}
+                userId={profileUserId}
+                avatarUrl={avatarUrl}
+                size="lg"
+                onAvatarChange={setAvatarUrl}
+              />
 
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
