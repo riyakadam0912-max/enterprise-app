@@ -3,10 +3,13 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useAuthSession } from '@/stores/auth-store';
 import { useEmployees, removeEmployee } from '@/hooks/useEmployees';
 import TableActions from '@/components/common/TableActions';
 
 export default function EmployeesPage() {
+  const session = useAuthSession();
+  const isManager = session.role === 'MANAGER';
   const { employees, loading, error, refetch } = useEmployees();
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -35,13 +38,15 @@ export default function EmployeesPage() {
           <p className="text-sm text-slate-500 mt-1">Manage your team members</p>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href="/dashboard/employees/add"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors"
-          >
-            <span className="text-base leading-none">+</span>
-            Add Employee
-          </Link>
+          {!isManager && (
+            <Link
+              href="/dashboard/employees/add"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              <span className="text-base leading-none">+</span>
+              Add Employee
+            </Link>
+          )}
           <TableActions moduleKey="employees" rows={employees} onRefresh={refetch} />
         </div>
       </div>

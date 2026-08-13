@@ -25,15 +25,20 @@ const EMPLOYEE_ALLOWED_PATH_PREFIXES = [
   '/dashboard/timesheets',
 ];
 
-const MANAGER_ALLOWED_EXACT_PATHS = ['/dashboard'];
+const MANAGER_ALLOWED_EXACT_PATHS = ['/dashboard', '/dashboard/employees'];
 const MANAGER_ALLOWED_PATH_PREFIXES = [
   '/dashboard/projects',
   '/dashboard/tasks',
   '/dashboard/invoices',
   '/dashboard/expenses',
   '/dashboard/attendance',
+  '/dashboard/employees',
   '/dashboard/leave',
+  '/dashboard/requests',
+  '/dashboard/reports',
+  '/dashboard/notifications',
   '/dashboard/profile',
+  '/dashboard/timesheets',
 ];
 
 function isPathAllowed(pathname: string, exactPaths: string[], prefixes: string[]): boolean {

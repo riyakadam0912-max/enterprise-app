@@ -36,7 +36,7 @@ import {
 export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
 
-  @Roles(Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'POST check-in' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -59,7 +59,7 @@ export class AttendanceController {
     return this.attendanceService.checkIn(dto, req.user);
   }
 
-  @Roles(Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'POST check-out' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -171,7 +171,7 @@ export class AttendanceController {
     return this.attendanceService.findAll(query, req.user);
   }
 
-  @Roles(Role.EMPLOYEE)
+  @Roles(Role.EMPLOYEE, Role.MANAGER)
   @ApiOperation({ summary: 'GET me' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -193,7 +193,7 @@ export class AttendanceController {
     return this.attendanceService.findMine(query, req.user);
   }
 
-  @Roles(Role.EMPLOYEE)
+  @Roles(Role.EMPLOYEE, Role.MANAGER)
   @ApiOperation({ summary: 'GET my' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })

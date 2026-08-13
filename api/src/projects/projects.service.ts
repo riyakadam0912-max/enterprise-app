@@ -11,7 +11,13 @@ import { Role } from '../common/enums/role.enum';
 import { CreateProjectLinkDto } from './dto/create-project-link.dto';
 import { AuthUser } from '../common/types/auth';
 
-const PROJECT_STATUSES = ['ACTIVE', 'COMPLETED'] as const;
+const PROJECT_STATUSES = [
+  'ACTIVE',
+  'PLANNED',
+  'IN PROGRESS',
+  'ON HOLD',
+  'COMPLETED',
+] as const;
 const TASK_STATUSES = [
   'PENDING',
   'IN_PROGRESS',
@@ -99,22 +105,18 @@ export class ProjectsService {
   private normalizeProjectStatus(
     status?: string | null,
   ): (typeof PROJECT_STATUSES)[number] {
-    if (!status) return 'ACTIVE';
+    if (!status) return 'PLANNED';
 
     const normalized = status.trim().toUpperCase();
-    if (normalized === 'COMPLETED') return 'COMPLETED';
     if (normalized === 'ACTIVE') return 'ACTIVE';
+    if (normalized === 'COMPLETED') return 'COMPLETED';
+    if (normalized === 'PLANNED') return 'PLANNED';
+    if (normalized === 'PLANNING') return 'PLANNED';
+    if (normalized === 'IN PROGRESS' || normalized === 'IN_PROGRESS')
+      return 'IN PROGRESS';
+    if (normalized === 'ON HOLD' || normalized === 'ONHOLD') return 'ON HOLD';
 
-    // Backward compatibility with legacy status values.
-    if (
-      normalized === 'IN PROGRESS' ||
-      normalized === 'PLANNED' ||
-      normalized === 'ON HOLD'
-    ) {
-      return 'ACTIVE';
-    }
-
-    return 'ACTIVE';
+    return 'PLANNED';
   }
 
   private async getProjectScope(

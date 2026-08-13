@@ -105,10 +105,16 @@ export class ExpensesService {
       }
     }
 
+    // Managers and HR can create expenses for their team/organization
+    // If no employeeId provided and user is not an employee, that's OK for manager/admin
     if (employeeId === null || employeeId === undefined) {
-      throw new ForbiddenException(
-        'Employee identifier is required to create an expense',
-      );
+      if (user.role === Role.EMPLOYEE) {
+        throw new ForbiddenException(
+          'Employee identifier is required to create an expense',
+        );
+      }
+      // For managers/HR/admin submitting without an employeeId, use null
+      // This represents an organizational expense or manager's own expense
     }
 
     const expense = await this.prisma.expense.create({
@@ -121,7 +127,7 @@ export class ExpensesService {
         currency: dto.currency,
         receiptImage: dto.receiptImage,
         status: 'PENDING_MANAGER',
-        employee: { connect: { id: employeeId } },
+        ...(employeeId && { employee: { connect: { id: employeeId } } }),
         submittedByUser: { connect: { id: user.userId } },
         ...createSubmittedApprovalState(user.userId),
       },

@@ -6,6 +6,7 @@ import { addPayment, updatePayment, usePayments } from '@/hooks/usePayments';
 import { getInvoices, type Invoice } from '@/api/invoicesApi';
 import { reportError } from '@/lib/error-handling';
 import { formatDate, formatInr, PAYMENT_STATUS_STYLES } from '@/utils/finance';
+import { useAuthSession } from '@/stores/auth-store';
 
 const STATUS_FILTERS = ['ALL', 'COMPLETED', 'PENDING', 'FAILED', 'REFUNDED', 'RECONCILED', 'PARTIALLY_SETTLED'] as const;
 const METHOD_FILTERS = ['ALL', 'Bank Transfer', 'Card', 'Cash', 'Cheque', 'Online', 'UPI', 'Wallet', 'Other'] as const;
@@ -16,6 +17,9 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function PaymentsPage() {
+  const auth = useAuthSession();
+  const isManager = auth.role === 'MANAGER';
+  const canEditPayments = !isManager; // Only ADMIN/HR can edit
   const { payments, loading, error, refetch } = usePayments();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [search, setSearch] = useState('');
@@ -128,16 +132,18 @@ export default function PaymentsPage() {
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-600">Ledger & reconciliation</p>
             <h1 className="mt-1 text-3xl font-semibold text-slate-900">Payments</h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-500">Capture manual receipts, inspect gateway metadata, and reconcile collections against invoices in one finance ledger.</p>
+            <p className="mt-2 max-w-2xl text-sm text-slate-500">{isManager ? 'View payment history and reconciliation status.' : 'Capture manual receipts, inspect gateway metadata, and reconcile collections against invoices in one finance ledger.'}</p>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowModal(true)}
-            className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-medium text-white shadow-sm shadow-orange-200 transition-colors hover:bg-orange-600"
-          >
-            <span className="text-base leading-none">+</span>
-            Record Payment
-          </button>
+          {canEditPayments && (
+            <button
+              type="button"
+              onClick={() => setShowModal(true)}
+              className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-medium text-white shadow-sm shadow-orange-200 transition-colors hover:bg-orange-600"
+            >
+              <span className="text-base leading-none">+</span>
+              Record Payment
+            </button>
+          )}
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
@@ -233,15 +239,17 @@ export default function PaymentsPage() {
                         <Link href={`/dashboard/payments/${payment.id}`} className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900">
                           Open
                         </Link>
-                        <select
-                          value={payment.status}
-                          onChange={(event) => void handleStatusUpdate(payment.id, event.target.value)}
-                          className="mt-1 rounded-xl border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 outline-none transition focus:border-orange-400"
-                        >
-                          {STATUS_FILTERS.filter((status) => status !== 'ALL').map((status) => (
-                            <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>
-                          ))}
-                        </select>
+                        {canEditPayments && (
+                          <select
+                            value={payment.status}
+                            onChange={(event) => void handleStatusUpdate(payment.id, event.target.value)}
+                            className="mt-1 rounded-xl border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 outline-none transition focus:border-orange-400"
+                          >
+                            {STATUS_FILTERS.filter((status) => status !== 'ALL').map((status) => (
+                              <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>
+                            ))}
+                          </select>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -252,7 +260,7 @@ export default function PaymentsPage() {
         )}
       </div>
 
-      {showModal && (
+      {showModal && canEditPayments && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
             <div className="flex items-start justify-between gap-3">

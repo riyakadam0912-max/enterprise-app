@@ -336,16 +336,23 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (user.role === Role.MANAGER) {
+      const ownEmployeeId = await this.resolveCurrentEmployeeId(user);
       const managedIds = await this.getManagerEmployeeIds(user.userId, user);
+      const scopedIds = Array.from(new Set([ownEmployeeId, ...managedIds]));
+
       if (requestedEmployeeId) {
-        if (!managedIds.includes(requestedEmployeeId)) {
-          throw new ForbiddenException(
-            'You can only access attendance for your team',
-          );
+        if (requestedEmployeeId === ownEmployeeId) {
+          return [ownEmployeeId];
         }
-        return [requestedEmployeeId];
+        if (managedIds.includes(requestedEmployeeId)) {
+          return [requestedEmployeeId];
+        }
+        throw new ForbiddenException(
+          'You can only access attendance for your team',
+        );
       }
-      return managedIds;
+
+      return scopedIds;
     }
 
     const ownEmployeeId = await this.resolveCurrentEmployeeId(user);
@@ -778,7 +785,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       undefined,
     );
 
-    const row = today.rows[0] ?? null;
+    const row = today.rows.find((item) => item.employeeId === employeeId) ?? null;
     if (!row) {
       throw new NotFoundException('Attendance row not found for current user');
     }

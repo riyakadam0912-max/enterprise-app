@@ -69,6 +69,17 @@ describe('ProjectsService', () => {
     expect(service).toBeDefined();
   });
 
+  it('preserves canonical project statuses instead of silently flattening them to ACTIVE', () => {
+    expect((service as any).normalizeProjectStatus('PLANNED')).toBe('PLANNED');
+    expect((service as any).normalizeProjectStatus('IN PROGRESS')).toBe(
+      'IN PROGRESS',
+    );
+    expect((service as any).normalizeProjectStatus('ACTIVE')).toBe('ACTIVE');
+    expect((service as any).normalizeProjectStatus('COMPLETED')).toBe(
+      'COMPLETED',
+    );
+  });
+
   describe('create', () => {
     const createProjectDto: CreateProjectDto = {
       projectName: 'Test Project',
@@ -749,7 +760,7 @@ describe('ProjectsService', () => {
       );
     });
 
-    it('should return projects grouped by status', async () => {
+    it('should preserve real project status groupings without flattening legacy values', async () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
       projectDelegate.findMany.mockResolvedValueOnce([
         { id: 1, status: 'ACTIVE' },
@@ -758,8 +769,9 @@ describe('ProjectsService', () => {
       ]);
 
       const result = await service.getByStatus(mockAdminUser);
-      expect(result.ACTIVE.length).toEqual(2);
-      expect(result.COMPLETED.length).toEqual(1);
+      expect(result.ACTIVE).toHaveLength(1);
+      expect(result['IN PROGRESS']).toHaveLength(1);
+      expect(result.COMPLETED).toHaveLength(1);
     });
   });
 

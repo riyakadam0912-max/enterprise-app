@@ -249,6 +249,95 @@ describe('AttendanceService', () => {
     ]);
   });
 
+  it('allows a manager to view their own attendance using the me endpoint', async () => {
+    const managerUser = {
+      ...mockUser,
+      role: Role.MANAGER,
+      userId: 2,
+      employeeId: 7,
+    };
+
+    prisma.employee.findMany
+      .mockResolvedValueOnce([{ id: 8 }])
+      .mockResolvedValueOnce([
+        {
+          id: 7,
+          name: 'Mona',
+          department: 'Sales',
+          designation: 'Manager',
+          shift: null,
+        },
+      ]);
+    prisma.attendance.findMany.mockResolvedValue([]);
+    prisma.leaveRequest.findMany.mockResolvedValue([]);
+
+    const result = await service.findMine({ date: '2026-03-13', page: 1, limit: 10 }, managerUser);
+
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0].employeeId).toBe(7);
+    expect(result.data[0].employee.name).toBe('Mona');
+  });
+
+  it('returns the manager-own row for getMySnapshot when team rows are present', async () => {
+    const managerUser = {
+      ...mockUser,
+      role: Role.MANAGER,
+      userId: 2,
+      employeeId: 7,
+    };
+
+    jest.spyOn(service, 'getToday').mockResolvedValue({
+      date: '2026-03-13T00:00:00.000Z',
+      summary: {
+        present: 2,
+        absent: 0,
+        leave: 0,
+        halfDay: 0,
+        lateCount: 0,
+        overtimeHours: 0,
+        presentDays: 2,
+        absentDays: 0,
+        leaveDays: 0,
+        halfDays: 0,
+        totalWorkingDays: 2,
+      },
+      rows: [
+        {
+          id: 101,
+          employeeId: 8,
+          employee: { id: 8, name: 'Team Member', department: 'Sales', designation: 'Executive' },
+          date: '2026-03-13T00:00:00.000Z',
+          checkIn: '2026-03-13T09:00:00.000Z',
+          checkOut: '2026-03-13T17:00:00.000Z',
+          workingHours: 8,
+          lateMinutes: 0,
+          overtimeHours: 0,
+          status: AttendanceStatus.PRESENT,
+          shiftDetails: null,
+        },
+        {
+          id: 102,
+          employeeId: 7,
+          employee: { id: 7, name: 'Mona', department: 'Sales', designation: 'Manager' },
+          date: '2026-03-13T00:00:00.000Z',
+          checkIn: '2026-03-13T09:30:00.000Z',
+          checkOut: '2026-03-13T18:30:00.000Z',
+          workingHours: 8,
+          lateMinutes: 30,
+          overtimeHours: 0,
+          status: AttendanceStatus.PRESENT,
+          shiftDetails: null,
+        },
+      ],
+    } as any);
+
+    const result = await service.getMySnapshot(managerUser);
+
+    expect(result.status).toBe(AttendanceStatus.PRESENT);
+    expect(result.checkIn).toBe('2026-03-13T09:30:00.000Z');
+    expect(result.checkOut).toBe('2026-03-13T18:30:00.000Z');
+  });
+
   it('allows a super admin to view attendance without forcing a single organization scope', async () => {
     prisma.attendance.findMany.mockResolvedValue([]);
 

@@ -254,7 +254,14 @@ const MANAGER_VISIBLE_LABELS = new Set([
   'Projects',
   'Invoices',
   'Expenses',
+  'Attendance',
+  'Requests',
+  'Reports',
+  'Timesheets',
+  'Employees',
 ]);
+
+const MANAGER_EMPLOYEE_CHILD_LABELS = new Set(['All Employees']);
 
 function getMatchedDropdownId(items: NavItem[], path: string): string | null {
   const match = items.find(
@@ -299,7 +306,17 @@ export default function Sidebar({ currentPath }: SidebarProps) {
         return navConfig.filter((item) => EMPLOYEE_VISIBLE_LABELS.has(item.label));
       }
       if (role === 'MANAGER') {
-        return navConfig.filter((item) => MANAGER_VISIBLE_LABELS.has(item.label));
+        return navConfig
+          .filter((item) => MANAGER_VISIBLE_LABELS.has(item.label))
+          .map((item) => {
+            if (item.type === 'dropdown' && item.id === 'employees') {
+              return {
+                ...item,
+                children: item.children.filter((child) => MANAGER_EMPLOYEE_CHILD_LABELS.has(child.label)),
+              };
+            }
+            return item;
+          });
       }
       if (role === 'HR') {
         return navConfig.filter((item) => item.label !== 'User Management');
