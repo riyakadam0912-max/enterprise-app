@@ -18,14 +18,11 @@ export default function BackendHealthProvider({ children }: { children: React.Re
     let active = true;
     let controller: AbortController | null = null;
 
-    const checkHealth = async () => {
-      controller?.abort();
-      controller = new AbortController();
-
+    const checkHealth = async (signal: AbortSignal) => {
       try {
         const response = await fetch(`${clientEnv.NEXT_PUBLIC_API_URL}/health`, {
           cache: 'no-store',
-          signal: controller.signal,
+          signal,
         });
         if (!active) {
           return;
@@ -45,15 +42,20 @@ export default function BackendHealthProvider({ children }: { children: React.Re
       }
     };
 
-    void checkHealth();
+    controller = new AbortController();
+    void checkHealth(controller.signal);
 
     const intervalId = window.setInterval(() => {
-      void checkHealth();
+      if (controller && !controller.signal.aborted) {
+        controller.abort('refresh');
+      }
+      controller = new AbortController();
+      void checkHealth(controller.signal);
     }, 30000);
 
     return () => {
       active = false;
-      controller?.abort();
+      controller?.abort('unmount');
       window.clearInterval(intervalId);
     };
   }, []);

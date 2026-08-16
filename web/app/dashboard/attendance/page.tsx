@@ -131,21 +131,21 @@ function EmployeeAttendancePanel(props: {
         </div>
 
         <div className="grid min-w-[18rem] gap-3 sm:grid-cols-2 lg:w-md">
-          <button
-            onClick={onCheckIn}
-            disabled={!accountLinked || hasCheckedIn || checkInLoading}
-            className="rounded-2xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {checkInLoading ? 'Checking In…' : hasCheckedIn ? 'Already Checked In' : 'Mark Check In'}
-          </button>
-          <button
-            onClick={onCheckOut}
-            disabled={!accountLinked || !hasCheckedIn || hasCheckedOut || checkOutLoading}
-            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {checkOutLoading ? 'Checking Out…' : hasCheckedOut ? 'Already Checked Out' : 'Mark Check Out'}
-          </button>
-        </div>
+            <button
+              onClick={onCheckIn}
+              disabled={!accountLinked || hasCheckedIn || checkInLoading}
+              className="rounded-2xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {checkInLoading ? 'Checking In…' : hasCheckedIn ? 'Already Checked In' : 'Mark Check In'}
+            </button>
+            <button
+              onClick={onCheckOut}
+              disabled={!accountLinked || !hasCheckedIn || hasCheckedOut || checkOutLoading}
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {checkOutLoading ? 'Checking Out…' : hasCheckedOut ? 'Already Checked Out' : 'Mark Check Out'}
+            </button>
+          </div>
       </div>
 
       {!accountLinked ? (
@@ -340,11 +340,10 @@ export default function AttendancePage() {
   );
 
   const myTodayRow = useMemo(() => {
-    if (canViewAdminAttendance) return null;
-    return today.data?.rows.find((row) => row.employeeId === session.employeeId) ?? today.data?.rows[0] ?? null;
-  }, [canViewAdminAttendance, session.employeeId, today.data]);
+    return today.data?.rows.find((row) => row.employeeId === session.employeeId) ?? null;
+  }, [session.employeeId, today.data]);
   const resolvedEmployeeId = myTodayRow?.employeeId ?? session.employeeId;
-  const accountLinked = canViewAdminAttendance || Boolean(resolvedEmployeeId) || today.error !== 'Your login is not linked to an employee profile yet.';
+  const accountLinked = Boolean(resolvedEmployeeId) || (!canViewAdminAttendance && today.error !== 'Your login is not linked to an employee profile yet.');
 
   async function handleEmployeeAction(mode: 'in' | 'out') {
     try {
@@ -517,7 +516,7 @@ export default function AttendancePage() {
         </div>
       </div>
 
-      {!canViewAdminAttendance && (
+      {(!canViewAdminAttendance || session.role === 'HR') && (
         <EmployeeAttendancePanel
           name={session.name}
           employeeId={resolvedEmployeeId}
@@ -531,7 +530,7 @@ export default function AttendancePage() {
         />
       )}
 
-      {!canViewAdminAttendance && (checkInMutation.error || checkOutMutation.error) && (
+      {(!canViewAdminAttendance || session.role === 'HR') && (checkInMutation.error || checkOutMutation.error) && (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {checkInMutation.error || checkOutMutation.error}
         </div>

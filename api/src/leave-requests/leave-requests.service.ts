@@ -347,6 +347,13 @@ export class LeaveRequestsService {
       throw new ForbiddenException('Leave request is not pending HR approval');
     }
 
+    // Prevent HR from approving their own leave request
+    if (user.role === Role.HR && user.employeeId === request.employeeId) {
+      throw new ForbiddenException(
+        'HR cannot approve their own leave request. This requires Admin or Super Admin approval.',
+      );
+    }
+
     const leaveDays = this.computeLeaveDays(request.startDate, request.endDate);
 
     const result = await this.workflowEngine.approveWorkflow({

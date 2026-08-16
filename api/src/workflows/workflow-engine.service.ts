@@ -418,35 +418,123 @@ export class WorkflowEngineService implements OnModuleInit {
     return this.getInstanceByEntity(entityType, entityId, organizationId);
   }
 
+  private async resolveEmployeeUser(employeeId: number | undefined | null) {
+    if (!employeeId) return null;
+    return this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: {
+        id: true,
+        user: {
+          select: {
+            id: true,
+            role: true,
+            managerId: true,
+            employeeId: true,
+            organizationId: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+  }
+
+  private async resolveRequestorUser(context: WorkflowContext) {
+    const requestorUserId =
+      Number(context?.requestorUserId ?? context?.initiatedBy ?? 0) || null;
+    if (!requestorUserId) return null;
+    return this.prisma.user.findUnique({
+      where: { id: requestorUserId },
+      select: {
+        id: true,
+        role: true,
+        managerId: true,
+        employeeId: true,
+        organizationId: true,
+        isActive: true,
+      },
+    });
+  }
+
+  private async resolvePrivilegedOrganizationAdmins(
+    organizationId: number | undefined | null,
+  ): Promise<number[]> {
+    const orgId = Number(organizationId ?? 0);
+    if (!orgId) return [];
+    const rows = await this.prisma.user.findMany({
+      where: {
+        organizationId: orgId,
+        isActive: true,
+        role: { in: [Role.ADMIN, Role.SUPER_ADMIN] },
+      },
+      orderBy: [{ role: 'asc' }, { id: 'asc' }],
+      select: { id: true },
+    });
+    return rows.map((r) => r.id);
+  }
+
   private async resolveRecipients(
     stage: WorkflowStage,
     context: WorkflowContext,
   ): Promise<number[]> {
     const rule = assignmentRule(stage);
 
+    const employeeId =
+      Number(context?.employeeId ?? context?.submittedEmployeeId ?? 0) || null;
+    const requestorUser = await this.resolveRequestorUser(context);
+    const linkedEmployee = await this.resolveEmployeeUser(employeeId);
+    const submitterUserId =
+      requestorUser?.id ?? linkedEmployee?.user?.id ?? null;
+    const submitterRole =
+      requestorUser?.role ??
+      (linkedEmployee?.user?.role as Role | undefined) ??
+      null;
+    const organizationId =
+      requestorUser?.organizationId ?? linkedEmployee?.user?.organizationId;
+
     if (rule.userIds) {
-      return rule.userIds;
+      const set = new Set(rule.userIds);
+      if (submitterUserId) set.delete(submitterUserId);
+      return [...set];
     }
 
     if (rule.userId !== undefined) {
+      if (rule.userId === submitterUserId) return [];
       return [rule.userId];
     }
 
     if (rule.type === 'ROLE' && rule.value) {
       const role = toRole(rule.value);
       if (role) {
-        const users = await this.prisma.user.findMany({
-          where: { role, isActive: true },
+        const orgId = Number(organizationId ?? 0);
+        const rows = await this.prisma.user.findMany({
+          where: orgId
+            ? { role, isActive: true, organizationId: orgId }
+            : { role, isActive: true },
           select: { id: true },
         });
-        return users.map((user: { id: number }) => user.id);
+        const ids = rows.map((user) => user.id);
+        if (!submitterUserId) return ids;
+        const isSubmitterOfRole =
+          submitterRole &&
+          (submitterRole === role ||
+            (Array.isArray(requestorUser as unknown as { roles?: string[] }) &&
+              (
+                requestorUser as unknown as { roles?: string[] }
+              ).roles?.includes(role)));
+        if (
+          isSubmitterOfRole &&
+          (role === Role.HR ||
+            role === Role.ADMIN ||
+            role === Role.MANAGER ||
+            role === Role.COMPLIANCE_MANAGER)
+        ) {
+          return ids.filter((id) => id !== submitterUserId);
+        }
+        return ids;
       }
     }
 
     if (rule.type === 'MANAGER') {
-      const employeeId = Number(
-        context?.employeeId ?? context?.submittedEmployeeId ?? 0,
-      );
       if (employeeId) {
         const employee = await this.prisma.employee.findUnique({
           where: { id: employeeId },
@@ -457,9 +545,8 @@ export class WorkflowEngineService implements OnModuleInit {
         }
       }
 
-      const requestorUserId = Number(
-        context?.requestorUserId ?? context?.initiatedBy ?? 0,
-      );
+      const requestorUserId =
+        Number(context?.requestorUserId ?? context?.initiatedBy ?? 0) || null;
       if (requestorUserId) {
         const user = await this.prisma.user.findUnique({
           where: { id: requestorUserId },
@@ -468,6 +555,16 @@ export class WorkflowEngineService implements OnModuleInit {
         if (user?.managerId) {
           return [user.managerId];
         }
+      }
+
+      if (
+        submitterRole === Role.HR ||
+        submitterRole === Role.ADMIN ||
+        submitterRole === Role.COMPLIANCE_MANAGER
+      ) {
+        const fallback =
+          await this.resolvePrivilegedOrganizationAdmins(organizationId);
+        return fallback.filter((id) => id !== submitterUserId);
       }
     }
 

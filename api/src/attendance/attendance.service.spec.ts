@@ -271,7 +271,10 @@ describe('AttendanceService', () => {
     prisma.attendance.findMany.mockResolvedValue([]);
     prisma.leaveRequest.findMany.mockResolvedValue([]);
 
-    const result = await service.findMine({ date: '2026-03-13', page: 1, limit: 10 }, managerUser);
+    const result = await service.findMine(
+      { date: '2026-03-13', page: 1, limit: 10 },
+      managerUser,
+    );
 
     expect(result.data).toHaveLength(1);
     expect(result.data[0].employeeId).toBe(7);
@@ -305,7 +308,12 @@ describe('AttendanceService', () => {
         {
           id: 101,
           employeeId: 8,
-          employee: { id: 8, name: 'Team Member', department: 'Sales', designation: 'Executive' },
+          employee: {
+            id: 8,
+            name: 'Team Member',
+            department: 'Sales',
+            designation: 'Executive',
+          },
           date: '2026-03-13T00:00:00.000Z',
           checkIn: '2026-03-13T09:00:00.000Z',
           checkOut: '2026-03-13T17:00:00.000Z',
@@ -318,7 +326,12 @@ describe('AttendanceService', () => {
         {
           id: 102,
           employeeId: 7,
-          employee: { id: 7, name: 'Mona', department: 'Sales', designation: 'Manager' },
+          employee: {
+            id: 7,
+            name: 'Mona',
+            department: 'Sales',
+            designation: 'Manager',
+          },
           date: '2026-03-13T00:00:00.000Z',
           checkIn: '2026-03-13T09:30:00.000Z',
           checkOut: '2026-03-13T18:30:00.000Z',

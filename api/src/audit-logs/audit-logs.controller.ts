@@ -26,7 +26,7 @@ import {
 import { AuthUser } from '../common/types/auth';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER)
+@Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR)
 @ApiTags('System - Audit Logs')
 @ApiBearerAuth()
 @Controller('audit-logs')

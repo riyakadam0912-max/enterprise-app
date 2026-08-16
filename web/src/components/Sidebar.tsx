@@ -237,8 +237,6 @@ interface SidebarProps {
 
 const EMPLOYEE_VISIBLE_LABELS = new Set([
   'Dashboard',
-  'Leads',
-  'Deals',
   'Contacts',
   'Tasks',
   'Projects',
@@ -262,6 +260,27 @@ const MANAGER_VISIBLE_LABELS = new Set([
 ]);
 
 const MANAGER_EMPLOYEE_CHILD_LABELS = new Set(['All Employees']);
+
+const HR_VISIBLE_LABELS = new Set([
+  'Dashboard',
+  'Timesheets',
+  'Attendance',
+  'Invoices',
+  'Accounts',
+  'Payments',
+  'Payroll',
+  'Reports',
+  'Audit Logs',
+  'Ledger',
+  'Requests',
+  'Tickets',
+  'Form Submissions',
+  'Expenses',
+  'Contacts',
+  'Events',
+  'Marketing Campaigns',
+  'Employees',
+]);
 
 function getMatchedDropdownId(items: NavItem[], path: string): string | null {
   const match = items.find(
@@ -319,7 +338,7 @@ export default function Sidebar({ currentPath }: SidebarProps) {
           });
       }
       if (role === 'HR') {
-        return navConfig.filter((item) => item.label !== 'User Management');
+        return navConfig.filter((item) => HR_VISIBLE_LABELS.has(item.label));
       }
       return navConfig;
     },

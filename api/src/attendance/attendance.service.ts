@@ -785,7 +785,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       undefined,
     );
 
-    const row = today.rows.find((item) => item.employeeId === employeeId) ?? null;
+    const row =
+      today.rows.find((item) => item.employeeId === employeeId) ?? null;
     if (!row) {
       throw new NotFoundException('Attendance row not found for current user');
     }

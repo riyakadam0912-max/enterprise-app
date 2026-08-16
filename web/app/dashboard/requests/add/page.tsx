@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createLeaveRequest, LeaveType } from '../../../../src/api/leaveRequestsApi';
 import { getEmployees } from '../../../../src/api/employeesApi';
 import { getErrorMessage, reportError, retryAsync } from '@/lib/error-handling';
+import { useAuthSession } from '@/stores/auth-store';
 
 interface Employee { id: number; name: string }
 
@@ -33,12 +34,23 @@ const EMPTY = {
 
 export default function AddLeaveRequestPage() {
   const router = useRouter();
+  const session = useAuthSession();
+  const isEmployeeRole = session.role === 'EMPLOYEE';
   const [form, setForm]         = useState(EMPTY);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]       = useState<string | null>(null);
 
   useEffect(() => {
+    if (isEmployeeRole) {
+      setEmployees([]);
+      setForm((current) => ({
+        ...current,
+        employeeId: session.employeeId ? String(session.employeeId) : '',
+      }));
+      return;
+    }
+
     async function loadEmployees() {
       try {
         setEmployees(await retryAsync(() => getEmployees(), 2, 200));
@@ -48,7 +60,7 @@ export default function AddLeaveRequestPage() {
     }
 
     loadEmployees();
-  }, []);
+  }, [isEmployeeRole, session.employeeId]);
 
   const set = (key: keyof typeof form, value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -58,6 +70,15 @@ export default function AddLeaveRequestPage() {
     setSubmitting(true);
     setError(null);
     try {
+      const resolvedEmployeeId = isEmployeeRole
+        ? session.employeeId ?? undefined
+        : form.employeeId ? parseInt(form.employeeId) : undefined;
+
+      if (!resolvedEmployeeId) {
+        setError(isEmployeeRole ? 'Your employee profile is not linked to this account.' : 'Please select an employee.');
+        return;
+      }
+
       await createLeaveRequest({
         startDate:  form.startDate,
         endDate:    form.endDate,
@@ -66,7 +87,7 @@ export default function AddLeaveRequestPage() {
         status:     (form.status   || 'PENDING_MANAGER') as 'PENDING_MANAGER' | 'PENDING_HR' | 'APPROVED' | 'REJECTED' | 'CANCELLED',
         appliedOn:  form.appliedOn || undefined,
         approvedBy: form.approvedBy || undefined,
-        employeeId: form.employeeId ? parseInt(form.employeeId) : undefined,
+        employeeId: resolvedEmployeeId,
       });
       router.push('/dashboard/requests');
     } catch (err: unknown) {
@@ -78,7 +99,12 @@ export default function AddLeaveRequestPage() {
     }
   };
 
-  const handleReset = () => setForm(EMPTY);
+  const handleReset = () => setForm({
+    ...EMPTY,
+    employeeId: isEmployeeRole && session.employeeId ? String(session.employeeId) : '',
+  });
+
+  const employeeDisplayName = isEmployeeRole ? (session.user?.name || 'Current Employee') : '';
 
   const inputCls =
     'w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-orange-400 bg-white';
@@ -113,21 +139,35 @@ export default function AddLeaveRequestPage() {
           )}
 
           {/* Employee */}
-          <div className={rowCls}>
-            <label className={labelCls}>
-              Employee <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={form.employeeId}
-              onChange={(e) => set('employeeId', e.target.value)}
-              className={`${inputCls} focus:border-orange-400`}
-            >
-              <option value="">-Select-</option>
-              {employees.map((emp) => (
-                <option key={emp.id} value={emp.id}>{emp.name}</option>
-              ))}
-            </select>
-          </div>
+          {isEmployeeRole ? (
+            <div className={rowCls}>
+              <label className={labelCls}>
+                Employee <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                readOnly
+                value={employeeDisplayName}
+                className={`${inputCls} bg-gray-50 text-gray-700 cursor-default`}
+              />
+            </div>
+          ) : (
+            <div className={rowCls}>
+              <label className={labelCls}>
+                Employee <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={form.employeeId}
+                onChange={(e) => set('employeeId', e.target.value)}
+                className={`${inputCls} focus:border-orange-400`}
+              >
+                <option value="">-Select-</option>
+                {employees.map((emp) => (
+                  <option key={emp.id} value={emp.id}>{emp.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Start Date */}
           <div className={rowCls}>
