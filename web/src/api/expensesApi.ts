@@ -43,8 +43,6 @@ export interface CreateExpensePayload {
   amount?: number;
   currency?: string;
   receiptImage?: string;
-  approvedBy?: string;
-  status?: string;
 }
 
 export async function getExpenses(): Promise<Expense[]> {

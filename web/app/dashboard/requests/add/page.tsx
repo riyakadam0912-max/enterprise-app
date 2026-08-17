@@ -27,9 +27,6 @@ const EMPTY = {
   endDate:    '',
   leaveType:  '' as LeaveType | '',
   reason:     '',
-  status:     '' as 'PENDING_MANAGER' | 'PENDING_HR' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | '',
-  appliedOn:  '',
-  approvedBy: '',
 };
 
 export default function AddLeaveRequestPage() {
@@ -84,9 +81,6 @@ export default function AddLeaveRequestPage() {
         endDate:    form.endDate,
         leaveType:  (form.leaveType || 'OTHER') as LeaveType,
         reason:     form.reason    || undefined,
-        status:     (form.status   || 'PENDING_MANAGER') as 'PENDING_MANAGER' | 'PENDING_HR' | 'APPROVED' | 'REJECTED' | 'CANCELLED',
-        appliedOn:  form.appliedOn || undefined,
-        approvedBy: form.approvedBy || undefined,
         employeeId: resolvedEmployeeId,
       });
       router.push('/dashboard/requests');
@@ -222,47 +216,6 @@ export default function AddLeaveRequestPage() {
               onChange={(e) => set('reason', e.target.value)}
               rows={4}
               className={`${inputCls} resize-none`}
-            />
-          </div>
-
-          {/* Status */}
-          <div className={rowCls}>
-            <label className={labelCls}>Status</label>
-            <select
-              value={form.status}
-              onChange={(e) => set('status', e.target.value)}
-              className={inputCls}
-            >
-              <option value="">-Select-</option>
-              <option value="PENDING_MANAGER">Pending Manager</option>
-              <option value="PENDING_HR">Pending HR</option>
-              <option value="APPROVED">Approved</option>
-              <option value="REJECTED">Rejected</option>
-              <option value="CANCELLED">Cancelled</option>
-            </select>
-          </div>
-
-          {/* Applied On */}
-          <div className={rowCls}>
-            <label className={labelCls}>Applied On</label>
-            <input
-              type="date"
-              value={form.appliedOn}
-              onChange={(e) => set('appliedOn', e.target.value)}
-              placeholder="dd-MMM-yyyy"
-              className={inputCls}
-            />
-          </div>
-
-          {/* Approved By */}
-          <div className={rowCls}>
-            <label className={labelCls}>Approved By</label>
-            <input
-              type="text"
-              value={form.approvedBy}
-              onChange={(e) => set('approvedBy', e.target.value)}
-              placeholder="Approver name"
-              className={inputCls}
             />
           </div>
         </div>

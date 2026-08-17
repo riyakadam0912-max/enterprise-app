@@ -198,8 +198,6 @@ export class ExpensesService {
         ...(dto.receiptImage !== undefined && {
           receiptImage: dto.receiptImage,
         }),
-        ...(dto.approvedBy !== undefined && { approvedBy: dto.approvedBy }),
-        ...(dto.status !== undefined && { status: dto.status }),
         ...(dto.employeeId !== undefined && { employeeId: dto.employeeId }),
         ...(dto.expenseDate !== undefined && {
           expenseDate: dto.expenseDate ? new Date(dto.expenseDate) : null,

@@ -32,9 +32,6 @@ export interface CreateLeaveRequestPayload {
   endDate:     string;
   leaveType:   LeaveType;
   reason?:     string;
-  status?:     LeaveStatus;
-  appliedOn?:  string;
-  approvedBy?: string;
   employeeId?: number;
 }
 

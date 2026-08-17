@@ -39,16 +39,6 @@ export class CreateExpenseDto {
   receiptImage?: string;
 
   @IsOptional()
-  @IsString()
-  @ApiPropertyOptional({ example: 'sample-approvedBy' })
-  approvedBy?: string;
-
-  @IsOptional()
-  @IsString()
-  @ApiPropertyOptional({ example: 'ACTIVE' })
-  status?: string;
-
-  @IsOptional()
   @IsInt()
   @ApiPropertyOptional({ example: 123 })
   employeeId?: number;

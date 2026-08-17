@@ -16,6 +16,9 @@ import { FormSubmissionsService } from './form-submissions.service';
 import { CreateFormSubmissionDto } from './dto/create-form-submission.dto';
 import { UpdateFormSubmissionDto } from './dto/update-form-submission.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { Role } from '../common/enums/role.enum';
 import { AuthUser } from '../common/types/auth';
 import {
   ApiBearerAuth,
@@ -24,7 +27,8 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)
 @ApiTags('Work - Form Submissions')
 @ApiBearerAuth()
 @Controller('form-submissions')

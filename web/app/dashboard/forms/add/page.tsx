@@ -2,18 +2,12 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createFormSubmission, FormSubmissionStatus, CreateFormSubmissionPayload } from '../../../../src/api/formSubmissionsApi';
-
-const STATUSES: FormSubmissionStatus[] = ['SUBMITTED', 'REJECTED', 'PROCESSED'];
+import { createFormSubmission, CreateFormSubmissionPayload } from '../../../../src/api/formSubmissionsApi';
 
 const EMPTY: CreateFormSubmissionPayload = {
-  form:            '',
-  submittedBy:     '',
-  submissionDate:  '',
-  data:            '',
-  status:          'SUBMITTED',
-  reviewer:        '',
-  reviewDate:      '',
+  form: '',
+  submissionDate: '',
+  data: '',
 };
 
 export default function AddFormSubmissionPage() {
@@ -32,13 +26,9 @@ export default function AddFormSubmissionPage() {
     setError(null);
     try {
       await createFormSubmission({
-        form:            form.form,
-        submittedBy:     form.submittedBy     || undefined,
-        submissionDate:  form.submissionDate  || undefined,
-        data:            form.data            || undefined,
-        status:          form.status          || 'SUBMITTED',
-        reviewer:        form.reviewer        || undefined,
-        reviewDate:      form.reviewDate      || undefined,
+        form: form.form,
+        submissionDate: form.submissionDate || undefined,
+        data: form.data || undefined,
       });
       router.push('/dashboard/forms');
     } catch (err) {
@@ -80,17 +70,6 @@ export default function AddFormSubmissionPage() {
           />
         </div>
 
-        {/* Submitted By */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Submitted By</label>
-          <input
-            type="text"
-            value={form.submittedBy ?? ''}
-            onChange={(e) => set('submittedBy', e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg outline-none focus:ring-1 focus:ring-orange-400"
-          />
-        </div>
-
         {/* Submission Date */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Submission Date</label>
@@ -110,43 +89,6 @@ export default function AddFormSubmissionPage() {
             value={form.data ?? ''}
             onChange={(e) => set('data', e.target.value)}
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg outline-none focus:ring-1 focus:ring-orange-400 resize-none"
-          />
-        </div>
-
-        {/* Status */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-          <select
-            value={form.status ?? 'SUBMITTED'}
-            onChange={(e) => set('status', e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg outline-none focus:ring-1 focus:ring-orange-400 bg-white"
-          >
-            <option value="">-Select-</option>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Reviewer */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Reviewer</label>
-          <input
-            type="text"
-            value={form.reviewer ?? ''}
-            onChange={(e) => set('reviewer', e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg outline-none focus:ring-1 focus:ring-orange-400"
-          />
-        </div>
-
-        {/* Review Date */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Review Date</label>
-          <input
-            type="date"
-            value={form.reviewDate ?? ''}
-            onChange={(e) => set('reviewDate', e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg outline-none focus:ring-1 focus:ring-orange-400"
           />
         </div>
 

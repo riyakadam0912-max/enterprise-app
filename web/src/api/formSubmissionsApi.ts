@@ -16,13 +16,9 @@ export interface FormSubmission {
 }
 
 export interface CreateFormSubmissionPayload {
-  form:            string;
-  submittedBy?:    string;
+  form: string;
   submissionDate?: string;
-  data?:           string;
-  status?:         FormSubmissionStatus;
-  reviewer?:       string;
-  reviewDate?:     string;
+  data?: string;
 }
 
 export type UpdateFormSubmissionPayload = Partial<CreateFormSubmissionPayload>;

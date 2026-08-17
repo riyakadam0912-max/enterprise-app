@@ -7,7 +7,6 @@ import { uploadFile, type ManagedFile } from '@/api/filesApi';
 import { FormProvider, useForm } from 'react-hook-form';
 
 const CATEGORIES = ['Office Supplies', 'Marketing', 'Utilities', 'Training', 'Travel', 'Other'];
-const STATUSES   = ['PENDING', 'APPROVED', 'REJECTED'];
 
 const field = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400';
 
@@ -33,8 +32,6 @@ export default function AddExpensePage() {
         amount: formData.get('amount') ? parseFloat(formData.get('amount') as string) : undefined,
         currency: (formData.get('currency') as string).trim() || undefined,
         receiptImage: (formData.get('receiptImage') as string).trim() || undefined,
-        approvedBy: (formData.get('approvedBy') as string).trim() || undefined,
-        status: (formData.get('status') as string) || undefined,
       });
 
       if (receiptFile && expense.id) {
@@ -155,25 +152,6 @@ export default function AddExpensePage() {
                 placeholder="Or enter image URL manually"
               />
             </div>
-          </div>
-
-          {/* Approved By */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Approved By</label>
-            <input
-              name="approvedBy"
-              className={field}
-              placeholder="Approver name"
-            />
-          </div>
-
-          {/* Status */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-            <select name="status" className={field}>
-              <option value="">-Select-</option>
-              {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
           </div>
 
           {/* Actions */}

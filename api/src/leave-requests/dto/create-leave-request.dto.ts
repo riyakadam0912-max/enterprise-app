@@ -17,16 +17,8 @@ const LEAVE_TYPES = [
   'MEDICAL',
   'OTHER',
 ] as const;
-const LEAVE_STATUSES = [
-  'PENDING_MANAGER',
-  'PENDING_HR',
-  'APPROVED',
-  'REJECTED',
-  'CANCELLED',
-] as const;
 
 type LeaveType = (typeof LEAVE_TYPES)[number];
-type LeaveStatus = (typeof LEAVE_STATUSES)[number];
 
 export class CreateLeaveRequestDto {
   @IsDateString()
@@ -46,21 +38,6 @@ export class CreateLeaveRequestDto {
   @IsString()
   @ApiPropertyOptional({ example: 'sample-reason' })
   reason?: string;
-
-  @IsOptional()
-  @IsIn(LEAVE_STATUSES)
-  @ApiPropertyOptional({ example: 'ACTIVE' })
-  status?: LeaveStatus;
-
-  @IsOptional()
-  @IsDateString()
-  @ApiPropertyOptional({ example: 'sample-appliedOn' })
-  appliedOn?: string;
-
-  @IsOptional()
-  @IsString()
-  @ApiPropertyOptional({ example: 'sample-approvedBy' })
-  approvedBy?: string;
 
   @IsOptional()
   @IsInt()

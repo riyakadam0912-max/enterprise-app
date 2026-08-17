@@ -225,7 +225,6 @@ export default function ExpensesPage() {
         amount: Number(form.amount),
         currency: 'INR',
         receiptImage: receiptImageValue,
-        status: 'PENDING_MANAGER',
       });
 
       setExpenses((prev) => [created, ...prev]);

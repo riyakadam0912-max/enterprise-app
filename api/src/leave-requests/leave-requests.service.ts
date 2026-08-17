@@ -273,10 +273,6 @@ export class LeaveRequestsService {
     if (dto.endDate !== undefined) data.endDate = new Date(dto.endDate);
     if (dto.leaveType !== undefined) data.leaveType = dto.leaveType;
     if (dto.reason !== undefined) data.reason = dto.reason;
-    if (dto.status !== undefined) data.status = dto.status;
-    if (dto.appliedOn !== undefined)
-      data.appliedOn = dto.appliedOn ? new Date(dto.appliedOn) : null;
-    if (dto.approvedBy !== undefined) data.approvedBy = dto.approvedBy;
     const updated = await this.prisma.leaveRequest.update({
       where: { id, organizationId },
       data,

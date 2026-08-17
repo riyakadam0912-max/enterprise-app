@@ -20,6 +20,7 @@ import { InventoryModule } from './domains/inventory.module';
 import { NotificationsDomainModule } from './domains/notifications-domain.module';
 import { OperationsModule } from './domains/operations.module';
 import { DynamicFormsModule } from './dynamic-forms/dynamic-forms.module';
+import { FormSubmissionsModule } from './form-submissions/form-submissions.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { AuditContextMiddleware } from './audit-logs/audit-context.middleware';
 import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware';
@@ -71,6 +72,7 @@ const queueImports = redisConnection
     NotificationsDomainModule,
     OperationsModule,
     DynamicFormsModule,
+    FormSubmissionsModule,
     OrganizationsModule,
     EmailModule,
   ],
