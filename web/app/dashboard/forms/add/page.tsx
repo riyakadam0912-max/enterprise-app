@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { createFormSubmission, CreateFormSubmissionPayload } from '../../../../src/api/formSubmissionsApi';
 
 const EMPTY: CreateFormSubmissionPayload = {
@@ -12,6 +12,9 @@ const EMPTY: CreateFormSubmissionPayload = {
 
 export default function AddFormSubmissionPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const selectedFormName = searchParams.get('formName')?.trim() ?? '';
+  const selectedFormCode = searchParams.get('formCode')?.trim() ?? '';
   const [form, setForm]   = useState<CreateFormSubmissionPayload>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState<string | null>(null);
@@ -26,11 +29,11 @@ export default function AddFormSubmissionPage() {
     setError(null);
     try {
       await createFormSubmission({
-        form: form.form,
+        form: (selectedFormName || form.form).trim(),
         submissionDate: form.submissionDate || undefined,
         data: form.data || undefined,
       });
-      router.push('/dashboard/forms');
+      router.push('/dashboard/forms/status');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create submission');
     } finally {
@@ -46,7 +49,12 @@ export default function AddFormSubmissionPage() {
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
-        <h1 className="text-xl font-semibold text-gray-800">Form Submissions</h1>
+        <div>
+          <h1 className="text-xl font-semibold text-gray-800">Submit Form</h1>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Complete the available fields and submit your form.
+          </p>
+        </div>
       </div>
 
       {error && (
@@ -56,19 +64,28 @@ export default function AddFormSubmissionPage() {
       )}
 
       <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-5">
-        {/* Form */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Form <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            required
-            value={form.form}
-            onChange={(e) => set('form', e.target.value)}
-            className="w-full px-3 py-2 text-sm border-2 border-orange-400 rounded-lg outline-none focus:ring-1 focus:ring-orange-400"
-          />
-        </div>
+        {selectedFormName ? (
+          <div className="rounded-lg border border-orange-200 bg-orange-50 px-4 py-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-orange-600">Selected Form</p>
+            <p className="mt-1 text-sm font-semibold text-slate-900">{selectedFormName}</p>
+            {selectedFormCode ? (
+              <p className="mt-1 text-xs text-slate-500">Code: <span className="font-mono text-slate-700">{selectedFormCode}</span></p>
+            ) : null}
+          </div>
+        ) : (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Form <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={form.form}
+              onChange={(e) => set('form', e.target.value)}
+              className="w-full px-3 py-2 text-sm border-2 border-orange-400 rounded-lg outline-none focus:ring-1 focus:ring-orange-400"
+            />
+          </div>
+        )}
 
         {/* Submission Date */}
         <div>
@@ -83,11 +100,12 @@ export default function AddFormSubmissionPage() {
 
         {/* Data */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Submission Details</label>
           <textarea
             rows={4}
             value={form.data ?? ''}
             onChange={(e) => set('data', e.target.value)}
+            placeholder="Enter the form details you want to submit."
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg outline-none focus:ring-1 focus:ring-orange-400 resize-none"
           />
         </div>

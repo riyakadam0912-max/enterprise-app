@@ -33,7 +33,10 @@ export class FormSubmissionsService {
       user.role === Role.HR ||
       user.role === Role.SUPER_ADMIN
     ) {
-      return { organizationId };
+      return {
+        organizationId,
+        deletedAt: null,
+      };
     }
 
     if (user.role === Role.MANAGER) {
@@ -54,11 +57,16 @@ export class FormSubmissionsService {
         .filter(Boolean);
 
       if (scopedNames.length === 0) {
-        return { organizationId, id: -1 };
+        return {
+          organizationId,
+          deletedAt: null,
+          id: -1,
+        };
       }
 
       return {
         organizationId,
+        deletedAt: null,
         OR: scopedNames.map((name) => ({
           submittedBy: { equals: name, mode: 'insensitive' },
         })),
@@ -66,11 +74,16 @@ export class FormSubmissionsService {
     }
 
     if (!user.name?.trim()) {
-      return { organizationId, id: -1 };
+      return {
+        organizationId,
+        deletedAt: null,
+        id: -1,
+      };
     }
 
     return {
       organizationId,
+      deletedAt: null,
       submittedBy: { equals: user.name.trim(), mode: 'insensitive' },
     };
   }

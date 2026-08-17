@@ -155,11 +155,10 @@ const navConfig: NavItem[] = [
     ],
   },
   {
-    type: 'dropdown', id: 'form-submissions', label: 'Form Submissions', icon: <FormIcon />,
+    type: 'dropdown', id: 'forms', label: 'Forms', icon: <FormIcon />,
     children: [
-      { label: '+ Form Submissions',    href: '/dashboard/forms/add',       icon: <PlusCircleIcon /> },
-      { label: 'All Form Submissions',  href: '/dashboard/forms',           icon: <ReportIcon /> },
-      { label: 'Statuses',              href: '/dashboard/forms/statuses',  icon: <KanbanIcon /> },
+      { label: 'Dynamic Forms', href: '/dashboard/forms/dynamic', icon: <ReportIcon /> },
+      { label: 'Form Status',   href: '/dashboard/forms/status',  icon: <KanbanIcon /> },
     ],
   },
   {
@@ -219,14 +218,6 @@ const navConfig: NavItem[] = [
     ],
   },
   {
-    type: 'dropdown', id: 'dynamic-forms', label: 'Dynamic Forms', icon: <FormIcon />,
-    children: [
-      { label: '+ Dynamic Forms',   href: '/dashboard/dynamic-forms/add' },
-      { label: 'All Dynamic Forms', href: '/dashboard/dynamic-forms' },
-      { label: 'Target Modules',    href: '/dashboard/dynamic-forms/target-modules' },
-    ],
-  },
-  {
     type: 'link', label: 'User Management', href: '/dashboard/users', icon: <UsersIcon />,
   },
 ];
@@ -244,6 +235,7 @@ const EMPLOYEE_VISIBLE_LABELS = new Set([
   'Attendance',
   'Requests',
   'Expenses',
+  'Forms',
 ]);
 
 const MANAGER_VISIBLE_LABELS = new Set([
@@ -257,6 +249,7 @@ const MANAGER_VISIBLE_LABELS = new Set([
   'Reports',
   'Timesheets',
   'Employees',
+  'Forms',
 ]);
 
 const MANAGER_EMPLOYEE_CHILD_LABELS = new Set(['All Employees']);
@@ -274,7 +267,7 @@ const HR_VISIBLE_LABELS = new Set([
   'Ledger',
   'Requests',
   'Tickets',
-  'Form Submissions',
+  'Forms',
   'Expenses',
   'Contacts',
   'Events',

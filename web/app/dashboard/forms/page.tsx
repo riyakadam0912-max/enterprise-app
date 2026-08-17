@@ -1,174 +1,127 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import {
-  getFormSubmissions, deleteFormSubmission,
-  FormSubmission, FormSubmissionStatus,
-} from '../../../src/api/formSubmissionsApi';
-import { reportError } from '@/lib/error-handling';
+import { useEffect, useState } from 'react';
+import { getFormSubmissions, FormSubmission } from '@/api/formSubmissionsApi';
+import { useAuthSession } from '@/stores/auth-store';
 
-const STATUS_COLOR: Record<FormSubmissionStatus, string> = {
-  SUBMITTED: 'bg-blue-100 text-blue-700',
-  REJECTED:  'bg-teal-500 text-white',
-  PROCESSED: 'bg-purple-600 text-white',
-};
+const AVAILABLE_FORMS_COUNT: number = 17;
 
-function fmtDateTime(s: string | null) {
-  if (!s) return '—';
-  return new Date(s).toLocaleDateString('en-GB', {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-  });
+function IconDynamic() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-6 h-6 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+      <rect x="8" y="2" width="8" height="4" rx="1" />
+      <path d="M9 14h6M9 18h3M9 10h2" />
+    </svg>
+  );
 }
 
-function fmtDate(s: string | null) {
-  if (!s) return '—';
-  return new Date(s).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+function IconStatus() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-6 h-6 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="18" rx="2" />
+      <path d="M8 2v4M16 2v4M3 10h18" />
+      <path d="M9 16l2 2 4-4" />
+    </svg>
+  );
 }
 
-export default function AllFormSubmissionsPage() {
+function normalizeText(value: string | null | undefined) {
+  return value?.trim().toLowerCase() ?? '';
+}
+
+export default function FormsLandingPage() {
   const router = useRouter();
-  const [rows, setRows]         = useState<FormSubmission[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [search, setSearch]     = useState('');
-  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const { user } = useAuthSession();
+  const [submissionsCount, setSubmissionsCount] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function loadSubmissions() {
+    let cancelled = false;
+    (async () => {
       try {
-        setRows(await getFormSubmissions());
-      } catch (error) {
-        reportError(error, 'Unable to load form submissions');
+        const subs = await getFormSubmissions().catch(() => [] as FormSubmission[]);
+        if (cancelled) return;
+        const currentUserName = normalizeText(user?.name);
+        const mySubs = subs.filter((s) => normalizeText(s.submittedBy) === currentUserName);
+        setSubmissionsCount(mySubs.length);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
-    }
-
-    loadSubmissions();
-  }, []);
-
-  const filtered = rows.filter((r) => {
-    const q = search.toLowerCase();
-    return (
-      r.form.toLowerCase().includes(q) ||
-      (r.submittedBy ?? '').toLowerCase().includes(q) ||
-      (r.reviewer    ?? '').toLowerCase().includes(q) ||
-      r.status.toLowerCase().includes(q)
-    );
-  });
-
-  async function handleDelete(id: number) {
-    if (!confirm('Delete this submission?')) return;
-    setDeleteId(id);
-    try {
-      await deleteFormSubmission(id);
-      setRows((prev) => prev.filter((r) => r.id !== id));
-    } catch {
-      alert('Failed to delete.');
-    } finally {
-      setDeleteId(null);
-    }
-  }
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
 
   return (
-    <div className="p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-semibold text-gray-800">All Form Submissions</h1>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <svg className="absolute left-2.5 top-2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+    <div className="p-6 max-w-5xl mx-auto">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-slate-900">Forms</h1>
+        <p className="text-sm text-slate-500 mt-1">
+          Browse available forms and track the status of your submissions.
+        </p>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-5">
+        <Link
+          href="/dashboard/forms/dynamic"
+          className="group relative block bg-white rounded-xl border border-slate-200 shadow-sm p-6 hover:border-orange-300 hover:shadow-md transition-all"
+        >
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center group-hover:bg-orange-100 transition-colors">
+              <IconDynamic />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg font-semibold text-slate-900 group-hover:text-orange-600 transition-colors">
+                Dynamic Forms
+              </h2>
+              <p className="text-sm text-slate-500 mt-1">
+                Directory of application forms — open a form to submit.
+              </p>
+              <div className="mt-4 text-xs text-slate-400">
+                {`${AVAILABLE_FORMS_COUNT} form${AVAILABLE_FORMS_COUNT === 1 ? '' : 's'} available`}
+              </div>
+            </div>
+            <svg viewBox="0 0 24 24" className="w-5 h-5 shrink-0 text-slate-300 group-hover:text-orange-500 transition-colors" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 18 15 12 9 6" />
             </svg>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search…"
-              className="pl-7 pr-3 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:border-orange-400 w-44"
-            />
           </div>
-          <button
-            onClick={() => router.push('/dashboard/forms/add')}
-            className="px-3 py-1.5 text-sm bg-orange-500 text-white rounded hover:bg-orange-600"
-          >
-            + Add
-          </button>
-          <button
-            onClick={() => router.push('/dashboard/forms/statuses')}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded text-gray-600 hover:bg-gray-50"
-          >
-            Statuses
-          </button>
-        </div>
+        </Link>
+
+        <Link
+          href="/dashboard/forms/status"
+          className="group relative block bg-white rounded-xl border border-slate-200 shadow-sm p-6 hover:border-orange-300 hover:shadow-md transition-all"
+        >
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-100 transition-colors">
+              <IconStatus />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg font-semibold text-slate-900 group-hover:text-orange-600 transition-colors">
+                Form Status
+              </h2>
+              <p className="text-sm text-slate-500 mt-1">
+                Track your submissions.
+              </p>
+              <div className="mt-4 text-xs text-slate-400">
+                {loading ? 'Loading…' : (
+                  <>{submissionsCount ?? 0} total</>
+                )}
+              </div>
+            </div>
+            <svg viewBox="0 0 24 24" className="w-5 h-5 shrink-0 text-slate-300 group-hover:text-orange-500 transition-colors" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </div>
+        </Link>
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500" />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-            <span className="text-4xl mb-3">📋</span>
-            <p className="text-sm font-medium">No form submissions yet</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  {['Form', 'Submitted By', 'Submission Date', 'Data', 'Status', 'Reviewer', 'Review Date', ''].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filtered.map((row) => (
-                  <tr key={row.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{row.form}</td>
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{row.submittedBy ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{fmtDateTime(row.submissionDate)}</td>
-                    <td className="px-4 py-3 text-gray-600 max-w-xs truncate">{row.data ?? '—'}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={`inline-block px-3 py-1 rounded text-xs font-semibold ${STATUS_COLOR[row.status as FormSubmissionStatus] ?? 'bg-gray-100 text-gray-600'}`}>
-                        {row.status.charAt(0) + row.status.slice(1).toLowerCase()}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{row.reviewer ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{fmtDate(row.reviewDate)}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => router.push(`/dashboard/forms/${row.id}/edit`)}
-                          className="text-xs text-gray-500 hover:text-orange-500 transition-colors"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDelete(row.id)}
-                          disabled={deleteId === row.id}
-                          className="text-xs text-gray-500 hover:text-red-500 transition-colors disabled:opacity-40"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+      <div className="mt-8 flex items-center justify-end gap-3 text-xs text-slate-400">
+        <button type="button" onClick={() => router.back()} className="hover:text-slate-600">
+          ← Back
+        </button>
       </div>
-
-      {!loading && (
-        <p className="mt-3 text-xs text-gray-400">Showing {filtered.length} of {rows.length}</p>
-      )}
     </div>
   );
 }

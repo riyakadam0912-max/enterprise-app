@@ -40,15 +40,22 @@ export class DynamicFormsService {
   async findAll(user: AuthUser) {
     const organizationId = this.validateOrganization(user);
     return this.prisma.dynamicForm.findMany({
-      where: { organizationId },
+      where: {
+        organizationId,
+        deletedAt: null,
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   async findOne(id: number, user: AuthUser) {
     const organizationId = this.validateOrganization(user);
-    const form = await this.prisma.dynamicForm.findUnique({
-      where: { id, organizationId },
+    const form = await this.prisma.dynamicForm.findFirst({
+      where: {
+        id,
+        organizationId,
+        deletedAt: null,
+      },
     });
     if (!form) throw new NotFoundException(`DynamicForm #${id} not found`);
     return form;
@@ -57,7 +64,10 @@ export class DynamicFormsService {
   async findByTargetModule(user: AuthUser) {
     const organizationId = this.validateOrganization(user);
     const forms = await this.prisma.dynamicForm.findMany({
-      where: { organizationId },
+      where: {
+        organizationId,
+        deletedAt: null,
+      },
       orderBy: { formName: 'asc' },
     });
     const grouped: Record<string, typeof forms> = {};
