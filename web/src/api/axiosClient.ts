@@ -10,6 +10,7 @@ import {
   setAuthSession,
   setActiveOrganization,
   getActiveOrganizationId,
+  getAuthSessionSnapshot,
   type AuthUser,
 } from '@/stores/auth-store';
 
@@ -69,16 +70,22 @@ axiosClient.interceptors.request.use(
   (config) => {
     if (typeof window !== 'undefined') {
       try {
+        const session = getAuthSessionSnapshot();
         const isSuperAdminRoute = window.location.pathname.startsWith('/super-admin');
-        if (!isSuperAdminRoute) {
-          const raw = window.sessionStorage.getItem('activeOrganization');
-          if (raw) {
-            const org = JSON.parse(raw) as { id?: number } | null;
-            if (org?.id) {
-              config.headers = config.headers ?? {};
-              config.headers['X-Organization-Id'] = String(org.id);
-            }
+        const isPrivilegedTenantContext =
+          session.isSuperAdmin || session.isPlatformAdmin;
+
+        config.headers = config.headers ?? {};
+
+        if (isSuperAdminRoute && isPrivilegedTenantContext) {
+          const activeOrgId = getActiveOrganizationId();
+          if (activeOrgId != null) {
+            config.headers['X-Organization-Id'] = String(activeOrgId);
+          } else {
+            delete config.headers['X-Organization-Id'];
           }
+        } else {
+          delete config.headers['X-Organization-Id'];
         }
       } catch {
         // Non-critical: proceed without organization header

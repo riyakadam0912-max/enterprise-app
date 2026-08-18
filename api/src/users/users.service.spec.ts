@@ -373,6 +373,7 @@ describe('UsersService', () => {
       userDelegate.findFirst.mockResolvedValueOnce({
         id: 1,
         email: 'old@example.com',
+        organizationId: 1,
       });
       userDelegate.findFirst.mockResolvedValueOnce(null);
       userDelegate.update.mockResolvedValue(updatedUser);
@@ -389,7 +390,7 @@ describe('UsersService', () => {
 
       expect(userDelegate.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 1 },
+          where: { id: 1, organizationId: 1 },
           data: expect.objectContaining({
             name: 'Updated Name',
             email: 'updated@example.com',
@@ -399,16 +400,59 @@ describe('UsersService', () => {
       );
       expect(result).toEqual(updatedUser);
     });
+
+    it('scopes user updates to the authenticated organization', async () => {
+      const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 2 });
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+
+      userDelegate.findFirst.mockResolvedValueOnce({
+        id: 9,
+        email: 'old@example.com',
+        organizationId: 2,
+      });
+      userDelegate.findFirst.mockResolvedValueOnce(null);
+      userDelegate.update.mockResolvedValue({
+        id: 9,
+        email: 'new@example.com',
+        organizationId: 2,
+      });
+
+      await service.update(9, { email: 'new@example.com' }, authUser);
+
+      expect(userDelegate.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 9, organizationId: 2 } }),
+      );
+    });
+  });
+
+  describe('remove', () => {
+    it('scopes user deletes to the authenticated organization', async () => {
+      const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 3 });
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+
+      userDelegate.findFirst.mockResolvedValue({
+        id: 44,
+        organizationId: 3,
+      });
+      userDelegate.delete.mockResolvedValue({});
+
+      await service.remove(44, authUser);
+
+      expect(userDelegate.delete).toHaveBeenCalledWith({
+        where: { id: 44, organizationId: 3 },
+      });
+    });
   });
 
   describe('resetPassword', () => {
-    it('should hash and persist a new password', async () => {
-      const authUser = createMockAuthUser(Role.ADMIN);
+    it('should hash and persist a new password within the authenticated tenant', async () => {
+      const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 2 });
       const userDelegate = getPrismaDelegate(mockPrisma, 'user');
 
       userDelegate.findFirst.mockResolvedValue({
         id: 1,
         email: 'user@example.com',
+        organizationId: 2,
       });
       userDelegate.update.mockResolvedValue({});
 
@@ -416,8 +460,111 @@ describe('UsersService', () => {
 
       expect(mockHashPassword).toHaveBeenCalledWith('new-password');
       expect(userDelegate.update).toHaveBeenCalledWith({
-        where: { id: 1 },
+        where: { id: 1, organizationId: 2 },
         data: { password: 'hashed-password-123' },
+      });
+    });
+
+    it('should reject resetting a password for a user outside the tenant', async () => {
+      const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 2 });
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+
+      userDelegate.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.resetPassword(99, 'new-password', authUser),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('unlock', () => {
+    it('should unlock a user only within the same organization', async () => {
+      const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 3 });
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+
+      userDelegate.findFirst.mockResolvedValue({
+        id: 8,
+        organizationId: 3,
+      });
+      userDelegate.update.mockResolvedValue({
+        id: 8,
+        isActive: true,
+      });
+
+      await service.unlock(8, authUser);
+
+      expect(userDelegate.update).toHaveBeenCalledWith({
+        where: { id: 8, organizationId: 3 },
+        data: { isActive: true },
+        select: expect.any(Object),
+      });
+    });
+  });
+
+  describe('assignOrganization', () => {
+    it('preserves platform-admin organization changes while keeping tenant admins scoped', async () => {
+      const platformAdmin = createMockAuthUser(Role.ADMIN, {
+        organizationId: null,
+        isPlatformAdmin: true,
+        isSuperAdmin: true,
+      });
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+
+      userDelegate.findFirst.mockResolvedValue({
+        id: 11,
+        organizationId: 7,
+      });
+      userDelegate.update.mockResolvedValue({
+        id: 11,
+        organizationId: 9,
+      });
+
+      await service.assignOrganization(11, 9, platformAdmin);
+
+      expect(userDelegate.update).toHaveBeenCalledWith({
+        where: { id: 11 },
+        data: { organizationId: 9 },
+        select: expect.any(Object),
+      });
+    });
+
+    it('rejects same-role cross-tenant organization reassignment for a tenant-scoped admin', async () => {
+      const tenantAdmin = createMockAuthUser(Role.ADMIN, { organizationId: 4 });
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+
+      userDelegate.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.assignOrganization(77, 9, tenantAdmin),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('assignManager', () => {
+    it('should scope the final manager update to the authenticated organization', async () => {
+      const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 5 });
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+
+      userDelegate.findFirst.mockResolvedValueOnce({
+        id: 20,
+        organizationId: 5,
+        role: Role.EMPLOYEE,
+      });
+      userDelegate.findFirst.mockResolvedValueOnce({
+        id: 30,
+        organizationId: 5,
+      });
+      userDelegate.update.mockResolvedValue({
+        id: 20,
+        managerId: 30,
+      });
+
+      await service.assignManager(20, 30, authUser);
+
+      expect(userDelegate.update).toHaveBeenCalledWith({
+        where: { id: 20, organizationId: 5 },
+        data: { managerId: 30 },
+        select: expect.any(Object),
       });
     });
   });

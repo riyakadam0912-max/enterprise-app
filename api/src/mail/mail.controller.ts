@@ -1,12 +1,18 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   HttpCode,
   HttpStatus,
   Logger,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import { MailService } from './mail.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+import { Role } from '../common/enums/role.enum';
 
 @Controller('mail')
 export class MailController {
@@ -14,9 +20,21 @@ export class MailController {
 
   constructor(private readonly mailService: MailService) {}
 
+  private assertDiagnosticAccessAllowed(): void {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException(
+        'Mail diagnostic endpoints are disabled in production.',
+      );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @Post('test')
   @HttpCode(HttpStatus.OK)
   async sendTestEmail(@Body() body: { to: string }) {
+    this.assertDiagnosticAccessAllowed();
+
     const recipient = body.to?.trim();
 
     if (!recipient) {
@@ -55,9 +73,13 @@ export class MailController {
     };
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @Post('debug/send-email')
   @HttpCode(HttpStatus.OK)
   async sendDebugEmail(@Body() body: { to?: string }) {
+    this.assertDiagnosticAccessAllowed();
+
     const debugRecipient = body.to?.trim();
 
     if (!debugRecipient) {

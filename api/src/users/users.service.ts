@@ -168,7 +168,11 @@ export class UsersService {
 
     if (updateUserDto.email && updateUserDto.email !== existing.email) {
       const duplicate = await this.prisma.user.findFirst({
-        where: { email: updateUserDto.email, NOT: { id } },
+        where: {
+          email: updateUserDto.email,
+          organizationId: existing.organizationId,
+          NOT: { id },
+        },
       });
       if (duplicate) {
         throw new ConflictException('Email already in use');
@@ -193,7 +197,7 @@ export class UsersService {
 
     try {
       return await this.prisma.user.update({
-        where: { id },
+        where: { id, organizationId: existing.organizationId },
         data,
         select: {
           id: true,
@@ -227,7 +231,9 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    await this.prisma.user.delete({ where: { id } });
+    await this.prisma.user.delete({
+      where: { id, organizationId: existing.organizationId },
+    });
     return { success: true, message: 'User deleted successfully' };
   }
 
@@ -241,7 +247,7 @@ export class UsersService {
     }
 
     return this.prisma.user.update({
-      where: { id },
+      where: { id, organizationId: existing.organizationId },
       data: { isActive: true },
       select: {
         id: true,
@@ -267,7 +273,7 @@ export class UsersService {
     }
 
     return this.prisma.user.update({
-      where: { id },
+      where: { id, organizationId: existing.organizationId },
       data: { isActive: false },
       select: {
         id: true,
@@ -294,7 +300,7 @@ export class UsersService {
 
     const hashedPassword = await hashPassword(password);
     await this.prisma.user.update({
-      where: { id },
+      where: { id, organizationId: existing.organizationId },
       data: { password: hashedPassword },
     });
     return { success: true, message: 'Password reset successfully' };
@@ -310,7 +316,7 @@ export class UsersService {
     }
 
     return this.prisma.user.update({
-      where: { id },
+      where: { id, organizationId: existing.organizationId },
       data: { isActive: true },
       select: {
         id: true,
@@ -387,7 +393,7 @@ export class UsersService {
     }
 
     return this.prisma.user.update({
-      where: { id },
+      where: { id, organizationId: existing.organizationId },
       data: { role: existing.role },
     });
   }
@@ -411,7 +417,7 @@ export class UsersService {
     }
 
     return this.prisma.user.update({
-      where: { id },
+      where: { id, organizationId: existing.organizationId },
       data: { managerId },
       select: {
         id: true,

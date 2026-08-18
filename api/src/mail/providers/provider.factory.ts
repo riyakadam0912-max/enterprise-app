@@ -272,6 +272,43 @@ export class EmailProviderFactory {
         return 'none';
       }
 
+      if (isProduction) {
+        const smtpHost = (
+          this.configService.get<string>('SMTP_HOST') ?? ''
+        ).toLowerCase();
+        if (
+          provider === 'nodemailer' &&
+          (smtpHost.includes('mailtrap') || smtpHost.includes('sandbox'))
+        ) {
+          throw new Error(
+            'Production environment cannot use Mailtrap or sandbox SMTP configuration.',
+          );
+        }
+
+        const placeholderChecks = [
+          this.configService.get<string>('SENDGRID_API_KEY'),
+          this.configService.get<string>('RESEND_API_KEY'),
+          this.configService.get<string>('AWS_SES_ACCESS_KEY_ID'),
+          this.configService.get<string>('SMTP_PASS'),
+          this.configService.get<string>('SENDGRID_FROM_EMAIL'),
+          this.configService.get<string>('RESEND_FROM_EMAIL'),
+          this.configService.get<string>('AWS_SES_FROM_EMAIL'),
+          this.configService.get<string>('SMTP_FROM_EMAIL'),
+        ].filter((value): value is string => Boolean(value));
+
+        if (
+          placeholderChecks.some((value) =>
+            /replace-with-|your_|your-|example|dummy|test-secret|localhost|@example\.com/i.test(
+              value,
+            ),
+          )
+        ) {
+          throw new Error(
+            'Production email configuration contains placeholder or non-production values.',
+          );
+        }
+      }
+
       if (this.getMissingEnvVars(provider as EmailProviderType).length === 0) {
         return provider as EmailProviderType;
       }

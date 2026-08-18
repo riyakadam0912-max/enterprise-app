@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createReadStream } from 'fs';
 import { mkdir, copyFile, rename, unlink, writeFile } from 'fs/promises';
-import { dirname, join, isAbsolute } from 'path';
+import { dirname, join, isAbsolute, normalize, resolve } from 'path';
 import { tmpdir } from 'os';
 import { createChecksum } from '../utils/file-management.utils';
 import { StorageProvider } from './storage-provider.interface';
@@ -20,6 +20,41 @@ export class LocalStorageProvider implements StorageProvider {
     this.absoluteRootPath = isAbsolute(this.storageRoot)
       ? this.storageRoot
       : join(process.cwd(), this.storageRoot);
+  }
+
+  private validateStoragePath(storedPath: string): string {
+    if (!storedPath || typeof storedPath !== 'string') {
+      throw new BadRequestException('Invalid file path');
+    }
+
+    const normalized = normalize(storedPath);
+
+    // Reject absolute paths
+    if (isAbsolute(normalized)) {
+      throw new BadRequestException('Path traversal attempted');
+    }
+
+    // Reject paths with traversal attempts
+    if (normalized.includes('..')) {
+      throw new BadRequestException('Path traversal attempted');
+    }
+
+    // Resolve against root and verify it stays within root
+    const absolutePath = resolve(this.absoluteRootPath, normalized);
+    const normalizedRoot = normalize(this.absoluteRootPath);
+
+    // Check if resolved path is the root or a descendant of root
+    const isAtRoot = absolutePath === normalizedRoot;
+    const separators = [normalizedRoot + '/', normalizedRoot + '\\'];
+    const isDescendant = separators.some((prefix) =>
+      absolutePath.startsWith(prefix),
+    );
+
+    if (!isAtRoot && !isDescendant) {
+      throw new BadRequestException('Path traversal attempted');
+    }
+
+    return normalized;
   }
 
   async upload(input: {
@@ -43,26 +78,31 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   async delete(storedPath: string): Promise<void> {
-    await unlink(join(this.absoluteRootPath, storedPath));
+    const validatedPath = this.validateStoragePath(storedPath);
+    await unlink(join(this.absoluteRootPath, validatedPath));
   }
 
   async move(input: { sourcePath: string; targetPath: string }): Promise<void> {
-    await mkdir(dirname(join(this.absoluteRootPath, input.targetPath)), {
+    const validatedSourcePath = this.validateStoragePath(input.sourcePath);
+    const validatedTargetPath = this.validateStoragePath(input.targetPath);
+    await mkdir(dirname(join(this.absoluteRootPath, validatedTargetPath)), {
       recursive: true,
     });
     await rename(
-      join(this.absoluteRootPath, input.sourcePath),
-      join(this.absoluteRootPath, input.targetPath),
+      join(this.absoluteRootPath, validatedSourcePath),
+      join(this.absoluteRootPath, validatedTargetPath),
     );
   }
 
   async copy(input: { sourcePath: string; targetPath: string }): Promise<void> {
-    await mkdir(dirname(join(this.absoluteRootPath, input.targetPath)), {
+    const validatedSourcePath = this.validateStoragePath(input.sourcePath);
+    const validatedTargetPath = this.validateStoragePath(input.targetPath);
+    await mkdir(dirname(join(this.absoluteRootPath, validatedTargetPath)), {
       recursive: true,
     });
     await copyFile(
-      join(this.absoluteRootPath, input.sourcePath),
-      join(this.absoluteRootPath, input.targetPath),
+      join(this.absoluteRootPath, validatedSourcePath),
+      join(this.absoluteRootPath, validatedTargetPath),
     );
   }
 
@@ -81,6 +121,7 @@ export class LocalStorageProvider implements StorageProvider {
   async getReadStream(input: {
     storedPath: string;
   }): Promise<NodeJS.ReadableStream> {
-    return createReadStream(join(this.absoluteRootPath, input.storedPath));
+    const validatedPath = this.validateStoragePath(input.storedPath);
+    return createReadStream(join(this.absoluteRootPath, validatedPath));
   }
 }

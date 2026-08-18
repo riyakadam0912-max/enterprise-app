@@ -47,15 +47,21 @@ export class TenantContextMiddleware implements NestMiddleware {
         payload.role === 'SUPER_ADMIN' ||
         (Array.isArray(payload.roles) && payload.roles.includes('SUPER_ADMIN'));
 
+      const headerOrg =
+        (req.headers['x-organization-id'] as string) ||
+        (req.headers['X-Organization-Id'] as string) ||
+        undefined;
+
       let resolvedOrganizationId: number | null = null;
       const request = req as any;
 
-      if (isPlatformAdmin) {
-        const headerOrg =
-          (req.headers['x-organization-id'] as string) ||
-          (req.headers['X-Organization-Id'] as string) ||
-          undefined;
+      if (!isPlatformAdmin && headerOrg) {
+        this.logger.warn(
+          `Ignoring X-Organization-Id header for non-platform user ${payload.sub ?? payload.userId}: ${headerOrg}`,
+        );
+      }
 
+      if (isPlatformAdmin) {
         if (headerOrg) {
           const orgId = Number(headerOrg);
           if (!Number.isNaN(orgId) && orgId > 0) {
@@ -81,6 +87,28 @@ export class TenantContextMiddleware implements NestMiddleware {
           } else {
             this.logger.warn(
               `Invalid X-Organization-Id header value: ${headerOrg}`,
+            );
+          }
+        }
+
+        if (
+          resolvedOrganizationId == null &&
+          typeof payload.organizationId === 'number'
+        ) {
+          const org = await this.prisma.organization.findUnique({
+            where: { id: payload.organizationId },
+            select: { id: true, status: true },
+          });
+
+          if (org && org.status === 'ACTIVE') {
+            resolvedOrganizationId = org.id;
+          } else if (!org) {
+            this.logger.warn(
+              `Platform admin organization ${payload.organizationId} not found for user ${payload.sub ?? payload.userId}`,
+            );
+          } else {
+            this.logger.warn(
+              `Platform admin organization ${payload.organizationId} is not ACTIVE (status=${org.status}) for user ${payload.sub ?? payload.userId}`,
             );
           }
         }

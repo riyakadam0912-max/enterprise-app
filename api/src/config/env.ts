@@ -145,14 +145,186 @@ function readCookieSameSite(
   );
 }
 
+function normalizeEnvString(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+
+  return undefined;
+}
+
+function isPlaceholderValue(value: string | undefined): boolean {
+  if (!value) {
+    return true;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return [
+    'replace-with-secure-shared-secret',
+    'replace-with-secure-access-secret',
+    'replace-with-secure-refresh-secret',
+    'your_secret_here',
+    'your-secret-here',
+    'example',
+    'example-secret',
+    'dummy',
+    'changeme',
+    'test-secret',
+    'not-set',
+    'noreply@localhost',
+    'noreply@example.com',
+  ].includes(normalized);
+}
+
+function isLocalFrontendOrigin(value: string | undefined): boolean {
+  if (!value) {
+    return true;
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return true;
+  }
+
+  try {
+    const url = new URL(normalized);
+    const host = url.hostname.toLowerCase();
+    return (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '0.0.0.0' ||
+      host === '[::1]' ||
+      /^192\.168\./.test(host) ||
+      /^10\./.test(host) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+    );
+  } catch {
+    return (
+      /^localhost(?::\d+)?$/i.test(normalized) ||
+      /^127\.0\.0\.1(?::\d+)?$/i.test(normalized) ||
+      /^0\.0\.0\.0(?::\d+)?$/i.test(normalized) ||
+      /^\[::1\](?::\d+)?$/i.test(normalized) ||
+      /^192\.168\.\d+\.\d+(?::\d+)?$/i.test(normalized) ||
+      /^10\.\d+\.\d+\.\d+(?::\d+)?$/i.test(normalized) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+(?::\d+)?$/i.test(normalized)
+    );
+  }
+}
+
 export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
+  const isProduction =
+    String(env.NODE_ENV ?? process.env.NODE_ENV ?? 'development') ===
+    'production';
+
+  if (isProduction) {
+    const jwtAccessSecret = normalizeEnvString(env.JWT_ACCESS_SECRET);
+    const jwtRefreshSecret = normalizeEnvString(env.JWT_REFRESH_SECRET);
+    const jwtIssuer = normalizeEnvString(env.JWT_ISSUER);
+    const jwtAudience = normalizeEnvString(env.JWT_AUDIENCE);
+    const frontendUrl =
+      normalizeEnvString(env.FRONTEND_URL) ??
+      normalizeEnvString(env.FRONTEND_ORIGIN);
+    const configuredFrontendValues = [
+      normalizeEnvString(env.FRONTEND_URL),
+      normalizeEnvString(env.FRONTEND_ORIGIN),
+      normalizeEnvString(env.FRONTEND_URLS),
+      normalizeEnvString(env.FRONTEND_ORIGINS),
+    ].filter((value): value is string => Boolean(value));
+    const cookieSecure = env.COOKIE_SECURE;
+    const cookieSameSite = normalizeEnvString(env.COOKIE_SAME_SITE);
+    const emailProvider = normalizeEnvString(env.EMAIL_PROVIDER);
+
+    if (!jwtAccessSecret) {
+      throw new Error('Production environment requires JWT_ACCESS_SECRET.');
+    }
+    if (!jwtRefreshSecret) {
+      throw new Error('Production environment requires JWT_REFRESH_SECRET.');
+    }
+    if (
+      isPlaceholderValue(jwtAccessSecret) ||
+      isPlaceholderValue(jwtRefreshSecret)
+    ) {
+      throw new Error(
+        'Production JWT secrets must not use placeholder or example values.',
+      );
+    }
+    if (jwtAccessSecret === jwtRefreshSecret) {
+      throw new Error(
+        'Production JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different.',
+      );
+    }
+    if (!jwtIssuer) {
+      throw new Error('Production environment requires JWT_ISSUER.');
+    }
+    if (!jwtAudience) {
+      throw new Error('Production environment requires JWT_AUDIENCE.');
+    }
+    if (!frontendUrl) {
+      throw new Error(
+        'Production environment requires FRONTEND_URL or FRONTEND_ORIGIN.',
+      );
+    }
+    if (configuredFrontendValues.length === 0) {
+      throw new Error(
+        'Production environment requires FRONTEND_URLS or FRONTEND_ORIGINS.',
+      );
+    }
+    if (
+      configuredFrontendValues.some((origin) => isLocalFrontendOrigin(origin))
+    ) {
+      throw new Error(
+        'Production environment must not use localhost or LAN frontend origins.',
+      );
+    }
+    if (
+      cookieSecure === undefined ||
+      cookieSecure === null ||
+      cookieSecure === ''
+    ) {
+      throw new Error('Production environment requires COOKIE_SECURE=true.');
+    }
+    const cookieSecureValue = readOptionalBoolean(env, 'COOKIE_SECURE', true);
+    if (!cookieSecureValue) {
+      throw new Error('Production environment requires COOKIE_SECURE=true.');
+    }
+    if (!cookieSameSite) {
+      throw new Error('Production environment requires COOKIE_SAME_SITE.');
+    }
+    const normalizedSameSite = readCookieSameSite(
+      env,
+      'COOKIE_SAME_SITE',
+      'lax',
+    );
+    if (normalizedSameSite === 'none' && !cookieSecureValue) {
+      throw new Error('COOKIE_SAME_SITE=none requires COOKIE_SECURE=true.');
+    }
+    if (!emailProvider) {
+      throw new Error('Production environment requires EMAIL_PROVIDER.');
+    }
+    if (emailProvider.toLowerCase() === 'none') {
+      throw new Error(
+        'Production email provider cannot be NONE. Configure RESEND, SENDGRID, or SES.',
+      );
+    }
+    if (emailProvider.toLowerCase() === 'nodemailer') {
+      const smtpHost = normalizeEnvString(env.SMTP_HOST)?.toLowerCase() ?? '';
+      if (smtpHost.includes('mailtrap') || smtpHost.includes('sandbox')) {
+        throw new Error(
+          'Production environment cannot use Mailtrap or sandbox SMTP.',
+        );
+      }
+    }
+  }
+
   const COOKIE_SECURE = readOptionalBoolean(
     env,
     'COOKIE_SECURE',
-    process.env.NODE_ENV === 'production',
+    isProduction ? true : false,
   );
-  const cookieSameSiteDefault: 'lax' | 'strict' | 'none' =
-    process.env.NODE_ENV === 'production' ? 'none' : 'lax';
+  const cookieSameSiteDefault: 'lax' | 'strict' | 'none' = isProduction
+    ? 'lax'
+    : 'lax';
   const COOKIE_SAME_SITE = readCookieSameSite(
     env,
     'COOKIE_SAME_SITE',
@@ -168,11 +340,12 @@ export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
     DATABASE_URL: readRequiredString(env, 'DATABASE_URL'),
     PORT: readOptionalNumber(env, 'PORT', 3000),
     REDIS_ENABLED: readOptionalBoolean(env, 'REDIS_ENABLED', false),
-    FRONTEND_URL: readOptionalString(
-      env,
-      'FRONTEND_URL',
-      'http://localhost:3001',
-    ),
+    FRONTEND_URL:
+      readOptionalString(
+        env,
+        'FRONTEND_URL',
+        isProduction ? undefined : 'http://localhost:3001',
+      ) || (isProduction ? '' : 'http://localhost:3001'),
     FRONTEND_URLS: readOptionalString(env, 'FRONTEND_URLS'),
     FRONTEND_ORIGIN: readOptionalString(env, 'FRONTEND_ORIGIN'),
     FRONTEND_ORIGINS: readOptionalString(env, 'FRONTEND_ORIGINS'),

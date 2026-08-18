@@ -256,217 +256,177 @@ export class AuthService {
   }
 
   async login(email: string, password: string) {
-    try {
-      console.log('LOGIN STEP 1 - user lookup start');
-      const user = (await this.prisma.user.findUnique({
-        where: { email },
-        include: {
-          userRoles: {
-            include: {
-              role: {
-                include: {
-                  rolePermissions: {
-                    include: {
-                      permission: true,
-                    },
+    const user = (await this.prisma.user.findUnique({
+      where: { email },
+      include: {
+        userRoles: {
+          include: {
+            role: {
+              include: {
+                rolePermissions: {
+                  include: {
+                    permission: true,
                   },
                 },
               },
             },
           },
         },
-      })) as UserWithRoles | null;
-      console.log('LOGIN STEP 1 - user lookup complete');
+      },
+    })) as UserWithRoles | null;
 
-      if (!user) {
-        console.log('LOGIN STEP 2 - audit login (missing user) start');
-        await this.auditLogsService.logLogin({
-          userName: email,
-          module: 'Auth',
-          entityType: 'User',
-          action: 'LOGIN_FAILURE',
-          success: false,
-          reason: 'Invalid email or password',
-          description: `Failed login attempt for ${email}`,
+    if (!user) {
+      await this.auditLogsService.logLogin({
+        userName: email,
+        module: 'Auth',
+        entityType: 'User',
+        action: 'LOGIN_FAILURE',
+        success: false,
+        reason: 'Invalid email or password',
+        description: `Failed login attempt for ${email}`,
+      });
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    if (!user.isActive) {
+      await this.auditLogsService.logLogin({
+        userId: user.id,
+        userName: user.name,
+        userRole: user.role,
+        module: 'Auth',
+        entityType: 'User',
+        entityId: user.id,
+        action: 'LOGIN_FAILURE',
+        success: false,
+        reason: 'User account is inactive',
+        description: `Inactive account login attempt for ${user.email}`,
+      });
+      throw new UnauthorizedException('User account is inactive');
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+
+    if (!isPasswordValid) {
+      await this.auditLogsService.logLogin({
+        userId: user.id,
+        userName: user.name,
+        userRole: user.role,
+        module: 'Auth',
+        entityType: 'User',
+        entityId: user.id,
+        action: 'LOGIN_FAILURE',
+        success: false,
+        reason: 'Invalid email or password',
+        description: `Invalid password for ${user.email}`,
+      });
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    let processedUserRoles = user.userRoles || [];
+    if (processedUserRoles.length === 0 && user.role) {
+      try {
+        const appRole = await this.prisma.appRole.upsert({
+          where: { name: user.role },
+          update: {},
+          create: {
+            name: user.role,
+            description: `Auto-created role for ${user.role}`,
+          },
         });
-        console.log('LOGIN STEP 2 - audit login (missing user) complete');
-        throw new UnauthorizedException('Invalid email or password');
-      }
 
-      if (!user.isActive) {
-        console.log('LOGIN STEP 2 - audit login (inactive user) start');
-        await this.auditLogsService.logLogin({
-          userId: user.id,
-          userName: user.name,
-          userRole: user.role,
-          module: 'Auth',
-          entityType: 'User',
-          entityId: user.id,
-          action: 'LOGIN_FAILURE',
-          success: false,
-          reason: 'User account is inactive',
-          description: `Inactive account login attempt for ${user.email}`,
-        });
-        console.log('LOGIN STEP 2 - audit login (inactive user) complete');
-        throw new UnauthorizedException('User account is inactive');
-      }
-
-      console.log('LOGIN STEP 3 - bcrypt compare start');
-      const isPasswordValid = await bcrypt.compare(password, user.password);
-      console.log('LOGIN STEP 3 - bcrypt compare complete');
-
-      if (!isPasswordValid) {
-        console.log('LOGIN STEP 2 - audit login (invalid password) start');
-        await this.auditLogsService.logLogin({
-          userId: user.id,
-          userName: user.name,
-          userRole: user.role,
-          module: 'Auth',
-          entityType: 'User',
-          entityId: user.id,
-          action: 'LOGIN_FAILURE',
-          success: false,
-          reason: 'Invalid email or password',
-          description: `Invalid password for ${user.email}`,
-        });
-        console.log('LOGIN STEP 2 - audit login (invalid password) complete');
-        throw new UnauthorizedException('Invalid email or password');
-      }
-
-      let processedUserRoles = user.userRoles || [];
-      if (processedUserRoles.length === 0 && user.role) {
-        try {
-          console.log('LOGIN STEP 3A - role backfill upsert start');
-          const appRole = await this.prisma.appRole.upsert({
-            where: { name: user.role },
-            update: {},
-            create: {
-              name: user.role,
-              description: `Auto-created role for ${user.role}`,
+        const assignedRole = await this.prisma.userRole.create({
+          data: { userId: user.id, roleId: appRole.id },
+          include: {
+            role: {
+              include: { rolePermissions: { include: { permission: true } } },
             },
-          });
-          console.log('LOGIN STEP 3A - role backfill upsert complete');
+          },
+        });
 
-          console.log('LOGIN STEP 3B - role backfill assign start');
-          const assignedRole = await this.prisma.userRole.create({
-            data: { userId: user.id, roleId: appRole.id },
-            include: {
-              role: {
-                include: { rolePermissions: { include: { permission: true } } },
-              },
-            },
-          });
-          console.log('LOGIN STEP 3B - role backfill assign complete');
-
-          processedUserRoles = [assignedRole];
-        } catch (e) {
-          console.warn('Failed to auto-assign role to user:', e);
-        }
+        processedUserRoles = [assignedRole];
+      } catch {
+        processedUserRoles = [];
       }
+    }
 
-      const userRoles: string[] = processedUserRoles.map((ur) => ur.role.name);
-      const userPermissions: string[] = [
-        ...new Set(
-          processedUserRoles.flatMap((ur) =>
-            ur.role.rolePermissions.map((rp) => rp.permission.key),
-          ),
+    const userRoles: string[] = processedUserRoles.map((ur) => ur.role.name);
+    const userPermissions: string[] = [
+      ...new Set(
+        processedUserRoles.flatMap((ur) =>
+          ur.role.rolePermissions.map((rp) => rp.permission.key),
         ),
-      ];
+      ),
+    ];
 
-      console.log('LOGIN STEP 4 - organization lookup start');
-      const organizationSlug = await this.resolveOrganizationSlug(
-        user.organizationId ?? null,
-      );
-      console.log('LOGIN STEP 4 - organization lookup complete');
-      const isSuperAdmin = user.role === Role.SUPER_ADMIN;
+    const organizationSlug = await this.resolveOrganizationSlug(
+      user.organizationId ?? null,
+    );
+    const isSuperAdmin = user.role === Role.SUPER_ADMIN;
 
-      console.log('LOGIN STEP 5 - issueTokenPair start');
-      const tokens = await this.issueTokenPair(
-        {
-          sub: user.id,
-          userId: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          roles: userRoles,
-          permissions: userPermissions,
-          employeeId: user.employeeId ?? null,
-          organizationId: user.organizationId ?? null,
-          organizationSlug,
-          isPlatformAdmin: isSuperAdmin,
-          isSuperAdmin,
-          tokenType: 'access',
-        },
-        user.id,
-      );
-      console.log('LOGIN STEP 5 - issueTokenPair complete');
-
-      console.log('LOGIN STEP 6 - audit success start');
-      await this.auditLogsService.logLogin(
-        {
-          userId: user.id,
-          userName: user.name,
-          userRole: user.role,
-          module: 'Auth',
-          entityType: 'User',
-          entityId: user.id,
-          action: 'LOGIN_SUCCESS',
-          success: true,
-          description: `User ${user.email} logged in successfully`,
-        },
-        {
-          id: user.id,
-          userId: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          roles: processedUserRoles.map((ur) => ur.role.name),
-          permissions: userPermissions,
-          employeeId: user.employeeId,
-          organizationId: user.organizationId,
-          tokenType: 'access',
-          jti: null,
-        },
-      );
-      console.log('LOGIN STEP 6 - audit success complete');
-
-      return {
-        message: 'Login successful',
-        access_token: tokens.accessToken,
-        refresh_token: tokens.refreshToken,
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-        },
+    const tokens = await this.issueTokenPair(
+      {
+        sub: user.id,
+        userId: user.id,
+        email: user.email,
+        name: user.name,
         role: user.role,
         roles: userRoles,
         permissions: userPermissions,
         employeeId: user.employeeId ?? null,
         organizationId: user.organizationId ?? null,
         organizationSlug,
-        isSuperAdmin,
         isPlatformAdmin: isSuperAdmin,
-      };
-    } catch (error: unknown) {
-      const name = error instanceof Error ? error.name : typeof error;
-      const message = (() => {
-        if (error instanceof Error) return error.message;
-        if (typeof error === 'string') return error;
-        try {
-          return JSON.stringify(error);
-        } catch {
-          return 'Unserializable error';
-        }
-      })();
-      const stack = error instanceof Error ? error.stack : undefined;
+        isSuperAdmin,
+        tokenType: 'access',
+      },
+      user.id,
+    );
 
-      console.error('LOGIN ERROR - name:', name);
-      console.error('LOGIN ERROR - message:', message);
-      console.error('LOGIN ERROR - stack:', stack);
+    await this.auditLogsService.logLogin(
+      {
+        userId: user.id,
+        userName: user.name,
+        userRole: user.role,
+        module: 'Auth',
+        entityType: 'User',
+        entityId: user.id,
+        action: 'LOGIN_SUCCESS',
+        success: true,
+        description: `User ${user.email} logged in successfully`,
+      },
+      {
+        id: user.id,
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        roles: processedUserRoles.map((ur) => ur.role.name),
+        permissions: userPermissions,
+        employeeId: user.employeeId,
+        organizationId: user.organizationId,
+        tokenType: 'access',
+        jti: null,
+      },
+    );
 
-      throw error;
-    }
+    return {
+      message: 'Login successful',
+      access_token: tokens.accessToken,
+      refresh_token: tokens.refreshToken,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+      },
+      role: user.role,
+      roles: userRoles,
+      permissions: userPermissions,
+      employeeId: user.employeeId ?? null,
+      organizationId: user.organizationId ?? null,
+      organizationSlug,
+      isSuperAdmin,
+      isPlatformAdmin: isSuperAdmin,
+    };
   }
 
   async refreshTokens(refreshToken: string) {
@@ -787,16 +747,58 @@ export class AuthService {
       '7d') as ms.StringValue;
   }
 
-  private getBootstrapPassword(envKey: string, label: string): string {
+  private isProductionEnvironment(): boolean {
+    const nodeEnv =
+      this.configService.get<string>('NODE_ENV') ??
+      process.env.NODE_ENV ??
+      'development';
+    return nodeEnv === 'production';
+  }
+
+  private isPlaceholderBootstrapPassword(value: string): boolean {
+    const normalized = value.trim().toLowerCase();
+    return [
+      'replace-with-secure-shared-secret',
+      'replace-with-secure-access-secret',
+      'replace-with-secure-refresh-secret',
+      'replace-with-secure-bootstrap-password',
+      'your_secret_here',
+      'your-secret-here',
+      'example',
+      'example-secret',
+      'dummy',
+      'changeme',
+      'test-secret',
+      'not-set',
+      'password',
+      'admin123',
+      'superadmin123',
+      'bootstrap',
+    ].includes(normalized);
+  }
+
+  private getBootstrapPassword(envKey: string, _label: string): string {
     const fromEnv = this.configService.get<string>(envKey);
-    if (fromEnv && fromEnv.trim().length > 0) {
-      return fromEnv.trim();
+    const configuredValue = fromEnv?.trim();
+
+    if (configuredValue && configuredValue.length > 0) {
+      if (this.isProductionEnvironment()) {
+        if (this.isPlaceholderBootstrapPassword(configuredValue)) {
+          throw new Error(
+            `Production environment requires ${envKey} to be a non-placeholder value.`,
+          );
+        }
+      }
+      return configuredValue;
     }
-    const generated = randomBytes(24).toString('base64url');
-    console.warn(
-      `[AUTH-BOOTSTRAP] ${envKey} not set. Generated random ${label} password: ${generated}`,
-    );
-    return generated;
+
+    if (this.isProductionEnvironment()) {
+      throw new Error(
+        `Production environment requires ${envKey} to be set explicitly.`,
+      );
+    }
+
+    return randomBytes(24).toString('base64url');
   }
 
   async bootstrapSuperAdmin() {

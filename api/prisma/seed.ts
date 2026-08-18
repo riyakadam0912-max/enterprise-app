@@ -9,6 +9,16 @@ import { Permission } from '../src/common/enums/permissions.enum';
 
 const prisma = new PrismaClient();
 
+export function assertDevelopmentSeedAllowed(
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  if (env.NODE_ENV === 'production') {
+    throw new Error(
+      'Development seed is blocked in production. Use npm run db:bootstrap after prisma migrate deploy.',
+    );
+  }
+}
+
 const EMPLOYEES_COUNT = 5;
 const MANAGERS_COUNT = 2;
 const TASKS_PER_EMPLOYEE = 5;
@@ -806,6 +816,7 @@ async function createPayroll(records: Array<{ employee: any }>) {
 
 async function main() {
   try {
+    assertDevelopmentSeedAllowed();
     console.log('Starting seed for turnover + role-aware analytics dataset...');
 
     await clearDatabase();

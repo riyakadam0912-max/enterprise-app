@@ -36,36 +36,48 @@ async function bootstrap() {
     }),
   );
 
-  // ✅ CORS (your existing logic - unchanged)
+  const isProduction = process.env.NODE_ENV === 'production';
   const primaryFrontendUrl =
     configService.get<string>('FRONTEND_URL') ??
     configService.get<string>('FRONTEND_ORIGIN');
 
-  const configuredOrigins =
+  const configuredOrigins = (
     configService.get<string>('FRONTEND_URLS') ??
     configService.get<string>('FRONTEND_ORIGINS') ??
-    '';
-  const allowedOrigins = new Set([
-    ...(primaryFrontendUrl
-      ? [primaryFrontendUrl]
-      : ['http://localhost:3001', 'http://127.0.0.1:3001']),
-    ...configuredOrigins
-      .split(',')
-      .map((origin: string) => origin.trim())
-      .filter(Boolean),
-  ]);
+    ''
+  )
+    .split(',')
+    .map((origin: string) => origin.trim())
+    .filter(Boolean);
+
+  const allowedOrigins = new Set(
+    (isProduction
+      ? [primaryFrontendUrl, ...configuredOrigins]
+      : [
+          ...(primaryFrontendUrl ? [primaryFrontendUrl] : []),
+          ...configuredOrigins,
+          'http://localhost:3001',
+          'http://127.0.0.1:3001',
+        ]
+    ).filter((origin): origin is string => Boolean(origin)),
+  );
 
   app.enableCors({
     origin: (
       origin: string | undefined,
       callback: (error: Error | null, allow?: boolean) => void,
     ) => {
-      if (!origin || allowedOrigins.has(origin)) {
+      if (!origin) {
         callback(null, true);
         return;
       }
 
-      if (/^http:\/\/192\.168\.\d+\.\d+:3001$/.test(origin)) {
+      if (allowedOrigins.has(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      if (!isProduction && /^http:\/\/192\.168\.\d+\.\d+:3001$/.test(origin)) {
         callback(null, true);
         return;
       }

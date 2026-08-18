@@ -273,6 +273,19 @@ export function setActiveOrganization(organizationId: number): void {
     return;
   }
 
+  const session = getAuthSessionSnapshot();
+  const isPrivilegedTenantContext =
+    session.isSuperAdmin || session.isPlatformAdmin;
+
+  if (!isPrivilegedTenantContext) {
+    try {
+      window.sessionStorage.removeItem('activeOrganization');
+    } catch (e) {
+      console.warn('[auth-store] Failed to clear stale active organization:', e);
+    }
+    return;
+  }
+
   try {
     window.sessionStorage.setItem(
       'activeOrganization',
@@ -312,6 +325,14 @@ export function clearActiveOrganization(): void {
 }
 
 export function getActiveOrganizationId(): number | null {
+  const session = getAuthSessionSnapshot();
+  const isPrivilegedTenantContext =
+    session.isSuperAdmin || session.isPlatformAdmin;
+
+  if (!isPrivilegedTenantContext) {
+    return null;
+  }
+
   if (typeof window !== 'undefined') {
     try {
       const raw = window.sessionStorage.getItem('activeOrganization');

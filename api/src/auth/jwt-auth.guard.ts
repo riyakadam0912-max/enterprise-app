@@ -26,7 +26,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
         request.organizationId;
       const user = request.user as AuthUser;
 
-      if (middlewareResolvedOrg !== undefined) {
+      if (
+        middlewareResolvedOrg !== undefined &&
+        middlewareResolvedOrg !== null
+      ) {
         user.organizationId = middlewareResolvedOrg;
       }
 

@@ -8,9 +8,14 @@ import {
 import type { Response } from 'express';
 import type { ApiErrorResponse } from '../interfaces/api-response.interface';
 
-function extractMessage(exception: unknown): string {
+function extractMessage(exception: unknown, isProduction: boolean): string {
   if (exception instanceof HttpException) {
     const response = exception.getResponse();
+    const statusCode = exception.getStatus();
+
+    if (isProduction && statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      return 'Internal server error';
+    }
 
     if (typeof response === 'string') {
       return response;
@@ -35,7 +40,7 @@ function extractMessage(exception: unknown): string {
   }
 
   if (exception instanceof Error) {
-    return exception.message;
+    return isProduction ? 'Internal server error' : exception.message;
   }
 
   return 'Internal server error';
@@ -46,12 +51,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost) {
     const context = host.switchToHttp();
     const response = context.getResponse<Response>();
+    const isProduction = process.env.NODE_ENV === 'production';
 
-    const message = extractMessage(exception);
     const statusCode =
       exception instanceof HttpException
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
+    const message = extractMessage(exception, isProduction);
 
     const body: ApiErrorResponse = {
       success: false,
