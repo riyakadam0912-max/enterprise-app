@@ -41,10 +41,13 @@ const queueImports = redisConnection
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: [
-        join(process.cwd(), '.env'),
-        join(process.cwd(), '..', '.env'),
-      ],
+      envFilePath:
+        process.env.NODE_ENV === 'production'
+          ? []
+          : [
+              join(process.cwd(), '.env'),
+              join(process.cwd(), '..', '.env'),
+            ],
       validate: validateServerEnv,
     }),
     CacheModule.register({
