@@ -161,4 +161,53 @@ describe('WorkflowEngineService', () => {
     expect(result.workflow.status).toBe('APPROVED');
     expect(prisma.$transaction).toHaveBeenCalled();
   });
+
+  it('routes HR self-submission to Admin or Super Admin when no other HR approvers exist', async () => {
+    const stage = {
+      id: 44,
+      workflowDefinitionId: 10,
+      key: 'hr-review',
+      name: 'HR Review',
+      order: 2,
+      approvalType: 'SEQUENTIAL',
+      approvalPolicy: { mode: 'SINGLE', requiredApprovals: 1 },
+      assignmentRule: { type: 'ROLE', value: 'HR' },
+    };
+
+    prisma.user.findMany.mockResolvedValue([{ id: 9 }]);
+    prisma.user.findUnique.mockResolvedValue({
+      id: 9,
+      role: 'HR',
+      managerId: null,
+      employeeId: 77,
+      organizationId: 1,
+      isActive: true,
+    });
+
+    const recipients = await (service as any).resolveRecipients(stage, {
+      employeeId: 77,
+      requestorUserId: 9,
+    });
+
+    expect(recipients).toEqual([]);
+
+    prisma.user.findMany
+      .mockResolvedValueOnce([{ id: 9 }])
+      .mockResolvedValueOnce([{ id: 12 }, { id: 15 }]);
+    prisma.user.findUnique.mockResolvedValue({
+      id: 9,
+      role: 'HR',
+      managerId: null,
+      employeeId: 77,
+      organizationId: 1,
+      isActive: true,
+    });
+
+    const fallbackRecipients = await (service as any).resolveRecipients(stage, {
+      employeeId: 77,
+      requestorUserId: 9,
+    });
+
+    expect(fallbackRecipients).toEqual([12, 15]);
+  });
 });

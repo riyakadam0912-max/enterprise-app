@@ -28,6 +28,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "dotenv -e .env.test -- jest --config ./test/jest-e2e.json",
     "seed": "ts-node prisma/seed.ts",
+    "seed:production": "ts-node prisma/seed.production.ts",
     "db:bootstrap": "ts-node prisma/bootstrap.ts",
     "check-user": "node scripts/check-user.js",
     "list-users": "node scripts/list-users.js",
@@ -129,6 +130,14 @@
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "setupFilesAfterEnv": ["<rootDir>/../test/setup.ts"],
+    "globals": {
+      "ts-jest": {
+        "tsconfig": {
+          "jsx": "react"
+        }
+      }
+    }
   }
 }

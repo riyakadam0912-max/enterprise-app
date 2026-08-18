@@ -24,7 +24,10 @@ const isLocalDevelopmentUrl = (value: string | undefined): boolean => {
 
 const clientEnvSchema = z.object({
   NEXT_PUBLIC_API_URL: z.string().min(1).default('/api/v1'),
-  NEXT_PUBLIC_NOTIFICATION_WS_URL: z.string().min(1).default('http://127.0.0.1:3000'),
+  NEXT_PUBLIC_NOTIFICATION_WS_URL: z
+    .string()
+    .min(1)
+    .default('wss://placeholder.example.com'),
 });
 
 export type ClientEnv = z.infer<typeof clientEnvSchema>;
@@ -38,7 +41,9 @@ function formatError(error: z.ZodError): string {
 export function getClientEnv(): ClientEnv {
   const isProduction = process.env.NODE_ENV === 'production';
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? '/api/v1';
-  const notificationWsUrl = process.env.NEXT_PUBLIC_NOTIFICATION_WS_URL ?? 'http://127.0.0.1:3000';
+  const notificationWsUrl =
+    process.env.NEXT_PUBLIC_NOTIFICATION_WS_URL ??
+    (isProduction ? 'wss://placeholder.example.com' : 'http://127.0.0.1:3000');
 
   if (isProduction) {
     if (!apiUrl || isLocalDevelopmentUrl(apiUrl)) {

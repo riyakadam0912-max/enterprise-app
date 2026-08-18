@@ -408,6 +408,31 @@ describe('LeaveRequestsService', () => {
       );
     });
 
+    it('should prevent HR from approving their own leave request', async () => {
+      const leaveRequestDelegate = getPrismaDelegate(
+        mockPrisma,
+        'leaveRequest',
+      );
+      leaveRequestDelegate.findFirst.mockResolvedValueOnce({
+        id: 1,
+        status: 'PENDING_HR',
+        approvalTrail: null,
+        employeeId: 50,
+        startDate: new Date('2026-01-01'),
+        endDate: new Date('2026-01-02'),
+        leaveType: 'SICK',
+      });
+
+      await expect(
+        service.hrApprove(
+          1,
+          createMockAuthUser(Role.HR, { userId: 7, employeeId: 50 }),
+        ),
+      ).rejects.toThrow(
+        'HR cannot approve their own leave request. This requires Admin or Super Admin approval.',
+      );
+    });
+
     it('should approve request successfully for HR', async () => {
       const leaveRequestDelegate = getPrismaDelegate(
         mockPrisma,

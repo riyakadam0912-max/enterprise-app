@@ -521,27 +521,39 @@ export class WorkflowEngineService implements OnModuleInit {
               (
                 requestorUser as unknown as { roles?: string[] }
               ).roles?.includes(role)));
-        if (
+        const eligibleIds =
           isSubmitterOfRole &&
           (role === Role.HR ||
             role === Role.ADMIN ||
             role === Role.MANAGER ||
             role === Role.COMPLIANCE_MANAGER)
+            ? ids.filter((id) => id !== submitterUserId)
+            : ids;
+
+        if (
+          role === Role.HR &&
+          eligibleIds.length === 0 &&
+          submitterRole === Role.HR
         ) {
-          return ids.filter((id) => id !== submitterUserId);
+          const fallback =
+            await this.resolvePrivilegedOrganizationAdmins(organizationId);
+          return fallback.filter((id) => id !== submitterUserId);
         }
-        return ids;
+
+        return eligibleIds;
       }
     }
 
     if (rule.type === 'MANAGER') {
+      const managerIds = new Set<number>();
+
       if (employeeId) {
         const employee = await this.prisma.employee.findUnique({
           where: { id: employeeId },
           include: { user: { select: { managerId: true } } },
         });
         if (employee?.user?.managerId) {
-          return [employee.user.managerId];
+          managerIds.add(employee.user.managerId);
         }
       }
 
@@ -553,13 +565,21 @@ export class WorkflowEngineService implements OnModuleInit {
           select: { managerId: true },
         });
         if (user?.managerId) {
-          return [user.managerId];
+          managerIds.add(user.managerId);
         }
+      }
+
+      const filteredManagerIds = [...managerIds].filter(
+        (id) => id !== submitterUserId,
+      );
+      if (filteredManagerIds.length) {
+        return filteredManagerIds;
       }
 
       if (
         submitterRole === Role.HR ||
         submitterRole === Role.ADMIN ||
+        submitterRole === Role.MANAGER ||
         submitterRole === Role.COMPLIANCE_MANAGER
       ) {
         const fallback =

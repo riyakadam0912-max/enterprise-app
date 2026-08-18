@@ -78,8 +78,12 @@ export class NodemailerProvider extends BaseEmailProvider {
     this.isInitialized = true;
     this.logger.log('Nodemailer provider initialized successfully');
 
+    // CRITICAL: Skip SMTP verification in test mode and when disabled via config
+    const isTestMode = process.env.NODE_ENV === 'test';
     const verifyOnStartup =
-      this.configService.get<boolean>('SMTP_VERIFY_ON_STARTUP') ?? true;
+      !isTestMode &&
+      (this.configService.get<boolean>('SMTP_VERIFY_ON_STARTUP') ?? true);
+
     if (verifyOnStartup) {
       this.verifyConnection()
         .then((connected) => {

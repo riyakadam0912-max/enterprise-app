@@ -29,14 +29,13 @@ export default function FormSubmissionDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const submissionId = Number(params.id);
+  const invalidSubmission = !Number.isFinite(submissionId);
   const [submission, setSubmission] = useState<FormSubmission | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!Number.isFinite(submissionId)) {
-      setError('Invalid submission');
-      setLoading(false);
+    if (invalidSubmission) {
       return;
     }
 
@@ -64,6 +63,9 @@ export default function FormSubmissionDetailPage() {
     };
   }, [submissionId]);
 
+  const displayError = invalidSubmission ? 'Invalid submission' : error;
+  const isLoading = !invalidSubmission && loading;
+
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
@@ -79,13 +81,13 @@ export default function FormSubmissionDetailPage() {
         </button>
       </div>
 
-      {loading ? (
+      {isLoading ? (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex items-center justify-center py-20">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500" />
         </div>
-      ) : error || !submission ? (
+      ) : displayError || !submission ? (
         <div className="bg-white rounded-xl border border-rose-200 shadow-sm px-6 py-10 text-center text-sm text-rose-600">
-          {error ?? 'Submission not found'}
+          {displayError ?? 'Submission not found'}
         </div>
       ) : (
         <>

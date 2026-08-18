@@ -16,6 +16,11 @@ describe('MailController', () => {
       getClass: () => MailController,
     }) as unknown as ExecutionContext;
 
+  beforeEach(() => {
+    // Ensure NODE_ENV is test mode for these tests
+    process.env.NODE_ENV = 'test';
+  });
+
   it('rejects employee access via the role guard', () => {
     const reflector = {
       getAllAndOverride: jest
