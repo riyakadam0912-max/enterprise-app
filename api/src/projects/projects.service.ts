@@ -62,7 +62,7 @@ export class ProjectsService {
     const organizationId = this.validateOrganization(user);
     const baseWhere = { organizationId };
 
-    if (user.role === Role.ADMIN) {
+    if (user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN) {
       return baseWhere;
     }
 
