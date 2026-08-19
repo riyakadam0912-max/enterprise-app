@@ -71,13 +71,14 @@ axiosClient.interceptors.request.use(
     if (typeof window !== 'undefined') {
       try {
         const session = getAuthSessionSnapshot();
-        const isSuperAdminRoute = window.location.pathname.startsWith('/super-admin');
         const isPrivilegedTenantContext =
           session.isSuperAdmin || session.isPlatformAdmin;
+        const requestUrl = config.url ?? '';
+        const isAuthRequest = requestUrl.includes('/auth/');
 
         config.headers = config.headers ?? {};
 
-        if (isSuperAdminRoute && isPrivilegedTenantContext) {
+        if (isPrivilegedTenantContext && !isAuthRequest) {
           const activeOrgId = getActiveOrganizationId();
           if (activeOrgId != null) {
             config.headers['X-Organization-Id'] = String(activeOrgId);
