@@ -7,6 +7,35 @@ import {
   EmailResult,
 } from './email-provider.interface';
 
+function readBooleanConfig(
+  configService: ConfigService,
+  key: string,
+  fallback: boolean,
+): boolean {
+  const value = configService.get<unknown>(key);
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes'].includes(normalized)) {
+      return true;
+    }
+    if (['false', '0', 'no'].includes(normalized)) {
+      return false;
+    }
+  }
+
+  throw new Error(
+    `Invalid environment variable ${key}: expected a boolean value`,
+  );
+}
+
 @Injectable()
 export class NodemailerProvider extends BaseEmailProvider {
   private readonly logger = new Logger(NodemailerProvider.name);
@@ -24,7 +53,7 @@ export class NodemailerProvider extends BaseEmailProvider {
 
     this.smtpHost = (configService.get<string>('SMTP_HOST') || '').trim();
     this.smtpPort = Number(configService.get<number>('SMTP_PORT') ?? 2525);
-    this.smtpSecure = configService.get<boolean>('SMTP_SECURE') ?? false;
+    this.smtpSecure = readBooleanConfig(configService, 'SMTP_SECURE', false);
     this.smtpUser = (configService.get<string>('SMTP_USER') || '').trim();
     const smtpPass = (configService.get<string>('SMTP_PASS') || '').trim();
 
@@ -82,7 +111,7 @@ export class NodemailerProvider extends BaseEmailProvider {
     const isTestMode = process.env.NODE_ENV === 'test';
     const verifyOnStartup =
       !isTestMode &&
-      (this.configService.get<boolean>('SMTP_VERIFY_ON_STARTUP') ?? true);
+      readBooleanConfig(this.configService, 'SMTP_VERIFY_ON_STARTUP', true);
 
     if (verifyOnStartup) {
       this.verifyConnection()

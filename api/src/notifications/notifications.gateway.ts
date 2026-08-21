@@ -32,6 +32,13 @@ export class NotificationsGateway
   ) {}
 
   afterInit() {
+    if (!this.server?.engine?.opts) {
+      this.logger.warn(
+        'Notification WebSocket server is unavailable; skipping Socket.IO CORS setup.',
+      );
+      return;
+    }
+
     const nodeEnv = (
       this.configService.get<string>('NODE_ENV') || 'development'
     ).toLowerCase();
