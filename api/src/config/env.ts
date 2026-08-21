@@ -44,6 +44,7 @@ type ServerEnv = {
   SMTP_FROM_NAME?: string;
   EMAIL_ALLOWED_SENDER_EMAILS?: string;
   BOOTSTRAP_ADMIN_PASSWORD?: string;
+  BOOTSTRAP_SUPER_ADMIN_EMAIL?: string;
   BOOTSTRAP_SUPER_ADMIN_PASSWORD?: string;
 };
 
@@ -406,6 +407,10 @@ export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
     BOOTSTRAP_ADMIN_PASSWORD: readOptionalString(
       env,
       'BOOTSTRAP_ADMIN_PASSWORD',
+    ),
+    BOOTSTRAP_SUPER_ADMIN_EMAIL: readOptionalString(
+      env,
+      'BOOTSTRAP_SUPER_ADMIN_EMAIL',
     ),
     BOOTSTRAP_SUPER_ADMIN_PASSWORD: readOptionalString(
       env,

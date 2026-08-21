@@ -15,8 +15,32 @@ import type { AuthUser } from '../common/types/auth';
 export class LeadsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private validateOrganization(user: AuthUser): number {
+  private isPlatformAdmin(user: AuthUser): boolean {
+    return (
+      user?.role === Role.SUPER_ADMIN ||
+      user?.isSuperAdmin === true ||
+      user?.isPlatformAdmin === true ||
+      (Array.isArray(user?.roles) && user.roles.includes(Role.SUPER_ADMIN))
+    );
+  }
+
+  private resolveReadScope(user: AuthUser): number | null {
+    if (this.isPlatformAdmin(user) && !user.organizationId) {
+      return null;
+    }
     if (!user.organizationId) {
+      throw new ForbiddenException('User has no associated organization');
+    }
+    return user.organizationId;
+  }
+
+  private requireWriteOrganization(user: AuthUser): number {
+    if (!user.organizationId) {
+      if (this.isPlatformAdmin(user)) {
+        throw new ForbiddenException(
+          'Select an organization before modifying data',
+        );
+      }
       throw new ForbiddenException('User has no associated organization');
     }
     return user.organizationId;
@@ -53,7 +77,7 @@ export class LeadsService {
   }
 
   async create(dto: CreateLeadDto, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = this.requireWriteOrganization(user);
     return this.prisma.lead.create({
       data: {
         organization: { connect: { id: organizationId } },
@@ -80,11 +104,11 @@ export class LeadsService {
   }
 
   async findAll(user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const orgScope = this.resolveReadScope(user);
     const employee = await this.resolveEmployeeScope(user);
 
     const where: Prisma.LeadWhereInput = {
-      organizationId,
+      ...(orgScope !== null ? { organizationId: orgScope } : {}),
       deletedAt: null,
       ...(employee
         ? {
@@ -100,11 +124,15 @@ export class LeadsService {
   }
 
   async findOne(id: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const orgScope = this.resolveReadScope(user);
     const employee = await this.resolveEmployeeScope(user);
 
     const lead = await this.prisma.lead.findFirst({
-      where: { id, organizationId, deletedAt: null },
+      where: {
+        id,
+        ...(orgScope !== null ? { organizationId: orgScope } : {}),
+        deletedAt: null,
+      },
     });
 
     if (!lead) throw new NotFoundException(`Lead #${id} not found`);
@@ -119,14 +147,14 @@ export class LeadsService {
   }
 
   async getDetail(id: number, user: AuthUser): Promise<LeadDetailDto> {
-    const organizationId = this.validateOrganization(user);
+    const orgScope = this.resolveReadScope(user);
     const lead = await this.findOne(id, user);
     const employee = await this.resolveEmployeeScope(user);
     const assignedToUserId = user?.userId;
 
     const taskWhere: Prisma.TaskWhereInput = {
       leadId: id,
-      organizationId,
+      ...(orgScope !== null ? { organizationId: orgScope } : {}),
     };
 
     if (user?.role === Role.MANAGER) {
@@ -140,7 +168,10 @@ export class LeadsService {
 
     const [activities, tasks] = await Promise.all([
       this.prisma.activity.findMany({
-        where: { leadId: id, organizationId },
+        where: {
+          leadId: id,
+          ...(orgScope !== null ? { organizationId: orgScope } : {}),
+        },
         orderBy: { createdAt: 'desc' },
         include: {
           user: { select: { id: true, name: true, email: true } },
@@ -163,9 +194,12 @@ export class LeadsService {
   }
 
   async findByStatus(user: AuthUser): Promise<Record<string, any[]>> {
-    const organizationId = this.validateOrganization(user);
+    const orgScope = this.resolveReadScope(user);
     const leads = await this.prisma.lead.findMany({
-      where: { organizationId, deletedAt: null },
+      where: {
+        ...(orgScope !== null ? { organizationId: orgScope } : {}),
+        deletedAt: null,
+      },
       orderBy: { name: 'asc' },
     });
     const grouped: Record<string, any[]> = {};
@@ -178,7 +212,7 @@ export class LeadsService {
   }
 
   async update(id: number, dto: UpdateLeadDto, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = this.requireWriteOrganization(user);
     await this.findOne(id, user);
 
     const data: Prisma.LeadUpdateInput = {};
@@ -213,7 +247,7 @@ export class LeadsService {
   }
 
   async remove(id: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = this.requireWriteOrganization(user);
     await this.findOne(id, user);
     return this.prisma.lead.update({
       where: { id, organizationId },
@@ -222,7 +256,7 @@ export class LeadsService {
   }
 
   async convertLead(id: number, userId: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = this.requireWriteOrganization(user);
     const lead = await this.findOne(id, user);
 
     const result = await this.prisma.$transaction(async (tx) => {
@@ -294,7 +328,7 @@ export class LeadsService {
     records: Record<string, any>[],
     user: AuthUser,
   ): Promise<{ imported: number; errors: string[] }> {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = this.requireWriteOrganization(user);
     let imported = 0;
     const errors: string[] = [];
     for (let i = 0; i < records.length; i++) {

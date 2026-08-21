@@ -156,20 +156,23 @@ describe('AuthService', () => {
       warnSpy.mockRestore();
     });
 
-    it('does not overwrite an existing Super Admin password when bootstrapping', async () => {
+    it('reconciles an existing Super Admin password and identity', async () => {
       setupConfigForTests({
         NODE_ENV: 'production',
+        BOOTSTRAP_SUPER_ADMIN_EMAIL: 'edadmin@ekdrishti.com',
         BOOTSTRAP_SUPER_ADMIN_PASSWORD: 'StrongSup3rAdminPass!123',
       });
       const userDelegate = getMockPrismaDelegate(mockPrisma, 'user');
       const existingSuperAdmin = {
         id: 99,
         name: 'Existing Super Admin',
-        email: 'superadmin@erp.local',
+        email: 'edadmin@ekdrishti.com',
         role: Role.SUPER_ADMIN,
         isActive: true,
         organizationId: null,
       };
+      userDelegate.findUnique.mockResolvedValue(existingSuperAdmin);
+      userDelegate.findMany.mockResolvedValue([existingSuperAdmin]);
       userDelegate.findFirst.mockResolvedValue(existingSuperAdmin);
       userDelegate.update.mockResolvedValue({
         ...existingSuperAdmin,
@@ -187,6 +190,11 @@ describe('AuthService', () => {
         'permission',
       );
       permissionDelegate.count.mockResolvedValue(1);
+      permissionDelegate.findMany.mockResolvedValue([{ id: 1 }]);
+      getMockPrismaDelegate(
+        mockPrisma,
+        'rolePermission',
+      ).upsert.mockResolvedValue({});
 
       await service.bootstrapSuperAdmin();
 
@@ -194,18 +202,17 @@ describe('AuthService', () => {
         expect.objectContaining({
           where: { id: existingSuperAdmin.id },
           data: expect.objectContaining({
-            name: 'Super Admin User',
-            email: 'superadmin@erp.local',
+            name: 'Chinmay Shivdikar',
+            email: 'edadmin@ekdrishti.com',
+            password: 'hashed-bootstrap-password',
             role: Role.SUPER_ADMIN,
             isActive: true,
+            employeeId: null,
             organizationId: null,
           }),
         }),
       );
-      expect(bcrypt.hash).not.toHaveBeenCalledWith(
-        'StrongSup3rAdminPass!123',
-        10,
-      );
+      expect(bcrypt.hash).toHaveBeenCalledWith('StrongSup3rAdminPass!123', 10);
     });
   });
 

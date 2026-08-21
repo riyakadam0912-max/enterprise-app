@@ -37,8 +37,17 @@ export class UsersService {
     throw new ForbiddenException('User has no associated organization');
   }
 
-  async create(createUserDto: CreateUserDto, user: AuthUser) {
-    const organizationFilter = this.buildOrganizationFilter(user);
+  async create(
+    createUserDto: CreateUserDto,
+    user: AuthUser,
+    organizationIdOverride?: number | null,
+  ) {
+    const effectiveOrganizationId =
+      organizationIdOverride ?? user.organizationId ?? null;
+    const organizationFilter = this.buildOrganizationFilter({
+      ...user,
+      organizationId: effectiveOrganizationId,
+    });
     const existing = await this.prisma.user.findFirst({
       where: { email: createUserDto.email, ...organizationFilter },
     });
@@ -83,7 +92,7 @@ export class UsersService {
     try {
       return await this.prisma.user.create({
         data: {
-          organizationId: user.organizationId ?? undefined,
+          organizationId: effectiveOrganizationId ?? undefined,
           name: createUserDto.name,
           email: createUserDto.email,
           password: hashedPassword,

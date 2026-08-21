@@ -790,9 +790,13 @@ export class ProjectsService {
   }
 
   async getByStatus(user: AuthUser) {
-    if (user.role !== Role.ADMIN && user.role !== Role.MANAGER) {
+    if (
+      user.role !== Role.ADMIN &&
+      user.role !== Role.MANAGER &&
+      user.role !== Role.SUPER_ADMIN
+    ) {
       throw new ForbiddenException(
-        'Only admin or manager can view grouped status report',
+        'Only admin, manager, or super admin can view grouped status report',
       );
     }
 

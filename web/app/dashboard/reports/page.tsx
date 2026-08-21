@@ -13,6 +13,7 @@ import {
   ReportsFilters,
 } from '@/api/reportsApi';
 import { reportError } from '@/lib/error-handling';
+import { useAuthSession, type AuthRole } from '@/stores/auth-store';
 
 const AttendanceTrendChart = dynamic(() => import('@/components/reports/AttendanceTrendChart'), {
   ssr: false,
@@ -80,14 +81,9 @@ function SkeletonGrid() {
 }
 
 export default function ReportsPage() {
-  const [role] = useState<UserRole>(() => {
-    if (typeof window === 'undefined') return 'ADMIN';
-    const storedRole = localStorage.getItem('role');
-    if (storedRole === 'EMPLOYEE' || storedRole === 'MANAGER' || storedRole === 'HR') {
-      return storedRole;
-    }
-    return 'ADMIN';
-  });
+  const authSession = useAuthSession();
+  const roleRaw: AuthRole | null = authSession.role ?? null;
+  const role: UserRole = (roleRaw === 'EMPLOYEE' || roleRaw === 'MANAGER' || roleRaw === 'HR') ? roleRaw : 'ADMIN';
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [data, setData] = useState<ReportsDashboard | null>(null);
   const [loading, setLoading] = useState(true);

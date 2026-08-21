@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -10,6 +11,7 @@ import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { AuthUser } from '../common/types/auth';
 import { Role } from '../common/enums/role.enum';
+import { hashPassword } from '../users/utils/hash-password';
 
 const ALLOWED_DEPARTMENTS = [
   'Sales',
@@ -94,7 +96,40 @@ export class EmployeesService {
     };
   }
 
-  async create(createEmployeeDto: CreateEmployeeDto, user: AuthUser) {
+  private isPlatformSuperAdmin(user: AuthUser): boolean {
+    return (
+      user.role === Role.SUPER_ADMIN ||
+      (Array.isArray(user.roles) && user.roles.includes(Role.SUPER_ADMIN)) ||
+      user.isPlatformAdmin === true ||
+      user.isSuperAdmin === true
+    );
+  }
+
+  async create(
+    createEmployeeDto: CreateEmployeeDto,
+    user: AuthUser,
+    organizationIdOverride?: number | null,
+  ) {
+    const callerIsPlatformAdmin = this.isPlatformSuperAdmin(user);
+
+    if (
+      !callerIsPlatformAdmin &&
+      organizationIdOverride != null &&
+      user.organizationId != null &&
+      organizationIdOverride !== user.organizationId
+    ) {
+      throw new ForbiddenException(
+        'Cannot create employee in a different organization',
+      );
+    }
+
+    const organizationId =
+      organizationIdOverride ?? user.organizationId ?? null;
+
+    if (!organizationId) {
+      throw new ForbiddenException('User has no associated organization');
+    }
+
     if (
       createEmployeeDto.department &&
       !ALLOWED_DEPARTMENTS.includes(
@@ -106,21 +141,135 @@ export class EmployeesService {
       );
     }
 
-    return this.prisma.employee.create({
-      data: {
-        organization: { connect: { id: user.organizationId! } },
-        name: createEmployeeDto.name,
-        email: createEmployeeDto.email,
-        phoneNumber: createEmployeeDto.phoneNumber,
-        department: createEmployeeDto.department,
-        designation: createEmployeeDto.designation,
-        hireDate: createEmployeeDto.hireDate
-          ? new Date(createEmployeeDto.hireDate)
-          : null,
-        manager: createEmployeeDto.manager,
-        leaveBalance: createEmployeeDto.leaveBalance,
-        status: createEmployeeDto.status,
-      },
+    const wantsLoginAccount =
+      typeof createEmployeeDto.password === 'string' &&
+      createEmployeeDto.password.length > 0;
+
+    const userRole = (createEmployeeDto.role ?? Role.EMPLOYEE) as Role;
+
+    if (wantsLoginAccount) {
+      if (!createEmployeeDto.email || !createEmployeeDto.email.trim()) {
+        throw new BadRequestException(
+          'Email is required when creating a login account for the employee.',
+        );
+      }
+
+      const allowedRolesForEmployee: Role[] = [
+        Role.EMPLOYEE,
+        Role.MANAGER,
+        Role.HR,
+      ];
+      if (!allowedRolesForEmployee.includes(userRole)) {
+        throw new BadRequestException(
+          `Invalid role. Must be one of: ${allowedRolesForEmployee.join(', ')}`,
+        );
+      }
+
+      if (createEmployeeDto.managerId) {
+        const managerUser = await this.prisma.user.findUnique({
+          where: { id: createEmployeeDto.managerId, organizationId },
+          select: { id: true, role: true },
+        });
+        if (!managerUser) {
+          throw new NotFoundException(
+            'Selected manager user not found in the organization.',
+          );
+        }
+      }
+
+      const existingUserByEmail = await this.prisma.user.findFirst({
+        where: {
+          email: createEmployeeDto.email.trim(),
+          organizationId,
+        },
+        select: { id: true },
+      });
+      if (existingUserByEmail) {
+        throw new ConflictException(
+          'A user with this email already exists in the organization.',
+        );
+      }
+    }
+
+    const hashedPassword = wantsLoginAccount
+      ? await hashPassword(createEmployeeDto.password!)
+      : null;
+
+    return this.prisma.$transaction(async (tx) => {
+      const employee = await tx.employee.create({
+        data: {
+          organization: { connect: { id: organizationId } },
+          name: createEmployeeDto.name,
+          email: createEmployeeDto.email,
+          phoneNumber: createEmployeeDto.phoneNumber,
+          department: createEmployeeDto.department,
+          designation: createEmployeeDto.designation,
+          hireDate: createEmployeeDto.hireDate
+            ? new Date(createEmployeeDto.hireDate)
+            : null,
+          manager: createEmployeeDto.manager,
+          leaveBalance: createEmployeeDto.leaveBalance,
+          status: createEmployeeDto.status,
+        },
+        include: { user: true },
+      });
+
+      if (wantsLoginAccount) {
+        const emailNormalized = createEmployeeDto.email!.trim();
+
+        const appRole = await tx.appRole.upsert({
+          where: { name: userRole },
+          update: {},
+          create: {
+            name: userRole,
+            description: `Auto-created role for ${userRole}`,
+          },
+        });
+
+        const createdUser = await tx.user.create({
+          data: {
+            organizationId,
+            name: createEmployeeDto.name,
+            email: emailNormalized,
+            password: hashedPassword!,
+            role: userRole,
+            employeeId: employee.id,
+            managerId: createEmployeeDto.managerId ?? undefined,
+          },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            isActive: true,
+            employeeId: true,
+            managerId: true,
+            organizationId: true,
+            createdAt: true,
+          },
+        });
+
+        await tx.userRole.upsert({
+          where: {
+            userId_roleId: {
+              userId: createdUser.id,
+              roleId: appRole.id,
+            },
+          },
+          update: {},
+          create: {
+            userId: createdUser.id,
+            roleId: appRole.id,
+          },
+        });
+
+        return {
+          ...employee,
+          user: createdUser,
+        };
+      }
+
+      return employee;
     });
   }
 

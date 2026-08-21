@@ -40,7 +40,7 @@ import {
 export class EmployeesController {
   constructor(private readonly employeesService: EmployeesService) {}
 
-  @Roles(Role.ADMIN, Role.HR, Role.MANAGER)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER)
   @RequirePermissions(Permission.EMPLOYEE_READ)
   @ApiOperation({ summary: 'GET by-department' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
@@ -52,7 +52,7 @@ export class EmployeesController {
     return this.employeesService.findByDepartment(req.user);
   }
 
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR)
   @RequirePermissions(Permission.EMPLOYEE_CREATE)
   @ApiOperation({ summary: 'POST /' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
@@ -65,10 +65,14 @@ export class EmployeesController {
     @Body() createEmployeeDto: CreateEmployeeDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.employeesService.create(createEmployeeDto, req.user);
+    return this.employeesService.create(
+      createEmployeeDto,
+      req.user,
+      req.organizationId ?? req.user.organizationId,
+    );
   }
 
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR)
   @RequirePermissions(Permission.EMPLOYEE_CREATE)
   @ApiOperation({ summary: 'POST import' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
@@ -84,7 +88,7 @@ export class EmployeesController {
     return this.employeesService.importRecords(body.records, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
   @RequirePermissions(Permission.EMPLOYEE_READ)
   @ApiOperation({ summary: 'GET /' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
@@ -96,7 +100,7 @@ export class EmployeesController {
     return this.employeesService.findAll(req.user);
   }
 
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR)
   @RequirePermissions(Permission.EMPLOYEE_READ)
   @ApiOperation({ summary: 'GET deleted' })
   @ApiResponse({
@@ -108,7 +112,7 @@ export class EmployeesController {
     return this.employeesService.findDeleted(req.user);
   }
 
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR)
   @RequirePermissions(Permission.EMPLOYEE_UPDATE)
   @ApiOperation({ summary: 'PATCH :id/restore' })
   @ApiResponse({ status: 200, description: 'Employee restored successfully.' })
@@ -120,7 +124,7 @@ export class EmployeesController {
     return this.employeesService.restore(id, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
   @RequirePermissions(Permission.EMPLOYEE_READ)
   @ApiOperation({ summary: 'GET :id' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
@@ -135,7 +139,7 @@ export class EmployeesController {
     return this.employeesService.findOne(id, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
   @RequirePermissions(Permission.EMPLOYEE_UPDATE)
   @ApiOperation({ summary: 'PATCH :id' })
   @ApiResponse({ status: 200, description: 'PATCH request successful.' })
@@ -152,7 +156,7 @@ export class EmployeesController {
     return this.employeesService.update(id, updateEmployeeDto, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR)
   @RequirePermissions(Permission.EMPLOYEE_DELETE)
   @ApiOperation({ summary: 'DELETE :id' })
   @ApiResponse({ status: 200, description: 'DELETE request successful.' })

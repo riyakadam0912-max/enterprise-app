@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { getContact, Contact } from '@/api/contactsApi';
@@ -30,9 +31,19 @@ export default function ContactDetailsPage() {
   return (
     <div className="space-y-4 p-6">
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h1 className="text-xl font-semibold text-slate-800">{contact.contactName}</h1>
-        <p className="mt-1 text-sm text-slate-500">{contact.company ?? 'No company'}</p>
-        <p className="text-sm text-slate-500">{contact.email ?? 'No email'}</p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-slate-800">{contact.contactName}</h1>
+            <p className="mt-1 text-sm text-slate-500">{contact.company ?? 'No company'}</p>
+            <p className="text-sm text-slate-500">{contact.email ?? 'No email'}</p>
+          </div>
+          <Link
+            href={`/dashboard/contacts/${id}/edit`}
+            className="inline-flex items-center rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 transition-colors"
+          >
+            Edit
+          </Link>
+        </div>
       </div>
 
       <ActivityTimeline activities={activities} title="Contact Activity" />

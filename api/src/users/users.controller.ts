@@ -49,7 +49,11 @@ export class UsersController {
     @Body() createUserDto: CreateUserDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.usersService.create(createUserDto, req.user);
+    return this.usersService.create(
+      createUserDto,
+      req.user,
+      req.organizationId ?? req.user.organizationId,
+    );
   }
 
   @Roles(Role.ADMIN)

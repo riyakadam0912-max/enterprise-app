@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import {
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
@@ -14,12 +15,11 @@ import type { AuthTokenPayload } from '../auth/auth.service';
 @WebSocketGateway({
   namespace: '/notifications',
   cors: {
-    origin: true,
     credentials: true,
   },
 })
 export class NotificationsGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {
   @WebSocketServer()
   server!: Server;
@@ -30,6 +30,61 @@ export class NotificationsGateway
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
   ) {}
+
+  afterInit() {
+    const nodeEnv = (
+      this.configService.get<string>('NODE_ENV') || 'development'
+    ).toLowerCase();
+    const isProduction = nodeEnv === 'production';
+
+    const primaryFrontendUrl =
+      this.configService.get<string>('FRONTEND_URL') ??
+      this.configService.get<string>('FRONTEND_ORIGIN');
+    const configuredOrigins = (
+      this.configService.get<string>('FRONTEND_URLS') ??
+      this.configService.get<string>('FRONTEND_ORIGINS') ??
+      ''
+    )
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean);
+    const allowedOrigins = new Set(
+      [primaryFrontendUrl, ...configuredOrigins].filter(
+        (origin): origin is string => Boolean(origin),
+      ),
+    );
+
+    this.server.engine.opts.cors = {
+      ...(this.server.engine.opts.cors ?? {}),
+      origin: (
+        origin: string | undefined,
+        callback: (err: Error | null, allow?: boolean) => void,
+      ) => {
+        if (!origin) {
+          callback(null, true);
+          return;
+        }
+        if (allowedOrigins.has(origin)) {
+          callback(null, true);
+          return;
+        }
+        if (
+          !isProduction &&
+          (origin === 'http://localhost:3001' ||
+            /^http:\/\/127\.0\.0\.1:3001$/.test(origin) ||
+            /^http:\/\/192\.168\.\d+\.\d+:3001$/.test(origin))
+        ) {
+          callback(null, true);
+          return;
+        }
+        this.logger.warn(
+          `[NotificationsGateway] CORS blocked for WebSocket origin: ${origin}`,
+        );
+        callback(new Error(`CORS blocked for origin: ${origin}`), false);
+      },
+      credentials: true,
+    };
+  }
 
   handleConnection(client: Socket) {
     const payload = this.authenticate(client);

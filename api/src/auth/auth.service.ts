@@ -804,41 +804,56 @@ export class AuthService {
   async bootstrapSuperAdmin() {
     await this.seedPermissionsAndRolesIfNeeded();
 
-    const existingSuperAdmin = await this.prisma.user.findFirst({
-      where: {
-        OR: [{ role: Role.SUPER_ADMIN }, { email: 'superadmin@erp.local' }],
-      },
-    });
+    const email =
+      this.configService.get<string>('BOOTSTRAP_SUPER_ADMIN_EMAIL')?.trim() ??
+      'edadmin@ekdrishti.com';
+    const rawPassword = this.getBootstrapPassword(
+      'BOOTSTRAP_SUPER_ADMIN_PASSWORD',
+      'Super Admin',
+    );
+    const [existingByEmail, existingSuperAdmins] = await Promise.all([
+      this.prisma.user.findUnique({ where: { email } }),
+      this.prisma.user.findMany({ where: { role: Role.SUPER_ADMIN } }),
+    ]);
 
-    let superAdmin;
-    if (existingSuperAdmin) {
-      superAdmin = await this.prisma.user.update({
-        where: { id: existingSuperAdmin.id },
-        data: {
-          name: 'Super Admin User',
-          email: 'superadmin@erp.local',
-          role: Role.SUPER_ADMIN,
-          isActive: true,
-          organizationId: null,
-        },
-      });
-    } else {
-      const rawPassword = this.getBootstrapPassword(
-        'BOOTSTRAP_SUPER_ADMIN_PASSWORD',
-        'Super Admin',
+    if (existingByEmail && existingByEmail.role !== Role.SUPER_ADMIN) {
+      throw new ConflictException(
+        'Super Admin email already belongs to another user',
       );
-      const hashedPassword = await bcrypt.hash(rawPassword, 10);
-      superAdmin = await this.prisma.user.create({
-        data: {
-          name: 'Super Admin User',
-          email: 'superadmin@erp.local',
-          password: hashedPassword,
-          role: Role.SUPER_ADMIN,
-          isActive: true,
-          organizationId: null,
-        },
-      });
     }
+
+    const existingSuperAdmin = existingByEmail ?? existingSuperAdmins[0];
+    if (existingSuperAdmins.length > 1) {
+      throw new ConflictException(
+        'Multiple Super Admin users require manual reconciliation',
+      );
+    }
+
+    const hashedPassword = await bcrypt.hash(rawPassword, 10);
+    const superAdmin = existingSuperAdmin
+      ? await this.prisma.user.update({
+          where: { id: existingSuperAdmin.id },
+          data: {
+            name: 'Chinmay Shivdikar',
+            email,
+            password: hashedPassword,
+            role: Role.SUPER_ADMIN,
+            isActive: true,
+            employeeId: null,
+            organizationId: null,
+          },
+        })
+      : await this.prisma.user.create({
+          data: {
+            name: 'Chinmay Shivdikar',
+            email,
+            password: hashedPassword,
+            role: Role.SUPER_ADMIN,
+            isActive: true,
+            employeeId: null,
+            organizationId: null,
+          },
+        });
 
     const appRole = await this.prisma.appRole.upsert({
       where: { name: Role.SUPER_ADMIN },
@@ -862,6 +877,27 @@ export class AuthService {
         roleId: appRole.id,
       },
     });
+
+    const allPermissions = await this.prisma.permission.findMany({
+      select: { id: true },
+    });
+    await Promise.all(
+      allPermissions.map((permission) =>
+        this.prisma.rolePermission.upsert({
+          where: {
+            roleId_permissionId: {
+              roleId: appRole.id,
+              permissionId: permission.id,
+            },
+          },
+          update: {},
+          create: {
+            roleId: appRole.id,
+            permissionId: permission.id,
+          },
+        }),
+      ),
+    );
 
     return {
       message: existingSuperAdmin

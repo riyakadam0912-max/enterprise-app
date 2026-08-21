@@ -3,16 +3,17 @@
 import { useEffect, useMemo, useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { addEmployee, removeEmployee } from '@/hooks/useEmployees';
+import { addEmployee } from '@/hooks/useEmployees';
 import { apiClient } from '@/api/apiClient';
 import { canAccessUsers } from '@/utils/auth/permissions';
 import { reportError } from '@/lib/error-handling';
 import { PasswordInput } from '@/components/ui/password-input';
+import { useAuthSession } from '@/stores/auth-store';
 
 const DEPARTMENTS = ['Sales', 'Engineering', 'HR', 'Finance', 'Operations'] as const;
 const ROLES = ['EMPLOYEE', 'MANAGER', 'HR'] as const;
 
-type CurrentUserRole = 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
+type CurrentUserRole = 'SUPER_ADMIN' | 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
 
 interface ManagerOption {
   id: number;
@@ -20,18 +21,15 @@ interface ManagerOption {
   role: string;
 }
 
+const LOGIN_CREATION_ROLES: CurrentUserRole[] = ['SUPER_ADMIN', 'ADMIN', 'HR'];
+
 export default function AddEmployeePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [managerOptions, setManagerOptions] = useState<ManagerOption[]>([]);
-  const [currentRole] = useState<CurrentUserRole>(() => {
-    if (typeof window === 'undefined') {
-      return 'EMPLOYEE';
-    }
-
-    return (localStorage.getItem('role') ?? 'EMPLOYEE') as CurrentUserRole;
-  });
+  const authSession = useAuthSession();
+  const currentRole: CurrentUserRole = (authSession.role as CurrentUserRole) ?? 'EMPLOYEE';
 
   const [form, setForm] = useState({
     name: '',
@@ -62,7 +60,7 @@ export default function AddEmployeePage() {
   const inputCls = 'w-full px-4 py-2.5 rounded-lg border border-slate-300 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition text-sm';
   const selectCls = inputCls;
 
-  const canCreateLogin = currentRole === 'ADMIN';
+  const canCreateLogin = LOGIN_CREATION_ROLES.includes(currentRole);
   const selectedReportingManager = useMemo(
     () => managerOptions.find((manager) => String(manager.id) === form.reportingManagerId) ?? null,
     [form.reportingManagerId, managerOptions],
@@ -119,10 +117,9 @@ export default function AddEmployeePage() {
     }
 
     setLoading(true);
-    let createdEmployeeId: number | null = null;
 
     try {
-      const employee = await addEmployee({
+      await addEmployee({
         name: form.name.trim(),
         email: canCreateLogin ? form.email.trim() : undefined,
         department: form.department || undefined,
@@ -130,45 +127,22 @@ export default function AddEmployeePage() {
         hireDate: form.hireDate || undefined,
         manager: selectedReportingManager?.name || undefined,
         status: 'Active',
+        ...(canCreateLogin
+          ? {
+              password: form.password,
+              role: form.role as 'EMPLOYEE' | 'MANAGER' | 'HR',
+              ...(form.reportingManagerId
+                ? { managerId: Number(form.reportingManagerId) }
+                : {}),
+            }
+          : {}),
       });
-
-      createdEmployeeId = employee.id;
-
-      if (canCreateLogin) {
-        try {
-          const userPayload = {
-            name: form.name.trim(),
-            email: form.email.trim(),
-            password: form.password,
-            role: form.role,
-            employeeId: employee.id,
-            ...(form.reportingManagerId ? { managerId: Number(form.reportingManagerId) } : {}),
-          };
-
-          await apiClient('/users', {
-            method: 'POST',
-            body: JSON.stringify(userPayload),
-          });
-        } catch (error) {
-          await removeEmployee(createdEmployeeId).catch((cleanupError) => {
-            reportError(cleanupError, 'Employee cleanup failed');
-          });
-          reportError(error, 'Employee login creation failed');
-          setError('Employee profile created but login account failed. Please go to Users page to create login manually.');
-          return;
-        }
-      }
 
       if (typeof window !== 'undefined') {
         window.alert('Employee created successfully.');
       }
       router.push('/dashboard/employees');
     } catch (err) {
-      if (createdEmployeeId) {
-        await removeEmployee(createdEmployeeId).catch((cleanupError) => {
-          reportError(cleanupError, 'Employee cleanup failed');
-        });
-      }
       reportError(err, 'Failed to create employee');
       setError(err instanceof Error ? err.message : 'Failed to create employee');
     } finally {

@@ -37,8 +37,32 @@ export class DealsService {
     await this.cacheManager.del(DASHBOARD_CACHE_KEY);
   }
 
-  private validateOrganization(user: AuthUser): number {
+  private isPlatformAdmin(user: AuthUser): boolean {
+    return (
+      user?.role === Role.SUPER_ADMIN ||
+      user?.isSuperAdmin === true ||
+      user?.isPlatformAdmin === true ||
+      (Array.isArray(user?.roles) && user.roles.includes(Role.SUPER_ADMIN))
+    );
+  }
+
+  private resolveReadScope(user: AuthUser): number | null {
+    if (this.isPlatformAdmin(user) && !user.organizationId) {
+      return null;
+    }
     if (!user.organizationId) {
+      throw new ForbiddenException('User has no associated organization');
+    }
+    return user.organizationId;
+  }
+
+  private requireWriteOrganization(user: AuthUser): number {
+    if (!user.organizationId) {
+      if (this.isPlatformAdmin(user)) {
+        throw new ForbiddenException(
+          'Select an organization before modifying data',
+        );
+      }
       throw new ForbiddenException('User has no associated organization');
     }
     return user.organizationId;
@@ -71,7 +95,7 @@ export class DealsService {
   }
 
   async create(dto: CreateDealDto, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = this.requireWriteOrganization(user);
     const data: Prisma.DealCreateInput = {
       organization: { connect: { id: organizationId } },
       title: dto.title,
@@ -104,11 +128,11 @@ export class DealsService {
   }
 
   async findAll(user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const orgScope = this.resolveReadScope(user);
     const employee = await this.resolveEmployeeScope(user);
     return this.prisma.deal.findMany({
       where: {
-        organizationId,
+        ...(orgScope !== null ? { organizationId: orgScope } : {}),
         deletedAt: null,
         ...(employee
           ? {
@@ -122,11 +146,15 @@ export class DealsService {
   }
 
   async findOne(id: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const orgScope = this.resolveReadScope(user);
     const employee = await this.resolveEmployeeScope(user);
 
     const deal = await this.prisma.deal.findFirst({
-      where: { id, organizationId, deletedAt: null },
+      where: {
+        id,
+        ...(orgScope !== null ? { organizationId: orgScope } : {}),
+        deletedAt: null,
+      },
       include: includeRelations,
     });
     if (!deal) throw new NotFoundException(`Deal #${id} not found`);
@@ -141,7 +169,7 @@ export class DealsService {
   }
 
   async update(id: number, dto: UpdateDealDto, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = this.requireWriteOrganization(user);
     const currentDeal = await this.findOne(id, user);
 
     const data: Prisma.DealUpdateInput = {};
@@ -199,7 +227,7 @@ export class DealsService {
   }
 
   async remove(id: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = this.requireWriteOrganization(user);
     await this.findOne(id, user);
     const result = await this.prisma.deal.update({
       where: { id, organizationId },
@@ -213,7 +241,7 @@ export class DealsService {
     records: Array<Record<string, unknown>>,
     user: AuthUser,
   ): Promise<{ imported: number; errors: string[] }> {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = this.requireWriteOrganization(user);
     let imported = 0;
     const errors: string[] = [];
     for (let i = 0; i < records.length; i++) {
@@ -276,12 +304,12 @@ export class DealsService {
   }
 
   async getPipeline(user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const orgScope = this.resolveReadScope(user);
     const employee = await this.resolveEmployeeScope(user);
 
     const deals = await this.prisma.deal.findMany({
       where: {
-        organizationId,
+        ...(orgScope !== null ? { organizationId: orgScope } : {}),
         deletedAt: null,
         ...(employee
           ? {

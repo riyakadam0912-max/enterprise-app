@@ -1,11 +1,13 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
+import { Role } from '../common/enums/role.enum';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateInvoiceDto } from './dto/update-invoice.dto';
@@ -70,15 +72,39 @@ export class InvoicesService {
     private readonly configService: ConfigService,
   ) {}
 
-  private validateOrganization(user: AuthUser): number {
+  private isPlatformAdmin(user: AuthUser): boolean {
+    return (
+      user?.role === Role.SUPER_ADMIN ||
+      user?.isSuperAdmin === true ||
+      user?.isPlatformAdmin === true ||
+      (Array.isArray(user?.roles) && user.roles.includes(Role.SUPER_ADMIN))
+    );
+  }
+
+  private resolveReadScope(user: AuthUser): number | null {
+    if (this.isPlatformAdmin(user) && !user.organizationId) {
+      return null;
+    }
     if (!user.organizationId) {
-      throw new BadRequestException('User has no associated organization');
+      throw new ForbiddenException('User has no associated organization');
+    }
+    return user.organizationId;
+  }
+
+  private requireWriteOrganization(user: AuthUser): number {
+    if (!user.organizationId) {
+      if (this.isPlatformAdmin(user)) {
+        throw new ForbiddenException(
+          'Select an organization before modifying data',
+        );
+      }
+      throw new ForbiddenException('User has no associated organization');
     }
     return user.organizationId;
   }
 
   async create(dto: CreateInvoiceDto, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = this.requireWriteOrganization(user);
     return this.prisma.invoice.create({
       data: {
         organization: { connect: { id: organizationId } },
@@ -100,18 +126,25 @@ export class InvoicesService {
   }
 
   async findAll(user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const orgScope = this.resolveReadScope(user);
     return this.prisma.invoice.findMany({
-      where: { organizationId, deletedAt: null },
+      where: {
+        ...(orgScope !== null ? { organizationId: orgScope } : {}),
+        deletedAt: null,
+      },
       orderBy: { createdAt: 'desc' },
       include: includeRelations,
     });
   }
 
   async findOne(id: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const orgScope = this.resolveReadScope(user);
     const inv = await this.prisma.invoice.findFirst({
-      where: { id, organizationId, deletedAt: null },
+      where: {
+        id,
+        ...(orgScope !== null ? { organizationId: orgScope } : {}),
+        deletedAt: null,
+      },
       include: includeRelations,
     });
     if (!inv) throw new NotFoundException(`Invoice #${id} not found`);
@@ -119,7 +152,7 @@ export class InvoicesService {
   }
 
   async update(id: number, dto: UpdateInvoiceDto, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = this.requireWriteOrganization(user);
     await this.findOne(id, user);
     const data: Prisma.InvoiceUpdateInput = {};
     if (dto.invoiceNo !== undefined) data.invoiceNo = dto.invoiceNo;
@@ -145,7 +178,7 @@ export class InvoicesService {
 
   async sendInvoice(id: number, dto: SendInvoiceDto = {}, user: AuthUser) {
     this.logger.log('[sendInvoice] Called with invoice id:', id);
-    const organizationId = this.validateOrganization(user);
+    const organizationId = this.requireWriteOrganization(user);
     const invoice = await this.findOne(id, user);
     const parsedNotes = parseNotes(invoice.notes);
     const recipientEmail = String(
@@ -388,7 +421,7 @@ export class InvoicesService {
   }
 
   async remove(id: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = this.requireWriteOrganization(user);
     await this.findOne(id, user);
     return this.prisma.invoice.update({
       where: { id, organizationId },
@@ -400,7 +433,7 @@ export class InvoicesService {
     records: Array<Record<string, unknown>>,
     user: AuthUser,
   ): Promise<{ imported: number; errors: string[] }> {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = this.requireWriteOrganization(user);
     let imported = 0;
     const errors: string[] = [];
     for (let i = 0; i < records.length; i++) {
@@ -462,9 +495,12 @@ export class InvoicesService {
   }
 
   async getByStatus(user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const orgScope = this.resolveReadScope(user);
     const invoices = await this.prisma.invoice.findMany({
-      where: { organizationId, deletedAt: null },
+      where: {
+        ...(orgScope !== null ? { organizationId: orgScope } : {}),
+        deletedAt: null,
+      },
       include: includeRelations,
       orderBy: { createdAt: 'desc' },
     });

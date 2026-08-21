@@ -3,6 +3,8 @@ import type { Employee } from '@/types/entities';
 
 export type { Employee };
 
+export type EmployeeRole = 'EMPLOYEE' | 'MANAGER' | 'HR';
+
 export interface CreateEmployeePayload {
   name: string;
   email?: string;
@@ -13,6 +15,9 @@ export interface CreateEmployeePayload {
   manager?: string;
   leaveBalance?: number;
   status?: string;
+  password?: string;
+  role?: EmployeeRole;
+  managerId?: number;
 }
 
 export type UpdateEmployeePayload = Partial<CreateEmployeePayload>;

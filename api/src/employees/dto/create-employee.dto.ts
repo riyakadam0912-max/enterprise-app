@@ -1,5 +1,16 @@
-import { IsString, IsNotEmpty, IsOptional, IsNumber } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsNumber,
+  MinLength,
+  IsInt,
+  IsIn,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Role } from '../../common/enums/role.enum';
+
+const EMPLOYEE_ALLOWED_ROLES: string[] = [Role.EMPLOYEE, Role.MANAGER, Role.HR];
 
 export class CreateEmployeeDto {
   @IsString()
@@ -46,4 +57,32 @@ export class CreateEmployeeDto {
   @IsString()
   @ApiPropertyOptional({ example: 'ACTIVE' })
   status?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(6)
+  @ApiPropertyOptional({
+    example: 'sample-password',
+    description:
+      'If provided, a login User account will be created for this employee.',
+  })
+  password?: string;
+
+  @IsOptional()
+  @IsIn(EMPLOYEE_ALLOWED_ROLES)
+  @ApiPropertyOptional({
+    example: 'EMPLOYEE',
+    description:
+      'Role for the login account. Used only when password is provided. Defaults to EMPLOYEE. Allowed: EMPLOYEE, MANAGER, HR.',
+  })
+  role?: Role;
+
+  @IsOptional()
+  @IsInt()
+  @ApiPropertyOptional({
+    example: 10,
+    description:
+      'Manager user ID for the login account. Used only when password is provided.',
+  })
+  managerId?: number;
 }
