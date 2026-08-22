@@ -12,7 +12,11 @@ import {
   DelegateMock,
 } from '../../test/helpers/mocks.helper';
 import { Role } from '../common/enums/role.enum';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { AuthUser } from '../common/types/auth';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateInvoiceDto as _UpdateInvoiceDto } from './dto/update-invoice.dto';
@@ -86,18 +90,28 @@ describe('InvoicesService', () => {
     expect(service).toBeDefined();
   });
 
-  describe('validateOrganization', () => {
-    it('should throw BadRequestException if user has no organizationId', async () => {
+  describe('requireWriteOrganization (organization enforcement)', () => {
+    it('should throw ForbiddenException if user has no organizationId', async () => {
       await expect(
         service.create(
           createInvoiceDto(),
           createMockAuthUser(Role.ADMIN, { organizationId: null }),
         ),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw ForbiddenException when SUPER_ADMIN platform user has no organizationId selected', async () => {
+      const platformAdmin = createMockAuthUser(Role.SUPER_ADMIN, {
+        organizationId: null,
+        isSuperAdmin: true,
+      });
+      await expect(
+        service.create(createInvoiceDto(), platformAdmin),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('should return organizationId if valid', () => {
-      const result = (service as any).validateOrganization(mockAdminUser);
+      const result = (service as any).requireWriteOrganization(mockAdminUser);
       expect(result).toBe(1);
     });
   });
