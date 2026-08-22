@@ -6,17 +6,23 @@ import { extractApiErrorMessage, normalizeMessage } from '@/lib/api-errors';
 export class ApiError extends Error {
   status?: number;
   response?: unknown;
+  code?: string;
+  requestId?: string;
 
   constructor(
     message: string,
     status?: number,
     response?: unknown,
+    code?: string,
+    requestId?: string,
   ) {
     super(message);
 
     this.name = 'ApiError';
     this.status = status;
     this.response = response;
+    this.code = code;
+    this.requestId = requestId;
   }
 }
 
@@ -90,6 +96,10 @@ function unwrapEnvelope<T>(payload: unknown): T {
     if (rec.success === false) {
       throw new ApiError(
         typeof rec.message === 'string' ? rec.message : 'API request failed',
+        undefined,
+        rec,
+        typeof rec.code === 'string' ? rec.code : undefined,
+        typeof rec.requestId === 'string' ? rec.requestId : undefined,
       );
     }
     current = rec.data;
@@ -172,6 +182,13 @@ export async function apiClient<T>(
         ),
         status,
         error.response,
+        typeof error.response.data === 'object' && error.response.data
+          ? (error.response.data as { code?: string }).code
+          : undefined,
+        error.response.headers?.['x-request-id'] ??
+          (typeof error.response.data === 'object' && error.response.data
+            ? (error.response.data as { requestId?: string }).requestId
+            : undefined),
       );
     }
 

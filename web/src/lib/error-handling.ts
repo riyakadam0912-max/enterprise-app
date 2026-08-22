@@ -1,17 +1,10 @@
 'use client';
 
 import { toast } from '@/providers/toast-provider';
+import { extractApiErrorMessage } from '@/lib/api-errors';
 
 export function getErrorMessage(error: unknown, fallback = 'Something went wrong') {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === 'string' && error.trim().length > 0) return error;
-  if (typeof error === 'object' && error !== null && 'message' in error) {
-    const maybeMessage = (error as { message?: unknown }).message;
-    if (typeof maybeMessage === 'string' && maybeMessage.trim().length > 0) {
-      return maybeMessage;
-    }
-  }
-  return fallback;
+  return extractApiErrorMessage(error, fallback);
 }
 
 export function reportError(error: unknown, title = 'Request failed') {

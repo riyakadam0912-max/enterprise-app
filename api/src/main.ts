@@ -7,11 +7,23 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import { randomBytes } from 'crypto';
+import type { NextFunction, Request, Response } from 'express';
 
 async function bootstrap() {
   const PORT = Number(process.env.PORT ?? 3000);
 
   const app = await NestFactory.create(AppModule);
+  app.use((request: Request, response: Response, next: NextFunction) => {
+    const incoming = request.header('x-request-id');
+    const requestId =
+      incoming && /^[A-Za-z0-9._:-]{1,80}$/.test(incoming)
+        ? incoming
+        : `ERR-${randomBytes(4).toString('hex').toUpperCase()}`;
+    request.headers['x-request-id'] = requestId;
+    response.setHeader('X-Request-Id', requestId);
+    next();
+  });
   const configService = app.get(ConfigService);
   app.setGlobalPrefix('api/v1');
 
@@ -92,7 +104,7 @@ async function bootstrap() {
       'Cookie',
       'X-Organization-Id',
     ],
-    exposedHeaders: ['Set-Cookie'],
+    exposedHeaders: ['Set-Cookie', 'X-Request-Id'],
   });
 
   app.useGlobalInterceptors(new TransformInterceptor());

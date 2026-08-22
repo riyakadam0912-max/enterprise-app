@@ -5,7 +5,6 @@ import * as XLSX from 'xlsx';
 import { Download, FileSpreadsheet, Filter, RefreshCw, Search, ShieldAlert, X } from 'lucide-react';
 import { canAccessAuditLogs } from '@/utils/auth/permissions';
 import { AuditLogEntry, AuditLogFilters, getAuditLogs } from '@/api/auditLogsApi';
-import { useAuthSession } from '@/stores/auth-store';
 
 const MODULE_OPTIONS = ['All', 'Auth', 'Users', 'HR', 'Attendance', 'Leave', 'Payroll', 'Tasks', 'Projects', 'CRM', 'Accounting', 'Inventory', 'Assets', 'Roles & Permissions'];
 const ACTION_OPTIONS = ['All', 'CREATE', 'UPDATE', 'DELETE', 'LOGIN_SUCCESS', 'LOGIN_FAILURE', 'LOGOUT', 'CUSTOM_ACTION'];
@@ -57,8 +56,10 @@ function downloadFile(name: string, content: string, type: string) {
 }
 
 export default function AuditLogsPage() {
-  const authSession = useAuthSession();
-  const role = authSession.role ?? 'ADMIN';
+  const [role] = useState<string>(() => {
+    if (typeof window === 'undefined') return 'ADMIN';
+    return window.localStorage.getItem('role') ?? 'ADMIN';
+  });
   const [items, setItems] = useState<AuditLogEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);

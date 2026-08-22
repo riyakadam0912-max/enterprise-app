@@ -221,6 +221,10 @@ axiosClient.interceptors.response.use(
 
         clearAuthState();
 
+        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+          window.location.assign('/login');
+        }
+
         return Promise.reject(refreshError);
 
       }

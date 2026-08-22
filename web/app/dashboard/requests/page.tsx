@@ -12,7 +12,6 @@ import {
 } from '../../../src/api/leaveRequestsApi';
 import TableActions from '@/components/common/TableActions';
 import { reportError, retryAsync } from '@/lib/error-handling';
-import { useAuthSession } from '@/stores/auth-store';
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING_MANAGER: 'bg-amber-100 text-amber-700',
@@ -53,8 +52,7 @@ export default function AllRequestsPage() {
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
-  const authSession = useAuthSession();
-  const role = authSession.role ?? 'EMPLOYEE';
+  const role = typeof window !== 'undefined' ? (localStorage.getItem('role') ?? 'EMPLOYEE') : 'EMPLOYEE';
   const canManagerApprove = role === 'MANAGER' || role === 'ADMIN';
   const canHrApprove = role === 'HR' || role === 'ADMIN';
 

@@ -16,7 +16,7 @@ export function normalizeRole(role?: string | null): AppRole | null {
 
 export function isAdmin(role?: string | null): boolean {
   const normalized = normalizeRole(role);
-  return normalized === 'SUPER_ADMIN' || normalized === 'ADMIN' || normalized === 'COMPLIANCE_MANAGER' || normalized === 'HR';
+  return normalized === 'SUPER_ADMIN' || normalized === 'ADMIN' || normalized === 'COMPLIANCE_MANAGER';
 }
 
 export function isManager(role?: string | null): boolean {
@@ -25,15 +25,15 @@ export function isManager(role?: string | null): boolean {
 
 export function canManageProjects(role?: string | null): boolean {
   const normalized = normalizeRole(role);
-  return normalized === 'SUPER_ADMIN' || normalized === 'ADMIN' || normalized === 'COMPLIANCE_MANAGER' || normalized === 'MANAGER' || normalized === 'HR';
+  return normalized === 'SUPER_ADMIN' || normalized === 'ADMIN' || normalized === 'COMPLIANCE_MANAGER' || normalized === 'MANAGER';
 }
 
 export function canAccessUsers(role?: string | null): boolean {
   const normalized = normalizeRole(role);
-  return normalized === 'SUPER_ADMIN' || normalized === 'ADMIN' || normalized === 'COMPLIANCE_MANAGER' || normalized === 'HR';
+  return normalized === 'SUPER_ADMIN' || normalized === 'ADMIN' || normalized === 'COMPLIANCE_MANAGER';
 }
 
 export function canAccessAuditLogs(role?: string | null): boolean {
   const normalized = normalizeRole(role);
-  return normalized === 'SUPER_ADMIN' || normalized === 'ADMIN' || normalized === 'COMPLIANCE_MANAGER' || normalized === 'HR';
+  return normalized === 'SUPER_ADMIN' || normalized === 'ADMIN' || normalized === 'COMPLIANCE_MANAGER';
 }

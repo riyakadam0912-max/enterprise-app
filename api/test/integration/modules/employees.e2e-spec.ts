@@ -161,11 +161,8 @@ describe('Employees - CRUD Integration', () => {
         .set(loginResult.authHeaders);
       expect([200, 404]).toContain(meResponse.status);
       if (meResponse.status === 200) {
-        const me = meResponse.body?.success
-          ? meResponse.body.data
-          : meResponse.body;
-        expect(me?.user?.email ?? me?.email).toBe(newEmployeeEmail);
-        expect(me?.employeeId).toBe(employeeId);
+        expect(meResponse.body?.email).toBe(newEmployeeEmail);
+        expect(meResponse.body?.employeeId).toBe(employeeId);
       }
     });
 

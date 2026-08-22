@@ -8,7 +8,6 @@ import { apiClient } from '@/api/apiClient';
 import { canAccessUsers } from '@/utils/auth/permissions';
 import { reportError } from '@/lib/error-handling';
 import { PasswordInput } from '@/components/ui/password-input';
-import { useAuthSession } from '@/stores/auth-store';
 
 const DEPARTMENTS = ['Sales', 'Engineering', 'HR', 'Finance', 'Operations'] as const;
 const ROLES = ['EMPLOYEE', 'MANAGER', 'HR'] as const;
@@ -28,8 +27,13 @@ export default function AddEmployeePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [managerOptions, setManagerOptions] = useState<ManagerOption[]>([]);
-  const authSession = useAuthSession();
-  const currentRole: CurrentUserRole = (authSession.role as CurrentUserRole) ?? 'EMPLOYEE';
+  const [currentRole] = useState<CurrentUserRole>(() => {
+    if (typeof window === 'undefined') {
+      return 'EMPLOYEE';
+    }
+
+    return (localStorage.getItem('role') ?? 'EMPLOYEE') as CurrentUserRole;
+  });
 
   const [form, setForm] = useState({
     name: '',

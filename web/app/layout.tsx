@@ -5,6 +5,7 @@ import ReactQueryProvider from "@/components/providers/ReactQueryProvider";
 import BackendHealthProvider from "@/components/providers/BackendHealthProvider";
 import { DesignSystemProvider } from "@/providers/design-system-provider";
 import { AuthProvider } from '@/providers/AuthProvider';
+import GlobalErrorListener from '@/providers/global-error-listener';
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -36,7 +37,7 @@ export default function RootLayout({
         <ReactQueryProvider>
           <BackendHealthProvider>
             <DesignSystemProvider>
-              <AuthProvider>{children}</AuthProvider>
+              <GlobalErrorListener><AuthProvider>{children}</AuthProvider></GlobalErrorListener>
             </DesignSystemProvider>
           </BackendHealthProvider>
         </ReactQueryProvider>
