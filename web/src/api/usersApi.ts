@@ -53,6 +53,13 @@ export async function updateUser(id: number, payload: UpdateUserPayload): Promis
   });
 }
 
+export async function updateUserRole(id: number, role: string): Promise<UserRecord> {
+  return apiClient<UserRecord>(`/users/${id}/role`, {
+    method: 'PATCH',
+    body: JSON.stringify({ role }),
+  });
+}
+
 export async function activateUser(id: number): Promise<UserRecord> {
   return apiClient<UserRecord>(`/users/${id}/activate`, {
     method: 'PATCH',

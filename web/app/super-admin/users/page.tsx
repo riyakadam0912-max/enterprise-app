@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Search, UserPlus, X } from 'lucide-react';
-import { activateUser, createUser, deactivateUser, deleteUser, listUsers, type UserRecord } from '@/api/usersApi';
+import { activateUser, createUser, deactivateUser, deleteUser, listUsers, updateUserRole, type UserRecord } from '@/api/usersApi';
 import { SuperAdminPageShell } from '@/components/super-admin/SuperAdminPageShell';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -98,6 +98,21 @@ export default function SuperAdminUsers() {
     }
   };
 
+  const handleRoleChange = async (user: UserRecord, role: string) => {
+    if (role === user.role) return;
+    setActioningUserId(user.id);
+    try {
+      await updateUserRole(user.id, role);
+      toast.success('Role updated', `${user.name} is now ${role}.`);
+      await loadUsers();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to change role';
+      toast.error('Role update failed', message);
+    } finally {
+      setActioningUserId(null);
+    }
+  };
+
   const handleDelete = async (user: UserRecord) => {
     if (!window.confirm(`Delete ${user.name}? This action cannot be undone.`)) {
       return;
@@ -157,9 +172,9 @@ export default function SuperAdminUsers() {
             </thead>
             <tbody className="divide-y divide-slate-200/70">
               {loading ? (
-                <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-slate-500">Loading users…</td></tr>
+                <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-500">Loading users…</td></tr>
               ) : filteredUsers.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-slate-500">No users match your filters.</td></tr>
+                <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-500">No users match your filters.</td></tr>
               ) : filteredUsers.map((user) => (
                 <tr key={user.id} className="transition hover:bg-slate-50/70">
                   <td className="px-4 py-4">
@@ -171,7 +186,22 @@ export default function SuperAdminUsers() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-4"><span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">{user.role}</span></td>
+                  <td className="px-4 py-4">
+                    <Select
+                      value={user.role}
+                      disabled={actioningUserId === user.id}
+                      onChange={(event) => void handleRoleChange(user, event.target.value)}
+                      className="min-w-44"
+                      aria-label={`Change role for ${user.name}`}
+                    >
+                      <option value="SUPER_ADMIN">Super Admin</option>
+                      <option value="ADMIN">Admin</option>
+                      <option value="COMPLIANCE_MANAGER">Compliance Manager</option>
+                      <option value="HR">HR</option>
+                      <option value="MANAGER">Manager</option>
+                      <option value="EMPLOYEE">Employee</option>
+                    </Select>
+                  </td>
                   <td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${user.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{user.isActive ? 'Active' : 'Inactive'}</span></td>
                   <td className="px-4 py-4 text-slate-700">{user.manager?.name ?? '—'}</td>
                   <td className="px-4 py-4 text-slate-600">{formatDate(user.createdAt)}</td>

@@ -231,6 +231,50 @@ export class UsersService {
     }
   }
 
+  async updateRole(id: number, role: Role, user: AuthUser) {
+    const organizationFilter = this.buildOrganizationFilter(user);
+    const existing = await this.prisma.user.findFirst({
+      where: { id, ...organizationFilter },
+    });
+    if (!existing) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (existing.id === user.id) {
+      throw new ForbiddenException('You cannot change your own role');
+    }
+
+    const isSuperAdmin =
+      user.role === Role.SUPER_ADMIN || user.isSuperAdmin === true;
+    const lowerRoles = new Set<Role>([
+      Role.COMPLIANCE_MANAGER,
+      Role.HR,
+      Role.MANAGER,
+      Role.EMPLOYEE,
+    ]);
+    if (!isSuperAdmin && !lowerRoles.has(role)) {
+      throw new ForbiddenException(
+        'Organization admins can assign lower-level roles only',
+      );
+    }
+
+    return this.prisma.user.update({
+      where: { id, organizationId: existing.organizationId },
+      data: { role },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        employeeId: true,
+        managerId: true,
+        manager: { select: { id: true, name: true } },
+        createdAt: true,
+      },
+    });
+  }
+
   async remove(id: number, user: AuthUser) {
     const organizationFilter = this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({

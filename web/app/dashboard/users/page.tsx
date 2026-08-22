@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/api/apiClient';
+import { updateUserRole } from '@/api/usersApi';
 import { useAuthSession } from '@/stores/auth-store';
 import { canAccessUsers } from '@/utils/auth/permissions';
 
@@ -10,7 +11,7 @@ interface UserAccount {
   id: number;
   name: string;
   email: string;
-  role: 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
+  role: 'SUPER_ADMIN' | 'ADMIN' | 'COMPLIANCE_MANAGER' | 'HR' | 'MANAGER' | 'EMPLOYEE';
   isActive: boolean;
   employeeId: number | null;
   managerId?: number | null;
@@ -24,6 +25,11 @@ export default function UsersPage() {
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actioningUserId, setActioningUserId] = useState<number | null>(null);
+  const isSuperAdmin = session.role === 'SUPER_ADMIN' || session.isSuperAdmin === true;
+  const roleOptions = isSuperAdmin
+    ? ['SUPER_ADMIN', 'ADMIN', 'COMPLIANCE_MANAGER', 'HR', 'MANAGER', 'EMPLOYEE']
+    : ['COMPLIANCE_MANAGER', 'HR', 'MANAGER', 'EMPLOYEE'];
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -46,6 +52,19 @@ export default function UsersPage() {
       setLoading(false);
     }
   }, [role, router]);
+
+  const handleRoleChange = async (user: UserAccount, nextRole: string) => {
+    if (nextRole === user.role || user.id === session.user?.id) return;
+    setActioningUserId(user.id);
+    try {
+      await updateUserRole(user.id, nextRole);
+      await loadData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update user role');
+    } finally {
+      setActioningUserId(null);
+    }
+  };
 
   useEffect(() => {
     void loadData();
@@ -104,13 +123,16 @@ export default function UsersPage() {
                       </td>
                       <td className="px-6 py-4 text-sm text-orange-500">{u.email}</td>
                       <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          u.role === 'ADMIN'
-                            ? 'bg-purple-100 text-purple-700'
-                            : 'bg-blue-100 text-blue-700'
-                        }`}>
-                          {u.role}
-                        </span>
+                        <select
+                          value={u.role}
+                          disabled={actioningUserId === u.id || u.id === session.user?.id}
+                          onChange={(event) => void handleRoleChange(u, event.target.value)}
+                          aria-label={`Change role for ${u.name}`}
+                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:bg-slate-100"
+                        >
+                          {!roleOptions.includes(u.role) ? <option value={u.role}>{u.role}</option> : null}
+                          {roleOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+                        </select>
                       </td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${

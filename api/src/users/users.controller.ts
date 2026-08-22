@@ -19,6 +19,7 @@ import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import { Role } from '../common/enums/role.enum';
 import {
   ApiBearerAuth,
@@ -101,6 +102,17 @@ export class UsersController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.usersService.update(parseInt(id, 10), updateUserDto, req.user);
+  }
+
+  @Roles(Role.ADMIN)
+  @RequirePermissions(Permission.USER_UPDATE)
+  @Patch(':id/role')
+  updateRole(
+    @Param('id') id: string,
+    @Body() body: UpdateUserRoleDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.usersService.updateRole(parseInt(id, 10), body.role, req.user);
   }
 
   @Roles(Role.ADMIN)
