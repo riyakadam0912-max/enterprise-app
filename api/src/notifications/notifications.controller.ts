@@ -157,4 +157,40 @@ export class NotificationsController {
       req.user.organizationId,
     );
   }
+
+  @ApiOperation({
+    summary:
+      'GET live delta-sync — polling fallback for disabled WebSocket realtime',
+  })
+  @ApiResponse({ status: 200, description: 'Delta sync result since cursor.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @Get('live')
+  findSince(
+    @Req() req: AuthenticatedRequest,
+    @Query('since') sinceISO: string,
+  ) {
+    const cursor =
+      typeof sinceISO === 'string' && sinceISO.trim().length > 0
+        ? sinceISO
+        : new Date(0).toISOString();
+    return this.notificationsService.findSince(
+      req.user.userId,
+      cursor,
+      req.user.organizationId,
+    );
+  }
+
+  @ApiOperation({
+    summary:
+      'GET counts — cheap polling endpoint returning unread count + latest cursor',
+  })
+  @ApiResponse({ status: 200, description: 'Notification counts snapshot.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @Get('counts')
+  getCounts(@Req() req: AuthenticatedRequest) {
+    return this.notificationsService.getCounts(
+      req.user.userId,
+      req.user.organizationId,
+    );
+  }
 }

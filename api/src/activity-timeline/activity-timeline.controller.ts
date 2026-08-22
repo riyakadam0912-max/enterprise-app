@@ -10,7 +10,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ActivityTimelineService } from './activity-timeline.service';
 import { QueryActivityTimelineDto } from './dto/query-activity-timeline.dto';
@@ -123,5 +123,53 @@ export class ActivityTimelineController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.timelineService.deleteTimelineEvent(id, req.user);
+  }
+
+  @ApiOperation({
+    summary:
+      'GET live delta-sync — polling fallback for disabled WebSocket realtime',
+  })
+  @ApiResponse({ status: 200, description: 'Delta sync result since cursor.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @Get('live')
+  getTimelineSince(
+    @Query('since') sinceISO: string,
+    @Query() query: QueryActivityTimelineDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const cursor =
+      typeof sinceISO === 'string' && sinceISO.trim().length > 0
+        ? sinceISO
+        : new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const parsedUserId =
+      typeof query.userId === 'string' && query.userId.trim().length > 0
+        ? Number(query.userId)
+        : null;
+    type TimelineSinceQuery = {
+      page?: number;
+      limit?: number;
+      search?: string;
+      module?: string;
+      eventType?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      entityType?: string;
+      entityId?: number;
+      userId?: number;
+      moduleName?: string;
+    };
+    const serviceQuery: TimelineSinceQuery = {
+      page: query.page,
+      limit: query.limit,
+      search: query.search,
+      module: query.module,
+      eventType: query.eventType,
+      dateFrom: query.dateFrom,
+      dateTo: query.dateTo,
+    };
+    if (parsedUserId !== null && Number.isFinite(parsedUserId)) {
+      serviceQuery.userId = parsedUserId;
+    }
+    return this.timelineService.getTimelineSince(cursor, serviceQuery, req.user);
   }
 }

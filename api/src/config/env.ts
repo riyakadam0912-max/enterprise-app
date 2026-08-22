@@ -2,6 +2,7 @@ type ServerEnv = {
   DATABASE_URL: string;
   PORT?: number;
   REDIS_ENABLED: boolean;
+  WEBSOCKET_ENABLED: boolean;
   FRONTEND_URL: string;
   FRONTEND_URLS: string;
   FRONTEND_ORIGIN: string;
@@ -218,6 +219,10 @@ export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
     String(env.NODE_ENV ?? process.env.NODE_ENV ?? 'development') ===
     'production';
 
+  const isVercel =
+    String(env.VERCEL ?? process.env.VERCEL ?? '') === '1' ||
+    String(env.VERCEL_ENV ?? process.env.VERCEL_ENV ?? '').length > 0;
+
   if (isProduction) {
     const jwtAccessSecret = normalizeEnvString(env.JWT_ACCESS_SECRET);
     const jwtRefreshSecret = normalizeEnvString(env.JWT_REFRESH_SECRET);
@@ -337,10 +342,30 @@ export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
     );
   }
 
+  const redisEnabledRaw = readOptionalBoolean(env, 'REDIS_ENABLED', false);
+  const redisEnabled = isVercel ? false : redisEnabledRaw;
+
+  const websocketEnabledRaw = readOptionalBoolean(env, 'WEBSOCKET_ENABLED', !isProduction);
+  const websocketEnabledVercelSafe = isVercel ? false : websocketEnabledRaw;
+  const websocketEnabled =
+    websocketEnabledVercelSafe &&
+    (redisEnabled || !isProduction)
+      ? true
+      : websocketEnabledVercelSafe && isProduction && !redisEnabled
+        ? false
+        : websocketEnabledVercelSafe;
+
+  if (isProduction && !isVercel && websocketEnabledRaw && !redisEnabled) {
+    throw new Error(
+      'Production WEBSOCKET_ENABLED=true requires REDIS_ENABLED=true and a shared Redis adapter. Either disable WebSocket realtime (WEBSOCKET_ENABLED=false) and use polling, or configure Redis + a persistent WebSocket host. On Vercel, WebSocket realtime is automatically disabled in favor of REST polling.',
+    );
+  }
+
   return {
     DATABASE_URL: readRequiredString(env, 'DATABASE_URL'),
     PORT: readOptionalNumber(env, 'PORT', 3000),
-    REDIS_ENABLED: readOptionalBoolean(env, 'REDIS_ENABLED', false),
+    REDIS_ENABLED: redisEnabled,
+    WEBSOCKET_ENABLED: websocketEnabled,
     FRONTEND_URL:
       readOptionalString(
         env,

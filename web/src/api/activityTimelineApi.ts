@@ -54,6 +54,10 @@ export interface ActivityTimelinePage {
   };
 }
 
+export interface ActivityTimelineLivePage extends ActivityTimelinePage {
+  syncCursor: string;
+}
+
 export interface ActivityTimelineQuery {
   page?: number;
   limit?: number;
@@ -62,6 +66,9 @@ export interface ActivityTimelineQuery {
   eventType?: string;
   dateFrom?: string;
   dateTo?: string;
+  entityType?: string;
+  entityId?: number;
+  userId?: number;
 }
 
 export interface CreateActivityTimelineCommentPayload {
@@ -84,6 +91,9 @@ function buildQueryString(params: ActivityTimelineQuery = {}) {
   if (params.eventType) searchParams.set('eventType', params.eventType);
   if (params.dateFrom) searchParams.set('dateFrom', params.dateFrom);
   if (params.dateTo) searchParams.set('dateTo', params.dateTo);
+  if (params.entityType) searchParams.set('entityType', params.entityType);
+  if (params.entityId) searchParams.set('entityId', String(params.entityId));
+  if (params.userId) searchParams.set('userId', String(params.userId));
 
   return searchParams.toString();
 }
@@ -91,6 +101,27 @@ function buildQueryString(params: ActivityTimelineQuery = {}) {
 export function getTimeline(params?: ActivityTimelineQuery): Promise<ActivityTimelinePage> {
   const query = buildQueryString(params);
   return apiClient<ActivityTimelinePage>(query ? `/timeline?${query}` : '/timeline');
+}
+
+export function getTimelineLive(
+  sinceISO?: string,
+  params?: ActivityTimelineQuery,
+): Promise<ActivityTimelineLivePage> {
+  const searchParams = new URLSearchParams();
+  if (sinceISO) searchParams.set('since', sinceISO);
+  const baseQuery = buildQueryString(params);
+  if (baseQuery) {
+    baseQuery.split('&').forEach((pair) => {
+      const [k, v] = pair.split('=');
+      if (k && v !== undefined) {
+        searchParams.set(decodeURIComponent(k), decodeURIComponent(v));
+      }
+    });
+  }
+  const query = searchParams.toString();
+  return apiClient<ActivityTimelineLivePage>(
+    query ? `/timeline/live?${query}` : '/timeline/live',
+  );
 }
 
 export function getEntityTimeline(entityType: string, entityId: number, params?: ActivityTimelineQuery): Promise<ActivityTimelinePage> {

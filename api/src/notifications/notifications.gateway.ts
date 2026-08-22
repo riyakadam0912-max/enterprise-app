@@ -24,13 +24,34 @@ export class NotificationsGateway
   server!: Server;
 
   private readonly logger = new Logger(NotificationsGateway.name);
+  private readonly enabled: boolean;
 
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-  ) {}
+  ) {
+    this.enabled =
+      this.configService.get<boolean>('WEBSOCKET_ENABLED') ?? false;
+    if (!this.enabled) {
+      this.logger.warn(
+        '[NotificationsGateway] WebSocket realtime disabled (WEBSOCKET_ENABLED=false). ' +
+          'In-app notifications still persist to Postgres and frontend will poll /notifications/live. ' +
+          'To enable realtime on a persistent host, set WEBSOCKET_ENABLED=true and configure REDIS_ENABLED=true.',
+      );
+    }
+  }
+
+  isEnabled(): boolean {
+    return this.enabled && Boolean(this.server);
+  }
 
   afterInit() {
+    if (!this.enabled) {
+      this.logger.log(
+        '[NotificationsGateway] WebSocket realtime disabled; skipping gateway engine setup.',
+      );
+      return;
+    }
     if (!this.server?.engine?.opts) {
       this.logger.warn(
         'Notification WebSocket server is unavailable; skipping Socket.IO CORS setup.',
@@ -93,6 +114,13 @@ export class NotificationsGateway
   }
 
   handleConnection(client: Socket) {
+    if (!this.enabled) {
+      this.logger.debug(
+        '[NotificationsGateway] Rejecting connection; WebSocket realtime disabled.',
+      );
+      client.disconnect(true);
+      return;
+    }
     const payload = this.authenticate(client);
     if (!payload) {
       client.disconnect(true);
@@ -119,18 +147,26 @@ export class NotificationsGateway
   }
 
   emitNotification(userId: number, notification: NotificationListItem) {
+    if (!this.isEnabled()) {
+      this.logger.debug(
+        `[NotificationsGateway] emitNotification skipped (disabled); notification persisted to DB for userId=${userId}.`,
+      );
+      return;
+    }
     this.server
       ?.to(this.getRoom(userId))
       .emit('notification:new', notification);
   }
 
   emitUnreadCount(userId: number, unreadCount: number) {
+    if (!this.isEnabled()) return;
     this.server
       ?.to(this.getRoom(userId))
       .emit('notification:unread-count', { count: unreadCount });
   }
 
   emitBulkRefresh(userId: number) {
+    if (!this.isEnabled()) return;
     this.server?.to(this.getRoom(userId)).emit('notification:refresh');
   }
 

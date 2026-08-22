@@ -535,6 +535,74 @@ export class ActivityTimelineService {
     };
   }
 
+  async getTimelineSince(
+    sinceISO: string,
+    query: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      module?: string;
+      eventType?: string;
+      entityType?: string;
+      entityId?: number;
+      userId?: number;
+      moduleName?: string;
+      dateFrom?: string;
+      dateTo?: string;
+    } = {},
+    user: AuthUser,
+  ) {
+    const organizationId = this.validateOrganization(user);
+    const sinceDate = new Date(sinceISO);
+    const validSince = !Number.isNaN(sinceDate.getTime())
+      ? sinceDate
+      : new Date(Date.now() - 60 * 60 * 1000);
+
+    const where: Prisma.ActivityTimelineWhereInput = {
+      organizationId,
+      createdAt: { gte: validSince },
+      ...(query.module ? { module: query.module } : {}),
+      ...(query.moduleName ? { module: query.moduleName } : {}),
+      ...(query.eventType
+        ? { eventType: { contains: query.eventType, mode: 'insensitive' } }
+        : {}),
+      ...(query.entityType && typeof query.entityId === 'number'
+        ? { entityType: query.entityType, entityId: query.entityId }
+        : {}),
+      ...(typeof query.userId === 'number'
+        ? {
+            OR: [
+              { performedBy: query.userId },
+              { assignedTo: query.userId },
+            ],
+          }
+        : {}),
+    };
+
+    const [total, items] = await this.prisma.$transaction([
+      this.prisma.activityTimeline.count({ where }),
+      this.prisma.activityTimeline.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+        include: { comments: { orderBy: { createdAt: 'asc' } } },
+      }),
+    ]);
+
+    return {
+      items: items.map((item) => this.toRecord(item)),
+      meta: {
+        page: 1,
+        limit: 100,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / 100)),
+        hasNextPage: 100 < total,
+        hasPreviousPage: false,
+      },
+      syncCursor: new Date().toISOString(),
+    };
+  }
+
   async deleteTimelineEvent(id: number, user: AuthUser) {
     const organizationId = this.validateOrganization(user);
     await this.prisma.activityTimelineComment.deleteMany({

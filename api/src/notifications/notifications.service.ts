@@ -643,6 +643,131 @@ export class NotificationsService {
     });
   }
 
+  async findSince(
+    userId: number,
+    sinceISO: string,
+    resolvedOrganizationId?: number | null,
+  ) {
+    try {
+      const organizationId = await this.resolveOrganizationId(
+        userId,
+        resolvedOrganizationId,
+      );
+      const sinceDate = new Date(sinceISO);
+      if (Number.isNaN(sinceDate.getTime())) {
+        return this.findAll(userId, { page: 1, limit: 20 }, organizationId);
+      }
+
+      const where: Prisma.NotificationRecipientWhereInput = {
+        userId,
+        organizationId,
+        OR: [
+          {
+            notification: {
+              createdAt: { gte: sinceDate },
+              organizationId,
+            },
+          },
+          { readAt: { gte: sinceDate } },
+          { deliveredAt: { gte: sinceDate } },
+        ],
+      };
+
+      const [total, rows] = await this.prisma.$transaction([
+        this.prisma.notificationRecipient.count({ where }),
+        this.prisma.notificationRecipient.findMany({
+          where,
+          include: { notification: true },
+          orderBy: { notification: { createdAt: 'desc' } },
+          take: 50,
+        }),
+      ]);
+
+      const unreadCount = await this.prisma.notificationRecipient.count({
+        where: { userId, organizationId, isRead: false },
+      });
+
+      return {
+        items: rows.map(normalizeListItem),
+        unreadCount,
+        meta: {
+          page: 1,
+          limit: 50,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / 50)),
+          hasNextPage: 50 < total,
+          hasPreviousPage: false,
+        },
+        syncCursor: new Date().toISOString(),
+      };
+    } catch (error) {
+      if (this.isSchemaDriftError(error)) {
+        return {
+          items: [],
+          unreadCount: 0,
+          meta: {
+            page: 1,
+            limit: 20,
+            total: 0,
+            totalPages: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+          },
+          syncCursor: new Date().toISOString(),
+        };
+      }
+      throw error;
+    }
+  }
+
+  async getCounts(userId: number, resolvedOrganizationId?: number | null) {
+    try {
+      const organizationId = await this.resolveOrganizationId(
+        userId,
+        resolvedOrganizationId,
+      );
+      const unreadCountPromise = this.prisma.notificationRecipient.count({
+        where: { userId, organizationId, isRead: false },
+      });
+      const latestNotificationPromise = this.prisma.notificationRecipient.findFirst({
+        where: { userId, organizationId },
+        include: { notification: true },
+        orderBy: { notification: { createdAt: 'desc' } },
+        take: 1,
+      });
+      const latestReadPromise = this.prisma.notificationRecipient.findFirst({
+        where: { userId, organizationId, isRead: true, readAt: { not: null } },
+        orderBy: { readAt: 'desc' },
+        take: 1,
+      });
+      const [unreadCount, latestNotification, latestRead] =
+        await this.prisma.$transaction([
+          unreadCountPromise,
+          latestNotificationPromise,
+          latestReadPromise,
+        ]);
+      return {
+        unreadCount,
+        latestNotificationId: latestNotification?.notificationId ?? null,
+        latestNotificationCreatedAt:
+          latestNotification?.notification.createdAt?.toISOString() ?? null,
+        latestReadAt: latestRead?.readAt?.toISOString() ?? null,
+        syncCursor: new Date().toISOString(),
+      };
+    } catch (error) {
+      if (this.isSchemaDriftError(error)) {
+        return {
+          unreadCount: 0,
+          latestNotificationId: null,
+          latestNotificationCreatedAt: null,
+          latestReadAt: null,
+          syncCursor: new Date().toISOString(),
+        };
+      }
+      throw error;
+    }
+  }
+
   async findAll(
     userId: number,
     query: QueryNotificationsDto = {},

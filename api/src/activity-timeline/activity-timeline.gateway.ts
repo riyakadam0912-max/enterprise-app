@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   OnGatewayConnection,
   OnGatewayDisconnect,
@@ -19,8 +20,31 @@ export class ActivityTimelineGateway
   server!: Server;
 
   private readonly logger = new Logger(ActivityTimelineGateway.name);
+  private readonly enabled: boolean;
+
+  constructor(private readonly configService: ConfigService) {
+    this.enabled =
+      this.configService.get<boolean>('WEBSOCKET_ENABLED') ?? false;
+    if (!this.enabled) {
+      this.logger.warn(
+        '[ActivityTimelineGateway] WebSocket realtime disabled (WEBSOCKET_ENABLED=false). ' +
+          'Timeline writes still persist to Postgres; in-app activity pages must refresh or poll.',
+      );
+    }
+  }
+
+  isEnabled(): boolean {
+    return this.enabled && Boolean(this.server);
+  }
 
   handleConnection(client: Socket) {
+    if (!this.enabled) {
+      this.logger.debug(
+        '[ActivityTimelineGateway] Rejecting connection; WebSocket realtime disabled.',
+      );
+      client.disconnect(true);
+      return;
+    }
     const userId = Number(
       client.handshake.auth?.userId ?? client.handshake.query?.userId ?? 0,
     );
@@ -46,6 +70,7 @@ export class ActivityTimelineGateway
     timelineId: number;
     performedBy?: number | null;
   }) {
+    if (!this.isEnabled()) return;
     this.server
       ?.to(this.entityRoom(payload.entityType, payload.entityId))
       .emit('timeline:new', payload);
@@ -57,10 +82,12 @@ export class ActivityTimelineGateway
   }
 
   emitUserRefresh(userId: number) {
+    if (!this.isEnabled()) return;
     this.server?.to(this.userRoom(userId)).emit('timeline:refresh');
   }
 
   emitEntityRefresh(entityType: string, entityId: number) {
+    if (!this.isEnabled()) return;
     this.server
       ?.to(this.entityRoom(entityType, entityId))
       .emit('timeline:refresh');

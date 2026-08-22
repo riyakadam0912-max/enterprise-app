@@ -30,6 +30,19 @@ export interface NotificationPage {
   };
 }
 
+export interface NotificationLivePage extends NotificationPage {
+  unreadCount: number;
+  syncCursor: string;
+}
+
+export interface NotificationCounts {
+  unreadCount: number;
+  latestNotificationId: number | null;
+  latestNotificationCreatedAt: string | null;
+  latestReadAt: string | null;
+  syncCursor: string;
+}
+
 export interface UnreadCount { count: number }
 export interface CreateNotificationPayload {
   userId?: number;
@@ -76,6 +89,19 @@ export function getNotifications(params?: {
 
   const query = searchParams.toString();
   return apiClient<NotificationPage>(query ? `/notifications?${query}` : '/notifications');
+}
+
+export function getNotificationsLive(sinceISO?: string): Promise<NotificationLivePage> {
+  const searchParams = new URLSearchParams();
+  if (sinceISO) searchParams.set('since', sinceISO);
+  const query = searchParams.toString();
+  return apiClient<NotificationLivePage>(
+    query ? `/notifications/live?${query}` : '/notifications/live',
+  );
+}
+
+export function getNotificationCounts(): Promise<NotificationCounts> {
+  return apiClient<NotificationCounts>('/notifications/counts');
 }
 
 export function getUnreadCount(): Promise<UnreadCount> { return apiClient<UnreadCount>('/notifications/unread-count'); }
