@@ -11,12 +11,11 @@ import {
 import type { Server, Socket } from 'socket.io';
 import type { NotificationListItem } from './notifications.types';
 import type { AuthTokenPayload } from '../auth/auth.service';
+import { websocketCors } from './websocket-cors';
 
 @WebSocketGateway({
   namespace: '/notifications',
-  cors: {
-    credentials: true,
-  },
+  cors: websocketCors,
 })
 export class NotificationsGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect

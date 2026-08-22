@@ -6,13 +6,11 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
+import { websocketCors } from '../notifications/websocket-cors';
 
 @WebSocketGateway({
   namespace: '/timeline',
-  cors: {
-    origin: true,
-    credentials: true,
-  },
+  cors: websocketCors,
 })
 export class ActivityTimelineGateway
   implements OnGatewayConnection, OnGatewayDisconnect
