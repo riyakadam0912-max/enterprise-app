@@ -215,6 +215,7 @@ const navConfig: NavItem[] = [
       { label: '+ Employees',   href: '/dashboard/employees/add' },
       { label: 'All Employees', href: '/dashboard/employees' },
       { label: 'Departments',   href: '/dashboard/employees/departments' },
+      { label: 'Designations',  href: '/dashboard/employees/designations' },
     ],
   },
   {
@@ -236,6 +237,7 @@ const EMPLOYEE_VISIBLE_LABELS = new Set([
   'Requests',
   'Expenses',
   'Forms',
+  'User Management',
 ]);
 
 const MANAGER_VISIBLE_LABELS = new Set([
@@ -250,9 +252,14 @@ const MANAGER_VISIBLE_LABELS = new Set([
   'Timesheets',
   'Employees',
   'Forms',
+  'User Management',
 ]);
 
-const MANAGER_EMPLOYEE_CHILD_LABELS = new Set(['All Employees']);
+const MANAGER_EMPLOYEE_CHILD_LABELS = new Set([
+  'All Employees',
+  'Departments',
+  'Designations',
+]);
 
 const HR_VISIBLE_LABELS = new Set([
   'Dashboard',
@@ -273,6 +280,7 @@ const HR_VISIBLE_LABELS = new Set([
   'Events',
   'Marketing Campaigns',
   'Employees',
+  'User Management',
 ]);
 
 function getMatchedDropdownId(items: NavItem[], path: string): string | null {

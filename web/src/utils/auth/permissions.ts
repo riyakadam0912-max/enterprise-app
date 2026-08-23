@@ -30,10 +30,47 @@ export function canManageProjects(role?: string | null): boolean {
 
 export function canAccessUsers(role?: string | null): boolean {
   const normalized = normalizeRole(role);
-  return normalized === 'SUPER_ADMIN' || normalized === 'ADMIN' || normalized === 'COMPLIANCE_MANAGER';
+  return (
+    normalized === 'SUPER_ADMIN' ||
+    normalized === 'ADMIN' ||
+    normalized === 'COMPLIANCE_MANAGER' ||
+    normalized === 'HR' ||
+    normalized === 'MANAGER' ||
+    normalized === 'EMPLOYEE'
+  );
+}
+
+export function canEditUsers(role?: string | null): boolean {
+  const normalized = normalizeRole(role);
+  return (
+    normalized === 'SUPER_ADMIN' ||
+    normalized === 'ADMIN' ||
+    normalized === 'COMPLIANCE_MANAGER' ||
+    normalized === 'HR'
+  );
+}
+
+export function canDeleteUsers(role?: string | null): boolean {
+  const normalized = normalizeRole(role);
+  return (
+    normalized === 'SUPER_ADMIN' ||
+    normalized === 'ADMIN' ||
+    normalized === 'COMPLIANCE_MANAGER' ||
+    normalized === 'HR'
+  );
+}
+
+export function canManageDesignations(role?: string | null): boolean {
+  const normalized = normalizeRole(role);
+  return (
+    normalized === 'SUPER_ADMIN' ||
+    normalized === 'ADMIN' ||
+    normalized === 'COMPLIANCE_MANAGER' ||
+    normalized === 'HR'
+  );
 }
 
 export function canAccessAuditLogs(role?: string | null): boolean {
   const normalized = normalizeRole(role);
-  return normalized === 'SUPER_ADMIN' || normalized === 'ADMIN' || normalized === 'COMPLIANCE_MANAGER';
+  return normalized === 'SUPER_ADMIN' || normalized === 'ADMIN' || normalized === 'COMPLIANCE_MANAGER' || normalized === 'HR';
 }

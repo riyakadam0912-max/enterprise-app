@@ -5,6 +5,7 @@ import {
   getEmployees,
   getEmployee,
   getEmployeesByDepartment,
+  getEmployeesByDesignation,
   createEmployee,
   updateEmployee,
   deleteEmployee,
@@ -72,6 +73,29 @@ export function useEmployeesByDepartment() {
     setError(null);
     try {
       const data = await getEmployeesByDepartment();
+      setGrouped(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch employees');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetch(); }, [fetch]);
+
+  return { grouped, loading, error, refetch: fetch };
+}
+
+export function useEmployeesByDesignation() {
+  const [grouped, setGrouped] = useState<Record<string, Employee[]>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetch = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getEmployeesByDesignation();
       setGrouped(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch employees');

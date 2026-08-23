@@ -34,6 +34,10 @@ export function getEmployeesByDepartment(): Promise<Record<string, Employee[]>> 
   return apiClient<Record<string, Employee[]>>('/employees/by-department');
 }
 
+export function getEmployeesByDesignation(): Promise<Record<string, Employee[]>> {
+  return apiClient<Record<string, Employee[]>>('/employees/by-designation');
+}
+
 export function createEmployee(data: CreateEmployeePayload): Promise<Employee> {
   return apiClient<Employee>('/employees', {
     method: 'POST',
