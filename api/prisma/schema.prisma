@@ -23,6 +23,7 @@ model User {
   managerId               Int?
   phone                   String?
   refreshToken            String?
+  designation             String?
   activities              Activity[]
   hrApprovedExpenses      Expense[]        @relation("ExpenseHrApprovedBy")
   managerApprovedExpenses Expense[]        @relation("ExpenseManagerApprovedBy")

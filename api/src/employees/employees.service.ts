@@ -235,6 +235,7 @@ export class EmployeesService {
             role: userRole,
             employeeId: employee.id,
             managerId: createEmployeeDto.managerId ?? undefined,
+            designation: createEmployeeDto.designation,
           },
           select: {
             id: true,
@@ -245,6 +246,7 @@ export class EmployeesService {
             employeeId: true,
             managerId: true,
             organizationId: true,
+            designation: true,
             createdAt: true,
           },
         });
@@ -327,6 +329,22 @@ export class EmployeesService {
     return grouped;
   }
 
+  async findByDesignation(user: AuthUser) {
+    const where = await this.getScope(user);
+    const employees = await this.prisma.employee.findMany({
+      where,
+      orderBy: { name: 'asc' },
+    });
+
+    const grouped: Record<string, typeof employees> = {};
+    for (const emp of employees) {
+      const key = emp.designation?.trim() ? emp.designation.trim() : 'Unassigned';
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(emp);
+    }
+    return grouped;
+  }
+
   async update(
     id: number,
     updateEmployeeDto: UpdateEmployeeDto,
@@ -366,10 +384,22 @@ export class EmployeesService {
     if (updateEmployeeDto.hireDate) {
       data.hireDate = new Date(updateEmployeeDto.hireDate);
     }
-    return this.prisma.employee.update({
+    const updated = await this.prisma.employee.update({
       where: { id, organizationId },
       data,
     });
+
+    if (
+      canPrivilegedEdit &&
+      updateEmployeeDto.designation !== undefined
+    ) {
+      await this.prisma.user.updateMany({
+        where: { employeeId: updated.id, organizationId },
+        data: { designation: updateEmployeeDto.designation ?? null },
+      });
+    }
+
+    return updated;
   }
 
   async remove(id: number, user: AuthUser) {

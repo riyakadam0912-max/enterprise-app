@@ -51,4 +51,9 @@ export class UpdateUserDto {
   @IsBoolean()
   @ApiPropertyOptional({ example: true })
   isActive?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @ApiPropertyOptional({ example: 'Senior Software Engineer' })
+  designation?: string;
 }

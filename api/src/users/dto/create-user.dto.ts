@@ -36,4 +36,9 @@ export class CreateUserDto {
   @IsInt()
   @ApiPropertyOptional({ example: 123 })
   managerId?: number;
+
+  @IsOptional()
+  @IsString()
+  @ApiPropertyOptional({ example: 'Senior Software Engineer' })
+  designation?: string;
 }

@@ -99,6 +99,7 @@ export class UsersService {
           role: createUserDto.role,
           employeeId: createUserDto.employeeId,
           managerId: createUserDto.managerId,
+          designation: createUserDto.designation,
         },
         select: {
           id: true,
@@ -108,6 +109,7 @@ export class UsersService {
           isActive: true,
           employeeId: true,
           managerId: true,
+          designation: true,
           manager: { select: { id: true, name: true } },
           createdAt: true,
         },
@@ -136,6 +138,7 @@ export class UsersService {
         isActive: true,
         employeeId: true,
         managerId: true,
+        designation: true,
         manager: { select: { id: true, name: true } },
         createdAt: true,
       },
@@ -154,6 +157,7 @@ export class UsersService {
         isActive: true,
         employeeId: true,
         managerId: true,
+        designation: true,
         manager: { select: { id: true, name: true } },
         createdAt: true,
       },
@@ -200,6 +204,8 @@ export class UsersService {
       data.organizationId = updateUserDto.organizationId;
     if (updateUserDto.isActive !== undefined)
       data.isActive = updateUserDto.isActive;
+    if (updateUserDto.designation !== undefined)
+      data.designation = updateUserDto.designation;
     if (updateUserDto.password) {
       data.password = await hashPassword(updateUserDto.password);
     }
@@ -216,6 +222,7 @@ export class UsersService {
           isActive: true,
           employeeId: true,
           managerId: true,
+          designation: true,
           manager: { select: { id: true, name: true } },
           createdAt: true,
         },
@@ -269,6 +276,7 @@ export class UsersService {
         isActive: true,
         employeeId: true,
         managerId: true,
+        designation: true,
         manager: { select: { id: true, name: true } },
         createdAt: true,
       },
@@ -310,6 +318,7 @@ export class UsersService {
         isActive: true,
         employeeId: true,
         managerId: true,
+        designation: true,
         manager: { select: { id: true, name: true } },
         createdAt: true,
       },
@@ -336,6 +345,7 @@ export class UsersService {
         isActive: true,
         employeeId: true,
         managerId: true,
+        designation: true,
         manager: { select: { id: true, name: true } },
         createdAt: true,
       },
@@ -379,6 +389,7 @@ export class UsersService {
         isActive: true,
         employeeId: true,
         managerId: true,
+        designation: true,
         manager: { select: { id: true, name: true } },
         createdAt: true,
       },
@@ -405,6 +416,7 @@ export class UsersService {
         isActive: true,
         employeeId: true,
         managerId: true,
+        designation: true,
         manager: { select: { id: true, name: true } },
         createdAt: true,
       },
@@ -480,6 +492,7 @@ export class UsersService {
         isActive: true,
         employeeId: true,
         managerId: true,
+        designation: true,
         manager: { select: { id: true, name: true } },
         createdAt: true,
       },
@@ -499,7 +512,13 @@ export class UsersService {
           role: { not: Role.ADMIN },
           ...organizationFilter,
         },
-        select: { id: true, name: true, role: true, managerId: true },
+        select: {
+          id: true,
+          name: true,
+          role: true,
+          managerId: true,
+          designation: true,
+        },
         orderBy: { name: 'asc' },
       });
     }
@@ -512,7 +531,13 @@ export class UsersService {
           managerId: user.userId,
           ...organizationFilter,
         },
-        select: { id: true, name: true, role: true, managerId: true },
+        select: {
+          id: true,
+          name: true,
+          role: true,
+          managerId: true,
+          designation: true,
+        },
         orderBy: { name: 'asc' },
       });
     }

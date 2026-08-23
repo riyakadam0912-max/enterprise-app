@@ -94,6 +94,7 @@ async function createAdminUser(defaultOrgId: number) {
       employeeId: null,
       managerId: null,
       organizationId: defaultOrgId,
+      designation: 'Organization Admin',
     },
     create: {
       name: 'Admin User',
@@ -102,6 +103,7 @@ async function createAdminUser(defaultOrgId: number) {
       role: Role.ADMIN,
       isActive: true,
       organizationId: defaultOrgId,
+      designation: 'Organization Admin',
     },
   });
 
@@ -121,6 +123,7 @@ async function createSuperAdminUser() {
       employeeId: null,
       managerId: null,
       organizationId: null, // SUPER_ADMIN is platform-level
+      designation: 'Platform Super Admin',
     },
     create: {
       name: 'Super Admin User',
@@ -129,6 +132,7 @@ async function createSuperAdminUser() {
       role: Role.SUPER_ADMIN,
       isActive: true,
       organizationId: null, // SUPER_ADMIN is platform-level
+      designation: 'Platform Super Admin',
     },
   });
 
@@ -367,6 +371,7 @@ async function createEmployeesUsersAndTeams(shiftId: number) {
         isActive: true,
         employeeId: employee.id,
         organizationId: defaultOrganization.id,
+        designation: position,
       },
     });
 
@@ -420,6 +425,7 @@ async function createEmployeesUsersAndTeams(shiftId: number) {
         employeeId: employee.id,
         managerId: managers[i % 2].id, // Assign to manager 1 or 2 alternately
         organizationId: defaultOrganization.id,
+        designation: position,
       },
     });
 
@@ -454,6 +460,7 @@ async function createEmployeesUsersAndTeams(shiftId: number) {
       isActive: true,
       employeeId: hrEmployee.id,
       organizationId: defaultOrganization.id,
+      designation: 'HR Manager',
     },
   });
 

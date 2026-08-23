@@ -37,7 +37,7 @@ import type { AuthenticatedRequest } from '../common/types/request';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR)
   @RequirePermissions(Permission.USER_CREATE)
   @ApiOperation({ summary: 'POST /' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
@@ -57,7 +57,7 @@ export class UsersController {
     );
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR, Role.MANAGER, Role.EMPLOYEE)
   @RequirePermissions(Permission.USER_READ)
   @ApiOperation({ summary: 'GET /' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
@@ -81,7 +81,7 @@ export class UsersController {
     return this.usersService.findAssignable(req.user);
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR, Role.MANAGER, Role.EMPLOYEE)
   @RequirePermissions(Permission.USER_READ)
   @ApiOperation({ summary: 'GET /:id' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
@@ -93,7 +93,7 @@ export class UsersController {
     return this.usersService.findOne(parseInt(id, 10), req.user);
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR)
   @RequirePermissions(Permission.USER_UPDATE)
   @Put(':id')
   update(
@@ -104,7 +104,7 @@ export class UsersController {
     return this.usersService.update(parseInt(id, 10), updateUserDto, req.user);
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR)
   @RequirePermissions(Permission.USER_UPDATE)
   @Patch(':id/role')
   updateRole(
@@ -115,28 +115,28 @@ export class UsersController {
     return this.usersService.updateRole(parseInt(id, 10), body.role, req.user);
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR)
   @RequirePermissions(Permission.USER_DELETE)
   @Delete(':id')
   remove(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.usersService.remove(parseInt(id, 10), req.user);
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR)
   @RequirePermissions(Permission.USER_UPDATE)
   @Patch(':id/activate')
   activate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.usersService.activate(parseInt(id, 10), req.user);
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR)
   @RequirePermissions(Permission.USER_UPDATE)
   @Patch(':id/deactivate')
   deactivate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.usersService.deactivate(parseInt(id, 10), req.user);
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR)
   @RequirePermissions(Permission.USER_UPDATE)
   @Patch(':id/reset-password')
   resetPassword(
@@ -151,14 +151,14 @@ export class UsersController {
     );
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR)
   @RequirePermissions(Permission.USER_UPDATE)
   @Patch(':id/unlock')
   unlock(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.usersService.unlock(parseInt(id, 10), req.user);
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR)
   @RequirePermissions(Permission.USER_UPDATE)
   @Patch(':id/assign-organization')
   assignOrganization(
@@ -173,7 +173,7 @@ export class UsersController {
     );
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR)
   @RequirePermissions(Permission.USER_UPDATE)
   @Patch(':id/assign-roles')
   assignRoles(
@@ -188,7 +188,7 @@ export class UsersController {
     );
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR)
   @RequirePermissions(Permission.USER_UPDATE)
   @Patch(':id/assign-department')
   assignDepartment(
@@ -203,7 +203,7 @@ export class UsersController {
     );
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR)
   @RequirePermissions(Permission.USER_UPDATE)
   @Patch(':id/assign-manager')
   assignManager(

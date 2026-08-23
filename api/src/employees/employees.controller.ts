@@ -52,6 +52,18 @@ export class EmployeesController {
     return this.employeesService.findByDepartment(req.user);
   }
 
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
+  @RequirePermissions(Permission.EMPLOYEE_READ)
+  @ApiOperation({ summary: 'GET by-designation' })
+  @ApiResponse({ status: 200, description: 'GET request successful.' })
+  @ApiResponse({ status: 400, description: 'Bad request.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @ApiResponse({ status: 404, description: 'Resource not found.' })
+  @Get('by-designation')
+  findByDesignation(@Req() req: AuthenticatedRequest) {
+    return this.employeesService.findByDesignation(req.user);
+  }
+
   @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR)
   @RequirePermissions(Permission.EMPLOYEE_CREATE)
   @ApiOperation({ summary: 'POST /' })

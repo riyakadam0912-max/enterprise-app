@@ -28,6 +28,7 @@ export type AuthTokenPayload = {
   organizationSlug?: string | null;
   isPlatformAdmin?: boolean;
   isSuperAdmin?: boolean;
+  designation?: string | null;
   tokenType: 'access' | 'refresh';
   jti?: string;
 };
@@ -53,6 +54,7 @@ type UserWithRoles = {
   employeeId: number | null;
   organizationId: number | null;
   refreshToken: string | null;
+  designation: string | null;
   userRoles: UserRoleRecord[];
 };
 
@@ -142,6 +144,7 @@ export class AuthService {
         role: Role.ADMIN,
         isActive: true,
         organizationId: defaultOrg.id,
+        designation: 'Organization Admin',
       },
     });
 
@@ -228,12 +231,19 @@ export class AuthService {
 
   async updateProfile(
     userId: number,
-    data: { name?: string; phone?: string; address?: string },
+    data: {
+      name?: string;
+      phone?: string;
+      address?: string;
+      designation?: string;
+    },
   ) {
     const updateData: Record<string, string> = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.phone !== undefined) updateData.phone = data.phone;
     if (data.address !== undefined) updateData.address = data.address;
+    if (data.designation !== undefined)
+      updateData.designation = data.designation;
 
     const user = await this.prisma.user.update({
       where: { id: userId },
@@ -377,6 +387,7 @@ export class AuthService {
         organizationSlug,
         isPlatformAdmin: isSuperAdmin,
         isSuperAdmin,
+        designation: user.designation ?? null,
         tokenType: 'access',
       },
       user.id,
@@ -417,6 +428,7 @@ export class AuthService {
         id: user.id,
         name: user.name,
         email: user.email,
+        designation: (user as any).designation ?? null,
       },
       role: user.role,
       roles: userRoles,
@@ -544,6 +556,7 @@ export class AuthService {
         organizationSlug,
         isPlatformAdmin: isSuperAdmin,
         isSuperAdmin,
+        designation: user.designation ?? null,
         tokenType: 'access',
       },
       user.id,
@@ -557,6 +570,7 @@ export class AuthService {
         id: user.id,
         name: user.name,
         email: user.email,
+        designation: (user as any).designation ?? null,
       },
       role: user.role,
       roles: userRoles,
@@ -841,6 +855,7 @@ export class AuthService {
             isActive: true,
             employeeId: null,
             organizationId: null,
+            designation: 'Platform Super Admin',
           },
         })
       : await this.prisma.user.create({
@@ -852,6 +867,7 @@ export class AuthService {
             isActive: true,
             employeeId: null,
             organizationId: null,
+            designation: 'Platform Super Admin',
           },
         });
 

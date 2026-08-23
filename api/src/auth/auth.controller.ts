@@ -32,6 +32,7 @@ type ProfileUser = {
   role: Role;
   phone?: string | null;
   address?: string | null;
+  designation?: string | null;
 };
 
 @ApiTags('System - Auth')
@@ -228,6 +229,7 @@ export class AuthController {
         role: user.role,
         phone: user.phone,
         address: user.address,
+        designation: (user as any).designation ?? null,
       },
     };
   }
@@ -237,7 +239,13 @@ export class AuthController {
   @Patch('profile/me')
   async updateProfile(
     @Req() req: AuthenticatedRequest,
-    @Body() body: { name?: string; phone?: string; address?: string },
+    @Body()
+    body: {
+      name?: string;
+      phone?: string;
+      address?: string;
+      designation?: string;
+    },
   ) {
     const user = (await this.authService.updateProfile(
       req.user.userId || req.user.id,
@@ -251,6 +259,7 @@ export class AuthController {
         email: user.email,
         phone: user.phone,
         address: user.address,
+        designation: (user as any).designation ?? null,
       },
     };
   }
@@ -302,6 +311,7 @@ export class AuthController {
         id: req.user.userId ?? req.user.id,
         email: req.user.email,
         name: req.user.name,
+        designation: (req.user as any).designation ?? null,
       },
       role: req.user.role ?? Role.EMPLOYEE,
       roles: req.user.roles ?? [],
