@@ -134,7 +134,6 @@ export function OrganizationCreateModal({
     setError(null);
     try {
       const normalizedPayload = {
-        ...values,
         name: values.name.trim(),
         legalName: values.legalName?.trim() || undefined,
         slug: values.slug?.trim() || undefined,
@@ -146,11 +145,13 @@ export function OrganizationCreateModal({
         city: values.city?.trim() || 'Mumbai',
         timezone: values.timezone?.trim() || 'Asia/Kolkata',
         currency: values.currency?.trim() || 'INR',
+        logoUrl: undefined,
         adminEmail: values.adminEmail?.trim() || undefined,
         adminPassword: values.adminPassword?.trim() || undefined,
-        confirmPassword: undefined,
-        sendWelcomeEmail: values.sendWelcomeEmail ?? true,
-        enableImmediately: values.enableImmediately ?? true,
+        adminName: values.adminName?.trim() || undefined,
+        subscriptionPlan: values.subscriptionPlan || 'STARTER',
+        trialDays: values.trialDays ?? 14,
+        status: values.status || 'ACTIVE',
       };
 
       await apiClient('/organizations', {
