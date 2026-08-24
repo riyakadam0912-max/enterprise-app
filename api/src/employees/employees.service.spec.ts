@@ -130,6 +130,22 @@ describe('EmployeesService', () => {
     expect(result).toMatchObject({ id: 42, organizationId: 7 });
   });
 
+  it('accepts the IT department when creating an employee', async () => {
+    const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 2 });
+    const employeeDelegate = getDelegate(mockPrisma, 'employee');
+    employeeDelegate.create.mockResolvedValue({
+      id: 43,
+      name: 'IT Employee',
+      department: 'IT',
+      organizationId: 2,
+    });
+
+    await expect(
+      service.create({ name: 'IT Employee', department: 'IT' }, authUser),
+    ).resolves.toMatchObject({ department: 'IT' });
+    expect(employeeDelegate.create).toHaveBeenCalled();
+  });
+
   describe('create without login credentials (backward compatible)', () => {
     it('creates only an Employee record when password is absent', async () => {
       const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 2 });

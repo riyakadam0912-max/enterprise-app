@@ -9,7 +9,7 @@ import { canAccessUsers } from '@/utils/auth/permissions';
 import { reportError } from '@/lib/error-handling';
 import { PasswordInput } from '@/components/ui/password-input';
 
-const DEPARTMENTS = ['Sales', 'Engineering', 'HR', 'Finance', 'Operations'] as const;
+const DEPARTMENTS = ['Sales', 'Operations', 'Marketing', 'HR', 'Finance', 'Creative', 'IT'] as const;
 const ROLES = ['EMPLOYEE', 'MANAGER', 'HR'] as const;
 
 type CurrentUserRole = 'SUPER_ADMIN' | 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';

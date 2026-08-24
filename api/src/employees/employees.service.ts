@@ -15,10 +15,13 @@ import { hashPassword } from '../users/utils/hash-password';
 
 const ALLOWED_DEPARTMENTS = [
   'Sales',
-  'Engineering',
+  'Operations',
+  'Marketing',
   'HR',
   'Finance',
-  'Operations',
+  'Creative',
+  'IT',
+  'Engineering',
 ] as const;
 
 function normalizeDepartment(department?: string | null): string {
@@ -137,7 +140,7 @@ export class EmployeesService {
       )
     ) {
       throw new BadRequestException(
-        'Invalid department. Must be one of: Sales, Engineering, HR, Finance, Operations',
+        'Invalid department. Must be one of: Sales, Operations, Marketing, HR, Finance, Creative, IT, Engineering',
       );
     }
 
