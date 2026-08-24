@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   UnauthorizedException,
   ConflictException,
   NotFoundException,
@@ -60,6 +61,8 @@ type UserWithRoles = {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
@@ -286,49 +289,61 @@ export class AuthService {
     })) as UserWithRoles | null;
 
     if (!user) {
-      await this.auditLogsService.logLogin({
-        userName: email,
-        module: 'Auth',
-        entityType: 'User',
-        action: 'LOGIN_FAILURE',
-        success: false,
-        reason: 'Invalid email or password',
-        description: `Failed login attempt for ${email}`,
-      });
+      try {
+        await this.auditLogsService.logLogin({
+          userName: email,
+          module: 'Auth',
+          entityType: 'User',
+          action: 'LOGIN_FAILURE',
+          success: false,
+          reason: 'Invalid email or password',
+          description: `Failed login attempt for ${email}`,
+        });
+      } catch (e) {
+        this.logger.warn('Audit log (LOGIN_FAILURE) failed non-critically', e as Error);
+      }
       throw new UnauthorizedException('Invalid email or password');
     }
 
     if (!user.isActive) {
-      await this.auditLogsService.logLogin({
-        userId: user.id,
-        userName: user.name,
-        userRole: user.role,
-        module: 'Auth',
-        entityType: 'User',
-        entityId: user.id,
-        action: 'LOGIN_FAILURE',
-        success: false,
-        reason: 'User account is inactive',
-        description: `Inactive account login attempt for ${user.email}`,
-      });
+      try {
+        await this.auditLogsService.logLogin({
+          userId: user.id,
+          userName: user.name,
+          userRole: user.role,
+          module: 'Auth',
+          entityType: 'User',
+          entityId: user.id,
+          action: 'LOGIN_FAILURE',
+          success: false,
+          reason: 'User account is inactive',
+          description: `Inactive account login attempt for ${user.email}`,
+        });
+      } catch (e) {
+        this.logger.warn('Audit log (LOGIN_FAILURE inactive) failed non-critically', e as Error);
+      }
       throw new UnauthorizedException('User account is inactive');
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
-      await this.auditLogsService.logLogin({
-        userId: user.id,
-        userName: user.name,
-        userRole: user.role,
-        module: 'Auth',
-        entityType: 'User',
-        entityId: user.id,
-        action: 'LOGIN_FAILURE',
-        success: false,
-        reason: 'Invalid email or password',
-        description: `Invalid password for ${user.email}`,
-      });
+      try {
+        await this.auditLogsService.logLogin({
+          userId: user.id,
+          userName: user.name,
+          userRole: user.role,
+          module: 'Auth',
+          entityType: 'User',
+          entityId: user.id,
+          action: 'LOGIN_FAILURE',
+          success: false,
+          reason: 'Invalid email or password',
+          description: `Invalid password for ${user.email}`,
+        });
+      } catch (e) {
+        this.logger.warn('Audit log (LOGIN_FAILURE password) failed non-critically', e as Error);
+      }
       throw new UnauthorizedException('Invalid email or password');
     }
 
@@ -393,32 +408,36 @@ export class AuthService {
       user.id,
     );
 
-    await this.auditLogsService.logLogin(
-      {
-        userId: user.id,
-        userName: user.name,
-        userRole: user.role,
-        module: 'Auth',
-        entityType: 'User',
-        entityId: user.id,
-        action: 'LOGIN_SUCCESS',
-        success: true,
-        description: `User ${user.email} logged in successfully`,
-      },
-      {
-        id: user.id,
-        userId: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        roles: processedUserRoles.map((ur) => ur.role.name),
-        permissions: userPermissions,
-        employeeId: user.employeeId,
-        organizationId: user.organizationId,
-        tokenType: 'access',
-        jti: null,
-      },
-    );
+    try {
+      await this.auditLogsService.logLogin(
+        {
+          userId: user.id,
+          userName: user.name,
+          userRole: user.role,
+          module: 'Auth',
+          entityType: 'User',
+          entityId: user.id,
+          action: 'LOGIN_SUCCESS',
+          success: true,
+          description: `User ${user.email} logged in successfully`,
+        },
+        {
+          id: user.id,
+          userId: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          roles: processedUserRoles.map((ur) => ur.role.name),
+          permissions: userPermissions,
+          employeeId: user.employeeId,
+          organizationId: user.organizationId,
+          tokenType: 'access',
+          jti: null,
+        },
+      );
+    } catch (e) {
+      this.logger.warn('Audit log (LOGIN_SUCCESS) failed non-critically', e as Error);
+    }
 
     return {
       message: 'Login successful',

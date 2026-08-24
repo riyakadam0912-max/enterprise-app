@@ -137,19 +137,28 @@ export class AuditLogsService {
       }
     }
 
-    // Fallback: use the default (first) organization
     const defaultOrg = await this.prisma.organization.findFirst({
       orderBy: { id: 'asc' },
       select: { id: true },
     });
 
-    if (!defaultOrg) {
-      throw new Error(
-        'No organizations found in database. Cannot create audit log. Please ensure at least one organization exists.',
-      );
+    if (defaultOrg) {
+      return defaultOrg.id;
     }
 
-    return defaultOrg.id;
+    const created = await this.prisma.organization.upsert({
+      where: { code: 'DEFAULT' },
+      update: {},
+      create: {
+        name: 'Default Organization',
+        code: 'DEFAULT',
+        slug: 'default',
+        status: 'ACTIVE',
+      },
+      select: { id: true },
+    });
+
+    return created.id;
   }
 
   private isGlobalAuditReader(user: AuthUser): boolean {
