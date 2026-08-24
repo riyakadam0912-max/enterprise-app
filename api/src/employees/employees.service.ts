@@ -178,6 +178,17 @@ export class EmployeesService {
             'Selected manager user not found in the organization.',
           );
         }
+
+        const allowedReportingRoles: Role[] = [
+          Role.MANAGER,
+          Role.ADMIN,
+          Role.SUPER_ADMIN,
+        ];
+        if (!allowedReportingRoles.includes(managerUser.role as Role)) {
+          throw new BadRequestException(
+            'Selected reporting manager must have MANAGER, ADMIN, or SUPER_ADMIN role.',
+          );
+        }
       }
 
       const existingUserByEmail = await this.prisma.user.findFirst({
@@ -191,6 +202,22 @@ export class EmployeesService {
         throw new ConflictException(
           'A user with this email already exists in the organization.',
         );
+      }
+
+      if (createEmployeeDto.shiftId) {
+        const shift = await this.prisma.shift.findFirst({
+          where: {
+            id: createEmployeeDto.shiftId,
+            organizationId,
+            isActive: true,
+          },
+          select: { id: true },
+        });
+        if (!shift) {
+          throw new NotFoundException(
+            'Selected shift not found in the organization.',
+          );
+        }
       }
     }
 
@@ -213,6 +240,9 @@ export class EmployeesService {
           manager: createEmployeeDto.manager,
           leaveBalance: createEmployeeDto.leaveBalance,
           status: createEmployeeDto.status,
+          shift: createEmployeeDto.shiftId
+            ? { connect: { id: createEmployeeDto.shiftId } }
+            : undefined,
         },
         include: { user: true },
       });

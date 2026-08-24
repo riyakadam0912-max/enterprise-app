@@ -7,6 +7,7 @@ import {
   IsInt,
   IsIn,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Role } from '../../common/enums/role.enum';
 
@@ -85,4 +86,10 @@ export class CreateEmployeeDto {
       'Manager user ID for the login account. Used only when password is provided.',
   })
   managerId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @ApiPropertyOptional({ example: 1, description: 'Optional active shift ID for the employee.' })
+  shiftId?: number;
 }

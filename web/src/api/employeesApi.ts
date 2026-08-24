@@ -18,6 +18,7 @@ export interface CreateEmployeePayload {
   password?: string;
   role?: EmployeeRole;
   managerId?: number;
+  shiftId?: number;
 }
 
 export type UpdateEmployeePayload = Partial<CreateEmployeePayload>;

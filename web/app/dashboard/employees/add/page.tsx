@@ -20,6 +20,12 @@ interface ManagerOption {
   role: string;
 }
 
+interface ShiftOption {
+  id: number;
+  name: string;
+  type: string;
+}
+
 const LOGIN_CREATION_ROLES: CurrentUserRole[] = ['SUPER_ADMIN', 'ADMIN', 'HR'];
 
 export default function AddEmployeePage() {
@@ -27,6 +33,7 @@ export default function AddEmployeePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [managerOptions, setManagerOptions] = useState<ManagerOption[]>([]);
+  const [shiftOptions, setShiftOptions] = useState<ShiftOption[]>([]);
   const [currentRole] = useState<CurrentUserRole>(() => {
     if (typeof window === 'undefined') {
       return 'EMPLOYEE';
@@ -38,6 +45,7 @@ export default function AddEmployeePage() {
   const [form, setForm] = useState({
     name: '',
     department: '',
+    shiftId: '',
     designation: '',
     hireDate: '',
     email: '',
@@ -54,10 +62,17 @@ export default function AddEmployeePage() {
     }
 
     apiClient<ManagerOption[]>('/users')
-      .then((users) => setManagerOptions(users.filter((user) => user.role === 'MANAGER')))
+      .then((users) => setManagerOptions(users.filter((user) => ['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(user.role))))
       .catch((error) => {
         reportError(error, 'Unable to load manager options');
         setManagerOptions([]);
+      });
+
+    apiClient<ShiftOption[]>('/attendance/shifts')
+      .then(setShiftOptions)
+      .catch((error) => {
+        reportError(error, 'Unable to load shift options');
+        setShiftOptions([]);
       });
   }, [currentRole]);
 
@@ -90,6 +105,7 @@ export default function AddEmployeePage() {
     setForm({
       name: '',
       department: '',
+      shiftId: '',
       designation: '',
       hireDate: '',
       email: '',
@@ -130,6 +146,7 @@ export default function AddEmployeePage() {
         designation: form.designation.trim() || undefined,
         hireDate: form.hireDate || undefined,
         manager: selectedReportingManager?.name || undefined,
+        shiftId: form.shiftId ? Number(form.shiftId) : undefined,
         status: 'Active',
         ...(canCreateLogin
           ? {
@@ -219,6 +236,24 @@ export default function AddEmployeePage() {
           </div>
 
           <div>
+            <label htmlFor="employee-shift" className="block text-sm font-medium text-slate-700 mb-1">Shift</label>
+            <select
+              id="employee-shift"
+              name="shiftId"
+              value={form.shiftId}
+              onChange={handleChange}
+              className={selectCls}
+            >
+              <option value="">No shift assigned</option>
+              {shiftOptions.map((shift) => (
+                <option key={shift.id} value={shift.id}>
+                  {shift.name} ({shift.type})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
             <label htmlFor="employee-hire-date" className="block text-sm font-medium text-slate-700 mb-1">Hire Date</label>
             <input
               id="employee-hire-date"
@@ -299,7 +334,7 @@ export default function AddEmployeePage() {
                     <option value="">No manager</option>
                     {managerOptions.map((manager) => (
                       <option key={manager.id} value={manager.id}>
-                        {manager.name}
+                        {manager.name} ({manager.role})
                       </option>
                     ))}
                   </select>
