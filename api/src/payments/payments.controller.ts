@@ -31,7 +31,7 @@ import type { AuthenticatedRequest } from '../common/types/request';
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.HR)
   @ApiOperation({ summary: 'POST /' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -68,7 +68,7 @@ export class PaymentsController {
     return this.paymentsService.findByInvoice(id, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.HR)
   @ApiOperation({ summary: 'PATCH :id' })
   @ApiResponse({ status: 200, description: 'PATCH request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })

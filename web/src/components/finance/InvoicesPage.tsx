@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { createPayment } from '@/api/paymentsApi';
 import { createInvoice, getInvoices, updateInvoice, sendInvoice, type Invoice } from '@/api/invoicesApi';
-import { useAuthSession } from '@/stores/auth-store';
+import { isSuperAdminSession, useAuthSession } from '@/stores/auth-store';
 import { formatDate, formatInr, invoiceOutstanding, normalizeInvoiceStatus } from '@/utils/finance';
 
 type DashboardRole = 'SUPER_ADMIN' | 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
@@ -223,7 +223,7 @@ export default function InvoicesPage() {
     };
   }, [sessionRole]);
 
-  const canManageInvoices = sessionRole === 'ADMIN' || sessionRole === 'HR';
+  const canManageInvoices = isSuperAdminSession(auth) || sessionRole === 'ADMIN' || sessionRole === 'HR';
   const selectedInvoice = useMemo(() => invoices.find((invoice) => invoice.id === selectedInvoiceId) ?? null, [invoices, selectedInvoiceId]);
 
   const filteredInvoices = useMemo(() => {
