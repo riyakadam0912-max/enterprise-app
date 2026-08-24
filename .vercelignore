@@ -1,4 +1,9 @@
 node_modules
+api/coverage
+api/.localappdata
+api/node_modules
+api/scripts
+web/node_modules
 build
 dist
 .git

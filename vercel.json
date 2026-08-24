@@ -1,0 +1,17 @@
+{
+  "buildCommand": "npm --prefix api run build",
+  "installCommand": "npm install && npm --prefix api install",
+  "framework": null,
+  "outputDirectory": "api/dist",
+  "redirects": [
+    { "source": "/", "destination": "/api/v1/", "permanent": false }
+  ],
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/api/index" }
+  ],
+  "functions": {
+    "api/api/index.ts": {
+      "includeFiles": "api/dist/**"
+    }
+  }
+}
