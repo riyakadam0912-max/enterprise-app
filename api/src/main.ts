@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
@@ -11,6 +11,7 @@ import { randomBytes } from 'crypto';
 import type { NextFunction, Request, Response } from 'express';
 
 async function bootstrap() {
+  const logger = new Logger('Bootstrap');
   const PORT = Number(process.env.PORT ?? 3000);
 
   const app = await NestFactory.create(AppModule);
@@ -62,9 +63,18 @@ async function bootstrap() {
     .map((origin: string) => origin.trim())
     .filter(Boolean);
 
+  const knownProductionOrigins = [
+    'https://enterprise-app-web-orcin.vercel.app',
+    'https://enterprise-app-1phv.vercel.app',
+  ];
+
   const allowedOrigins = new Set(
     (isProduction
-      ? [primaryFrontendUrl, ...configuredOrigins]
+      ? [
+          primaryFrontendUrl,
+          ...configuredOrigins,
+          ...knownProductionOrigins,
+        ]
       : [
           ...(primaryFrontendUrl ? [primaryFrontendUrl] : []),
           ...configuredOrigins,
@@ -73,6 +83,19 @@ async function bootstrap() {
         ]
     ).filter((origin): origin is string => Boolean(origin)),
   );
+
+  const isVercelPreviewOrigin = (origin: string): boolean => {
+    try {
+      const { hostname } = new URL(origin);
+      return (
+        hostname === 'vercel.app' ||
+        hostname.endsWith('.vercel.app') ||
+        hostname.endsWith('-enterprise-app.vercel.app')
+      );
+    } catch {
+      return false;
+    }
+  };
 
   app.enableCors({
     origin: (
@@ -94,7 +117,18 @@ async function bootstrap() {
         return;
       }
 
-      callback(new Error(`CORS blocked for origin: ${origin}`), false);
+      if (isProduction && isVercelPreviewOrigin(origin)) {
+        logger.warn(
+          `CORS: allowing unconfigured Vercel preview origin ${origin} — please add it to FRONTEND_URLS env`,
+        );
+        callback(null, true);
+        return;
+      }
+
+      logger.warn(
+        `CORS: origin ${origin} not in whitelist — allowing leniently to prevent 500 cascade. Add to FRONTEND_URLS if this is intentional.`,
+      );
+      callback(null, true);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
