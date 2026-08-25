@@ -26,6 +26,7 @@ import { Caption } from '@/components/typography/Caption';
 const superAdminNavItems = [
   { label: 'Dashboard', href: '/super-admin/dashboard', icon: LayoutDashboard },
   { label: 'Organizations', href: '/super-admin/organizations', icon: Building2 },
+  { label: 'Business Units', href: '/super-admin/business-units', icon: Building2 },
   { label: 'Users', href: '/super-admin/users', icon: Users },
   { label: 'Roles & Permissions', href: '/super-admin/roles', icon: Shield },
   { label: 'Subscription Plans', href: '/super-admin/plans', icon: CreditCard },

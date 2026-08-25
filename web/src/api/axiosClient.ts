@@ -10,6 +10,7 @@ import {
   setAuthSession,
   setActiveOrganization,
   getActiveOrganizationId,
+  getActiveBusinessUnitId,
   getAuthSessionSnapshot,
   type AuthUser,
 } from '@/stores/auth-store';
@@ -78,6 +79,7 @@ axiosClient.interceptors.request.use(
 
         config.headers = config.headers ?? {};
 
+        // Add X-Organization-Id for privileged users when explicitly selected
         if (isPrivilegedTenantContext && !isAuthRequest) {
           const activeOrgId = getActiveOrganizationId();
           if (activeOrgId != null) {
@@ -88,8 +90,26 @@ axiosClient.interceptors.request.use(
         } else {
           delete config.headers['X-Organization-Id'];
         }
+
+        // Add X-Business-Unit-Id when a specific BU is selected
+        // Only sent for non-auth endpoints
+        if (!isAuthRequest) {
+          const activeBUId = getActiveBusinessUnitId();
+          if (activeBUId != null) {
+            config.headers['X-Business-Unit-Id'] = String(activeBUId);
+          } else {
+            // If user can select all BUs and no specific one is selected, send ALL
+            if (session.canSelectAllBusinessUnits) {
+              config.headers['X-Business-Unit-Id'] = 'ALL';
+            } else {
+              delete config.headers['X-Business-Unit-Id'];
+            }
+          }
+        } else {
+          delete config.headers['X-Business-Unit-Id'];
+        }
       } catch {
-        // Non-critical: proceed without organization header
+        // Non-critical: proceed without headers
       }
     }
 

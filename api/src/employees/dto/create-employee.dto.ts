@@ -92,4 +92,10 @@ export class CreateEmployeeDto {
   @IsInt()
   @ApiPropertyOptional({ example: 1, description: 'Optional active shift ID for the employee.' })
   shiftId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @ApiPropertyOptional({ example: 1, description: 'Optional Business Unit ID for the employee.' })
+  businessUnitId?: number;
 }

@@ -34,9 +34,7 @@ export function canAccessUsers(role?: string | null): boolean {
     normalized === 'SUPER_ADMIN' ||
     normalized === 'ADMIN' ||
     normalized === 'COMPLIANCE_MANAGER' ||
-    normalized === 'HR' ||
-    normalized === 'MANAGER' ||
-    normalized === 'EMPLOYEE'
+    normalized === 'HR'
   );
 }
 

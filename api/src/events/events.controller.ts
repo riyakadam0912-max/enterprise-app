@@ -17,6 +17,9 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthUser } from '../common/types/auth';
+import { Role } from '../common/enums/role.enum';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -24,7 +27,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @ApiTags('Work - Events')
 @ApiBearerAuth()
 @Controller('events')
@@ -37,6 +40,7 @@ export class EventsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @ApiBody({ type: CreateEventDto })
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR)
   @Post()
   create(@Body() dto: CreateEventDto, @Req() req: { user: AuthUser }) {
     return this.eventsService.create(dto, req.user);
@@ -48,6 +52,7 @@ export class EventsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Post('import')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR)
   @HttpCode(HttpStatus.OK)
   importRecords(
     @Body() body: { records: Array<Record<string, unknown>> },
@@ -62,6 +67,7 @@ export class EventsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Get()
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
   findAll(@Req() req: { user: AuthUser }) {
     return this.eventsService.findAll(req.user);
   }
@@ -72,6 +78,7 @@ export class EventsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Get('by-event-type')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
   getByEventType(@Req() req: { user: AuthUser }) {
     return this.eventsService.getByEventType(req.user);
   }
@@ -82,6 +89,7 @@ export class EventsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Get(':id')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
   findOne(
     @Param('id', ParseIntPipe) id: number,
     @Req() req: { user: AuthUser },
@@ -96,6 +104,7 @@ export class EventsController {
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @ApiBody({ type: UpdateEventDto })
   @Patch(':id')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR)
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateEventDto,
@@ -110,6 +119,7 @@ export class EventsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Delete(':id')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR)
   remove(
     @Param('id', ParseIntPipe) id: number,
     @Req() req: { user: AuthUser },

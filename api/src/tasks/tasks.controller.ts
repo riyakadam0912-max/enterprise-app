@@ -40,7 +40,7 @@ import type { AuthenticatedRequest } from '../common/types/request';
 export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
   @ApiOperation({ summary: 'POST /' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -67,7 +67,7 @@ export class TasksController {
     return this.tasksService.importRecords(body.records, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER, Role.EMPLOYEE)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
   @ApiOperation({ summary: 'GET /' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -89,7 +89,7 @@ export class TasksController {
     return this.tasksService.getByPriority(req.user);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER, Role.EMPLOYEE)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
   @ApiOperation({ summary: 'GET upcoming' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -100,7 +100,7 @@ export class TasksController {
     return this.tasksService.getUpcoming(req.user);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER, Role.EMPLOYEE)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
   @ApiOperation({ summary: 'GET lead/:id' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -114,7 +114,7 @@ export class TasksController {
     return this.tasksService.getByLead(id, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER, Role.EMPLOYEE)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
   @ApiOperation({ summary: 'GET deal/:id' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })

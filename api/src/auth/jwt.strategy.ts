@@ -49,6 +49,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       organizationSlug: payload.organizationSlug ?? null,
       isPlatformAdmin: payload.isPlatformAdmin ?? false,
       isSuperAdmin: payload.isSuperAdmin ?? false,
+      primaryBusinessUnitId: payload.primaryBusinessUnitId ?? null,
+      employeeBusinessUnitId: payload.employeeBusinessUnitId ?? null,
       tokenType: payload.tokenType ?? 'access',
       jti: payload.jti ?? null,
     };

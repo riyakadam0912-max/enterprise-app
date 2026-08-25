@@ -16,6 +16,7 @@ import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { UpdateLeaveRequestDto } from './dto/update-leave-request.dto';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { BusinessUnitsService } from '../business-units/business-units.service';
 
 // Helper to create valid mock AuthUser
 function createMockAuthUser(
@@ -75,6 +76,18 @@ describe('LeaveRequestsService', () => {
         { provide: WorkflowEngineService, useValue: mockWorkflowEngine },
         { provide: CACHE_MANAGER, useValue: mockCacheManager },
         { provide: EventEmitter2, useValue: mockEventEmitter },
+        {
+          provide: BusinessUnitsService,
+          useValue: {
+            resolveScope: jest.fn().mockResolvedValue({
+              organizationId: 1,
+              allUnits: true,
+              unitIds: [],
+              assignedUnitId: null,
+            }),
+            buildEmployeeBUWhere: jest.fn().mockReturnValue({}),
+          },
+        },
       ],
     }).compile();
 
@@ -466,12 +479,27 @@ describe('LeaveRequestsService', () => {
         id: 1,
         status: 'APPROVED',
         isPaid: true,
+        startDate: new Date('2026-01-01'),
+        endDate: new Date('2026-01-02'),
       });
       attendanceDelegate.upsert.mockResolvedValueOnce({});
 
       const result = await service.hrApprove(1, mockHRUser);
-      expect(result).toEqual({ id: 1, status: 'APPROVED', isPaid: true });
+      expect(result).toEqual(
+        expect.objectContaining({ id: 1, status: 'APPROVED', isPaid: true }),
+      );
       expect(mockWorkflowEngine.approveWorkflow).toHaveBeenCalledTimes(1);
+      expect(attendanceDelegate.upsert).toHaveBeenCalledTimes(2);
+      expect(attendanceDelegate.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: expect.objectContaining({
+            status: 'LEAVE',
+            checkIn: null,
+            checkOut: null,
+          }),
+          create: expect.objectContaining({ status: 'LEAVE' }),
+        }),
+      );
     });
   });
 

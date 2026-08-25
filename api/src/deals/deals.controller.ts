@@ -34,7 +34,7 @@ import {
 export class DealsController {
   constructor(private readonly dealsService: DealsService) {}
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'POST /' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -50,7 +50,7 @@ export class DealsController {
     return this.dealsService.create(dto, req.user);
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'POST import' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -66,7 +66,7 @@ export class DealsController {
     return this.dealsService.importRecords(body.records, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.EMPLOYEE)
   @ApiOperation({ summary: 'GET /' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -83,7 +83,7 @@ export class DealsController {
   }
 
   // Pipeline route MUST be declared before :id to avoid being caught as id=pipeline
-  @Roles(Role.ADMIN, Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.EMPLOYEE)
   @ApiOperation({ summary: 'GET pipeline' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -99,7 +99,7 @@ export class DealsController {
     return this.dealsService.getPipeline(req.user);
   }
 
-  @Roles(Role.ADMIN, Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.EMPLOYEE)
   @ApiOperation({ summary: 'POST :id/won' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -115,7 +115,7 @@ export class DealsController {
     return this.dealsService.handleDealWon(dealId, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.EMPLOYEE)
   @ApiOperation({ summary: 'GET :id' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -130,7 +130,7 @@ export class DealsController {
     return this.dealsService.findOne(id, req.user);
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'PATCH :id' })
   @ApiResponse({ status: 200, description: 'PATCH request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { getEvents, deleteEvent, Event } from '@/api/eventsApi';
 import TableActions from '@/components/common/TableActions';
+import { useAuthSession } from '@/stores/auth-store';
 
 function fmtDateTime(d: string | null) {
   if (!d) return '—';
@@ -18,9 +19,17 @@ export default function AllEventsPage() {
   const router = useRouter();
   const [events,  setEvents]  = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const role = useAuthSession().role;
+  const canManageEvents = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'HR';
 
   useEffect(() => {
-    getEvents().then(setEvents).finally(() => setLoading(false));
+    getEvents()
+      .then(setEvents)
+      .catch((loadError: unknown) => {
+        setError(loadError instanceof Error ? loadError.message : 'Unable to load events.');
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   async function handleDelete(id: number) {
@@ -31,18 +40,33 @@ export default function AllEventsPage() {
 
   if (loading) return <div className="p-6 text-sm text-gray-500">Loading…</div>;
 
+  if (error) {
+    return (
+      <div className="p-6">
+        <h1 className="mb-3 text-xl font-bold text-gray-900">All Events</h1>
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold text-gray-900">All Events</h1>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => router.push('/dashboard/events/add')}
-            className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-          >
-            + Add Event
-          </button>
-          <TableActions moduleKey="events" rows={events} onRefresh={() => getEvents().then(setEvents)} />
+          {canManageEvents && (
+            <>
+              <button
+                onClick={() => router.push('/dashboard/events/add')}
+                className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+              >
+                + Add Event
+              </button>
+              <TableActions moduleKey="events" rows={events} onRefresh={() => getEvents().then(setEvents)} />
+            </>
+          )}
         </div>
       </div>
 
@@ -77,10 +101,12 @@ export default function AllEventsPage() {
                 <td className="px-4 py-3 text-gray-700 text-right whitespace-nowrap">{e.capacity ?? '—'}</td>
                 <td className="px-4 py-3 text-gray-500 max-w-xs truncate">{e.description ?? '—'}</td>
                 <td className="px-4 py-3 whitespace-nowrap">
-                  <div className="flex gap-2">
-                    <Link href={`/dashboard/events/${e.id}/edit`} className="text-xs text-blue-600 hover:underline">Edit</Link>
-                    <button onClick={() => handleDelete(e.id)} className="text-xs text-red-500 hover:underline">Delete</button>
-                  </div>
+                  {canManageEvents && (
+                    <div className="flex gap-2">
+                      <Link href={`/dashboard/events/${e.id}/edit`} className="text-xs text-blue-600 hover:underline">Edit</Link>
+                      <button onClick={() => handleDelete(e.id)} className="text-xs text-red-500 hover:underline">Delete</button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

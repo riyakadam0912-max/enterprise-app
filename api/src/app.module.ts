@@ -22,6 +22,7 @@ import { OperationsModule } from './domains/operations.module';
 import { DynamicFormsModule } from './dynamic-forms/dynamic-forms.module';
 import { FormSubmissionsModule } from './form-submissions/form-submissions.module';
 import { OrganizationsModule } from './organizations/organizations.module';
+import { BusinessUnitsModule } from './business-units/business-units.module';
 import { AuditContextMiddleware } from './audit-logs/audit-context.middleware';
 import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware';
 import { resolveRedisConnection } from './config/redis';
@@ -74,6 +75,7 @@ const queueImports = redisConnection
     DynamicFormsModule,
     FormSubmissionsModule,
     OrganizationsModule,
+    BusinessUnitsModule,
     EmailModule,
   ],
   controllers: [AppController],

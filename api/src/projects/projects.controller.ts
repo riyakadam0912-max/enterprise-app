@@ -189,7 +189,7 @@ export class ProjectsController {
     return this.service.getByStatus(req.user);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER, Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.EMPLOYEE)
   @ApiOperation({ summary: 'GET :id' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -204,7 +204,7 @@ export class ProjectsController {
     return this.service.findOne(id, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
   @ApiOperation({ summary: 'GET :id/progress' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -268,7 +268,7 @@ export class ProjectsController {
     return this.service.remove(id, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER, Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.EMPLOYEE)
   @ApiOperation({ summary: 'GET :id/links' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })

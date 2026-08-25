@@ -8,7 +8,7 @@ import { getInvoices, type Invoice } from '@/api/invoicesApi';
 import { formatDate, formatInr, invoiceOutstanding, normalizeInvoiceStatus } from '@/utils/finance';
 import { useAuthSession } from '@/stores/auth-store';
 
-type DashboardRole = 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
+type DashboardRole = 'SUPER_ADMIN' | 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
 
 type SessionState = DashboardRole | 'UNAUTHENTICATED' | null;
 
@@ -178,7 +178,7 @@ function formatCurrency(value: number) {
 }
 
 function getStatusFromRole(role: DashboardRole | null) {
-  if (role === 'ADMIN' || role === 'HR') return 'allowed';
+  if (role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'HR') return 'allowed';
   return 'blocked';
 }
 
@@ -193,7 +193,7 @@ export default function AccountsPage() {
   const authSession = useAuthSession();
 
   useEffect(() => {
-    if (authSession.role === 'ADMIN' || authSession.role === 'HR') {
+    if (authSession.role === 'SUPER_ADMIN' || authSession.role === 'ADMIN' || authSession.role === 'HR') {
       setSession(authSession.role);
     } else {
       setSession('UNAUTHENTICATED');
@@ -218,7 +218,7 @@ export default function AccountsPage() {
       }
     }
 
-    if (session === 'ADMIN' || session === 'HR') {
+    if (session === 'SUPER_ADMIN' || session === 'ADMIN' || session === 'HR') {
       void load();
     } else if (session === 'UNAUTHENTICATED') {
       setLoading(false);
@@ -262,7 +262,7 @@ export default function AccountsPage() {
     return (
       <div className="p-6">
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-amber-800">
-          <p className="font-medium">Accounts is available to Admin and HR users only.</p>
+          <p className="font-medium">Accounts is available to Super Admin, Admin, and HR users only.</p>
         </div>
       </div>
     );

@@ -18,6 +18,8 @@ import { PayslipGenerationService } from './payslip-generation.service';
 import { UpdateSalaryStructureDto } from './dto/update-salary-structure.dto';
 import { DASHBOARD_CACHE_KEY } from '../common/utils/cache-keys';
 import type { AuthUser } from '../common/types/auth';
+import { Role } from '../common/enums/role.enum';
+import { BusinessUnitsService } from '../business-units/business-units.service';
 
 @Injectable()
 export class PayrollService {
@@ -26,6 +28,7 @@ export class PayrollService {
     private readonly calculationService: PayrollCalculationService,
     private readonly payslipService: PayslipGenerationService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+    private readonly businessUnitsService: BusinessUnitsService,
   ) {}
 
   private async invalidateDashboardCache() {
@@ -37,6 +40,13 @@ export class PayrollService {
       throw new ForbiddenException('User has no associated organization');
     }
     return user.organizationId;
+  }
+
+  private resolveReadOrganization(user: AuthUser): number | null {
+    if (!user.organizationId && (user.isSuperAdmin || user.role === Role.SUPER_ADMIN)) {
+      return null;
+    }
+    return this.validateOrganization(user);
   }
 
   private async getAttendanceMetricsForCycle(
@@ -148,8 +158,10 @@ export class PayrollService {
     }>
   > {
     const organizationId = this.validateOrganization(user);
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    const employeeBUWhere = this.businessUnitsService.buildEmployeeBUWhere(scope);
     const employee = await this.prisma.employee.findFirst({
-      where: { id: dto.employeeId, deletedAt: null, organizationId },
+      where: { id: dto.employeeId, ...employeeBUWhere },
     });
     if (!employee) {
       throw new NotFoundException('Employee not found');
@@ -196,8 +208,20 @@ export class PayrollService {
     }>
   > {
     const organizationId = this.validateOrganization(user);
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    const employeeBUWhere = this.businessUnitsService.buildEmployeeBUWhere(scope);
+    const employee = await this.prisma.employee.findFirst({
+      where: { id: employeeId, ...employeeBUWhere },
+    });
+    if (!employee) {
+      throw new NotFoundException('Employee not found in authorized BU scope');
+    }
+    let buStructureWhere: Prisma.SalaryStructureWhereInput = {};
+    if (!scope.allUnits) {
+      buStructureWhere = { employee: { businessUnitId: { in: scope.unitIds } } };
+    }
     const activeStructure = await this.prisma.salaryStructure.findFirst({
-      where: { employeeId, isActive: true, deletedAt: null, organizationId },
+      where: { employeeId, isActive: true, deletedAt: null, organizationId, ...buStructureWhere },
     });
 
     if (!activeStructure) {
@@ -236,9 +260,20 @@ export class PayrollService {
       include: { employee: true };
     }>[]
   > {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = this.resolveReadOrganization(user);
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    let buWhere: Prisma.SalaryStructureWhereInput = {};
+    if (!scope.allUnits) {
+      buWhere = {
+        employee: { businessUnitId: { in: scope.unitIds } },
+      };
+    }
     return this.prisma.salaryStructure.findMany({
-      where: { deletedAt: null, organizationId },
+      where: {
+        deletedAt: null,
+        ...(organizationId == null ? {} : { organizationId }),
+        ...buWhere,
+      },
       include: { employee: true },
       orderBy: { updatedAt: 'desc' },
     });
@@ -252,9 +287,22 @@ export class PayrollService {
       include: { employee: true };
     }>
   > {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = this.resolveReadOrganization(user);
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    let buWhere: Prisma.SalaryStructureWhereInput = {};
+    if (!scope.allUnits) {
+      buWhere = {
+        employee: { businessUnitId: { in: scope.unitIds } },
+      };
+    }
     const structure = await this.prisma.salaryStructure.findFirst({
-      where: { employeeId, isActive: true, deletedAt: null, organizationId },
+      where: {
+        employeeId,
+        isActive: true,
+        deletedAt: null,
+        ...(organizationId == null ? {} : { organizationId }),
+        ...buWhere,
+      },
       include: { employee: true },
     });
 
@@ -308,9 +356,9 @@ export class PayrollService {
       include: { _count: { select: { entries: true } } };
     }>[]
   > {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = this.resolveReadOrganization(user);
     return this.prisma.payrollCycle.findMany({
-      where: { deletedAt: null, organizationId },
+      where: { deletedAt: null, ...(organizationId == null ? {} : { organizationId }) },
       include: { _count: { select: { entries: true } } },
       orderBy: [{ year: 'desc' }, { month: 'desc' }],
     });
@@ -337,8 +385,13 @@ export class PayrollService {
       throw new NotFoundException('Payroll cycle not found');
     }
 
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    let buStructureWhere: Prisma.SalaryStructureWhereInput = {};
+    if (!scope.allUnits) {
+      buStructureWhere = { employee: { businessUnitId: { in: scope.unitIds } } };
+    }
     const activeStructures = await this.prisma.salaryStructure.findMany({
-      where: { isActive: true, deletedAt: null, organizationId },
+      where: { isActive: true, deletedAt: null, organizationId, ...buStructureWhere },
       include: { employee: true },
     });
 
@@ -434,9 +487,14 @@ export class PayrollService {
       include: { employee: true; payrollCycle: true };
     }>[]
   > {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = this.resolveReadOrganization(user);
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    let buEntryWhere: Prisma.PayrollEntryWhereInput = {};
+    if (!scope.allUnits) {
+      buEntryWhere = { employee: { businessUnitId: { in: scope.unitIds } } };
+    }
     return this.prisma.payrollEntry.findMany({
-      where: { payrollCycleId: cycleId, deletedAt: null, organizationId },
+      where: { payrollCycleId: cycleId, deletedAt: null, ...(organizationId == null ? {} : { organizationId }), ...buEntryWhere },
       include: {
         employee: true,
         payrollCycle: true,
@@ -451,8 +509,13 @@ export class PayrollService {
     user: AuthUser,
   ): Promise<Prisma.PayrollEntryGetPayload<object>> {
     const organizationId = this.validateOrganization(user);
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    let buEntryWhere: Prisma.PayrollEntryWhereInput = {};
+    if (!scope.allUnits) {
+      buEntryWhere = { employee: { businessUnitId: { in: scope.unitIds } } };
+    }
     const entry = await this.prisma.payrollEntry.findFirst({
-      where: { id: entryId, deletedAt: null, organizationId },
+      where: { id: entryId, deletedAt: null, organizationId, ...buEntryWhere },
     });
     if (!entry) {
       throw new NotFoundException('Payroll entry not found');
@@ -480,8 +543,10 @@ export class PayrollService {
     }>
   > {
     const organizationId = this.validateOrganization(user);
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    const employeeBUWhere = this.businessUnitsService.buildEmployeeBUWhere(scope);
     const employee = await this.prisma.employee.findFirst({
-      where: { id: dto.employeeId, deletedAt: null, organizationId },
+      where: { id: dto.employeeId, ...employeeBUWhere },
     });
     if (!employee) {
       throw new NotFoundException('Employee not found');
@@ -528,6 +593,11 @@ export class PayrollService {
     }>
   > {
     const organizationId = this.validateOrganization(user);
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    let buDeclWhere: Prisma.TaxDeclarationWhereInput = {};
+    if (!scope.allUnits) {
+      buDeclWhere = { employee: { businessUnitId: { in: scope.unitIds } } };
+    }
     const declaration = await this.prisma.taxDeclaration.findFirst({
       where: {
         deletedAt: null,
@@ -535,6 +605,7 @@ export class PayrollService {
         year,
         organizationId,
         approvalStatus: { in: ['PENDING', 'APPROVED'] },
+        ...buDeclWhere,
       },
       include: { employee: true },
     });
@@ -554,6 +625,17 @@ export class PayrollService {
     user: AuthUser,
   ): Promise<Prisma.TaxDeclarationGetPayload<object>> {
     const organizationId = this.validateOrganization(user);
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    let buDeclWhere: Prisma.TaxDeclarationWhereInput = {};
+    if (!scope.allUnits) {
+      buDeclWhere = { employee: { businessUnitId: { in: scope.unitIds } } };
+    }
+    const scopedDecl = await this.prisma.taxDeclaration.findFirst({
+      where: { id: declarationId, organizationId, ...buDeclWhere },
+    });
+    if (!scopedDecl) {
+      throw new NotFoundException('Tax declaration not found');
+    }
     const result = await this.prisma.taxDeclaration.update({
       where: { id: declarationId, organizationId },
       data: {
@@ -570,8 +652,13 @@ export class PayrollService {
   // Payslip Generation
   async generatePayslips(cycleId: number, user: AuthUser): Promise<unknown[]> {
     const organizationId = this.validateOrganization(user);
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    let buEntryWhere: Prisma.PayrollEntryWhereInput = {};
+    if (!scope.allUnits) {
+      buEntryWhere = { employee: { businessUnitId: { in: scope.unitIds } } };
+    }
     const entries = await this.prisma.payrollEntry.findMany({
-      where: { payrollCycleId: cycleId, deletedAt: null, organizationId },
+      where: { payrollCycleId: cycleId, deletedAt: null, organizationId, ...buEntryWhere },
     });
 
     const results: unknown[] = [];
@@ -589,8 +676,13 @@ export class PayrollService {
     user: AuthUser,
   ): Promise<Prisma.PayslipGetPayload<object>> {
     const organizationId = this.validateOrganization(user);
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    let buPayslipWhere: Prisma.PayslipWhereInput = {};
+    if (!scope.allUnits) {
+      buPayslipWhere = { employee: { businessUnitId: { in: scope.unitIds } } };
+    }
     const payslip = await this.prisma.payslip.findFirst({
-      where: { id: payslipId, organizationId },
+      where: { id: payslipId, organizationId, ...buPayslipWhere },
     });
     if (!payslip) {
       throw new NotFoundException('Payslip not found');
@@ -608,6 +700,14 @@ export class PayrollService {
     }>[]
   > {
     const organizationId = this.validateOrganization(user);
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    const employeeBUWhere = this.businessUnitsService.buildEmployeeBUWhere(scope);
+    const employee = await this.prisma.employee.findFirst({
+      where: { id: employeeId, ...employeeBUWhere },
+    });
+    if (!employee) {
+      throw new NotFoundException('Employee not found in authorized BU scope');
+    }
     return this.prisma.payslip.findMany({
       where: {
         employeeId,
@@ -621,14 +721,20 @@ export class PayrollService {
 
   async downloadPayslip(payslipId: number, user: AuthUser): Promise<string> {
     const organizationId = this.validateOrganization(user);
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    let buPayslipWhere: Prisma.PayslipWhereInput = {};
+    if (!scope.allUnits) {
+      buPayslipWhere = { employee: { businessUnitId: { in: scope.unitIds } } };
+    }
     const payslip = await this.prisma.payslip.findFirst({
-      where: { id: payslipId, organizationId },
+      where: { id: payslipId, organizationId, ...buPayslipWhere },
     });
     if (!payslip) {
       throw new NotFoundException('Payslip not found');
     }
+    const employeeBUWhere = this.businessUnitsService.buildEmployeeBUWhere(scope);
     const employee = await this.prisma.employee.findFirst({
-      where: { id: payslip.employeeId },
+      where: { id: payslip.employeeId, ...employeeBUWhere },
     });
     if (!employee) throw new NotFoundException('Employee not found');
     const html = this.payslipService.generatePayslipHTML(payslip, employee);
@@ -646,13 +752,19 @@ export class PayrollService {
     }>
   > {
     const organizationId = this.validateOrganization(user);
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    const employeeBUWhere = this.businessUnitsService.buildEmployeeBUWhere(scope);
     const employee = await this.prisma.employee.findFirst({
-      where: { id: employeeId, deletedAt: null, organizationId },
+      where: { id: employeeId, ...employeeBUWhere },
     });
     if (!employee) {
       throw new NotFoundException('Employee not found');
     }
 
+    let buPayslipWhere: Prisma.PayslipWhereInput = {};
+    if (!scope.allUnits) {
+      buPayslipWhere = { employee: { businessUnitId: { in: scope.unitIds } } };
+    }
     // Get all payslips for the year
     const payslips = await this.prisma.payslip.findMany({
       where: {
@@ -660,6 +772,7 @@ export class PayrollService {
         employeeId,
         year,
         organizationId,
+        ...buPayslipWhere,
       },
     });
 
@@ -749,11 +862,17 @@ export class PayrollService {
     }>
   > {
     const organizationId = this.validateOrganization(user);
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    let buForm16Where: Prisma.Form16WhereInput = {};
+    if (!scope.allUnits) {
+      buForm16Where = { employee: { businessUnitId: { in: scope.unitIds } } };
+    }
     const form16 = await this.prisma.form16.findFirst({
       where: {
         employeeId,
         year,
         organizationId,
+        ...buForm16Where,
       },
       include: { employee: true },
     });

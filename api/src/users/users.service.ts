@@ -87,6 +87,18 @@ export class UsersService {
       }
     }
 
+    if (createUserDto.primaryBusinessUnitId) {
+      const businessUnit = await this.prisma.businessUnit.findFirst({
+        where: {
+          id: createUserDto.primaryBusinessUnitId,
+          ...organizationFilter,
+          status: 'ACTIVE',
+        },
+        select: { id: true },
+      });
+      if (!businessUnit) throw new NotFoundException('Business Unit not found');
+    }
+
     const hashedPassword = await hashPassword(createUserDto.password);
 
     try {
@@ -99,6 +111,7 @@ export class UsersService {
           role: createUserDto.role,
           employeeId: createUserDto.employeeId,
           managerId: createUserDto.managerId,
+          primaryBusinessUnitId: createUserDto.primaryBusinessUnitId,
           designation: createUserDto.designation,
         },
         select: {
@@ -200,6 +213,25 @@ export class UsersService {
       data.employeeId = updateUserDto.employeeId;
     if (updateUserDto.managerId !== undefined)
       data.managerId = updateUserDto.managerId;
+    if (updateUserDto.primaryBusinessUnitId !== undefined) {
+      if (updateUserDto.primaryBusinessUnitId !== null) {
+        if (existing.organizationId == null) {
+          throw new ForbiddenException(
+            'A user must belong to an organization before receiving a Business Unit',
+          );
+        }
+        const businessUnit = await this.prisma.businessUnit.findFirst({
+          where: {
+            id: updateUserDto.primaryBusinessUnitId,
+            organizationId: existing.organizationId,
+            status: 'ACTIVE',
+          },
+          select: { id: true },
+        });
+        if (!businessUnit) throw new NotFoundException('Business Unit not found');
+      }
+      data.primaryBusinessUnitId = updateUserDto.primaryBusinessUnitId;
+    }
     if (updateUserDto.organizationId !== undefined)
       data.organizationId = updateUserDto.organizationId;
     if (updateUserDto.isActive !== undefined)

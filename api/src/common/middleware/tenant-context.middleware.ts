@@ -7,6 +7,7 @@ import {
   setAuditContext,
 } from '../../audit-logs/audit-context';
 import type { JwtPayload } from '../../common/types/auth';
+import { Role } from '../enums/role.enum';
 
 @Injectable()
 export class TenantContextMiddleware implements NestMiddleware {
@@ -15,6 +16,121 @@ export class TenantContextMiddleware implements NestMiddleware {
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
   ) {}
+
+  private userCanScopeMultipleBusinessUnits(
+    role: string | undefined,
+    roles: string[] | undefined,
+    isPlatformAdmin: boolean,
+  ): boolean {
+    if (isPlatformAdmin) return true;
+    const wideRoles = new Set<string>([
+      Role.SUPER_ADMIN,
+      Role.ADMIN,
+      Role.HR,
+      Role.COMPLIANCE_MANAGER,
+    ]);
+    if (role && wideRoles.has(role)) return true;
+    if (Array.isArray(roles) && roles.some((r) => wideRoles.has(r)))
+      return true;
+    return false;
+  }
+
+  async resolveBusinessUnitContext(
+    request: any,
+    payload: JwtPayload,
+    resolvedOrganizationId: number | null,
+    isPlatformAdmin: boolean,
+    headerBU: string | undefined,
+  ): Promise<{ businessUnitId: number | null; allBusinessUnits: boolean }> {
+    const roleStr =
+      typeof payload.role === 'string' ? payload.role : undefined;
+    const rolesArr = Array.isArray(payload.roles) ? payload.roles : [];
+    const canScopeMultiple = this.userCanScopeMultipleBusinessUnits(
+      roleStr,
+      rolesArr,
+      isPlatformAdmin,
+    );
+
+    const assignedBUId: number | null =
+      (typeof payload.employeeBusinessUnitId === 'number'
+        ? payload.employeeBusinessUnitId
+        : null) ??
+      (typeof payload.primaryBusinessUnitId === 'number'
+        ? payload.primaryBusinessUnitId
+        : null);
+
+    if (resolvedOrganizationId == null) {
+      return { businessUnitId: assignedBUId, allBusinessUnits: false };
+    }
+
+    if (canScopeMultiple) {
+      if (
+        headerBU === undefined ||
+        headerBU === null ||
+        headerBU === '' ||
+        headerBU.toUpperCase() === 'ALL'
+      ) {
+        return { businessUnitId: null, allBusinessUnits: true };
+      }
+
+      const buId = Number(headerBU);
+      if (!Number.isNaN(buId) && buId > 0) {
+        const bu = await this.prisma.businessUnit.findFirst({
+          where: { id: buId, organizationId: resolvedOrganizationId },
+          select: { id: true, status: true },
+        });
+        if (bu && (bu.status as string) === 'ACTIVE') {
+          return { businessUnitId: bu.id, allBusinessUnits: false };
+        }
+        if (!bu) {
+          this.logger.warn(
+            `Admin user ${payload.sub ?? payload.userId} requested Business Unit ${buId} not in org ${resolvedOrganizationId}`,
+          );
+        } else {
+          this.logger.warn(
+            `Admin user ${payload.sub ?? payload.userId} requested inactive Business Unit ${buId} (status=${bu.status})`,
+          );
+        }
+        return { businessUnitId: null, allBusinessUnits: true };
+      }
+      this.logger.warn(
+        `Invalid X-Business-Unit-Id header for admin user: ${headerBU}`,
+      );
+      return { businessUnitId: null, allBusinessUnits: true };
+    }
+
+    if (headerBU !== undefined && headerBU !== null && headerBU !== '') {
+      const headerBUParsed = Number(headerBU);
+      if (
+        !Number.isNaN(headerBUParsed) &&
+        headerBUParsed > 0 &&
+        headerBUParsed === assignedBUId
+      ) {
+        const bu = await this.prisma.businessUnit.findFirst({
+          where: { id: assignedBUId, organizationId: resolvedOrganizationId },
+          select: { id: true },
+        });
+        if (bu) {
+          return { businessUnitId: assignedBUId, allBusinessUnits: false };
+        }
+      }
+      this.logger.warn(
+        `Non-privileged user ${payload.sub ?? payload.userId} tried to override X-Business-Unit-Id from ${assignedBUId} to ${headerBU} — ignoring and using assigned BU`,
+      );
+    }
+
+    if (assignedBUId != null) {
+      const bu = await this.prisma.businessUnit.findFirst({
+        where: { id: assignedBUId, organizationId: resolvedOrganizationId },
+        select: { id: true },
+      });
+      if (bu) {
+        return { businessUnitId: assignedBUId, allBusinessUnits: false };
+      }
+    }
+
+    return { businessUnitId: null, allBusinessUnits: false };
+  }
 
   async use(req: Request, _res: Response, next: NextFunction) {
     try {
@@ -50,6 +166,11 @@ export class TenantContextMiddleware implements NestMiddleware {
       const headerOrg =
         (req.headers['x-organization-id'] as string) ||
         (req.headers['X-Organization-Id'] as string) ||
+        undefined;
+
+      const headerBU =
+        (req.headers['x-business-unit-id'] as string) ||
+        (req.headers['X-Business-Unit-Id'] as string) ||
         undefined;
 
       let resolvedOrganizationId: number | null = null;
@@ -154,9 +275,22 @@ export class TenantContextMiddleware implements NestMiddleware {
         }
       }
 
-      if (resolvedOrganizationId != null) {
+      const buContext = await this.resolveBusinessUnitContext(
+        request,
+        payload,
+        resolvedOrganizationId,
+        isPlatformAdmin,
+        headerBU,
+      );
+      request.businessUnitId = buContext.businessUnitId;
+      request.allBusinessUnits = buContext.allBusinessUnits;
+
+      if (resolvedOrganizationId != null || buContext.businessUnitId != null) {
         const current = getAuditContext();
-        setAuditContext({ ...current, organizationId: resolvedOrganizationId });
+        setAuditContext({
+          ...current,
+          organizationId: resolvedOrganizationId ?? undefined,
+        });
       }
 
       return next();

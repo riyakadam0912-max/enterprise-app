@@ -12,6 +12,7 @@ import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { AuthUser } from '../common/types/auth';
 import { Role } from '../common/enums/role.enum';
 import { hashPassword } from '../users/utils/hash-password';
+import { BusinessUnitsService } from '../business-units/business-units.service';
 
 const ALLOWED_DEPARTMENTS = [
   'Sales',
@@ -38,13 +39,30 @@ function normalizeDepartment(department?: string | null): string {
 
 @Injectable()
 export class EmployeesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private businessUnitsService: BusinessUnitsService,
+  ) {}
 
   private validateOrganization(user: AuthUser): number {
     if (!user.organizationId) {
       throw new ForbiddenException('User has no associated organization');
     }
     return user.organizationId;
+  }
+
+  private isWideScoped(user: AuthUser & { roles?: string[] }): boolean {
+    const wide = new Set<string>([
+      Role.SUPER_ADMIN,
+      Role.ADMIN,
+      Role.HR,
+      Role.COMPLIANCE_MANAGER,
+    ]);
+    if (user.isPlatformAdmin === true || user.isSuperAdmin === true) return true;
+    if (user.role && wide.has(user.role as string)) return true;
+    if (Array.isArray(user.roles) && user.roles.some((r) => wide.has(r)))
+      return true;
+    return false;
   }
 
   private async resolveCurrentEmployeeId(user: AuthUser) {
@@ -66,37 +84,28 @@ export class EmployeesService {
   }
 
   private async getScope(
-    user: AuthUser & { roles?: string[] },
-  ): Promise<Prisma.EmployeeWhereInput | undefined> {
-    const organizationId = this.validateOrganization(user);
-    if (
-      user.role === Role.ADMIN ||
-      user.role === Role.HR ||
-      (user.roles &&
-        (user.roles.includes(Role.ADMIN) ||
-          user.roles.includes(Role.SUPER_ADMIN) ||
-          user.roles.includes(Role.HR)))
-    ) {
-      return { deletedAt: null, organizationId };
+    user: AuthUser & {
+      roles?: string[];
+      businessUnitId?: number | null;
+      allBusinessUnits?: boolean;
+    },
+  ): Promise<Prisma.EmployeeWhereInput> {
+    const scope = await this.businessUnitsService.resolveScope(user);
+    const buWhere = this.businessUnitsService.buildEmployeeBUWhere(scope);
+
+    if (this.isWideScoped(user)) {
+      return buWhere;
     }
 
     if (
       user.role === Role.MANAGER ||
-      (user.roles && user.roles.includes(Role.MANAGER))
+      (Array.isArray(user.roles) && user.roles.includes(Role.MANAGER))
     ) {
-      return {
-        deletedAt: null,
-        organizationId,
-        user: { managerId: user.userId },
-      };
+      return { AND: [buWhere, { user: { managerId: user.userId } }] };
     }
 
     const employeeId = await this.resolveCurrentEmployeeId(user);
-    return {
-      id: employeeId,
-      deletedAt: null,
-      organizationId,
-    };
+    return { AND: [buWhere, { id: employeeId }] };
   }
 
   private isPlatformSuperAdmin(user: AuthUser): boolean {
@@ -204,21 +213,44 @@ export class EmployeesService {
         );
       }
 
-      if (createEmployeeDto.shiftId) {
-        const shift = await this.prisma.shift.findFirst({
-          where: {
-            id: createEmployeeDto.shiftId,
-            organizationId,
-            isActive: true,
-          },
-          select: { id: true },
-        });
-        if (!shift) {
-          throw new NotFoundException(
-            'Selected shift not found in the organization.',
-          );
-        }
+    }
+
+    if (createEmployeeDto.shiftId) {
+      const shift = await this.prisma.shift.findFirst({
+        where: {
+          id: createEmployeeDto.shiftId,
+          organizationId,
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      if (!shift) {
+        throw new NotFoundException(
+          'Selected shift not found in the organization.',
+        );
       }
+    }
+
+    if (createEmployeeDto.businessUnitId) {
+      const businessUnit = await this.prisma.businessUnit.findFirst({
+        where: {
+          id: createEmployeeDto.businessUnitId,
+          organizationId,
+          status: 'ACTIVE',
+        },
+        select: { id: true },
+      });
+      if (!businessUnit) {
+        throw new NotFoundException(
+          'Selected Business Unit not found in the organization.',
+        );
+      }
+      const callerScope = await this.businessUnitsService.resolveScope(user as any);
+      await this.businessUnitsService.assertRecordAccessible(
+        callerScope,
+        createEmployeeDto.businessUnitId,
+        'employee:businessUnit',
+      );
     }
 
     const hashedPassword = wantsLoginAccount
@@ -242,6 +274,9 @@ export class EmployeesService {
           status: createEmployeeDto.status,
           shift: createEmployeeDto.shiftId
             ? { connect: { id: createEmployeeDto.shiftId } }
+            : undefined,
+          businessUnit: createEmployeeDto.businessUnitId
+            ? { connect: { id: createEmployeeDto.businessUnitId } }
             : undefined,
         },
         include: { user: true },
@@ -268,6 +303,7 @@ export class EmployeesService {
             role: userRole,
             employeeId: employee.id,
             managerId: createEmployeeDto.managerId ?? undefined,
+            primaryBusinessUnitId: createEmployeeDto.businessUnitId ?? undefined,
             designation: createEmployeeDto.designation,
           },
           select: {
@@ -436,17 +472,18 @@ export class EmployeesService {
   }
 
   async remove(id: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const employee = await this.findOne(id, user);
     return this.prisma.employee.update({
-      where: { id, organizationId },
+      where: { id: employee.id },
       data: { deletedAt: new Date() },
     });
   }
 
   async findDeleted(user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    const buWhere = this.businessUnitsService.buildEmployeeBUWhere(scope);
     return this.prisma.employee.findMany({
-      where: { deletedAt: { not: null }, organizationId },
+      where: { ...buWhere, deletedAt: { not: null } },
       include: {
         shift: true,
         user: {
@@ -462,12 +499,13 @@ export class EmployeesService {
   }
 
   async restore(id: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    const buWhere = this.businessUnitsService.buildEmployeeBUWhere(scope);
     const deletedEmployee = await this.prisma.employee.findFirst({
       where: {
         id,
+        ...buWhere,
         deletedAt: { not: null },
-        organizationId,
       },
       select: { id: true },
     });
@@ -477,7 +515,7 @@ export class EmployeesService {
     }
 
     return this.prisma.employee.update({
-      where: { id, organizationId },
+      where: { id: deletedEmployee.id },
       data: { deletedAt: null },
     });
   }

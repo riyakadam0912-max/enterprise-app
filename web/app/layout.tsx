@@ -1,18 +1,13 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Montserrat } from "next/font/google";
 import "./globals.css";
 import ReactQueryProvider from "@/components/providers/ReactQueryProvider";
 import BackendHealthProvider from "@/components/providers/BackendHealthProvider";
 import { DesignSystemProvider } from "@/providers/design-system-provider";
 import { AuthProvider } from '@/providers/AuthProvider';
 import GlobalErrorListener from '@/providers/global-error-listener';
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const montserrat = Montserrat({
+  variable: "--font-montserrat",
   subsets: ["latin"],
 });
 
@@ -32,7 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en" data-scroll-behavior="smooth">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
+        className={`${montserrat.variable} antialiased bg-background text-foreground`}
       >
         <ReactQueryProvider>
           <BackendHealthProvider>

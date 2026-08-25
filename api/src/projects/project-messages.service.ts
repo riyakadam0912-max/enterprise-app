@@ -15,6 +15,17 @@ export class ProjectMessagesService {
     return this.prisma;
   }
 
+  private isPlatformAdmin(user: AuthUser): boolean {
+    return (
+      user.role === Role.ADMIN ||
+      user.role === Role.SUPER_ADMIN ||
+      user.isPlatformAdmin === true ||
+      user.isSuperAdmin === true ||
+      user.roles.includes(Role.ADMIN) ||
+      user.roles.includes(Role.SUPER_ADMIN)
+    );
+  }
+
   private validateOrganization(user: AuthUser): number {
     if (!user.organizationId) {
       throw new ForbiddenException('User has no associated organization');
@@ -42,7 +53,7 @@ export class ProjectMessagesService {
   ): Promise<boolean> {
     const organizationId = this.validateOrganization(user);
 
-    if (user.role === Role.ADMIN) {
+    if (this.isPlatformAdmin(user)) {
       return true;
     }
 

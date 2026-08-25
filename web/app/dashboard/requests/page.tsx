@@ -7,11 +7,11 @@ import {
   getLeaveRequests,
   hrApproveLeaveRequest,
   LeaveRequest,
-  managerApproveLeaveRequest,
   rejectLeaveRequest,
 } from '../../../src/api/leaveRequestsApi';
 import TableActions from '@/components/common/TableActions';
 import { reportError, retryAsync } from '@/lib/error-handling';
+import { useAuthSession } from '@/stores/auth-store';
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING_MANAGER: 'bg-amber-100 text-amber-700',
@@ -52,9 +52,8 @@ export default function AllRequestsPage() {
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
-  const role = typeof window !== 'undefined' ? (localStorage.getItem('role') ?? 'EMPLOYEE') : 'EMPLOYEE';
-  const canManagerApprove = role === 'MANAGER' || role === 'ADMIN';
-  const canHrApprove = role === 'HR' || role === 'ADMIN';
+  const role = useAuthSession().role;
+  const canApprove = role === 'HR' || role === 'ADMIN' || role === 'SUPER_ADMIN';
 
   useEffect(() => {
     async function loadRequests() {
@@ -81,16 +80,6 @@ export default function AllRequestsPage() {
     r.leaveType.toLowerCase().includes(search.toLowerCase())
   );
 
-  async function handleManagerApprove(id: number) {
-    setActionLoadingId(id);
-    try {
-      await managerApproveLeaveRequest(id);
-      setRequests(await getLeaveRequests());
-    } finally {
-      setActionLoadingId(null);
-    }
-  }
-
   async function handleHrApprove(id: number) {
     setActionLoadingId(id);
     try {
@@ -110,6 +99,11 @@ export default function AllRequestsPage() {
     } finally {
       setActionLoadingId(null);
     }
+  }
+
+  async function handleApprovalAction(id: number, action: string) {
+    if (action === 'approve') await handleHrApprove(id);
+    if (action === 'reject') await handleReject(id);
   }
 
   return (
@@ -203,32 +197,22 @@ export default function AllRequestsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2 flex-wrap">
-                          {canManagerApprove && req.status === 'PENDING_MANAGER' && (
-                            <button
-                              onClick={() => handleManagerApprove(req.id)}
+                          {canApprove && !['APPROVED', 'REJECTED', 'CANCELLED'].includes(req.status) && (
+                            <select
+                              defaultValue=""
                               disabled={actionLoadingId === req.id}
-                              className="text-xs rounded bg-blue-50 text-blue-700 px-2 py-1 hover:bg-blue-100 disabled:opacity-50"
+                              onChange={(event) => {
+                                const action = event.target.value;
+                                event.target.value = '';
+                                void handleApprovalAction(req.id, action);
+                              }}
+                              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:opacity-50"
+                              aria-label={`Actions for leave request ${req.id}`}
                             >
-                              Manager Approve
-                            </button>
-                          )}
-                          {canHrApprove && req.status === 'PENDING_HR' && (
-                            <button
-                              onClick={() => handleHrApprove(req.id)}
-                              disabled={actionLoadingId === req.id}
-                              className="text-xs rounded bg-emerald-50 text-emerald-700 px-2 py-1 hover:bg-emerald-100 disabled:opacity-50"
-                            >
-                              HR Approve
-                            </button>
-                          )}
-                          {(canManagerApprove || canHrApprove) && !['APPROVED', 'REJECTED', 'CANCELLED'].includes(req.status) && (
-                            <button
-                              onClick={() => handleReject(req.id)}
-                              disabled={actionLoadingId === req.id}
-                              className="text-xs rounded bg-rose-50 text-rose-700 px-2 py-1 hover:bg-rose-100 disabled:opacity-50"
-                            >
-                              Reject
-                            </button>
+                              <option value="">Choose action</option>
+                              {(role === 'ADMIN' || role === 'SUPER_ADMIN' || req.status === 'PENDING_HR') && <option value="approve">Approve as {role === 'SUPER_ADMIN' ? 'Super Admin' : role}</option>}
+                              <option value="reject">Reject as {role === 'SUPER_ADMIN' ? 'Super Admin' : role}</option>
+                            </select>
                           )}
                           <button
                             onClick={() => handleDelete(req.id)}

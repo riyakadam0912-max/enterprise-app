@@ -19,6 +19,7 @@ import {
 } from '../common/workflows/approval-workflow';
 import { DASHBOARD_CACHE_KEY } from '../common/utils/cache-keys';
 import { PrismaService } from '../prisma/prisma.service';
+import { BusinessUnitsService } from '../business-units/business-units.service';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { UpdateLeaveRequestDto } from './dto/update-leave-request.dto';
 import { EmployeeLeaveRequestedEvent } from './events/employee-leave-requested.event';
@@ -37,6 +38,7 @@ export class LeaveRequestsService {
     private readonly eventEmitter: EventEmitter2,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly workflowEngine: WorkflowEngineService,
+    private readonly businessUnitsService: BusinessUnitsService,
   ) {}
 
   private async invalidateDashboardCache() {
@@ -67,15 +69,23 @@ export class LeaveRequestsService {
   }
 
   private async findScoped(id: number, user: AuthUser) {
+    const organizationId = this.getOrganizationId(user);
+    const buScope = await this.businessUnitsService.resolveScope(user as any);
+    const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
+
     const where: Prisma.LeaveRequestWhereInput = {
       id,
-      organizationId: user.organizationId ?? undefined,
+      organizationId,
+      employee: buWhere,
     };
 
     if (user.role === Role.EMPLOYEE) {
       where.employeeId = await this.resolveCurrentEmployeeId(user);
     } else if (user.role === Role.MANAGER) {
-      where.employee = { user: { managerId: user.userId } };
+      where.employee = {
+        ...(where.employee as Prisma.EmployeeWhereInput),
+        user: { managerId: user.userId },
+      };
     }
 
     return this.prisma.leaveRequest.findFirst({
@@ -140,9 +150,13 @@ export class LeaveRequestsService {
       );
     }
 
-    // Fetch employee details for event emission
+    const buScope = await this.businessUnitsService.resolveScope(user as any);
+    const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
     const employee = await this.prisma.employee.findFirst({
-      where: { id: employeeId, organizationId },
+      where: {
+        id: employeeId,
+        ...buWhere,
+      },
       include: {
         user: {
           select: { id: true, name: true, email: true, managerId: true },
@@ -224,14 +238,21 @@ export class LeaveRequestsService {
 
   async findAll(user: AuthUser) {
     const organizationId = this.getOrganizationId(user);
+    const buScope = await this.businessUnitsService.resolveScope(user as any);
+    const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
+
     const where: Prisma.LeaveRequestWhereInput = {
       organizationId,
+      employee: buWhere,
     };
 
     if (user.role === Role.EMPLOYEE) {
       where.employeeId = await this.resolveCurrentEmployeeId(user);
     } else if (user.role === Role.MANAGER) {
-      where.employee = { user: { managerId: user.userId } };
+      where.employee = {
+        ...(where.employee as Prisma.EmployeeWhereInput),
+        user: { managerId: user.userId },
+      };
     }
 
     return this.prisma.leaveRequest.findMany({
@@ -269,6 +290,22 @@ export class LeaveRequestsService {
       data.employee = dto.employeeId
         ? { connect: { id: dto.employeeId } }
         : { disconnect: true };
+
+        // Validate new employeeId is within user's BU scope if provided
+        if (dto.employeeId !== undefined && dto.employeeId !== null) {
+          const buScope = await this.businessUnitsService.resolveScope(user as any);
+          const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
+          const targetEmployee = await this.prisma.employee.findFirst({
+            where: { id: dto.employeeId, ...buWhere },
+            select: { id: true },
+          });
+          if (!targetEmployee) {
+            throw new ForbiddenException(
+              'Target employee is not within your authorized Business Unit scope',
+            );
+          }
+        }
+
     if (dto.startDate !== undefined) data.startDate = new Date(dto.startDate);
     if (dto.endDate !== undefined) data.endDate = new Date(dto.endDate);
     if (dto.leaveType !== undefined) data.leaveType = dto.leaveType;
@@ -332,14 +369,15 @@ export class LeaveRequestsService {
 
   async hrApprove(id: number, user: AuthUser) {
     const organizationId = this.getOrganizationId(user);
-    const request = await this.prisma.leaveRequest.findFirst({
-      where: { id, organizationId },
-    });
+    const request = await this.findScoped(id, user);
     if (!request) {
       throw new NotFoundException(`LeaveRequest #${id} not found`);
     }
 
-    if (request.status !== 'PENDING_HR') {
+    const canFinalizeFromManagerStage =
+      (user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN) &&
+      request.status === 'PENDING_MANAGER';
+    if (request.status !== 'PENDING_HR' && !canFinalizeFromManagerStage) {
       throw new ForbiddenException('Leave request is not pending HR approval');
     }
 
@@ -359,29 +397,31 @@ export class LeaveRequestsService {
       userId: user.userId,
       businessStatus: 'APPROVED',
       trailAction: 'HR_APPROVED',
-      approvedByLabel: `HR:${user.userId}`,
+      approvedByLabel: `${user.role}:${user.userId}`,
       trail: request.approvalTrail,
       organizationId,
     });
 
     const approved = await this.prisma.$transaction(async (tx) => {
-      if (request.employeeId) {
-        const employee = await tx.employee.findFirst({
-          where: {
-            id: request.employeeId,
-            organizationId,
-          },
+      const employee = request.employeeId
+        ? await tx.employee.findFirst({
+            where: {
+              id: request.employeeId,
+              organizationId,
+            },
+            include: { shift: true },
+          })
+        : null;
+
+      if (employee) {
+        const currentBalance = employee.leaveBalance ?? 0;
+        await tx.employee.update({
+          where: { id: employee.id, organizationId },
+          data: { leaveBalance: Math.max(0, currentBalance - leaveDays) },
         });
-        if (employee) {
-          const currentBalance = employee.leaveBalance ?? 0;
-          await tx.employee.update({
-            where: { id: employee.id, organizationId },
-            data: { leaveBalance: Math.max(0, currentBalance - leaveDays) },
-          });
-        }
       }
 
-      return tx.leaveRequest.update({
+      const approved = await tx.leaveRequest.update({
         where: { id, organizationId },
         data: {
           ...createHrApprovalState(request.approvalTrail, user.userId),
@@ -391,62 +431,56 @@ export class LeaveRequestsService {
             : true,
         },
       });
+
+      if (request.employeeId) {
+        for (const leaveDay of this.enumerateDays(
+          approved.startDate,
+          approved.endDate,
+        )) {
+          await tx.attendance.upsert({
+            where: {
+              employeeId_date: {
+                employeeId: request.employeeId,
+                date: leaveDay,
+              },
+            },
+            update: {
+              organizationId,
+              shiftId: employee?.shiftId ?? undefined,
+              status: 'LEAVE',
+              isPaidLeave: approved.isPaid ?? true,
+              checkIn: null,
+              checkOut: null,
+              workingHours: null,
+              lateMinutes: 0,
+              overtimeHours: 0,
+              remarks: 'On Leave',
+            },
+            create: {
+              organizationId,
+              employeeId: request.employeeId,
+              shiftId: employee?.shiftId ?? undefined,
+              date: leaveDay,
+              status: 'LEAVE',
+              isPaidLeave: approved.isPaid ?? true,
+              requiredHours: employee?.shift?.requiredHours ?? 8,
+              remarks: 'On Leave',
+            },
+          });
+        }
+      }
+
+      return approved;
     });
 
     await this.invalidateDashboardCache();
-
-    if (request.employeeId) {
-      const leaveDays = this.enumerateDays(
-        approved.startDate,
-        approved.endDate,
-      );
-      const employee = await this.prisma.employee.findFirst({
-        where: { id: request.employeeId, organizationId },
-        include: { shift: true },
-      });
-
-      for (const leaveDay of leaveDays) {
-        await this.prisma.attendance.upsert({
-          where: {
-            employeeId_date: {
-              employeeId: request.employeeId,
-              date: leaveDay,
-            },
-          },
-          update: {
-            organizationId,
-            shiftId: employee?.shiftId ?? undefined,
-            status: 'LEAVE',
-            isPaidLeave: approved.isPaid ?? true,
-            checkIn: null,
-            checkOut: null,
-            workingHours: null,
-            lateMinutes: 0,
-            overtimeHours: 0,
-            remarks: 'On Leave',
-          },
-          create: {
-            organizationId,
-            employeeId: request.employeeId,
-            shiftId: employee?.shiftId ?? undefined,
-            date: leaveDay,
-            status: 'LEAVE',
-            isPaidLeave: approved.isPaid ?? true,
-            requiredHours: employee?.shift?.requiredHours ?? 8,
-            remarks: 'On Leave',
-          },
-        });
-      }
-    }
 
     return approved;
   }
 
   async reject(id: number, user: AuthUser, reason?: string) {
     const organizationId = this.getOrganizationId(user);
-    const request = await this.prisma.leaveRequest.findFirst({
-      where: { id, organizationId },
-    });
+    const request = await this.findScoped(id, user);
     if (!request) {
       throw new NotFoundException(`LeaveRequest #${id} not found`);
     }
@@ -486,6 +520,8 @@ export class LeaveRequestsService {
     user: AuthUser,
   ): Promise<{ imported: number; errors: string[] }> {
     const organizationId = this.getOrganizationId(user);
+    const buScope = await this.businessUnitsService.resolveScope(user as any);
+    const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
     let imported = 0;
     const errors: string[] = [];
     for (let i = 0; i < records.length; i++) {
@@ -501,6 +537,19 @@ export class LeaveRequestsService {
       if (!r.leaveType) {
         errors.push(`Row ${i + 1}: 'leaveType' is required`);
         continue;
+      }
+      if (r.employeeId) {
+        const validEmployee = await this.prisma.employee.findFirst({
+          where: {
+            id: Number(r.employeeId),
+            ...buWhere,
+          },
+          select: { id: true },
+        });
+        if (!validEmployee) {
+          errors.push(`Row ${i + 1}: Employee #${r.employeeId} not found or not authorized`);
+          continue;
+        }
       }
       try {
         await this.prisma.leaveRequest.create({

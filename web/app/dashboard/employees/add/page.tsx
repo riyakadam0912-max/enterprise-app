@@ -8,6 +8,7 @@ import { apiClient } from '@/api/apiClient';
 import { canAccessUsers } from '@/utils/auth/permissions';
 import { reportError } from '@/lib/error-handling';
 import { PasswordInput } from '@/components/ui/password-input';
+import { getActiveOrganizationId, useAuthSession } from '@/stores/auth-store';
 
 const DEPARTMENTS = ['Sales', 'Operations', 'Marketing', 'HR', 'Finance', 'Creative', 'IT'] as const;
 const ROLES = ['EMPLOYEE', 'MANAGER', 'HR'] as const;
@@ -26,14 +27,23 @@ interface ShiftOption {
   type: string;
 }
 
+interface BusinessUnitOption {
+  id: number;
+  name: string;
+  code: string;
+  status: string;
+}
+
 const LOGIN_CREATION_ROLES: CurrentUserRole[] = ['SUPER_ADMIN', 'ADMIN', 'HR'];
 
 export default function AddEmployeePage() {
   const router = useRouter();
+  const auth = useAuthSession();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [managerOptions, setManagerOptions] = useState<ManagerOption[]>([]);
   const [shiftOptions, setShiftOptions] = useState<ShiftOption[]>([]);
+  const [businessUnitOptions, setBusinessUnitOptions] = useState<BusinessUnitOption[]>([]);
   const [currentRole] = useState<CurrentUserRole>(() => {
     if (typeof window === 'undefined') {
       return 'EMPLOYEE';
@@ -46,6 +56,7 @@ export default function AddEmployeePage() {
     name: '',
     department: '',
     shiftId: '',
+    businessUnitId: '',
     designation: '',
     hireDate: '',
     email: '',
@@ -74,7 +85,20 @@ export default function AddEmployeePage() {
         reportError(error, 'Unable to load shift options');
         setShiftOptions([]);
       });
-  }, [currentRole]);
+
+    const organizationId = auth.organizationId ?? getActiveOrganizationId();
+    if (organizationId == null) {
+      setBusinessUnitOptions([]);
+      return;
+    }
+
+    apiClient<BusinessUnitOption[]>(`/organizations/${organizationId}/business-units`)
+      .then((units) => setBusinessUnitOptions(units.filter((unit) => unit.status === 'ACTIVE')))
+      .catch((error) => {
+        reportError(error, 'Unable to load Business Unit options');
+        setBusinessUnitOptions([]);
+      });
+  }, [auth.organizationId, currentRole]);
 
   const inputCls = 'w-full px-4 py-2.5 rounded-lg border border-slate-300 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition text-sm';
   const selectCls = inputCls;
@@ -106,6 +130,7 @@ export default function AddEmployeePage() {
       name: '',
       department: '',
       shiftId: '',
+      businessUnitId: '',
       designation: '',
       hireDate: '',
       email: '',
@@ -147,6 +172,7 @@ export default function AddEmployeePage() {
         hireDate: form.hireDate || undefined,
         manager: selectedReportingManager?.name || undefined,
         shiftId: form.shiftId ? Number(form.shiftId) : undefined,
+        businessUnitId: form.businessUnitId ? Number(form.businessUnitId) : undefined,
         status: 'Active',
         ...(canCreateLogin
           ? {
@@ -249,6 +275,22 @@ export default function AddEmployeePage() {
                 <option key={shift.id} value={shift.id}>
                   {shift.name} ({shift.type})
                 </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="employee-business-unit" className="block text-sm font-medium text-slate-700 mb-1">Business Unit</label>
+            <select
+              id="employee-business-unit"
+              name="businessUnitId"
+              value={form.businessUnitId}
+              onChange={handleChange}
+              className={selectCls}
+            >
+              <option value="">No Business Unit assigned</option>
+              {businessUnitOptions.map((unit) => (
+                <option key={unit.id} value={unit.id}>{unit.name} ({unit.code})</option>
               ))}
             </select>
           </div>

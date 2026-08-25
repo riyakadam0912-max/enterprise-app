@@ -26,6 +26,7 @@ export interface Employee {
   designation?: string;
   hireDate?: string;
   manager?: string;
+  businessUnitId?: number | null;
   leaveBalance?: number;
   status?: string;
   shift?: {

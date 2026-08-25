@@ -264,6 +264,20 @@ export class AuthController {
     };
   }
 
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'POST change password' })
+  @Post('change-password')
+  async changePassword(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: { currentPassword: string; newPassword: string },
+  ) {
+    return this.authService.changePassword(
+      req.user.userId || req.user.id,
+      body.currentPassword,
+      body.newPassword,
+    );
+  }
+
   @Throttle({ default: { limit: 5, ttl: 60 } })
   @UseGuards(ThrottlerGuard)
   @ApiOperation({ summary: 'POST login' })

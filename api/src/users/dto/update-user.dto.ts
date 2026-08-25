@@ -44,6 +44,11 @@ export class UpdateUserDto {
 
   @IsOptional()
   @IsInt()
+  @ApiPropertyOptional({ example: 1 })
+  primaryBusinessUnitId?: number | null;
+
+  @IsOptional()
+  @IsInt()
   @ApiPropertyOptional({ example: 2 })
   organizationId?: number | null;
 

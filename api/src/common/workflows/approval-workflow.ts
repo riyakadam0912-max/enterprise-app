@@ -7,9 +7,6 @@ import type {
 type ApprovalStateWrite = {
   status: string;
   approvedBy: string | null;
-  approvedAt: Date | string | null;
-  rejectedAt: Date | string | null;
-  rejectionReason: string | null;
   approvalTrail: Prisma.InputJsonValue;
 };
 
@@ -65,17 +62,11 @@ export function createManagerApprovalState(
   ApprovalStateWrite,
   | 'status'
   | 'approvedBy'
-  | 'approvedAt'
-  | 'rejectedAt'
-  | 'rejectionReason'
   | 'approvalTrail'
 > {
   return {
     status: 'PENDING_HR',
     approvedBy: `MANAGER:${userId}`,
-    approvedAt: null,
-    rejectedAt: null,
-    rejectionReason: null,
     approvalTrail: appendTrail(
       trail,
       'MANAGER_APPROVED',
@@ -91,17 +82,11 @@ export function createHrApprovalState(
   ApprovalStateWrite,
   | 'status'
   | 'approvedBy'
-  | 'approvedAt'
-  | 'rejectedAt'
-  | 'rejectionReason'
   | 'approvalTrail'
 > {
   return {
     status: 'APPROVED',
     approvedBy: `HR:${userId}`,
-    approvedAt: new Date(),
-    rejectedAt: null,
-    rejectionReason: null,
     approvalTrail: appendTrail(
       trail,
       'HR_APPROVED',
@@ -119,17 +104,11 @@ export function createRejectionState(
   ApprovalStateWrite,
   | 'status'
   | 'approvedBy'
-  | 'approvedAt'
-  | 'rejectedAt'
-  | 'rejectionReason'
   | 'approvalTrail'
 > {
   return {
     status: 'REJECTED',
     approvedBy: `${userRole}:${userId} (Rejected)`,
-    approvedAt: null,
-    rejectedAt: new Date(),
-    rejectionReason: reason?.trim() ? reason.trim() : null,
     approvalTrail: appendTrail(
       trail,
       'REJECTED',

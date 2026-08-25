@@ -64,6 +64,7 @@
     "@types/cookie-parser": "^1.4.10",
     "@types/csurf": "^1.11.5",
     "@types/multer": "^2.1.0",
+    "@vercel/node": "^7.0.0",
     "bcrypt": "^6.0.0",
     "bullmq": "^5.74.0",
     "cache-manager": "^7.2.8",

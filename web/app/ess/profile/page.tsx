@@ -5,6 +5,7 @@ import { useMyProfile, useUpdateProfile } from '@/hooks/useEss';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 import { ProfileAvatarUploader } from '@/components/profile/ProfileAvatarUploader';
 import { useAuthSession } from '@/stores/auth-store';
+import { apiClient } from '@/api/apiClient';
 
 export default function ESSProfilePage() {
   const { data: profile, loading: profileLoading, refetch: refetchProfile } = useMyProfile();
@@ -13,6 +14,8 @@ export default function ESSProfilePage() {
 
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
+    name: '',
+    designation: '',
     phoneNumber: '',
     address: '',
     emergencyContact: '',
@@ -25,6 +28,8 @@ export default function ESSProfilePage() {
   const handleStartEditing = () => {
     if (profile) {
       setFormData({
+        name: profile.name || session.user?.name || '',
+        designation: profile.designation || session.user?.designation || '',
         phoneNumber: profile.phoneNumber || '',
         address: profile.address || '',
         emergencyContact: profile.emergencyContact || '',
@@ -39,6 +44,15 @@ export default function ESSProfilePage() {
     e.preventDefault();
 
     try {
+      await apiClient('/auth/profile/me', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: formData.name.trim(),
+          designation: formData.designation.trim() || undefined,
+          phone: formData.phoneNumber.trim() || undefined,
+          address: formData.address.trim() || undefined,
+        }),
+      });
       await update(formData);
       setShowSuccess(true);
       setShowError(false);
@@ -180,6 +194,32 @@ export default function ESSProfilePage() {
               {/* Phone Number */}
               <div>
                 <label className="block text-sm font-medium text-gray-900 mb-2">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-2">
+                  Designation
+                </label>
+                <input
+                  type="text"
+                  value={formData.designation}
+                  onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+                  placeholder="Enter your designation"
+                />
+              </div>
+
+              {/* Phone Number */}
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-2">
                   Personal Phone Number
                 </label>
                 <input
@@ -255,8 +295,7 @@ export default function ESSProfilePage() {
               {/* Info */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <p className="text-xs text-blue-800">
-                  <strong>Note:</strong> You cannot edit name, email, designation, or department from this page.
-                  Contact HR for those changes.
+                  <strong>Note:</strong> Email, department, position, and employee ID are managed by your organization.
                 </p>
               </div>
 
@@ -275,6 +314,8 @@ export default function ESSProfilePage() {
                     setIsEditing(false);
                     if (profile) {
                       setFormData({
+                        name: profile.name || session.user?.name || '',
+                        designation: profile.designation || session.user?.designation || '',
                         phoneNumber: profile.phoneNumber || '',
                         address: profile.address || '',
                         emergencyContact: profile.emergencyContact || '',

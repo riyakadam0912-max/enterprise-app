@@ -5,7 +5,7 @@ import { getSalaryStructures, createSalaryStructure, getPayrollCycles, createPay
 import TableActions from '@/components/common/TableActions';
 import { useAuthSession } from '@/stores/auth-store';
 
-type Role = 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
+type Role = 'SUPER_ADMIN' | 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
 
 const monthName = (m: number) => new Date(2024, m - 1).toLocaleString('default', { month: 'long' });
 const money = (v: number) => `₹ ${(v || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
@@ -23,7 +23,7 @@ export default function PayrollPage() {
   const [payrollEntries, setPayrollEntries] = useState<PayrollEntry[]>([]);
   const [selectedCycle, setSelectedCycle] = useState<PayrollCycle | null>(null);
 
-  const canManage = role === 'ADMIN' || role === 'HR';
+  const canManage = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'HR';
 
   const [salaryForm, setSalaryForm] = useState({ employeeId: 1, basic: 50000, hra: 10000, allowances: 5000, pf: 6000, esi: 375, professionalTax: 200, tds: 2000 });
   const [cycleForm, setCycleForm] = useState({ name: `Payroll ${monthName(new Date().getMonth() + 1)}`, month: new Date().getMonth() + 1, year: new Date().getFullYear(), notes: '' });

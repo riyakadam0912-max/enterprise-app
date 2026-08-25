@@ -14,6 +14,7 @@ import { AuthUser } from '../common/types/auth';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { BusinessUnitsService } from '../business-units/business-units.service';
 
 // Helper to create valid mock AuthUser
 function createMockAuthUser(
@@ -70,6 +71,18 @@ describe('ExpensesService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: WorkflowEngineService, useValue: mockWorkflowEngine },
         { provide: CACHE_MANAGER, useValue: mockCacheManager },
+        {
+          provide: BusinessUnitsService,
+          useValue: {
+            resolveScope: jest.fn().mockResolvedValue({
+              organizationId: 1,
+              allUnits: true,
+              unitIds: [],
+              assignedUnitId: null,
+            }),
+            assertRecordAccessible: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -105,7 +118,9 @@ describe('ExpensesService', () => {
     it('should create expense successfully for admin', async () => {
       const expenseDelegate = getPrismaDelegate(mockPrisma, 'expense');
       const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
       userDelegate.findUnique.mockResolvedValueOnce({ employeeId: 101 });
+      employeeDelegate.findFirst.mockResolvedValueOnce({ businessUnitId: 1 });
       expenseDelegate.create.mockResolvedValueOnce({
         id: 1,
         category: 'Test',

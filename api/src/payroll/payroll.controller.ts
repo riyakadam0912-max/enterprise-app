@@ -35,7 +35,7 @@ export class PayrollController {
   constructor(private readonly service: PayrollService) {}
 
   // Salary Structure endpoints
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'POST salary-structures' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -50,7 +50,7 @@ export class PayrollController {
     return this.service.createSalaryStructure(dto, user);
   }
 
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'GET salary-structures' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -61,7 +61,7 @@ export class PayrollController {
     return this.service.listSalaryStructures(user);
   }
 
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'GET salary-structures/employee/:employeeId' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -75,7 +75,7 @@ export class PayrollController {
     return this.service.getSalaryStructureByEmployee(employeeId, user);
   }
 
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'PATCH salary-structures/employee/:employeeId' })
   @ApiResponse({ status: 200, description: 'PATCH request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -92,7 +92,7 @@ export class PayrollController {
   }
 
   // Payroll Cycle endpoints
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'POST cycles' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -107,7 +107,7 @@ export class PayrollController {
     return this.service.createCycle(dto, user);
   }
 
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'GET cycles' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -118,7 +118,7 @@ export class PayrollController {
     return this.service.listCycles(user);
   }
 
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'PATCH cycles/:id/run' })
   @ApiResponse({ status: 200, description: 'PATCH request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -132,7 +132,7 @@ export class PayrollController {
     return this.service.runCycle(id, user);
   }
 
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'GET cycles/:id/entries' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -147,7 +147,7 @@ export class PayrollController {
   }
 
   // Payroll Entry endpoints
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'PATCH entries/:id/pay' })
   @ApiResponse({ status: 200, description: 'PATCH request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -164,7 +164,7 @@ export class PayrollController {
   }
 
   // Tax Declaration endpoints
-  @Roles(Role.ADMIN, Role.HR, Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN, Role.EMPLOYEE)
   @ApiOperation({ summary: 'POST tax-declarations' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -179,7 +179,7 @@ export class PayrollController {
     return this.service.createTaxDeclaration(dto, user);
   }
 
-  @Roles(Role.ADMIN, Role.HR, Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN, Role.EMPLOYEE)
   @ApiOperation({ summary: 'GET tax-declarations/:employeeId/:year' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -194,7 +194,7 @@ export class PayrollController {
     return this.service.getTaxDeclaration(employeeId, year, user);
   }
 
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'PATCH tax-declarations/:id/approve' })
   @ApiResponse({ status: 200, description: 'PATCH request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -210,7 +210,7 @@ export class PayrollController {
   }
 
   // Payslip endpoints
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'POST cycles/:cycleId/generate-payslips' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -224,7 +224,7 @@ export class PayrollController {
     return this.service.generatePayslips(cycleId, user);
   }
 
-  @Roles(Role.ADMIN, Role.HR, Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN, Role.EMPLOYEE)
   @ApiOperation({ summary: 'GET payslips/:payslipId' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -238,7 +238,7 @@ export class PayrollController {
     return this.service.getPayslip(payslipId, user);
   }
 
-  @Roles(Role.ADMIN, Role.HR, Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN, Role.EMPLOYEE)
   @ApiOperation({ summary: 'GET payslips/employee/:employeeId' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -252,7 +252,7 @@ export class PayrollController {
     return this.service.getEmployeePayslips(employeeId, user);
   }
 
-  @Roles(Role.ADMIN, Role.HR, Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN, Role.EMPLOYEE)
   @ApiOperation({ summary: 'GET payslips/:payslipId/download' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })

@@ -10,6 +10,7 @@ import { UpdateProjectDto } from './dto/update-project.dto';
 import { Role } from '../common/enums/role.enum';
 import { CreateProjectLinkDto } from './dto/create-project-link.dto';
 import { AuthUser } from '../common/types/auth';
+import { BusinessUnitsService } from '../business-units/business-units.service';
 
 const PROJECT_STATUSES = [
   'ACTIVE',
@@ -27,7 +28,10 @@ const TASK_STATUSES = [
 ] as const;
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly businessUnitsService: BusinessUnitsService,
+  ) {}
 
   private get db() {
     return this.prisma;
@@ -60,46 +64,48 @@ export class ProjectsService {
     user: AuthUser,
   ): Promise<Prisma.ProjectWhereInput> {
     const organizationId = this.validateOrganization(user);
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    const buWhere = this.businessUnitsService.buildDirectBUWhere(scope);
     const baseWhere = { organizationId };
 
-    if (user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN) {
-      return baseWhere;
-    }
+    let roleWhere: Prisma.ProjectWhereInput;
 
-    if (user.role === Role.MANAGER) {
-      const where = {
+    if (user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN) {
+      roleWhere = baseWhere;
+    } else if (user.role === Role.MANAGER) {
+      roleWhere = {
         ...baseWhere,
         OR: [
           { managerId: user.userId },
           { coManagers: { some: { id: user.userId } } },
         ],
       };
-      return where;
-    }
-
-    const scopedUser = await this.getScopedUser(user);
-    if (!scopedUser.employeeId) {
-      return { ...baseWhere, id: -1 };
-    }
-
-    const where = {
-      ...baseWhere,
-      OR: [
-        { managerId: scopedUser.managerId },
-        { assignedEmployees: { some: { id: scopedUser.employeeId } } },
-        {
-          tasks: {
-            some: {
-              OR: [
-                { assignedToUserId: user.userId },
-                { assignedToId: scopedUser.employeeId },
-              ],
+    } else {
+      const scopedUser = await this.getScopedUser(user);
+      if (!scopedUser.employeeId) {
+        roleWhere = { ...baseWhere, id: -1 };
+      } else {
+        roleWhere = {
+          ...baseWhere,
+          OR: [
+            { managerId: scopedUser.managerId },
+            { assignedEmployees: { some: { id: scopedUser.employeeId } } },
+            {
+              tasks: {
+                some: {
+                  OR: [
+                    { assignedToUserId: user.userId },
+                    { assignedToId: scopedUser.employeeId },
+                  ],
+                },
+              },
             },
-          },
-        },
-      ],
-    };
-    return where;
+          ],
+        };
+      }
+    }
+
+    return { AND: [roleWhere, buWhere] };
   }
 
   private normalizeProjectStatus(
@@ -141,7 +147,13 @@ export class ProjectsService {
     projectId: number,
     user: AuthUser,
   ): Promise<boolean> {
-    if (user.role === Role.ADMIN) {
+    if (
+      user.role === Role.ADMIN ||
+      user.role === Role.SUPER_ADMIN ||
+      user.isPlatformAdmin === true ||
+      user.isSuperAdmin === true ||
+      user.roles.includes(Role.SUPER_ADMIN)
+    ) {
       return true;
     }
     if (user.role !== Role.MANAGER) {
@@ -203,6 +215,15 @@ export class ProjectsService {
 
   async create(dto: CreateProjectDto, user: AuthUser) {
     const organizationId = this.validateOrganization(user);
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    const dtoAny = dto as any;
+    if (dtoAny.businessUnitId != null) {
+      await this.businessUnitsService.assertRecordAccessible(
+        scope,
+        dtoAny.businessUnitId,
+        'project',
+      );
+    }
     const resolvedName = dto.projectName?.trim() || dto.name?.trim();
     if (!resolvedName) {
       throw new ForbiddenException('Project name is required');
@@ -234,6 +255,7 @@ export class ProjectsService {
         description: dto.description,
         client: dto.client,
         projectLead: dto.projectLead,
+        ...(dtoAny.businessUnitId != null && { businessUnitId: dtoAny.businessUnitId }),
       },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
@@ -631,6 +653,16 @@ export class ProjectsService {
       );
     }
 
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    const dtoAny = dto as any;
+    if (dtoAny.businessUnitId !== undefined) {
+      await this.businessUnitsService.assertRecordAccessible(
+        scope,
+        dtoAny.businessUnitId,
+        'project',
+      );
+    }
+
     let managerName = dto.manager;
     if (dto.managerId) {
       const manager = await this.assertManager(dto.managerId, organizationId);
@@ -662,6 +694,7 @@ export class ProjectsService {
               ? new Date(dto.deadline || dto.endDate!)
               : null,
         }),
+        ...(dtoAny.businessUnitId !== undefined && { businessUnitId: dtoAny.businessUnitId }),
       },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },

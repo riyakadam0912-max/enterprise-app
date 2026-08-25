@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateQuoteDto } from './dto/create-quote.dto';
 import { UpdateQuoteDto } from './dto/update-quote.dto';
 import type { AuthUser } from '../common/types/auth';
+import { Role } from '../common/enums/role.enum';
 
 const includeRelations = {
   deal: { select: { id: true, title: true, value: true, stage: true } },
@@ -26,6 +27,13 @@ export class QuotesService {
       throw new ForbiddenException('User has no associated organization');
     }
     return user.organizationId;
+  }
+
+  private resolveReadScope(user: AuthUser): number | null {
+    if (!user.organizationId && (user.isSuperAdmin || user.role === Role.SUPER_ADMIN)) {
+      return null;
+    }
+    return this.validateOrganization(user);
   }
 
   async create(dto: CreateQuoteDto, user: AuthUser) {
@@ -71,18 +79,18 @@ export class QuotesService {
   }
 
   findAll(user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = this.resolveReadScope(user);
     return this.prisma.quote.findMany({
-      where: { organizationId },
+      where: organizationId == null ? {} : { organizationId },
       orderBy: { createdAt: 'desc' },
       include: includeRelations,
     });
   }
 
   async findOne(id: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = this.resolveReadScope(user);
     const quote = await this.prisma.quote.findUnique({
-      where: { id, organizationId },
+      where: { id, ...(organizationId == null ? {} : { organizationId }) },
       include: includeRelations,
     });
     if (!quote) throw new NotFoundException(`Quote #${id} not found`);

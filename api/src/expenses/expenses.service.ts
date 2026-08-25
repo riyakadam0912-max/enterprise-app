@@ -20,6 +20,7 @@ import {
   createSubmittedApprovalState,
 } from '../common/workflows/approval-workflow';
 import { DASHBOARD_CACHE_KEY } from '../common/utils/cache-keys';
+import { BusinessUnitsService } from '../business-units/business-units.service';
 
 const expenseInclude: Prisma.ExpenseInclude = {
   employee: true,
@@ -39,6 +40,7 @@ export class ExpensesService {
     private readonly prisma: PrismaService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly workflowEngine: WorkflowEngineService,
+    private readonly businessUnitsService: BusinessUnitsService,
   ) {}
 
   private async invalidateDashboardCache() {
@@ -69,24 +71,33 @@ export class ExpensesService {
     return linked.employeeId;
   }
 
-  private getScopedWhere(user: AuthUser): Prisma.ExpenseWhereInput {
+  private async getScopedWhere(user: AuthUser): Promise<Prisma.ExpenseWhereInput> {
     const organizationId = this.validateOrganization(user);
+    let baseWhere: Prisma.ExpenseWhereInput;
     if (user.role === Role.ADMIN || user.role === Role.HR) {
-      return { organizationId };
-    }
-
-    if (user.role === Role.MANAGER) {
-      return {
+      baseWhere = { organizationId };
+    } else if (user.role === Role.MANAGER) {
+      baseWhere = {
         organizationId,
         submittedByUser: {
           managerId: user.userId,
         },
       };
+    } else {
+      baseWhere = {
+        organizationId,
+        submittedByUserId: user.userId,
+      };
     }
 
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    if (scope.allUnits) return baseWhere;
     return {
-      organizationId,
-      submittedByUserId: user.userId,
+      ...baseWhere,
+      OR: [
+        { employeeId: null },
+        { employee: { businessUnitId: { in: scope.unitIds } } },
+      ],
     };
   }
 
@@ -115,6 +126,22 @@ export class ExpensesService {
       }
       // For managers/HR/admin submitting without an employeeId, use null
       // This represents an organizational expense or manager's own expense
+    }
+
+    if (employeeId != null) {
+      const scope = await this.businessUnitsService.resolveScope(user as any);
+      const employee = await this.prisma.employee.findFirst({
+        where: { id: employeeId, deletedAt: null, organizationId },
+        select: { businessUnitId: true },
+      });
+      if (!employee) {
+        throw new NotFoundException('Employee not found');
+      }
+      await this.businessUnitsService.assertRecordAccessible(
+        scope,
+        employee.businessUnitId,
+        'expense:employee',
+      );
     }
 
     const expense = await this.prisma.expense.create({
@@ -158,7 +185,7 @@ export class ExpensesService {
   }
 
   async findAll(user: AuthUser) {
-    const where = this.getScopedWhere(user);
+    const where = await this.getScopedWhere(user);
     return this.prisma.expense.findMany({
       where,
       include: expenseInclude,
@@ -167,7 +194,7 @@ export class ExpensesService {
   }
 
   async findOne(id: number, user: AuthUser) {
-    const where = this.getScopedWhere(user);
+    const where = await this.getScopedWhere(user);
     const expense = await this.prisma.expense.findFirst({
       where: { id, ...where },
       include: expenseDetailInclude,
@@ -185,6 +212,22 @@ export class ExpensesService {
     ) {
       throw new ForbiddenException(
         'Finalized expenses cannot be edited by employee',
+      );
+    }
+
+    if (dto.employeeId !== undefined && dto.employeeId !== null) {
+      const scope = await this.businessUnitsService.resolveScope(user as any);
+      const employee = await this.prisma.employee.findFirst({
+        where: { id: dto.employeeId, organizationId, deletedAt: null },
+        select: { businessUnitId: true },
+      });
+      if (!employee) {
+        throw new NotFoundException('Target employee not found');
+      }
+      await this.businessUnitsService.assertRecordAccessible(
+        scope,
+        employee.businessUnitId,
+        'expense:target-employee',
       );
     }
 
@@ -395,7 +438,7 @@ export class ExpensesService {
   }
 
   async getByCategory(user: AuthUser) {
-    const where = this.getScopedWhere(user);
+    const where = await this.getScopedWhere(user);
     const expenses = await this.prisma.expense.findMany({
       where,
       orderBy: { expenseDate: 'desc' },

@@ -19,6 +19,7 @@ model User {
   employeeId              Int?             @unique
   deletedAt               DateTime?
   organizationId          Int?
+  primaryBusinessUnitId   Int?
   address                 String?
   managerId               Int?
   phone                   String?
@@ -42,10 +43,12 @@ model User {
   manager                 User?            @relation("UserManager", fields: [managerId], references: [id])
   teamMembers             User[]           @relation("UserManager")
   organization            Organization?    @relation(fields: [organizationId], references: [id])
+  primaryBusinessUnit     BusinessUnit?    @relation("UserPrimaryBusinessUnit", fields: [primaryBusinessUnitId], references: [id], onDelete: SetNull)
   userRoles               UserRole[]
   coManagedProjects       Project[]        @relation("ProjectCoManagers")
 
   @@index([organizationId])
+  @@index([primaryBusinessUnitId])
 }
 
 model AppRole {
@@ -151,12 +154,43 @@ model Organization {
   workflowInstances        WorkflowInstance[]
   workflowNotifications    WorkflowNotification[]
   workflowSteps            WorkflowStep[]
+  businessUnits            BusinessUnit[]
 
   @@index([status])
   @@index([createdAt])
   @@index([slug])
   @@index([code])
   @@index([subscriptionPlan])
+}
+
+enum BusinessUnitStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+model BusinessUnit {
+  id                Int               @id @default(autoincrement())
+  organizationId    Int
+  parentId          Int?
+  name              String
+  code              String
+  description       String?
+  type              String?
+  status            BusinessUnitStatus @default(ACTIVE)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent            BusinessUnit?     @relation("BusinessUnitHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children          BusinessUnit[]    @relation("BusinessUnitHierarchy")
+  users             User[]            @relation("UserPrimaryBusinessUnit")
+  employees         Employee[]        @relation("EmployeeBusinessUnit")
+  projects          Project[]         @relation("ProjectBusinessUnit")
+  tasks             Task[]            @relation("TaskBusinessUnit")
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@index([parentId])
 }
 
 model Permission {
@@ -204,6 +238,7 @@ model Employee {
   salary                Float?
   deletedAt             DateTime?
   organizationId        Int
+  businessUnitId        Int?
   address               String?
   emergencyContact      String?
   emergencyContactPhone String?
@@ -212,6 +247,7 @@ model Employee {
   attendances           Attendance[]
   dealAssignments       Deal[]              @relation("DealAssignee")
   organization          Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  businessUnit          BusinessUnit?       @relation("EmployeeBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
   shift                 Shift?              @relation(fields: [shiftId], references: [id])
   expenseClaims         Expense[]
   form16s               Form16[]
@@ -229,6 +265,7 @@ model Employee {
   assignedProjects      Project[]           @relation("ProjectAssignedEmployees")
 
   @@index([organizationId])
+  @@index([businessUnitId])
 }
 
 model Shift {
@@ -450,9 +487,11 @@ model Task {
   reviewedBy       Int?
   submissionNotes  String?
   organizationId   Int
+  businessUnitId   Int?
   assignedByUser   User?        @relation("TaskAssignedBy", fields: [assignedByUserId], references: [id])
   assignedEmployee Employee?    @relation("TaskAssignee", fields: [assignedToId], references: [id])
   assignedToUser   User?        @relation("TaskAssignedTo", fields: [assignedToUserId], references: [id])
+  businessUnit     BusinessUnit? @relation("TaskBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
   deal             Deal?        @relation(fields: [dealId], references: [id])
   lead             Lead?        @relation(fields: [leadId], references: [id])
   organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -460,6 +499,7 @@ model Task {
   reviewedByUser   User?        @relation("TaskReviewedBy", fields: [reviewedBy], references: [id])
 
   @@index([organizationId])
+  @@index([businessUnitId])
 }
 
 model LeaveRequest {
@@ -601,7 +641,9 @@ model Project {
   deletedAt         DateTime?
   managerId         Int?
   organizationId    Int
+  businessUnitId    Int?
   managerUser       User?            @relation("ProjectManager", fields: [managerId], references: [id])
+  businessUnit      BusinessUnit?    @relation("ProjectBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
   organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   links             ProjectLink[]
   members           ProjectMember[]
@@ -611,6 +653,7 @@ model Project {
   coManagers        User[]           @relation("ProjectCoManagers")
 
   @@index([organizationId])
+  @@index([businessUnitId])
 }
 
 model ProjectMessage {

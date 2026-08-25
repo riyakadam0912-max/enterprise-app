@@ -57,8 +57,7 @@ export class UsersController {
     );
   }
 
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR, Role.MANAGER, Role.EMPLOYEE)
-  @RequirePermissions(Permission.USER_READ)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR)
   @ApiOperation({ summary: 'GET /' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -81,8 +80,7 @@ export class UsersController {
     return this.usersService.findAssignable(req.user);
   }
 
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR, Role.MANAGER, Role.EMPLOYEE)
-  @RequirePermissions(Permission.USER_READ)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR)
   @ApiOperation({ summary: 'GET /:id' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })

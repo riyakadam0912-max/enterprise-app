@@ -5,7 +5,7 @@ import { apiClient } from '@/api/apiClient';
 import { listFilesByEntity } from '@/api/filesApi';
 import { ProfileAvatarUploader } from '@/components/profile/ProfileAvatarUploader';
 import { PasswordInput } from '@/components/ui/password-input';
-import { useAuthSession } from '@/stores/auth-store';
+import { setAuthSession, useAuthSession } from '@/stores/auth-store';
 
 type LocalUser = {
   id?: number;
@@ -45,6 +45,15 @@ type ProfileResponse = {
     createdAt?: string;
     updatedAt?: string;
   };
+};
+
+type AccountProfileResponse = {
+  id: number;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  designation: string | null;
 };
 
 function readStoredUser(): LocalUser | null {
@@ -120,6 +129,7 @@ export default function ProfilePage() {
     fullName: storedUser?.name ?? 'User',
     email: storedUser?.email ?? '',
     phone: '',
+    designation: storedUser?.designation ?? '',
     department: storedUser?.department ?? '',
     role: storedUser?.role ?? 'EMPLOYEE',
     location: '',
@@ -135,7 +145,12 @@ export default function ProfilePage() {
 
     async function loadProfile() {
       try {
-        const data = await apiClient<ProfileResponse>('/employee-self-service/profile/me');
+        const [accountResult, employeeResult] = await Promise.allSettled([
+          apiClient<AccountProfileResponse>('/auth/profile/me'),
+          apiClient<ProfileResponse>('/employee-self-service/profile/me'),
+        ]);
+        const account = accountResult.status === 'fulfilled' ? accountResult.value : null;
+        const data = employeeResult.status === 'fulfilled' ? employeeResult.value : null;
         if (cancelled) {
           return;
         }
@@ -143,15 +158,16 @@ export default function ProfilePage() {
         setProfile(data);
         setDetails((prev) => ({
           ...prev,
-          fullName: data.name || prev.fullName,
-          email: data.email || prev.email,
-          phone: data.phoneNumber ?? data.phone ?? prev.phone,
-          department: data.department ?? prev.department,
-          location: data.address ?? prev.location,
-          role: data.user?.role ?? prev.role,
+          fullName: account?.name ?? data?.name ?? prev.fullName,
+          email: account?.email ?? data?.email ?? prev.email,
+          phone: account?.phone ?? data?.phoneNumber ?? data?.phone ?? prev.phone,
+          department: data?.department ?? prev.department,
+          designation: account?.designation ?? data?.designation ?? prev.designation,
+          location: account?.address ?? data?.address ?? prev.location,
+          role: data?.user?.role ?? prev.role,
         }));
 
-        const userId = data.user?.id ?? data.id;
+        const userId = data?.user?.id ?? data?.id ?? account?.id;
         if (userId) {
           const files = await listFilesByEntity('User', userId);
           if (!cancelled) {
@@ -180,7 +196,7 @@ export default function ProfilePage() {
 
   const displayRole = profile?.user?.role ?? details.role;
   const displayDepartment = profile?.department ?? details.department;
-  const displayTitle = profile?.designation ?? profile?.position ?? storedUser?.designation ?? storedUser?.position ?? displayRole;
+  const displayTitle = details.designation || profile?.position || storedUser?.position || displayRole;
   const accountActive = profile?.user?.isActive ?? storedUser?.isActive ?? true;
   const joinedAt = profile?.user?.createdAt ?? profile?.hireDate ?? storedUser?.createdAt ?? null;
   const lastLogin = storedUser?.lastLogin ?? null;
@@ -192,6 +208,16 @@ export default function ProfilePage() {
     setSavingDetails(true);
 
     try {
+      await apiClient<AccountProfileResponse>('/auth/profile/me', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: details.fullName.trim(),
+          phone: details.phone.trim() || undefined,
+          address: details.location.trim() || undefined,
+          designation: details.designation.trim() || undefined,
+        }),
+      });
+
       if (profile?.id) {
         await apiClient('/employee-self-service/profile/update', {
           method: 'PUT',
@@ -210,9 +236,16 @@ export default function ProfilePage() {
           role: details.role,
           department: details.department,
           position: profile?.position ?? storedUser?.position,
-          designation: profile?.designation ?? storedUser?.designation,
+          designation: details.designation,
         };
         localStorage.setItem('currentUser', JSON.stringify(nextUser));
+      }
+
+      if (session.user) {
+        setAuthSession({
+          ...session,
+          user: { ...session.user, name: details.fullName, designation: details.designation },
+        });
       }
 
       setMessage('Profile details saved successfully.');
@@ -244,7 +277,15 @@ export default function ProfilePage() {
 
     setSavingPassword(true);
     try {
-      setMessage('Password update is not wired to a backend endpoint on this page yet.');
+      await apiClient('/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword,
+        }),
+      });
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setMessage('Password updated successfully. Please sign in again.');
     } finally {
       setSavingPassword(false);
     }
@@ -313,8 +354,8 @@ export default function ProfilePage() {
                   id="profile-full-name"
                   name="fullName"
                   value={details.fullName}
-                  readOnly
-                  className="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none"
+                  onChange={(e) => setDetails((prev) => ({ ...prev, fullName: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-transparent focus:ring-2 focus:ring-orange-500"
                 />
               </div>
 
@@ -353,6 +394,18 @@ export default function ProfilePage() {
                   value={displayDepartment || 'Not assigned'}
                   readOnly
                   className="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="profile-designation" className="mb-1 block text-sm font-medium text-slate-700">Designation</label>
+                <input
+                  id="profile-designation"
+                  name="designation"
+                  value={details.designation}
+                  onChange={(e) => setDetails((prev) => ({ ...prev, designation: e.target.value }))}
+                  placeholder="Enter designation"
+                  className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-transparent focus:ring-2 focus:ring-orange-500"
                 />
               </div>
 

@@ -16,6 +16,14 @@ export type AuthUser = {
   team?: string;
 };
 
+export type BusinessUnit = {
+  id: number;
+  name: string;
+  code: string;
+  parentId: number | null;
+  status: string;
+};
+
 export type AuthSession = {
   role: AuthRole;
   roles: string[];
@@ -26,6 +34,9 @@ export type AuthSession = {
   organizationSlug: string | null;
   isSuperAdmin: boolean;
   isPlatformAdmin: boolean;
+  availableBusinessUnits: BusinessUnit[];
+  activeBusinessUnitId: number | null;
+  canSelectAllBusinessUnits: boolean;
 };
 
 type AuthSessionInput = {
@@ -38,10 +49,14 @@ type AuthSessionInput = {
   organizationSlug?: string | null;
   isSuperAdmin?: boolean;
   isPlatformAdmin?: boolean;
+  availableBusinessUnits?: BusinessUnit[];
+  activeBusinessUnitId?: number | null;
+  canSelectAllBusinessUnits?: boolean;
 };
 
 const AUTH_STATE_EVENT = 'enterprise-auth-state-change';
 const STORAGE_KEY = 'enterprise-auth-session';
+const ACTIVE_BUSINESS_UNIT_KEY = 'enterprise-active-business-unit';
 
 const SERVER_AUTH_SESSION: AuthSession = Object.freeze({
   role: 'EMPLOYEE',
@@ -53,6 +68,9 @@ const SERVER_AUTH_SESSION: AuthSession = Object.freeze({
   organizationSlug: null,
   isSuperAdmin: false,
   isPlatformAdmin: false,
+  availableBusinessUnits: [],
+  activeBusinessUnitId: null,
+  canSelectAllBusinessUnits: false,
 });
 
 let cachedSession: AuthSession = SERVER_AUTH_SESSION;
@@ -143,6 +161,31 @@ function parseOrganizationId(rawOrganizationId: string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseBusinessUnitId(rawBusinessUnitId: string | null): number | null {
+  if (!rawBusinessUnitId) {
+    return null;
+  }
+
+  const parsed = Number(rawBusinessUnitId);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseBusinessUnits(rawUnits: unknown): BusinessUnit[] {
+  if (!Array.isArray(rawUnits)) {
+    return [];
+  }
+
+  return rawUnits
+    .filter(
+      (unit): unit is BusinessUnit =>
+        typeof unit === 'object' &&
+        unit !== null &&
+        typeof (unit as any).id === 'number' &&
+        typeof (unit as any).name === 'string' &&
+        typeof (unit as any).code === 'string',
+    );
+}
+
 function notifyAuthStateChange(): void {
   if (typeof window === 'undefined') {
     return;
@@ -177,6 +220,9 @@ function loadSessionFromStorage(): AuthSession {
       employeeId: parseEmployeeId(parsed.employeeId == null ? null : String(parsed.employeeId)),
       organizationId: parseOrganizationId(parsed.organizationId == null ? null : String(parsed.organizationId)),
       organizationSlug: parsed.organizationSlug ?? null,
+      availableBusinessUnits: parseBusinessUnits(parsed.availableBusinessUnits),
+      activeBusinessUnitId: parseBusinessUnitId(parsed.activeBusinessUnitId == null ? null : String(parsed.activeBusinessUnitId)),
+      canSelectAllBusinessUnits: parsed.canSelectAllBusinessUnits === true,
     };
   } catch (e) {
     console.warn('[auth-store] Failed to load session from storage:', e);
@@ -246,6 +292,9 @@ export function setAuthSession(session: AuthSessionInput): void {
     organizationSlug: session.organizationSlug ?? null,
     isSuperAdmin: resolved.isSuperAdmin,
     isPlatformAdmin: resolved.isPlatformAdmin,
+    availableBusinessUnits: parseBusinessUnits(session.availableBusinessUnits),
+    activeBusinessUnitId: parseBusinessUnitId(session.activeBusinessUnitId == null ? null : String(session.activeBusinessUnitId)),
+    canSelectAllBusinessUnits: session.canSelectAllBusinessUnits === true,
   };
 
   saveSessionToStorage(cachedSession);
@@ -260,6 +309,7 @@ export function clearAuthSession(): void {
   try {
     window.localStorage.removeItem(STORAGE_KEY);
     window.sessionStorage.removeItem('activeOrganization');
+    window.sessionStorage.removeItem(ACTIVE_BUSINESS_UNIT_KEY);
   } catch (e) {
     console.warn('[auth-store] Failed to clear session from storage:', e);
   }
@@ -348,6 +398,129 @@ export function getActiveOrganizationId(): number | null {
   }
   return cachedSession.organizationId;
 }
+
+/**
+ * Set active business unit in session storage.
+ * Only allowed if user can select multiple business units or is changing to their assigned unit.
+ * Backend remains authoritative.
+ */
+export function setActiveBusinessUnit(businessUnitId: number | null): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const session = getAuthSessionSnapshot();
+
+  // Only allow if user can select multiple BUs
+  if (!session.canSelectAllBusinessUnits) {
+    // User can only stay with their assigned unit
+    if (businessUnitId != null && businessUnitId !== session.activeBusinessUnitId) {
+      console.warn(
+        `[auth-store] User cannot select Business Unit ${businessUnitId}: not authorized for multiple BU selection`,
+      );
+      return;
+    }
+  }
+
+  // Validate that the requested BU is in the available list
+  if (businessUnitId != null) {
+    const isAvailable = session.availableBusinessUnits.some((bu) => bu.id === businessUnitId);
+    if (!isAvailable) {
+      console.warn(
+        `[auth-store] Business Unit ${businessUnitId} is not in the available list`,
+      );
+      return;
+    }
+  }
+
+  try {
+    if (businessUnitId == null) {
+      window.sessionStorage.removeItem(ACTIVE_BUSINESS_UNIT_KEY);
+    } else {
+      window.sessionStorage.setItem(
+        ACTIVE_BUSINESS_UNIT_KEY,
+        JSON.stringify({ id: businessUnitId }),
+      );
+    }
+  } catch (e) {
+    console.warn('[auth-store] Failed to persist active business unit:', e);
+  }
+
+  cachedSession = {
+    ...cachedSession,
+    activeBusinessUnitId: businessUnitId,
+  };
+
+  saveSessionToStorage(cachedSession);
+  notifyAuthStateChange();
+}
+
+/**
+ * Get active business unit ID from session storage.
+ * Returns null if no BU is selected or user is viewing all BUs.
+ */
+export function getActiveBusinessUnitId(): number | null {
+  const session = getAuthSessionSnapshot();
+
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.sessionStorage.getItem(ACTIVE_BUSINESS_UNIT_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { id?: number };
+        if (typeof parsed?.id === 'number' && Number.isFinite(parsed.id)) {
+          return parsed.id;
+        }
+      }
+    } catch (e) {
+      console.warn('[auth-store] Failed to read active business unit:', e);
+    }
+  }
+
+  return session.activeBusinessUnitId;
+}
+
+/**
+ * Clear active business unit, typically when switching organizations or logging out.
+ */
+export function clearActiveBusinessUnit(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.sessionStorage.removeItem(ACTIVE_BUSINESS_UNIT_KEY);
+  } catch (e) {
+    console.warn('[auth-store] Failed to clear active business unit:', e);
+  }
+
+  cachedSession = {
+    ...cachedSession,
+    activeBusinessUnitId: null,
+  };
+
+  saveSessionToStorage(cachedSession);
+  notifyAuthStateChange();
+}
+
+/**
+ * Reset business unit context when organization or user changes.
+ * Clears stored BU and reloads from session data.
+ */
+export function resetBusinessUnitContext(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.sessionStorage.removeItem(ACTIVE_BUSINESS_UNIT_KEY);
+  } catch (e) {
+    console.warn('[auth-store] Failed to clear business unit context:', e);
+  }
+
+  // Don't change cachedSession here, just clear storage
+  notifyAuthStateChange();
+}
+
 
 // Initialize cached session from storage
 if (typeof window !== 'undefined') {

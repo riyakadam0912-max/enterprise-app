@@ -14,6 +14,7 @@ import { AttendanceStatus } from '@prisma/client';
 import { Role } from '../common/enums/role.enum';
 import { DASHBOARD_CACHE_KEY } from '../common/utils/cache-keys';
 import { PrismaService } from '../prisma/prisma.service';
+import { BusinessUnitsService } from '../business-units/business-units.service';
 import { AssignShiftDto } from './dto/assign-shift.dto';
 import { AttendanceSummaryQueryDto } from './dto/attendance-summary.dto';
 import { CheckInDto } from './dto/check-in.dto';
@@ -74,6 +75,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+    private readonly businessUnitsService: BusinessUnitsService,
   ) {}
 
   private async resolveOrganizationId(user: AttendanceUser): Promise<number> {
@@ -326,48 +328,73 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     user?: AttendanceUser,
     requestedEmployeeId?: number,
   ): Promise<number[] | null> {
+    let roleBasedIds: number[] | null;
+
     if (
       !user ||
       user.role === Role.ADMIN ||
       user.role === Role.HR ||
       user.role === Role.SUPER_ADMIN
     ) {
-      return requestedEmployeeId ? [requestedEmployeeId] : null;
-    }
-
-    if (user.role === Role.MANAGER) {
+      roleBasedIds = requestedEmployeeId ? [requestedEmployeeId] : null;
+    } else if (user.role === Role.MANAGER) {
       const ownEmployeeId = await this.resolveCurrentEmployeeId(user);
       const managedIds = await this.getManagerEmployeeIds(user.userId, user);
       const scopedIds = Array.from(new Set([ownEmployeeId, ...managedIds]));
 
       if (requestedEmployeeId) {
         if (requestedEmployeeId === ownEmployeeId) {
-          return [ownEmployeeId];
+          roleBasedIds = [ownEmployeeId];
+        } else if (managedIds.includes(requestedEmployeeId)) {
+          roleBasedIds = [requestedEmployeeId];
+        } else {
+          throw new ForbiddenException(
+            'You can only access attendance for your team',
+          );
         }
-        if (managedIds.includes(requestedEmployeeId)) {
-          return [requestedEmployeeId];
-        }
-        throw new ForbiddenException(
-          'You can only access attendance for your team',
-        );
+      } else {
+        roleBasedIds = scopedIds;
       }
-
-      return scopedIds;
+    } else {
+      const ownEmployeeId = await this.resolveCurrentEmployeeId(user);
+      if (requestedEmployeeId && requestedEmployeeId !== ownEmployeeId) {
+        throw new ForbiddenException('You can only access your own attendance');
+      }
+      roleBasedIds = [ownEmployeeId];
     }
 
-    const ownEmployeeId = await this.resolveCurrentEmployeeId(user);
-    if (requestedEmployeeId && requestedEmployeeId !== ownEmployeeId) {
-      throw new ForbiddenException('You can only access your own attendance');
+    if (!user) {
+      return roleBasedIds;
     }
-    return [ownEmployeeId];
+
+    const buScope = await this.businessUnitsService.resolveScope(user as any);
+    const buEmployeeIds = await this.businessUnitsService.getEmployeeScopeFilterIds(buScope);
+
+    if (buEmployeeIds && buEmployeeIds.length === 1 && buEmployeeIds[0] === -1) {
+      return [-1];
+    }
+
+    if (buEmployeeIds === null) {
+      return roleBasedIds;
+    }
+
+    if (roleBasedIds === null) {
+      return buEmployeeIds;
+    }
+
+    const intersection = roleBasedIds.filter((id) => buEmployeeIds.includes(id));
+    return intersection.length === 0 ? [-1] : intersection;
   }
 
   private async ensureEmployee(employeeId: number, user: AttendanceUser) {
+    const buScope = await this.businessUnitsService.resolveScope(user as any);
+    const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
     const employee = await this.prisma.employee.findFirst({
       where: {
         id: employeeId,
         deletedAt: null,
         ...this.buildOrganizationScope(user),
+        ...buWhere,
       },
       include: { shift: true },
     });
@@ -484,8 +511,14 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException('Shift not found');
     }
 
+    const buScope = await this.businessUnitsService.resolveScope(user as any);
+    const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
     const employee = await this.prisma.employee.findFirst({
-      where: { id: dto.employeeId, organizationId: user.organizationId },
+      where: {
+        id: dto.employeeId,
+        organizationId: user.organizationId,
+        ...buWhere,
+      },
     });
     if (!employee) {
       throw new NotFoundException('Employee not found');
@@ -653,9 +686,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     employeeIds: number[] | null,
     user: AttendanceUser,
   ) {
+    const buScope = await this.businessUnitsService.resolveScope(user as any);
+    const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
     const employees = await this.prisma.employee.findMany({
       where: {
         ...this.buildOrganizationScope(user),
+        ...buWhere,
         ...(employeeIds ? { id: { in: employeeIds } } : {}),
       },
       orderBy: { name: 'asc' },
@@ -814,10 +850,13 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
+    const buScope = await this.businessUnitsService.resolveScope(user as any);
+    const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
     const employee = await this.prisma.employee.findFirst({
       where: {
         id: employeeId,
         ...this.buildOrganizationScope(user),
+        ...buWhere,
       },
       include: { shift: true },
     });
@@ -1057,10 +1096,13 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       query.employeeId,
     );
 
+    const buScope = await this.businessUnitsService.resolveScope(user as any);
+    const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
     const employees = await this.prisma.employee.findMany({
       where: {
         deletedAt: null,
         ...this.buildOrganizationScope(user),
+        ...buWhere,
         ...(scopedEmployeeIds ? { id: { in: scopedEmployeeIds } } : {}),
         ...(query.employeeId ? { id: query.employeeId } : {}),
         ...(query.department
@@ -1178,8 +1220,14 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   }
 
   async update(id: number, dto: UpdateAttendanceDto, user: AttendanceUser) {
+    const buScope = await this.businessUnitsService.resolveScope(user as any);
+    const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
     const record = await this.prisma.attendance.findFirst({
-      where: { id, ...this.buildOrganizationScope(user) },
+      where: {
+        id,
+        ...this.buildOrganizationScope(user),
+        employee: buWhere,
+      },
       include: { employee: { include: { shift: true } }, shift: true },
     });
 

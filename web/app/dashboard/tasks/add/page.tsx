@@ -9,7 +9,11 @@ import { canManageProjects } from '@/utils/auth/permissions';
 import { reportError } from '@/lib/error-handling';
 import { useAuthSession } from '@/stores/auth-store';
 
-const PRIORITIES = ['High', 'Low', 'Medium', 'Critical'];
+const PRIORITIES = [
+  { value: 'HIGH', label: 'High' },
+  { value: 'MEDIUM', label: 'Medium' },
+  { value: 'LOW', label: 'Low' },
+];
 const STATUSES   = ['PENDING', 'IN_PROGRESS', 'SUBMITTED', 'APPROVED', 'REJECTED'];
 
 const field = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400';
@@ -42,34 +46,27 @@ export default function AddTaskPage() {
     async function loadOptions() {
       try {
         setProjects(await getProjects());
-      } catch (error) {
-        reportError(error, 'Unable to load projects');
+      } catch (loadError) {
+        reportError(loadError, 'Unable to load projects');
         setProjects([]);
       }
 
-      if (!canManageProjects(role)) {
-        setAssignableUsers([]);
-        return;
-      }
+      if (!canManageProjects(role)) return;
 
       try {
         const users = await apiClient<Array<{ id: number; name: string; role: string; managerId?: number | null }>>('/users/assignable');
         if (role === 'MANAGER' && currentUserId) {
           setAssignableUsers(users.filter((user) => user.role === 'EMPLOYEE' && user.managerId === currentUserId));
-          return;
-        }
-        if (role === 'ADMIN' || role === 'SUPER_ADMIN') {
+        } else if (role === 'ADMIN' || role === 'SUPER_ADMIN') {
           setAssignableUsers(users.filter((user) => user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN'));
-          return;
         }
-        setAssignableUsers([]);
-      } catch (error) {
-        reportError(error, 'Unable to load assignable users');
+      } catch (loadError) {
+        reportError(loadError, 'Unable to load assignable users');
         setAssignableUsers([]);
       }
     }
 
-    loadOptions();
+    void loadOptions();
   }, [currentUserId, role]);
 
   function set(key: keyof typeof form, val: string) {
@@ -82,24 +79,12 @@ export default function AddTaskPage() {
     setSaving(true);
     setError('');
     try {
-      if (!form.projectId) {
-        setError('Please select a project');
-        setSaving(false);
-        return;
-      }
-
-      if (!form.assignedToUserId) {
-        setError('Please assign this task to a user');
-        setSaving(false);
-        return;
-      }
-
       await createTask({
         taskName:       form.taskName.trim(),
-        project:        form.project.trim()        || null,
-        projectId:      Number(form.projectId),
-        assignee:       form.assignee.trim()       || null,
-        assignedToUserId: Number(form.assignedToUserId),
+        project:        form.project.trim() || null,
+        projectId:      form.projectId ? Number(form.projectId) : undefined,
+        assignee:       form.assignee.trim() || null,
+        assignedToUserId: form.assignedToUserId ? Number(form.assignedToUserId) : undefined,
         dueDate:        form.dueDate               || null,
         priority:       form.priority              || null,
         status:         form.status                || 'PENDING',
@@ -136,9 +121,9 @@ export default function AddTaskPage() {
           />
         </div>
 
-        {/* Project */}
+        {/* Optional Project */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Project <span className="font-normal text-gray-400">(optional)</span></label>
           <select
             className={field}
             value={form.projectId}
@@ -148,16 +133,14 @@ export default function AddTaskPage() {
               set('project', selected?.projectName ?? '');
             }}
           >
-            <option value="">-Select project-</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>{project.projectName}</option>
-            ))}
+            <option value="">Personal task (no project)</option>
+            {projects.map((project) => <option key={project.id} value={project.id}>{project.projectName}</option>)}
           </select>
         </div>
 
-        {/* Assignee */}
+        {/* Optional Assignee */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Assignee</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Assignee <span className="font-normal text-gray-400">(optional)</span></label>
           <select
             className={field}
             value={form.assignedToUserId}
@@ -167,10 +150,8 @@ export default function AddTaskPage() {
               set('assignee', selected?.name ?? '');
             }}
           >
-            <option value="">-Select assignee-</option>
-            {assignableUsers.map((user) => (
-              <option key={user.id} value={user.id}>{user.name} ({user.role})</option>
-            ))}
+            <option value="">Myself</option>
+            {assignableUsers.map((user) => <option key={user.id} value={user.id}>{user.name} ({user.role})</option>)}
           </select>
         </div>
 
@@ -185,7 +166,7 @@ export default function AddTaskPage() {
           <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
           <select className={field} value={form.priority} onChange={(e) => set('priority', e.target.value)}>
             <option value="">-Select-</option>
-            {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
+            {PRIORITIES.map((priority) => <option key={priority.value} value={priority.value}>{priority.label}</option>)}
           </select>
         </div>
 

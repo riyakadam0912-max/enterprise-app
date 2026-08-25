@@ -12,6 +12,7 @@ const EMPLOYEE_ALLOWED_EXACT_PATHS = ['/dashboard'];
 const EMPLOYEE_ALLOWED_PATH_PREFIXES = [
   '/dashboard/attendance',
   '/dashboard/contacts',
+  '/dashboard/events',
   '/dashboard/expenses',
   '/dashboard/files',
   '/dashboard/forms',
@@ -33,6 +34,7 @@ const MANAGER_ALLOWED_PATH_PREFIXES = [
   '/dashboard/invoices',
   '/dashboard/expenses',
   '/dashboard/attendance',
+  '/dashboard/events',
   '/dashboard/employees',
   '/dashboard/forms',
   '/dashboard/leave',

@@ -69,7 +69,7 @@ export class DealsService {
   }
 
   private async resolveEmployeeScope(user?: AuthUser) {
-    if (!user || user.role === Role.ADMIN) {
+    if (!user || this.isPlatformAdmin(user)) {
       return null;
     }
 

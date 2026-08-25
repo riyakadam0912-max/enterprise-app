@@ -52,15 +52,26 @@ describe('AttendanceService', () => {
   let prisma: ReturnType<typeof createPrismaMock>;
   let cacheManager: ReturnType<typeof createCacheManagerMock>;
   let mockUser: ReturnType<typeof createMockUser>;
+  let mockBusinessUnitsService: any;
 
   beforeEach(() => {
     jest.useFakeTimers();
     prisma = createPrismaMock();
     cacheManager = createCacheManagerMock();
     mockUser = createMockUser();
+    mockBusinessUnitsService = {
+      resolveScope: jest.fn().mockResolvedValue({
+        organizationId: 1,
+        allUnits: true,
+        unitIds: [],
+        assignedUnitId: null,
+      }),
+      buildEmployeeBUWhere: jest.fn().mockReturnValue({ organizationId: 1, deletedAt: null }),
+    };
     service = new AttendanceService(
       prisma as unknown as PrismaService,
       cacheManager as unknown as Cache,
+      mockBusinessUnitsService,
     );
   });
 

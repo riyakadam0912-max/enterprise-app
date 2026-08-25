@@ -1,6 +1,7 @@
 import {
   Injectable,
   Logger,
+  BadRequestException,
   UnauthorizedException,
   ConflictException,
   NotFoundException,
@@ -30,6 +31,8 @@ export type AuthTokenPayload = {
   isPlatformAdmin?: boolean;
   isSuperAdmin?: boolean;
   designation?: string | null;
+  primaryBusinessUnitId?: number | null;
+  employeeBusinessUnitId?: number | null;
   tokenType: 'access' | 'refresh';
   jti?: string;
 };
@@ -56,6 +59,8 @@ type UserWithRoles = {
   organizationId: number | null;
   refreshToken: string | null;
   designation: string | null;
+  primaryBusinessUnitId: number | null;
+  employee?: { businessUnitId: number | null } | null;
   userRoles: UserRoleRecord[];
 };
 
@@ -255,6 +260,29 @@ export class AuthService {
     return user;
   }
 
+  async changePassword(userId: number, currentPassword: string, newPassword: string) {
+    if (!currentPassword || !newPassword || newPassword.length < 8) {
+      throw new BadRequestException('New password must be at least 8 characters.');
+    }
+
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { password: true },
+    });
+    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isCurrentPasswordValid) {
+      throw new UnauthorizedException('Current password is incorrect.');
+    }
+
+    const password = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password, refreshToken: null },
+    });
+
+    return { message: 'Password updated successfully.' };
+  }
+
   private async resolveOrganizationSlug(organizationId: number | null) {
     if (!organizationId) {
       return null;
@@ -285,6 +313,7 @@ export class AuthService {
             },
           },
         },
+        employee: { select: { businessUnitId: true } },
       },
     })) as UserWithRoles | null;
 
@@ -387,6 +416,8 @@ export class AuthService {
       user.organizationId ?? null,
     );
     const isSuperAdmin = user.role === Role.SUPER_ADMIN;
+    const primaryBusinessUnitId = user.primaryBusinessUnitId ?? null;
+    const employeeBusinessUnitId = user.employee?.businessUnitId ?? null;
 
     const tokens = await this.issueTokenPair(
       {
@@ -403,6 +434,8 @@ export class AuthService {
         isPlatformAdmin: isSuperAdmin,
         isSuperAdmin,
         designation: user.designation ?? null,
+        primaryBusinessUnitId,
+        employeeBusinessUnitId,
         tokenType: 'access',
       },
       user.id,
@@ -457,6 +490,8 @@ export class AuthService {
       organizationSlug,
       isSuperAdmin,
       isPlatformAdmin: isSuperAdmin,
+      primaryBusinessUnitId,
+      employeeBusinessUnitId,
     };
   }
 
@@ -501,6 +536,7 @@ export class AuthService {
             },
           },
         },
+        employee: { select: { businessUnitId: true } },
       },
     })) as UserWithRoles | null;
 
@@ -560,6 +596,8 @@ export class AuthService {
       user.organizationId ?? null,
     );
     const isSuperAdmin = user.role === Role.SUPER_ADMIN;
+    const primaryBusinessUnitId = user.primaryBusinessUnitId ?? null;
+    const employeeBusinessUnitId = user.employee?.businessUnitId ?? null;
 
     const tokens = await this.issueTokenPair(
       {
@@ -576,6 +614,8 @@ export class AuthService {
         isPlatformAdmin: isSuperAdmin,
         isSuperAdmin,
         designation: user.designation ?? null,
+        primaryBusinessUnitId,
+        employeeBusinessUnitId,
         tokenType: 'access',
       },
       user.id,
@@ -599,6 +639,8 @@ export class AuthService {
       organizationSlug,
       isSuperAdmin,
       isPlatformAdmin: isSuperAdmin,
+      primaryBusinessUnitId,
+      employeeBusinessUnitId,
     };
   }
 

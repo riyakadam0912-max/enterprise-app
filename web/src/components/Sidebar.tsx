@@ -234,10 +234,10 @@ const EMPLOYEE_VISIBLE_LABELS = new Set([
   'Projects',
   'Timesheets',
   'Attendance',
+  'Events',
   'Requests',
   'Expenses',
   'Forms',
-  'User Management',
 ]);
 
 const MANAGER_VISIBLE_LABELS = new Set([
@@ -251,8 +251,8 @@ const MANAGER_VISIBLE_LABELS = new Set([
   'Reports',
   'Timesheets',
   'Employees',
+  'Events',
   'Forms',
-  'User Management',
 ]);
 
 const MANAGER_EMPLOYEE_CHILD_LABELS = new Set([
@@ -260,6 +260,16 @@ const MANAGER_EMPLOYEE_CHILD_LABELS = new Set([
   'Departments',
   'Designations',
 ]);
+
+function filterEventManagementChildren(item: NavItem): NavItem {
+  if (item.type === 'dropdown' && item.id === 'events') {
+    return {
+      ...item,
+      children: item.children.filter((child) => child.label !== '+ Events'),
+    };
+  }
+  return item;
+}
 
 const HR_VISIBLE_LABELS = new Set([
   'Dashboard',
@@ -323,11 +333,14 @@ export default function Sidebar({ currentPath }: SidebarProps) {
   const visibleNavConfig = useMemo(
     () => {
       if (role === 'EMPLOYEE') {
-        return navConfig.filter((item) => EMPLOYEE_VISIBLE_LABELS.has(item.label));
+        return navConfig
+          .filter((item) => EMPLOYEE_VISIBLE_LABELS.has(item.label))
+          .map(filterEventManagementChildren);
       }
       if (role === 'MANAGER') {
         return navConfig
           .filter((item) => MANAGER_VISIBLE_LABELS.has(item.label))
+          .map(filterEventManagementChildren)
           .map((item) => {
             if (item.type === 'dropdown' && item.id === 'employees') {
               return {

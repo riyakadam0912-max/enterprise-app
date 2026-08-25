@@ -13,6 +13,8 @@ export interface AuthUser {
   organizationSlug?: string | null;
   isPlatformAdmin?: boolean;
   isSuperAdmin?: boolean;
+  primaryBusinessUnitId?: number | null;
+  employeeBusinessUnitId?: number | null;
   tokenType: string;
   jti: string | null;
 }
@@ -30,6 +32,8 @@ export interface JwtPayload {
   organizationSlug?: string | null;
   isPlatformAdmin?: boolean;
   isSuperAdmin?: boolean;
+  primaryBusinessUnitId?: number | null;
+  employeeBusinessUnitId?: number | null;
   tokenType?: string;
   jti?: string | null;
 }

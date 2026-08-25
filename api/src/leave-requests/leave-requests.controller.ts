@@ -87,7 +87,7 @@ export class LeaveRequestsController {
     return this.service.findOne(id, req.user);
   }
 
-  @Roles(Role.MANAGER, Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @ApiOperation({ summary: 'PATCH :id/manager-approve' })
   @ApiResponse({ status: 200, description: 'PATCH request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -101,7 +101,7 @@ export class LeaveRequestsController {
     return this.service.managerApprove(id, req.user);
   }
 
-  @Roles(Role.HR, Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.HR, Role.ADMIN)
   @ApiOperation({ summary: 'PATCH :id/hr-approve' })
   @ApiResponse({ status: 200, description: 'PATCH request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -115,7 +115,7 @@ export class LeaveRequestsController {
     return this.service.hrApprove(id, req.user);
   }
 
-  @Roles(Role.MANAGER, Role.HR, Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.HR, Role.ADMIN)
   @ApiOperation({ summary: 'PATCH :id/reject' })
   @ApiResponse({ status: 200, description: 'PATCH request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })

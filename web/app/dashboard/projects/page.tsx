@@ -148,7 +148,7 @@ export default function ProjectsWorkflowPage() {
   const [taskSubmitting, setTaskSubmitting] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const isAdmin = role === 'ADMIN';
+  const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN';
   const isManager = role === 'MANAGER';
   const isEmployee = role === 'EMPLOYEE';
   const canManageProject = isAdmin || isManager;

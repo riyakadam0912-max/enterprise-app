@@ -15,6 +15,7 @@ import { canTransition, validateTransition } from './task-workflow';
 import { WorkflowEngineService } from '../workflows/workflow-engine.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuthUser } from '../common/types/auth';
+import { BusinessUnitsService } from '../business-units/business-units.service';
 
 const PRIORITIES = ['High', 'Low', 'Medium', 'Critical'] as const;
 const TASK_STATUSES = [
@@ -30,6 +31,7 @@ export class TasksService {
     private readonly prisma: PrismaService,
     private readonly workflowEngine: WorkflowEngineService,
     private readonly notificationsService: NotificationsService,
+    private readonly businessUnitsService: BusinessUnitsService,
   ) {}
 
   private get db() {
@@ -50,10 +52,13 @@ export class TasksService {
     if (user.role === Role.ADMIN) return true;
     if (user.role !== Role.MANAGER) return false;
     const organizationId = this.validateOrganization(user);
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    const buWhere = this.businessUnitsService.buildDirectBUWhere(scope);
 
     const task = await this.db.task.findFirst({
       where: {
         id: taskId,
+        ...buWhere,
         organizationId,
         projectRef: { managerId: user.userId },
       },
@@ -80,20 +85,37 @@ export class TasksService {
     return 'PENDING';
   }
 
-  private getTaskAccessWhere(
+  private async getTaskAccessWhere(
     user: AuthUser,
-  ): Prisma.TaskWhereInput | undefined {
-    if (user.role === Role.ADMIN) return undefined;
-    if (user.role === Role.MANAGER) {
-      return { projectRef: { managerId: user.userId } };
+  ): Promise<Prisma.TaskWhereInput> {
+    const scope = await this.businessUnitsService.resolveScope(user as any);
+    const buWhere = this.businessUnitsService.buildDirectBUWhere(scope);
+
+    let roleWhere: Prisma.TaskWhereInput;
+    if (
+      user.role === Role.SUPER_ADMIN ||
+      user.role === Role.ADMIN ||
+      user.isSuperAdmin === true ||
+      user.isPlatformAdmin === true
+    ) {
+      roleWhere = {};
+    } else if (user.role === Role.MANAGER) {
+      roleWhere = {
+        OR: [
+          { assignedToUserId: user.userId },
+          { projectRef: { managerId: user.userId } },
+        ],
+      };
+    } else {
+      roleWhere = {
+        OR: [
+          { assignedToUserId: user.userId },
+          ...(user.employeeId ? [{ assignedToId: user.employeeId }] : []),
+        ],
+      } as Prisma.TaskWhereInput;
     }
 
-    return {
-      OR: [
-        { assignedToUserId: user.userId },
-        ...(user.employeeId ? [{ assignedToId: user.employeeId }] : []),
-      ],
-    } as Prisma.TaskWhereInput;
+    return { AND: [roleWhere, buWhere] };
   }
 
   private async resolveAssignee(
@@ -160,52 +182,83 @@ export class TasksService {
   }
 
   async create(dto: CreateTaskDto, user: AuthUser) {
-    if (user.role === Role.EMPLOYEE) {
-      throw new ForbiddenException('Employees cannot create tasks');
-    }
-
     const organizationId = this.validateOrganization(user);
     const resolvedTaskName = dto.taskName?.trim() || dto.title?.trim();
     if (!resolvedTaskName) {
       throw new ForbiddenException('Task title is required');
     }
 
-    if (!dto.projectId) {
-      throw new ForbiddenException('projectId is required');
-    }
+    const callerScope = await this.businessUnitsService.resolveScope(user as any);
+    const employeeBUWhere = this.businessUnitsService.buildEmployeeBUWhere(callerScope);
 
-    const project = await this.db.project.findUnique({
-      where: { id: dto.projectId, organizationId },
-    });
-    if (!project) throw new NotFoundException('Project not found');
+    const project = dto.projectId
+      ? await this.db.project.findUnique({
+          where: { id: dto.projectId, organizationId },
+          select: { id: true, projectName: true, businessUnitId: true, managerId: true },
+        })
+      : null;
+    if (dto.projectId && !project) throw new NotFoundException('Project not found');
 
-    if (user.role === Role.MANAGER && project.managerId !== user.userId) {
-      throw new ForbiddenException(
-        'Managers can only create tasks in their assigned projects',
+    if (project && project.businessUnitId != null) {
+      await this.businessUnitsService.assertRecordAccessible(
+        callerScope,
+        project.businessUnitId,
+        'project business unit',
       );
     }
 
-    const assignee = await this.resolveAssignee(
-      organizationId,
-      dto.employeeId ?? null,
-      dto.assignedToUserId ?? null,
-    );
+    const assignee = dto.assignedToUserId || dto.employeeId
+      ? await this.resolveAssignee(
+          organizationId,
+          dto.employeeId ?? null,
+          dto.assignedToUserId ?? null,
+        )
+      : await this.db.user.findUniqueOrThrow({
+          where: { id: user.userId },
+          select: { id: true, name: true, employeeId: true, role: true, managerId: true },
+        });
+
     if (
+      (dto.assignedToUserId || dto.employeeId) &&
       user.role === Role.MANAGER &&
-      (String(assignee.role) !== String(Role.EMPLOYEE) ||
-        assignee.managerId !== user.userId)
+      (String(assignee.role) !== String(Role.EMPLOYEE) || assignee.managerId !== user.userId)
     ) {
-      throw new ForbiddenException(
-        'Managers can assign tasks only to their employees',
+      throw new ForbiddenException('Managers can assign tasks only to their employees');
+    }
+
+    let assigneeEmployeeBU: number | null = null;
+    if (assignee.employeeId) {
+      const emp = await this.db.employee.findFirst({
+        where: {
+          id: assignee.employeeId,
+          ...employeeBUWhere,
+        },
+        select: { id: true, businessUnitId: true },
+      });
+      if (!emp) {
+        throw new ForbiddenException('Assigned employee is not within authorized Business Unit scope');
+      }
+      assigneeEmployeeBU = emp.businessUnitId ?? null;
+    }
+
+    const taskBusinessUnitId: number | null =
+      project?.businessUnitId ?? assigneeEmployeeBU;
+
+    if (taskBusinessUnitId != null) {
+      await this.businessUnitsService.assertRecordAccessible(
+        callerScope,
+        taskBusinessUnitId,
+        'task business unit',
       );
     }
 
     return this.db.task.create({
       data: {
         organizationId,
+        businessUnitId: taskBusinessUnitId,
         taskName: resolvedTaskName,
-        project: dto.project ?? project.projectName,
-        projectId: project.id,
+        project: dto.project ?? project?.projectName,
+        projectId: project?.id,
         description: dto.description ?? dto.notes,
         category: dto.category,
         links: dto.links,
@@ -275,8 +328,12 @@ export class TasksService {
       );
     }
 
-    const existingTask = await this.db.task.findUnique({
-      where: { id, organizationId },
+    const callerScope = await this.businessUnitsService.resolveScope(user as any);
+    const directBUWhere = this.businessUnitsService.buildDirectBUWhere(callerScope);
+    const employeeBUWhere = this.businessUnitsService.buildEmployeeBUWhere(callerScope);
+
+    const existingTask = await this.db.task.findFirst({
+      where: { id, ...directBUWhere },
     });
     if (!existingTask) throw new NotFoundException(`Task #${id} not found`);
 
@@ -300,6 +357,17 @@ export class TasksService {
           'Managers can assign tasks only to their employees',
         );
       }
+      if (assignee.employeeId) {
+        const validEmp = await this.db.employee.findFirst({
+          where: { id: assignee.employeeId, ...employeeBUWhere },
+          select: { id: true },
+        });
+        if (!validEmp) {
+          throw new ForbiddenException(
+            'Reassigned employee is not within authorized Business Unit scope',
+          );
+        }
+      }
       const newAssigneeData: {
         assignedToUserId?: number;
         assignedToId?: number | null;
@@ -315,18 +383,36 @@ export class TasksService {
       assigneeData = newAssigneeData;
     }
 
-    let projectData: { projectId?: number; project?: string } = {};
+    let projectData: { projectId?: number; project?: string; businessUnitId?: number | null } = {};
     if (dto.projectId !== undefined) {
-      const project = await this.db.project.findUnique({
-        where: { id: dto.projectId, organizationId },
-      });
-      if (!project) throw new NotFoundException('Project not found');
-      if (user.role === Role.MANAGER && project.managerId !== user.userId) {
-        throw new ForbiddenException(
-          'Managers can only move tasks within their projects',
-        );
+      const project = dto.projectId
+        ? await this.db.project.findUnique({
+            where: { id: dto.projectId, organizationId },
+            select: { id: true, projectName: true, businessUnitId: true, managerId: true },
+          })
+        : null;
+      if (dto.projectId && !project) throw new NotFoundException('Project not found');
+      if (project) {
+        if (user.role === Role.MANAGER && project.managerId !== user.userId) {
+          throw new ForbiddenException(
+            'Managers can only move tasks within their projects',
+          );
+        }
+        if (project.businessUnitId != null) {
+          await this.businessUnitsService.assertRecordAccessible(
+            callerScope,
+            project.businessUnitId,
+            'project business unit',
+          );
+        }
+        projectData = {
+          projectId: project.id,
+          project: project.projectName,
+          businessUnitId: project.businessUnitId ?? existingTask.businessUnitId,
+        };
+      } else {
+        projectData = { projectId: undefined, project: undefined };
       }
-      projectData = { projectId: project.id, project: project.projectName };
     }
 
     if (dto.status !== undefined) {
@@ -389,8 +475,14 @@ export class TasksService {
         'Only admin or project manager can delete this task',
       );
     }
+    const callerScope = await this.businessUnitsService.resolveScope(user as any);
+    const directBUWhere = this.businessUnitsService.buildDirectBUWhere(callerScope);
+    const existing = await this.db.task.findFirst({
+      where: { id, ...directBUWhere },
+    });
+    if (!existing) throw new NotFoundException(`Task #${id} not found`);
     return this.db.task.update({
-      where: { id, organizationId },
+      where: { id },
       data: { deletedAt: new Date() },
     });
   }
@@ -402,6 +494,9 @@ export class TasksService {
     let imported = 0;
     const errors: string[] = [];
     const organizationId = this.validateOrganization(user);
+    const callerScope = await this.businessUnitsService.resolveScope(user as any);
+    const employeeBUWhere = this.businessUnitsService.buildEmployeeBUWhere(callerScope);
+    const directBUWhere = this.businessUnitsService.buildDirectBUWhere(callerScope);
 
     const getString = (obj: Record<string, unknown>, key: string) => {
       const v = obj[key];
@@ -426,15 +521,49 @@ export class TasksService {
       }
 
       try {
+        const projectId = getNumber(r, 'projectId');
+        const assignedToId = getNumber(r, 'assignedToId');
+        const assignedToUserId = getNumber(r, 'assignedToUserId');
+
+        let inferredBU: number | null = null;
+        if (projectId) {
+          const project = await this.db.project.findFirst({
+            where: { id: projectId, organizationId },
+            select: { id: true, businessUnitId: true },
+          });
+          if (project && project.businessUnitId != null) {
+            inferredBU = project.businessUnitId;
+          }
+        }
+        if (inferredBU == null && assignedToId) {
+          const emp = await this.db.employee.findFirst({
+            where: { id: assignedToId, ...employeeBUWhere },
+            select: { id: true, businessUnitId: true },
+          });
+          if (emp) inferredBU = emp.businessUnitId ?? null;
+          else {
+            errors.push(`Row ${i + 1}: Assigned employee #${assignedToId} not in authorized BU scope`);
+            continue;
+          }
+        }
+        if (inferredBU != null) {
+          await this.businessUnitsService.assertRecordAccessible(
+            callerScope,
+            inferredBU,
+            'imported task business unit',
+          );
+        }
+
         await this.db.task.create({
           data: {
             organizationId,
+            businessUnitId: inferredBU,
             taskName: taskNameValue,
             project: getString(r, 'project'),
-            projectId: getNumber(r, 'projectId'),
+            projectId,
             assignee: getString(r, 'assignee'),
-            assignedToId: getNumber(r, 'assignedToId'),
-            assignedToUserId: getNumber(r, 'assignedToUserId'),
+            assignedToId,
+            assignedToUserId,
             dueDate: getString(r, 'dueDate')
               ? new Date(getString(r, 'dueDate')!)
               : undefined,
@@ -468,10 +597,12 @@ export class TasksService {
     }
 
     const organizationId = this.validateOrganization(user);
+    const callerScope = await this.businessUnitsService.resolveScope(user as any);
+    const directBUWhere = this.businessUnitsService.buildDirectBUWhere(callerScope);
     const where =
       user.role === Role.MANAGER
-        ? { organizationId, projectRef: { managerId: user.userId } }
-        : { organizationId };
+        ? { ...directBUWhere, organizationId, projectRef: { managerId: user.userId } }
+        : { ...directBUWhere, organizationId };
     const tasks = await this.db.task.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -525,8 +656,10 @@ export class TasksService {
 
   async updateStatus(id: number, status: string, user: AuthUser) {
     const organizationId = this.validateOrganization(user);
-    const task = await this.db.task.findUnique({
-      where: { id, organizationId },
+    const callerScope = await this.businessUnitsService.resolveScope(user as any);
+    const directBUWhere = this.businessUnitsService.buildDirectBUWhere(callerScope);
+    const task = await this.db.task.findFirst({
+      where: { id, ...directBUWhere },
       select: {
         id: true,
         status: true,
@@ -579,10 +712,12 @@ export class TasksService {
 
   async submitWork(id: number, dto: SubmitTaskWorkDto, user: AuthUser) {
     const organizationId = this.validateOrganization(user);
+    const callerScope = await this.businessUnitsService.resolveScope(user as any);
+    const directBUWhere = this.businessUnitsService.buildDirectBUWhere(callerScope);
     const task = await this.db.task.findFirst({
       where: {
         id,
-        organizationId,
+        ...directBUWhere,
         OR: [
           { assignedToUserId: user.userId },
           ...(user.employeeId ? [{ assignedToId: user.employeeId }] : []),
@@ -668,8 +803,10 @@ export class TasksService {
       );
     }
 
-    const task = await this.db.task.findUnique({
-      where: { id, organizationId },
+    const callerScope = await this.businessUnitsService.resolveScope(user as any);
+    const directBUWhere = this.businessUnitsService.buildDirectBUWhere(callerScope);
+    const task = await this.db.task.findFirst({
+      where: { id, ...directBUWhere },
     });
     if (!task) {
       throw new NotFoundException(`Task #${id} not found`);

@@ -115,6 +115,7 @@ export class AttendanceController {
   listShifts(
     @Req()
     req: {
+      organizationId?: number | null;
       user: {
         userId: number;
         role: Role;
@@ -123,7 +124,10 @@ export class AttendanceController {
       };
     },
   ) {
-    return this.attendanceService.listShifts(req.user);
+    return this.attendanceService.listShifts({
+      ...req.user,
+      organizationId: req.organizationId ?? req.user.organizationId,
+    });
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)

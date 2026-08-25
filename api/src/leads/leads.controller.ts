@@ -34,7 +34,7 @@ import type { AuthenticatedRequest } from '../common/types/request';
 export class LeadsController {
   constructor(private readonly leadsService: LeadsService) {}
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'POST /' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -49,7 +49,7 @@ export class LeadsController {
     return this.leadsService.create(createLeadDto, req.user);
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'POST import' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -64,7 +64,7 @@ export class LeadsController {
     return this.leadsService.importRecords(body.records, req.user);
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'GET by-status' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -75,7 +75,7 @@ export class LeadsController {
     return this.leadsService.findByStatus(req.user);
   }
 
-  @Roles(Role.ADMIN, Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.EMPLOYEE)
   @ApiOperation({ summary: 'GET /' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -86,7 +86,7 @@ export class LeadsController {
     return this.leadsService.findAll(req.user);
   }
 
-  @Roles(Role.ADMIN, Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.EMPLOYEE)
   @ApiOperation({ summary: 'GET :id' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -100,7 +100,7 @@ export class LeadsController {
     return this.leadsService.findOne(id, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.EMPLOYEE)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.EMPLOYEE)
   @ApiOperation({ summary: 'GET :id/detail' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -114,7 +114,7 @@ export class LeadsController {
     return this.leadsService.getDetail(id, req.user);
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'PATCH :id' })
   @ApiResponse({ status: 200, description: 'PATCH request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -130,7 +130,7 @@ export class LeadsController {
     return this.leadsService.update(id, updateLeadDto, req.user);
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'POST :id/convert' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
