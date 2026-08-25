@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Building2, CheckCircle2, Plus, Save } from 'lucide-react';
 import { getMyOrganization, listOrganizations, updateMyOrganization, type Organization } from '@/api/organizationsApi';
-import { isSuperAdminSession, useAuthSession } from '@/stores/auth-store';
+import { isSuperAdminSession, setActiveOrganization, useAuthSession } from '@/stores/auth-store';
 import { OrganizationCreateModal } from '@/components/super-admin/OrganizationCreateModal';
 
 type EditableField = 'name' | 'slug' | 'email' | 'phone' | 'address' | 'city' | 'state' | 'country' | 'timezone' | 'currency' | 'website' | 'industry';
@@ -17,6 +18,7 @@ const fields: Array<{ key: EditableField; label: string; type?: string }> = [
 ];
 
 export default function OrganizationPage() {
+  const router = useRouter();
   const session = useAuthSession();
   const isSuperAdmin = isSuperAdminSession(session);
   const [organization, setOrganization] = useState<Organization | null>(null);
@@ -48,6 +50,10 @@ export default function OrganizationPage() {
   }, [isSuperAdmin, session.role]);
 
   const set = (key: EditableField, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const selectOrganization = (organizationId: number) => {
+    setActiveOrganization(organizationId);
+    router.replace('/dashboard');
+  };
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setSaving(true); setSaved(false); setError(null);
     try { const updated = await updateMyOrganization(form); setOrganization(updated); setSaved(true); }
@@ -62,7 +68,7 @@ export default function OrganizationPage() {
         <button type="button" onClick={() => setCreateOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700"><Plus className="h-4 w-4" />Create organization</button>
       </div>
       {error ? <div className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
-      {loading ? <div className="text-sm text-slate-500">Loading organizations…</div> : <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"><div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Organization</th><th className="px-5 py-3">Code</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Created</th></tr></thead><tbody className="divide-y divide-slate-200">{organizations.map((item) => <tr key={item.id}><td className="px-5 py-4 font-medium text-slate-900">{item.name}<span className="ml-2 text-xs font-normal text-slate-500">{item.slug}</span></td><td className="px-5 py-4 text-slate-600">{item.code}</td><td className="px-5 py-4"><span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />{item.status}</span></td><td className="px-5 py-4 text-slate-600">{new Date(item.createdAt).toLocaleDateString('en-GB')}</td></tr>)}</tbody></table></div></div>}
+      {loading ? <div className="text-sm text-slate-500">Loading organizations…</div> : <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"><div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Organization</th><th className="px-5 py-3">Code</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Created</th><th className="px-5 py-3 text-right">Action</th></tr></thead><tbody className="divide-y divide-slate-200">{organizations.map((item) => <tr key={item.id}><td className="px-5 py-4 font-medium text-slate-900">{item.name}<span className="ml-2 text-xs font-normal text-slate-500">{item.slug}</span></td><td className="px-5 py-4 text-slate-600">{item.code}</td><td className="px-5 py-4"><span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />{item.status}</span></td><td className="px-5 py-4 text-slate-600">{new Date(item.createdAt).toLocaleDateString('en-GB')}</td><td className="px-5 py-4 text-right"><button type="button" onClick={() => selectOrganization(item.id)} disabled={item.status !== 'ACTIVE'} className="rounded-xl bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">Open</button></td></tr>)}</tbody></table></div></div>}
       <OrganizationCreateModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => { void listOrganizations().then(setOrganizations); }} />
     </div>;
   }
