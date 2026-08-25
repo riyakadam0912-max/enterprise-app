@@ -30,6 +30,7 @@ export default function SuperAdminOrganizations() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [activeOrg, setActiveOrg] = useState<Organization | null>(null);
   const [busyOrgId, setBusyOrgId] = useState<number | null>(null);
@@ -38,12 +39,14 @@ export default function SuperAdminOrganizations() {
     let active = true;
     const loadOrganizations = async () => {
       try {
+        setLoadError(null);
         const data = await listOrganizations();
         if (!active) return;
         setOrganizations(data);
-      } catch {
+      } catch (error: unknown) {
         if (!active) return;
         setOrganizations([]);
+        setLoadError(error instanceof Error ? error.message : 'Unable to load organizations.');
       } finally {
         if (active) setLoading(false);
       }
@@ -69,10 +72,12 @@ export default function SuperAdminOrganizations() {
   const refreshOrganizations = async () => {
     setLoading(true);
     try {
+      setLoadError(null);
       const data = await listOrganizations();
       setOrganizations(data);
-    } catch {
+    } catch (error: unknown) {
       setOrganizations([]);
+      setLoadError(error instanceof Error ? error.message : 'Unable to load organizations.');
     } finally {
       setLoading(false);
     }
@@ -136,6 +141,12 @@ export default function SuperAdminOrganizations() {
           </Select>
         </Card>
       </div>
+
+      {loadError ? (
+        <Card className="border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+          {loadError}
+        </Card>
+      ) : null}
 
       <Card className="overflow-hidden border-slate-200/80 bg-white/80 shadow-[0_16px_45px_-24px_rgba(15,23,42,0.35)] backdrop-blur">
         <div className="overflow-x-auto">
