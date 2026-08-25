@@ -3,6 +3,7 @@ import type { INestApplication } from '@nestjs/common';
 import { AppHelper } from '../helpers/app.helper';
 import { AuthHelper } from '../helpers/auth.helper';
 import { DatabaseHelper } from '../helpers/database.helper';
+import { OrganizationFactory } from '../fixtures/organization.factory';
 
 describe('Organizations management (e2e)', () => {
   let app: INestApplication;
@@ -62,6 +63,38 @@ describe('Organizations management (e2e)', () => {
       .delete('/api/v1/organizations/1')
       .set('Authorization', `Bearer ${accessToken}`);
     expect(nonAdminDelete.status).toBe(403);
+  });
+
+  it('lets an organization ADMIN manage only the organization from the authenticated tenant context', async () => {
+    const ownOrg = await OrganizationFactory.create();
+    const otherOrg = await OrganizationFactory.create();
+    const admin = await AuthHelper.createTestUserAndLogin(app, ownOrg.id);
+
+    const ownOrganization = await request(server)
+      .get('/api/v1/organizations/me')
+      .set(admin.authHeaders)
+      .set('X-Organization-Id', String(otherOrg.id));
+    expect(ownOrganization.status).toBe(200);
+    expect(ownOrganization.body.data.id).toBe(ownOrg.id);
+
+    const updated = await request(server)
+      .patch('/api/v1/organizations/me')
+      .set(admin.authHeaders)
+      .set('X-Organization-Id', String(otherOrg.id))
+      .send({ name: 'Own organization updated' });
+    expect(updated.status).toBe(200);
+    expect(updated.body.data.id).toBe(ownOrg.id);
+    expect(updated.body.data.name).toBe('Own organization updated');
+
+    const crossTenantRead = await request(server)
+      .get(`/api/v1/organizations/${otherOrg.id}`)
+      .set(admin.authHeaders);
+    expect(crossTenantRead.status).toBe(403);
+
+    const platformList = await request(server)
+      .get('/api/v1/organizations')
+      .set(admin.authHeaders);
+    expect(platformList.status).toBe(403);
   });
 
   it('supports list, view, update, duplicate checks, and delete (soft-archive) for SUPER_ADMIN', async () => {

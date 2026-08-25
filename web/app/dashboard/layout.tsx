@@ -21,6 +21,7 @@ const EMPLOYEE_ALLOWED_PATH_PREFIXES = [
   '/dashboard/payroll',
   '/dashboard/payslips',
   '/dashboard/profile',
+  '/dashboard/organization',
   '/dashboard/projects',
   '/dashboard/requests',
   '/dashboard/tasks',

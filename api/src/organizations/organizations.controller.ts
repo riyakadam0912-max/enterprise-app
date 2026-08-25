@@ -22,6 +22,9 @@ import { OrganizationsService } from './organizations.service';
 import type { AuthenticatedRequest } from '../common/types/request';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
+import { Permission } from '../common/enums/permissions.enum';
 
 @UseGuards(JwtAuthGuard)
 @ApiTags('System - Organizations')
@@ -29,6 +32,23 @@ import { UpdateOrganizationDto } from './dto/update-organization.dto';
 @Controller('organizations')
 export class OrganizationsController {
   constructor(private readonly organizationsService: OrganizationsService) {}
+
+  @ApiOperation({ summary: 'Get the authenticated organization admin organization' })
+  @Get('me')
+  getMyOrganization(@Req() req: AuthenticatedRequest) {
+    return this.organizationsService.getMyOrganization(req.user);
+  }
+
+  @ApiOperation({ summary: 'Update the authenticated organization admin organization' })
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.ADMIN_MANAGE)
+  @Patch('me')
+  updateMyOrganization(
+    @Body() dto: UpdateOrganizationDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.organizationsService.updateMyOrganization(dto, req.user);
+  }
 
   @ApiOperation({ summary: 'Get super admin platform statistics' })
   @ApiResponse({ status: 200, description: 'Platform statistics returned.' })

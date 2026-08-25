@@ -96,9 +96,14 @@ export class OrganizationsService {
   private isPlatformAdmin(user: AuthUser) {
     return (
       user?.isPlatformAdmin === true ||
+      user?.isSuperAdmin === true ||
       user?.role === 'SUPER_ADMIN' ||
       (Array.isArray(user?.roles) && user.roles.includes('SUPER_ADMIN'))
     );
+  }
+
+  private isOrganizationAdmin(user: AuthUser) {
+    return user?.role === Role.ADMIN && user.organizationId != null;
   }
 
   async getPlatformStats(user: AuthUser) {
@@ -319,6 +324,94 @@ export class OrganizationsService {
       success: true,
       message: 'Organization loaded successfully',
       data: organization,
+    };
+  }
+
+  async getMyOrganization(user: AuthUser) {
+    if (!this.isOrganizationAdmin(user)) {
+      throw new ForbiddenException(
+        'Only organization administrators can view their organization',
+      );
+    }
+
+    const organization = await this.prisma.organization.findFirst({
+      where: { id: user.organizationId as number, deletedAt: null },
+      select: {
+        id: true, name: true, code: true, slug: true, email: true, phone: true,
+        logoUrl: true, address: true, city: true, state: true, country: true,
+        timezone: true, currency: true, status: true, website: true,
+        industry: true, subscriptionPlan: true, trialStartDate: true,
+        trialEndDate: true, createdAt: true, updatedAt: true,
+      },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    return {
+      success: true,
+      message: 'Organization loaded successfully',
+      data: organization,
+    };
+  }
+
+  async updateMyOrganization(dto: UpdateOrganizationDto, user: AuthUser) {
+    if (!this.isOrganizationAdmin(user)) {
+      throw new ForbiddenException(
+        'Only organization administrators can update their organization',
+      );
+    }
+
+    const organizationId = user.organizationId as number;
+    const organization = await this.prisma.organization.findFirst({
+      where: { id: organizationId, deletedAt: null },
+    });
+    if (!organization) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    if (dto.slug && dto.slug.trim() !== organization.slug) {
+      const existingSlug = await this.prisma.organization.findFirst({
+        where: { slug: dto.slug.trim(), NOT: { id: organizationId } },
+      });
+      if (existingSlug) {
+        throw new ConflictException('An organization with that slug already exists');
+      }
+    }
+
+    if (dto.name && dto.name.trim() !== organization.name) {
+      const existingName = await this.prisma.organization.findFirst({
+        where: { name: dto.name.trim(), NOT: { id: organizationId } },
+      });
+      if (existingName) {
+        throw new ConflictException('An organization with that name already exists');
+      }
+    }
+
+    const updatedOrganization = await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        name: dto.name?.trim() ?? organization.name,
+        slug: dto.slug?.trim() ?? organization.slug,
+        email: dto.businessEmail ?? organization.email,
+        phone: dto.phone ?? organization.phone,
+        logoUrl: dto.logoUrl ?? organization.logoUrl,
+        address: dto.address ?? organization.address,
+        city: dto.city ?? organization.city,
+        state: dto.state ?? organization.state,
+        country: dto.country ?? organization.country,
+        timezone: dto.timezone ?? organization.timezone,
+        currency: dto.currency ?? organization.currency,
+        website: dto.website ?? organization.website,
+        industry: dto.industry ?? organization.industry,
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Organization updated successfully',
+      data: updatedOrganization,
     };
   }
 

@@ -10,6 +10,16 @@ export interface Organization {
   number?: string | null;
   subscriptionPlan?: string | null;
   adminUser?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  timezone?: string | null;
+  currency?: string | null;
+  website?: string | null;
+  industry?: string | null;
 }
 
 export interface PlatformStats {
@@ -37,6 +47,19 @@ export async function listOrganizations(): Promise<Organization[]> {
       ? error
       : new Error('Failed to load organizations');
   }
+}
+
+export async function getMyOrganization(): Promise<Organization> {
+  return apiClient<Organization>('/organizations/me');
+}
+
+export async function updateMyOrganization(
+  payload: Partial<Pick<Organization, 'name' | 'slug' | 'email' | 'phone' | 'address' | 'city' | 'state' | 'country' | 'timezone' | 'currency' | 'website' | 'industry'>>,
+): Promise<Organization> {
+  return apiClient<Organization>('/organizations/me', {
+    method: 'PATCH',
+    body: JSON.stringify({ ...payload, businessEmail: payload.email }),
+  });
 }
 
 export async function getPlatformStats(): Promise<PlatformStats> {
