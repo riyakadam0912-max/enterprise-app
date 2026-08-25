@@ -358,7 +358,7 @@ export default function Sidebar({ currentPath }: SidebarProps) {
       if (role === 'HR') {
         return navConfig.filter((item) => HR_VISIBLE_LABELS.has(item.label));
       }
-      return role === 'ADMIN' || role === 'SUPER_ADMIN'
+      return role === 'ADMIN'
         ? navConfig
         : navConfig.filter((item) => item.label !== 'Organization');
     },
