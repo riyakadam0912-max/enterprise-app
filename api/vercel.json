@@ -1,6 +1,17 @@
 {
   "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "installCommand": "npm install",
-  "framework": null
+  "outputDirectory": ".",
+  "installCommand": "npm ci",
+  "framework": null,
+  "redirects": [
+    { "source": "/", "destination": "/api/v1/", "permanent": false }
+  ],
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index" }
+  ],
+  "functions": {
+    "api/index.ts": {
+      "includeFiles": "dist/**"
+    }
+  }
 }
