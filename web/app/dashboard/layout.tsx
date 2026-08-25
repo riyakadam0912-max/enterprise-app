@@ -79,7 +79,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const isSuperAdmin = isSuperAdminSession(session);
     const isImpersonating = isSuperAdmin && getActiveOrganizationId() != null;
 
-    if (isSuperAdmin && !isImpersonating) {
+    if (isSuperAdmin && !isImpersonating && pathname !== '/dashboard/organization') {
       router.replace('/super-admin/dashboard');
       return;
     }
