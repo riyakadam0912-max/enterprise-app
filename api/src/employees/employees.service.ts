@@ -178,10 +178,17 @@ export class EmployeesService {
       }
 
       if (createEmployeeDto.managerId) {
-        const managerUser = await this.prisma.user.findUnique({
+        let managerUser = await this.prisma.user.findUnique({
           where: { id: createEmployeeDto.managerId, organizationId },
           select: { id: true, role: true },
         });
+
+        if (!managerUser && callerIsPlatformAdmin) {
+          managerUser = await this.prisma.user.findUnique({
+            where: { id: createEmployeeDto.managerId },
+            select: { id: true, role: true },
+          });
+        }
         if (!managerUser) {
           throw new NotFoundException(
             'Selected manager user not found in the organization.',

@@ -15,6 +15,7 @@ import {
 } from '../../test/helpers/mocks.helper';
 import { Role } from '../common/enums/role.enum';
 import { AuthUser } from '../common/types/auth';
+import { BusinessUnitsService } from '../business-units/business-units.service';
 
 jest.mock('../users/utils/hash-password');
 import { hashPassword } from '../users/utils/hash-password';
@@ -70,6 +71,7 @@ describe('EmployeesService', () => {
       providers: [
         EmployeesService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: BusinessUnitsService, useValue: { resolveScope: jest.fn(), buildEmployeeBUWhere: jest.fn() } },
       ],
     }).compile();
 

@@ -138,6 +138,30 @@ export class UsersService {
     }
   }
 
+  async findReportingManagers(
+    user: AuthUser,
+    activeOrganizationId?: number | null,
+  ) {
+    const organizationId = activeOrganizationId ?? user.organizationId;
+    if (organizationId == null && !this.isPlatformAdmin(user)) {
+      throw new ForbiddenException('User has no associated organization');
+    }
+
+    return this.prisma.user.findMany({
+      where: {
+        isActive: true,
+        OR: [
+          { role: Role.SUPER_ADMIN },
+          ...(organizationId == null
+            ? []
+            : [{ role: { in: [Role.ADMIN, Role.MANAGER] }, organizationId }]),
+        ],
+      },
+      select: { id: true, name: true, role: true },
+      orderBy: [{ role: 'asc' }, { name: 'asc' }],
+    });
+  }
+
   async findAll(user: AuthUser) {
     const organizationFilter = this.buildOrganizationFilter(user);
     return this.prisma.user.findMany({
