@@ -35,11 +35,9 @@ export class BusinessUnitsService {
 
   private isPlatformAdmin(user: AuthUser) {
     return (
-      user.role === Role.ADMIN ||
       user.role === Role.SUPER_ADMIN ||
       user.isPlatformAdmin === true ||
       user.isSuperAdmin === true ||
-      user.roles.includes(Role.ADMIN) ||
       user.roles.includes(Role.SUPER_ADMIN)
     );
   }

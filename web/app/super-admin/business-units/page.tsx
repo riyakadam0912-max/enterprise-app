@@ -115,7 +115,7 @@ export default function BusinessUnitsPage() {
   }
 
   return (
-    <SuperAdminPageShell title="Business Units" description="Manage nested business units inside the selected organization." actions={<Button onClick={openCreate} disabled={organizationId == null}><Plus className="mr-2 h-4 w-4" />Create Business Unit</Button>}>
+    <SuperAdminPageShell title="Business Units" description="Manage organization units inside the selected organization." actions={<Button onClick={openCreate} disabled={organizationId == null}><Plus className="mr-2 h-4 w-4" />Create organization</Button>}>
       <Card className="border-slate-200/80 bg-white/80 p-4">
         <label className="block text-sm font-medium text-slate-700">Organization</label>
         <Select className="mt-2 max-w-xl" value={organizationId == null ? '' : String(organizationId)} onChange={(event) => setOrganizationId(Number(event.target.value) || null)}>
@@ -131,7 +131,7 @@ export default function BusinessUnitsPage() {
       {formOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
           <form onSubmit={submit} className="w-full max-w-xl space-y-4 rounded-2xl bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between"><div><h2 className="text-xl font-semibold text-slate-900">{editing ? 'Edit' : 'Create'} Business Unit</h2><p className="mt-1 text-sm text-slate-500">Organization ownership is enforced by the API.</p></div><button type="button" onClick={() => setFormOpen(false)} aria-label="Close"><X className="h-5 w-5 text-slate-500" /></button></div>
+            <div className="flex items-center justify-between"><div><h2 className="text-xl font-semibold text-slate-900">{editing ? 'Edit organization' : 'Create organization'}</h2><p className="mt-1 text-sm text-slate-500">The selected organization owns this unit.</p></div><button type="button" onClick={() => setFormOpen(false)} aria-label="Close"><X className="h-5 w-5 text-slate-500" /></button></div>
             <Input required placeholder="Name" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
             <Input required placeholder="Code" value={form.code} onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))} />
             <Input placeholder="Type, for example Region or Division" value={form.type ?? ''} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))} />
