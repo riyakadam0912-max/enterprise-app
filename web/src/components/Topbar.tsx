@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import { useAuthSession } from '@/stores/auth-store';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import { BusinessUnitSelector } from '@/components/business-units/BusinessUnitSelector';
+import { Building2 } from 'lucide-react';
 
 const segmentLabels: Record<string, string> = {
   dashboard: 'Dashboard',
@@ -49,6 +50,8 @@ export default function Topbar() {
     name: session.user?.name ?? 'User',
     role: session.role,
   };
+  const orgName = session.organizationName;
+  const orgLogo = session.organizationLogo;
 
   // Build breadcrumb parts from path
   const segments = pathname.split('/').filter(Boolean);
@@ -77,6 +80,26 @@ export default function Topbar() {
 
         {/* Notification bell */}
         <NotificationBell />
+
+        {/* Divider */}
+        <div className="w-px h-6 bg-slate-200" />
+
+        {/* Organization name badge */}
+        {orgName ? (
+          <div className="hidden sm:flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 max-w-[180px]" title={orgName}>
+            {orgLogo ? (
+              <img
+                src={orgLogo}
+                alt={orgName}
+                className="h-4 w-4 rounded-full object-cover shrink-0"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+              />
+            ) : (
+              <Building2 className="h-3.5 w-3.5 text-orange-500 shrink-0" />
+            )}
+            <span className="truncate text-xs font-medium text-slate-700">{orgName}</span>
+          </div>
+        ) : null}
 
         {/* Divider */}
         <div className="w-px h-6 bg-slate-200" />
