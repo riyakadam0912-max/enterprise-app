@@ -174,10 +174,23 @@ export class OrganizationsService {
   }
 
   async createOrganization(dto: CreateOrganizationDto, user: AuthUser) {
-    if (!this.isPlatformAdmin(user)) {
+    const isAdmin =
+      this.isPlatformAdmin(user) || this.isOrganizationAdmin(user);
+    if (!isAdmin) {
       throw new ForbiddenException(
-        'Only platform administrators can create organizations',
+        'Only platform administrators or organization admins can create organizations',
       );
+    }
+
+    // Non-platform admins can only create child orgs under their own org
+    if (!this.isPlatformAdmin(user)) {
+      if (dto.parentId != null && dto.parentId !== user.organizationId) {
+        throw new ForbiddenException(
+          'You can only create organizations under your own organization',
+        );
+      }
+      // Force parentId to the caller's own org
+      dto.parentId = user.organizationId as number;
     }
 
     const normalizedSlug =
@@ -571,36 +584,69 @@ export class OrganizationsService {
       status?: string;
       page?: number;
       limit?: number;
+      /**
+       * When provided, restrict results to direct children of this parent org.
+       * Platform admins may query any parentId.
+       * Non-platform admins are always scoped to their own org as parent.
+       */
+      parentId?: number;
     },
   ): Promise<OrganizationSummary[]> {
     const isPlatformAdmin = this.isPlatformAdmin(user);
 
-    // Build the base scoping where clause
-    const where: Record<string, unknown> = { deletedAt: null };
+    // Determine which parent org to scope children under.
+    // For platform admins impersonating an org (organizationId set via X-Organization-Id),
+    // or for regular org admins, scope to that organization's children.
+    // A platform admin without an active org context and without an explicit parentId
+    // gets the full global list (super-admin dashboard use-case).
+    let scopeParentId: number | null = null;
 
     if (!isPlatformAdmin) {
-      // Org admins can only see their own org and its direct children
+      // Regular org users must be scoped to their own org's children
       if (!user?.organizationId) {
         throw new ForbiddenException(
           'Only platform administrators can list organizations',
         );
       }
-      where.OR = [
-        { id: user.organizationId },
-        { parentId: user.organizationId },
-      ];
+      scopeParentId = user.organizationId;
+    } else {
+      // Platform admin: use explicit parentId param, or fall back to the
+      // active impersonation org (organizationId set by TenantContextMiddleware
+      // when X-Organization-Id header is present).
+      if (options?.parentId != null && options.parentId > 0) {
+        scopeParentId = options.parentId;
+      } else if (user.organizationId != null) {
+        // Impersonating a specific org — show its children
+        scopeParentId = user.organizationId;
+      }
+      // If scopeParentId is still null, we are in the global super-admin view
+      // — no hierarchy scoping is applied and all orgs are returned.
+    }
+
+    // Build the base where clause
+    const andConditions: Record<string, unknown>[] = [{ deletedAt: null }];
+
+    if (scopeParentId != null) {
+      // Show only direct children of the scoped parent
+      andConditions.push({ parentId: scopeParentId });
     }
 
     if (options?.status) {
-      where.status = options.status.toUpperCase();
+      andConditions.push({ status: options.status.toUpperCase() });
     }
+
     if (options?.search) {
-      where.OR = [
-        { name: { contains: options.search, mode: 'insensitive' } },
-        { slug: { contains: options.search, mode: 'insensitive' } },
-        { code: { contains: options.search, mode: 'insensitive' } },
-      ];
+      andConditions.push({
+        OR: [
+          { name: { contains: options.search, mode: 'insensitive' } },
+          { slug: { contains: options.search, mode: 'insensitive' } },
+          { code: { contains: options.search, mode: 'insensitive' } },
+        ],
+      });
     }
+
+    const where: Record<string, unknown> =
+      andConditions.length === 1 ? andConditions[0] : { AND: andConditions };
 
     const organizations = await this.prisma.organization.findMany({
       where,

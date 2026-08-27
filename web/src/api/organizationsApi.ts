@@ -41,14 +41,32 @@ export interface PlatformStats {
   };
 }
 
-export async function listOrganizations(): Promise<Organization[]> {
+export async function listOrganizations(params?: {
+  parentId?: number;
+  search?: string;
+  status?: string;
+  page?: number;
+  limit?: number;
+}): Promise<Organization[]> {
   try {
-    return await apiClient<Organization[]>('/organizations');
+    const query = new URLSearchParams();
+    if (params?.parentId != null) query.set('parentId', String(params.parentId));
+    if (params?.search) query.set('search', params.search);
+    if (params?.status) query.set('status', params.status);
+    if (params?.page != null) query.set('page', String(params.page));
+    if (params?.limit != null) query.set('limit', String(params.limit));
+    const qs = query.toString();
+    return await apiClient<Organization[]>(`/organizations${qs ? `?${qs}` : ''}`);
   } catch (error: unknown) {
     throw error instanceof Error
       ? error
       : new Error('Failed to load organizations');
   }
+}
+
+/** List child organizations of the given parent org. */
+export async function listChildOrganizations(parentId: number): Promise<Organization[]> {
+  return listOrganizations({ parentId });
 }
 
 export async function getMyOrganization(): Promise<Organization> {

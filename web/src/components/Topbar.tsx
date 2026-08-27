@@ -2,10 +2,9 @@
 
 import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
-import { useAuthSession, setAuthSession } from '@/stores/auth-store';
+import { useAuthSession, setAuthSession, isSuperAdminSession, getActiveOrganizationId } from '@/stores/auth-store';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import { BusinessUnitSelector } from '@/components/business-units/BusinessUnitSelector';
-import { Building2 } from 'lucide-react';
 import { getMyOrganization } from '@/api/organizationsApi';
 
 const segmentLabels: Record<string, string> = {
@@ -45,6 +44,16 @@ function ChevronRightIcon() {
   );
 }
 
+/** Get initials from a name string (up to 2 chars). */
+function getInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join('');
+}
+
 export default function Topbar() {
   const pathname = usePathname();
   const session = useAuthSession();
@@ -52,8 +61,24 @@ export default function Topbar() {
     name: session.user?.name ?? 'User',
     role: session.role,
   };
-  const orgName = session.organizationName;
-  const orgLogo = session.organizationLogo;
+
+  // Determine the displayed org name:
+  // - For super admins with an active impersonation org, show the impersonated org name.
+  // - For regular users, use their session org name.
+  const isSuperAdmin = isSuperAdminSession(session);
+  let orgName = session.organizationName;
+  let orgLogo = session.organizationLogo;
+
+  if (isSuperAdmin) {
+    const activeOrgId = typeof window !== 'undefined' ? getActiveOrganizationId() : null;
+    if (activeOrgId == null) {
+      // Not impersonating — clear org badge for pure SA view
+      orgName = null;
+      orgLogo = null;
+    }
+    // If impersonating, session.organizationName should already be set
+    // (axiosClient updates it on refresh). If not, it's ok — badge is hidden.
+  }
 
   // Fallback: if session has no org name but user is authenticated with an org,
   // fetch it from /organizations/me and persist it back into the session store.
@@ -109,7 +134,10 @@ export default function Topbar() {
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
               />
             ) : (
-              <Building2 className="h-3.5 w-3.5 text-orange-500 shrink-0" />
+              /* Initials fallback — 2-letter avatar */
+              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-orange-500 text-[8px] font-bold text-white leading-none">
+                {getInitials(orgName)}
+              </span>
             )}
             <span className="truncate text-xs font-medium text-slate-700">{orgName}</span>
           </div>

@@ -75,12 +75,14 @@ export class OrganizationsController {
     @Query('status') status?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('parentId') parentId?: string,
   ) {
     return this.organizationsService.listOrganizationsForUser(req.user, {
       search,
       status,
       page: page ? Number(page) : 1,
       limit: limit ? Number(limit) : 20,
+      parentId: parentId ? Number(parentId) : undefined,
     });
   }
 
