@@ -3,6 +3,7 @@ import {
   IsEmail,
   IsInt,
   IsOptional,
+  IsPositive,
   IsString,
   MinLength,
 } from 'class-validator';
@@ -124,4 +125,13 @@ export class CreateOrganizationDto {
   @IsBoolean()
   @ApiPropertyOptional({ example: true })
   enableImmediately?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  @ApiPropertyOptional({
+    example: 2,
+    description: 'Parent organization ID for hierarchy',
+  })
+  parentId?: number;
 }

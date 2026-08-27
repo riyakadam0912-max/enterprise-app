@@ -7,6 +7,7 @@ export interface Organization {
   slug: string;
   status: string;
   createdAt: string;
+  parentId?: number | null;
   logoUrl?: string | null;
   number?: string | null;
   subscriptionPlan?: string | null;

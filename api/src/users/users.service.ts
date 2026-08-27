@@ -525,7 +525,11 @@ export class UsersService {
       select: { id: true, name: true, department: true },
     });
 
-    return { userId: id, employeeId: employee.id, department: employee.department };
+    return {
+      userId: id,
+      employeeId: employee.id,
+      department: employee.department,
+    };
   }
 
   async assignManager(id: number, managerId: number | null, user: AuthUser) {

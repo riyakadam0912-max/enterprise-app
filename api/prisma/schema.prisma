@@ -89,9 +89,12 @@ model Organization {
   contactEmail             String?
   trialStartDate           DateTime?
   trialEndDate             DateTime?
+  parentId                 Int?
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
   deletedAt                DateTime?
+  parent                   Organization?             @relation("OrgHierarchy", fields: [parentId], references: [id])
+  children                 Organization[]            @relation("OrgHierarchy")
   activities               Activity[]
   activityTimelines        ActivityTimeline[]
   activityTimelineComments ActivityTimelineComment[]
@@ -161,6 +164,7 @@ model Organization {
   @@index([slug])
   @@index([code])
   @@index([subscriptionPlan])
+  @@index([parentId])
 }
 
 enum BusinessUnitStatus {

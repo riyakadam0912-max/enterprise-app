@@ -94,10 +94,12 @@ export function OrganizationCreateModal({
   open,
   onClose,
   onCreated,
+  parentId,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated: () => void;
+  parentId?: number;
 }) {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -152,6 +154,7 @@ export function OrganizationCreateModal({
         subscriptionPlan: values.subscriptionPlan || 'STARTER',
         trialDays: values.trialDays ?? 14,
         status: values.status || 'ACTIVE',
+        parentId: parentId ?? undefined,
       };
 
       await apiClient('/organizations', {

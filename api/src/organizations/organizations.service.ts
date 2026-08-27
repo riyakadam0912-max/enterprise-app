@@ -18,6 +18,8 @@ export interface OrganizationSummary {
   slug: string;
   status: string;
   createdAt: Date;
+  parentId?: number | null;
+  logoUrl?: string | null;
   number?: string | null;
   subscriptionPlan?: string | null;
   adminUser?: string | null;
@@ -43,7 +45,18 @@ interface OrganizationWithAdmin {
 }
 
 function toOrganizationSummary(
-  org: OrganizationWithAdmin,
+  org: OrganizationWithAdmin & {
+    parentId?: number | null;
+    logoUrl?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    country?: string | null;
+    currency?: string | null;
+    timezone?: string | null;
+    address?: string | null;
+    website?: string | null;
+    industry?: string | null;
+  },
 ): OrganizationSummary {
   return {
     id: org.id,
@@ -52,30 +65,18 @@ function toOrganizationSummary(
     slug: org.slug,
     status: org.status,
     createdAt: org.createdAt,
+    parentId: org.parentId ?? null,
+    logoUrl: org.logoUrl ?? null,
     subscriptionPlan: org.subscriptionPlan ?? null,
     adminUser: org.users?.[0]?.name ?? null,
-    email:
-      (org as OrganizationSummary & { email?: string | null }).email ?? null,
-    phone:
-      (org as OrganizationSummary & { phone?: string | null }).phone ?? null,
-    country:
-      (org as OrganizationSummary & { country?: string | null }).country ??
-      null,
-    currency:
-      (org as OrganizationSummary & { currency?: string | null }).currency ??
-      null,
-    timezone:
-      (org as OrganizationSummary & { timezone?: string | null }).timezone ??
-      null,
-    address:
-      (org as OrganizationSummary & { address?: string | null }).address ??
-      null,
-    website:
-      (org as OrganizationSummary & { website?: string | null }).website ??
-      null,
-    industry:
-      (org as OrganizationSummary & { industry?: string | null }).industry ??
-      null,
+    email: org.email ?? null,
+    phone: org.phone ?? null,
+    country: org.country ?? null,
+    currency: org.currency ?? null,
+    timezone: org.timezone ?? null,
+    address: org.address ?? null,
+    website: org.website ?? null,
+    industry: org.industry ?? null,
   };
 }
 
@@ -235,6 +236,7 @@ export class OrganizationsService {
         website: dto.website ?? null,
         industry: dto.industry ?? null,
         subscriptionPlan: dto.subscriptionPlan ?? 'STARTER',
+        parentId: dto.parentId ?? null,
         createdAt,
         trialStartDate: createdAt,
         trialEndDate,
@@ -304,6 +306,7 @@ export class OrganizationsService {
         website: true,
         industry: true,
         subscriptionPlan: true,
+        parentId: true,
         trialStartDate: true,
         trialEndDate: true,
         createdAt: true,
@@ -572,53 +575,64 @@ export class OrganizationsService {
   ): Promise<OrganizationSummary[]> {
     const isPlatformAdmin = this.isPlatformAdmin(user);
 
-    if (isPlatformAdmin) {
-      const where: Record<string, unknown> = { deletedAt: null };
-      if (options?.status) {
-        where.status = options.status.toUpperCase();
-      }
-      if (options?.search) {
-        where.OR = [
-          { name: { contains: options.search, mode: 'insensitive' } },
-          { slug: { contains: options.search, mode: 'insensitive' } },
-          { code: { contains: options.search, mode: 'insensitive' } },
-        ];
-      }
+    // Build the base scoping where clause
+    const where: Record<string, unknown> = { deletedAt: null };
 
-      const organizations = await this.prisma.organization.findMany({
-        where,
-        orderBy: [{ status: 'desc' }, { name: 'asc' }],
-        skip: ((options?.page ?? 1) - 1) * (options?.limit ?? 20),
-        take: options?.limit ?? 20,
-        select: {
-          id: true,
-          name: true,
-          code: true,
-          slug: true,
-          status: true,
-          createdAt: true,
-          subscriptionPlan: true,
-          email: true,
-          phone: true,
-          country: true,
-          currency: true,
-          timezone: true,
-          address: true,
-          website: true,
-          industry: true,
-          users: {
-            where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
-            select: { id: true, name: true, email: true },
-            take: 1,
-          },
-        },
-      });
-
-      return organizations.map(toOrganizationSummary);
+    if (!isPlatformAdmin) {
+      // Org admins can only see their own org and its direct children
+      if (!user?.organizationId) {
+        throw new ForbiddenException(
+          'Only platform administrators can list organizations',
+        );
+      }
+      where.OR = [
+        { id: user.organizationId },
+        { parentId: user.organizationId },
+      ];
     }
 
-    throw new ForbiddenException(
-      'Only platform administrators can list organizations',
-    );
+    if (options?.status) {
+      where.status = options.status.toUpperCase();
+    }
+    if (options?.search) {
+      where.OR = [
+        { name: { contains: options.search, mode: 'insensitive' } },
+        { slug: { contains: options.search, mode: 'insensitive' } },
+        { code: { contains: options.search, mode: 'insensitive' } },
+      ];
+    }
+
+    const organizations = await this.prisma.organization.findMany({
+      where,
+      orderBy: [{ status: 'desc' }, { name: 'asc' }],
+      skip: ((options?.page ?? 1) - 1) * (options?.limit ?? 20),
+      take: options?.limit ?? 20,
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        slug: true,
+        status: true,
+        createdAt: true,
+        parentId: true,
+        logoUrl: true,
+        subscriptionPlan: true,
+        email: true,
+        phone: true,
+        country: true,
+        currency: true,
+        timezone: true,
+        address: true,
+        website: true,
+        industry: true,
+        users: {
+          where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
+          select: { id: true, name: true, email: true },
+          take: 1,
+        },
+      },
+    });
+
+    return organizations.map(toOrganizationSummary);
   }
 }

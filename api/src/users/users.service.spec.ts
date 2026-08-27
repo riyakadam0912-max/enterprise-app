@@ -522,7 +522,7 @@ describe('UsersService', () => {
       await service.assignOrganization(11, 9, platformAdmin);
 
       expect(userDelegate.update).toHaveBeenCalledWith({
-        where: { id: 11 },
+        where: { id: 11, organizationId: 7 },
         data: { organizationId: 9 },
         select: expect.any(Object),
       });

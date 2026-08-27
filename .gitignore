@@ -42,3 +42,10 @@ Thumbs.db
 .temp
 .vercel
 .env*
+
+# Vercel CLI local cache
+.vercel-home-api/
+
+# Local app data caches
+.localappdata/
+.vercel-home-web/
