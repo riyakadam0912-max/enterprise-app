@@ -23,7 +23,7 @@ describe('Organizations management (e2e)', () => {
     await AppHelper.afterAll(app);
   });
 
-  it('enforces auth (401) and SUPER_ADMIN role (403) for list/view/update/delete', async () => {
+  it('enforces auth (401) for unauthenticated requests; org admin gets scoped list (not 403)', async () => {
     const unauthList = await request(server).get('/api/v1/organizations');
     expect(unauthList.status).toBe(401);
 
@@ -40,28 +40,31 @@ describe('Organizations management (e2e)', () => {
     );
     expect(unauthDelete.status).toBe(401);
 
-    const { accessToken } = await AuthHelper.createTestUserAndLogin(app);
-    expect(accessToken).toBeDefined();
+    const orgAdmin = await AuthHelper.createTestUserAndLogin(app);
+    expect(orgAdmin.accessToken).toBeDefined();
 
-    const nonAdminList = await request(server)
+    // Org admins now get a scoped list (200) instead of 403.
+    const adminList = await request(server)
       .get('/api/v1/organizations')
-      .set('Authorization', `Bearer ${accessToken}`);
-    expect(nonAdminList.status).toBe(403);
+      .set('Authorization', `Bearer ${orgAdmin.accessToken}`);
+    expect(adminList.status).toBe(200);
+    expect(Array.isArray(adminList.body)).toBe(true);
 
+    // Org admin cannot view, patch, or delete arbitrary orgs by ID (platform admin only).
     const nonAdminGet = await request(server)
       .get('/api/v1/organizations/1')
-      .set('Authorization', `Bearer ${accessToken}`);
+      .set('Authorization', `Bearer ${orgAdmin.accessToken}`);
     expect(nonAdminGet.status).toBe(403);
 
     const nonAdminPatch = await request(server)
       .patch('/api/v1/organizations/1')
-      .set('Authorization', `Bearer ${accessToken}`)
+      .set('Authorization', `Bearer ${orgAdmin.accessToken}`)
       .send({ name: `New Name ${Date.now()}` });
     expect(nonAdminPatch.status).toBe(403);
 
     const nonAdminDelete = await request(server)
       .delete('/api/v1/organizations/1')
-      .set('Authorization', `Bearer ${accessToken}`);
+      .set('Authorization', `Bearer ${orgAdmin.accessToken}`);
     expect(nonAdminDelete.status).toBe(403);
   });
 
@@ -91,10 +94,23 @@ describe('Organizations management (e2e)', () => {
       .set(admin.authHeaders);
     expect(crossTenantRead.status).toBe(403);
 
-    const platformList = await request(server)
+    // Org admin can list organizations — but only sees their own org's children,
+    // not a platform-wide list. The response is 200 with a scoped (possibly empty)
+    // array rather than 403.
+    const scopedList = await request(server)
       .get('/api/v1/organizations')
       .set(admin.authHeaders);
-    expect(platformList.status).toBe(403);
+    expect(scopedList.status).toBe(200);
+    expect(Array.isArray(scopedList.body)).toBe(true);
+    // Results must be scoped: every returned org must be a child of ownOrg
+    for (const org of scopedList.body as Array<{ parentId: number | null }>) {
+      expect(org.parentId).toBe(ownOrg.id);
+    }
+    // otherOrg is a sibling — must not appear
+    const returnedIds = (scopedList.body as Array<{ id: number }>).map(
+      (o) => o.id,
+    );
+    expect(returnedIds).not.toContain(otherOrg.id);
   });
 
   it('supports list, view, update, duplicate checks, and delete (soft-archive) for SUPER_ADMIN', async () => {

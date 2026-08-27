@@ -69,6 +69,15 @@ export async function listChildOrganizations(parentId: number): Promise<Organiza
   return listOrganizations({ parentId });
 }
 
+/**
+ * Fetch a single organization by ID (Super Admin only).
+ * The caller must have X-Organization-Id set on the axios client, or pass
+ * the id of any org they are authorised to view.
+ */
+export async function getOrganizationById(id: number): Promise<Organization> {
+  return apiClient<Organization>(`/organizations/${id}`);
+}
+
 export async function getMyOrganization(): Promise<Organization> {
   return apiClient<Organization>('/organizations/me');
 }

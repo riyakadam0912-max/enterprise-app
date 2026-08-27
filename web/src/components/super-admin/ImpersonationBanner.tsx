@@ -3,7 +3,12 @@
 import { useRouter } from 'next/navigation';
 import { ArrowRightLeft, Building2, ShieldCheck } from 'lucide-react';
 
-import { clearActiveOrganization, getActiveOrganizationId, isSuperAdminSession, useAuthSession } from '@/stores/auth-store';
+import {
+  clearActiveOrganization,
+  getActiveOrganizationId,
+  isSuperAdminSession,
+  useAuthSession,
+} from '@/stores/auth-store';
 
 export default function ImpersonationBanner() {
   const router = useRouter();
@@ -15,6 +20,9 @@ export default function ImpersonationBanner() {
   if (!isImpersonating) {
     return null;
   }
+
+  // Use the persisted org name (set by Topbar's fetch effect) — fall back to ID.
+  const displayName = session.organizationName ?? `Organisation #${activeOrganizationId}`;
 
   const handleSwitchOrganization = () => {
     router.push('/super-admin/organizations');
@@ -35,10 +43,14 @@ export default function ImpersonationBanner() {
           <div>
             <div className="flex items-center gap-2">
               <Building2 className="h-4 w-4 text-indigo-700" />
-              <p className="text-sm font-semibold text-indigo-900">Organization impersonation mode</p>
+              <p className="text-sm font-semibold text-indigo-900">
+                Organisation impersonation mode
+              </p>
             </div>
             <p className="mt-1 text-sm text-indigo-700">
-              You are currently operating as the Organization Admin for tenant #{activeOrganizationId}. All tenant-scoped tools and APIs are using this organization context.
+              You are operating as the Organisation Admin for{' '}
+              <span className="font-semibold">{displayName}</span>. All
+              tenant-scoped tools and APIs use this organisation context.
             </p>
           </div>
         </div>
@@ -50,7 +62,7 @@ export default function ImpersonationBanner() {
             className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-white px-3 py-2 text-sm font-medium text-indigo-700 transition hover:bg-indigo-100"
           >
             <ArrowRightLeft className="h-4 w-4" />
-            Switch Organization
+            Switch Organisation
           </button>
           <button
             type="button"

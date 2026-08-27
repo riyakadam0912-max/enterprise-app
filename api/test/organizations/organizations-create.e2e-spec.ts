@@ -70,7 +70,7 @@ describe('Organizations create (e2e)', () => {
     expect(dupNameResp.status).toBe(409);
   });
 
-  it('rejects unauthenticated and non-SUPER_ADMIN requests', async () => {
+  it('rejects unauthenticated requests (401); org ADMIN can create a child org (201)', async () => {
     const createDto = {
       name: `Nope ${Date.now()}`,
       slug: `nope-${Date.now()}`,
@@ -81,14 +81,18 @@ describe('Organizations create (e2e)', () => {
       .send(createDto);
     expect(unauthResp.status).toBe(401);
 
-    const { accessToken } = await AuthHelper.createTestUserAndLogin(app);
+    // Org admins (role=ADMIN with an organizationId) can now create child orgs
+    // under their own organization — the backend enforces parentId server-side.
+    const { accessToken, organizationId } =
+      await AuthHelper.createTestUserAndLogin(app);
     expect(accessToken).toBeDefined();
 
-    const nonAdminResp = await request(server)
+    const orgAdminResp = await request(server)
       .post('/api/v1/organizations')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send(createDto);
-    expect(nonAdminResp.status).toBe(403);
+      .send({ ...createDto, parentId: organizationId });
+    // 201 = created as a child org; 409 = name/slug collision (both are acceptable here)
+    expect([201, 409]).toContain(orgAdminResp.status);
   });
 
   it('validates create payload (400)', async () => {

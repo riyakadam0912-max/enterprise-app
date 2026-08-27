@@ -1,11 +1,17 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
-import { useAuthSession, setAuthSession, isSuperAdminSession, getActiveOrganizationId } from '@/stores/auth-store';
+import {
+  useAuthSession,
+  setAuthSession,
+  setActiveOrganizationDetails,
+  isSuperAdminSession,
+  getActiveOrganizationId,
+} from '@/stores/auth-store';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import { BusinessUnitSelector } from '@/components/business-units/BusinessUnitSelector';
-import { getMyOrganization } from '@/api/organizationsApi';
+import { getMyOrganization, getOrganizationById } from '@/api/organizationsApi';
 
 const segmentLabels: Record<string, string> = {
   dashboard: 'Dashboard',
@@ -35,7 +41,6 @@ const segmentLabels: Record<string, string> = {
   notifications: 'Notifications',
 };
 
-
 function ChevronRightIcon() {
   return (
     <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
@@ -62,29 +67,73 @@ export default function Topbar() {
     role: session.role,
   };
 
-  // Determine the displayed org name:
-  // - For super admins with an active impersonation org, show the impersonated org name.
-  // - For regular users, use their session org name.
   const isSuperAdmin = isSuperAdminSession(session);
+
+  // The org name/logo shown in the badge.
+  // For SA: we read from session (which is populated by the effect below).
+  // For regular users: session.organizationName is set at login/bootstrap.
   let orgName = session.organizationName;
   let orgLogo = session.organizationLogo;
 
+  // SA without an active impersonation context should show no org badge.
   if (isSuperAdmin) {
     const activeOrgId = typeof window !== 'undefined' ? getActiveOrganizationId() : null;
     if (activeOrgId == null) {
-      // Not impersonating — clear org badge for pure SA view
       orgName = null;
       orgLogo = null;
     }
-    // If impersonating, session.organizationName should already be set
-    // (axiosClient updates it on refresh). If not, it's ok — badge is hidden.
   }
 
-  // Fallback: if session has no org name but user is authenticated with an org,
-  // fetch it from /organizations/me and persist it back into the session store.
+  // --- Super Admin: fetch & persist org name/logo whenever active org changes ---
+  // We track the last fetched org id to avoid redundant requests.
+  const lastFetchedOrgIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+
+    const activeOrgId = getActiveOrganizationId();
+
+    if (activeOrgId == null) {
+      // No active org — clear any stale display data (already done by clearActiveOrganization,
+      // but guard in case the session is loaded from storage with an id but no name yet).
+      lastFetchedOrgIdRef.current = null;
+      return;
+    }
+
+    // If we already have a valid name for this exact org id, nothing to do.
+    if (
+      lastFetchedOrgIdRef.current === activeOrgId &&
+      session.organizationName != null
+    ) {
+      return;
+    }
+
+    lastFetchedOrgIdRef.current = activeOrgId;
+
+    getOrganizationById(activeOrgId)
+      .then((org) => {
+        setActiveOrganizationDetails({
+          name: org.name,
+          logoUrl: org.logoUrl ?? null,
+          slug: org.slug ?? null,
+        });
+      })
+      .catch(() => {
+        // Non-critical — badge will stay empty rather than crash.
+      });
+  // Re-run whenever the stored organizationId or name changes (covers org switch).
+  }, [isSuperAdmin, session.organizationId, session.organizationName]);
+
+  // --- Regular users: fallback fetch if session has no org name yet ---
   useEffect(() => {
     if (orgName || !session.user || session.isSuperAdmin) return;
-    if (session.role !== 'ADMIN' && session.role !== 'HR' && session.role !== 'MANAGER' && session.role !== 'EMPLOYEE') return;
+    if (
+      session.role !== 'ADMIN' &&
+      session.role !== 'HR' &&
+      session.role !== 'MANAGER' &&
+      session.role !== 'EMPLOYEE'
+    ) return;
+
     getMyOrganization()
       .then((org) => {
         setAuthSession({ organizationName: org.name, organizationLogo: org.logoUrl ?? null });
@@ -94,10 +143,10 @@ export default function Topbar() {
 
   // Build breadcrumb parts from path
   const segments = pathname.split('/').filter(Boolean);
-  // Resolve last meaningful segment label (skip numeric IDs)
   const lastSegment = [...segments].reverse().find((s) => isNaN(Number(s))) ?? 'dashboard';
-  let pageLabel = segmentLabels[lastSegment] ?? lastSegment.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-  // Special cases for edit/add pages that have IDs
+  let pageLabel =
+    segmentLabels[lastSegment] ??
+    lastSegment.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   if (pathname.includes('/edit/')) pageLabel = `Edit ${segmentLabels[segments[segments.indexOf('edit') - 1]] ?? ''}`;
   if (pathname.includes('/add')) pageLabel = `Add ${segmentLabels[segments[segments.indexOf('add') - 1]] ?? ''}`;
 
@@ -125,7 +174,10 @@ export default function Topbar() {
 
         {/* Organization name badge */}
         {orgName ? (
-          <div className="hidden sm:flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 max-w-[180px]" title={orgName}>
+          <div
+            className="hidden sm:flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 max-w-[180px]"
+            title={orgName}
+          >
             {orgLogo ? (
               <img
                 src={orgLogo}
@@ -134,7 +186,7 @@ export default function Topbar() {
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
               />
             ) : (
-              /* Initials fallback — 2-letter avatar */
+              /* Initials fallback — 2-letter coloured avatar */
               <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-orange-500 text-[8px] font-bold text-white leading-none">
                 {getInitials(orgName)}
               </span>

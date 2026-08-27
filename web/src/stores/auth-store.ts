@@ -364,6 +364,42 @@ export function setActiveOrganization(organizationId: number): void {
   cachedSession = {
     ...cachedSession,
     organizationId: Number.isFinite(organizationId) ? organizationId : null,
+    // Clear stale name/logo immediately; caller should follow up with
+    // setActiveOrganizationDetails() once the org data has been fetched.
+    organizationName: null,
+    organizationLogo: null,
+    organizationSlug: null,
+  };
+
+  saveSessionToStorage(cachedSession);
+  notifyAuthStateChange();
+}
+
+/**
+ * Persist the display metadata for the currently-impersonated organisation so
+ * the Topbar can show the name and logo without an extra render-phase fetch.
+ *
+ * Call this immediately after the org details API response arrives.
+ */
+export function setActiveOrganizationDetails(details: {
+  name: string;
+  logoUrl?: string | null;
+  slug?: string | null;
+}): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const session = getAuthSessionSnapshot();
+  if (!(session.isSuperAdmin || session.isPlatformAdmin)) {
+    return;
+  }
+
+  cachedSession = {
+    ...cachedSession,
+    organizationName: details.name,
+    organizationLogo: details.logoUrl ?? null,
+    organizationSlug: details.slug ?? null,
   };
 
   saveSessionToStorage(cachedSession);
@@ -384,6 +420,9 @@ export function clearActiveOrganization(): void {
   cachedSession = {
     ...cachedSession,
     organizationId: null,
+    organizationName: null,
+    organizationLogo: null,
+    organizationSlug: null,
   };
 
   saveSessionToStorage(cachedSession);
