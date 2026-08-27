@@ -1,10 +1,12 @@
 'use client';
 
+import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
-import { useAuthSession } from '@/stores/auth-store';
+import { useAuthSession, setAuthSession } from '@/stores/auth-store';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import { BusinessUnitSelector } from '@/components/business-units/BusinessUnitSelector';
 import { Building2 } from 'lucide-react';
+import { getMyOrganization } from '@/api/organizationsApi';
 
 const segmentLabels: Record<string, string> = {
   dashboard: 'Dashboard',
@@ -52,6 +54,18 @@ export default function Topbar() {
   };
   const orgName = session.organizationName;
   const orgLogo = session.organizationLogo;
+
+  // Fallback: if session has no org name but user is authenticated with an org,
+  // fetch it from /organizations/me and persist it back into the session store.
+  useEffect(() => {
+    if (orgName || !session.user || session.isSuperAdmin) return;
+    if (session.role !== 'ADMIN' && session.role !== 'HR' && session.role !== 'MANAGER' && session.role !== 'EMPLOYEE') return;
+    getMyOrganization()
+      .then((org) => {
+        setAuthSession({ organizationName: org.name, organizationLogo: org.logoUrl ?? null });
+      })
+      .catch(() => { /* silently ignore */ });
+  }, [orgName, session.user, session.role, session.isSuperAdmin]);
 
   // Build breadcrumb parts from path
   const segments = pathname.split('/').filter(Boolean);
