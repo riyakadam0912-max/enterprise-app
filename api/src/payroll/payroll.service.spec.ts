@@ -11,6 +11,7 @@ import {
 } from '../../test/helpers/mocks.helper';
 import { Role } from '../common/enums/role.enum';
 import type { AuthUser } from '../common/types/auth';
+import { BusinessUnitsService } from '../business-units/business-units.service';
 
 function createMockAuthUser(
   role: Role,
@@ -55,6 +56,15 @@ describe('PayrollService', () => {
           },
         },
         { provide: CACHE_MANAGER, useValue: createMockCacheManager() },
+        {
+          provide: BusinessUnitsService,
+          useValue: {
+            resolveScope: jest.fn().mockResolvedValue({
+              allUnits: true,
+              unitIds: [],
+            }),
+          },
+        },
       ],
     }).compile();
 
@@ -77,5 +87,37 @@ describe('PayrollService', () => {
     ).rejects.toThrow(ConflictException);
 
     expect(mockPrisma.payrollCycle.create).not.toHaveBeenCalled();
+  });
+
+  it('balances flexible-day shortfall across the payroll month', async () => {
+    mockPrisma.attendance.findMany.mockResolvedValue([
+      {
+        status: 'PRESENT',
+        workingHours: 5,
+        requiredHours: 8,
+        overtimeHours: 0,
+        lateMinutes: 0,
+      },
+      {
+        status: 'PRESENT',
+        workingHours: 10,
+        requiredHours: 8,
+        overtimeHours: 2,
+        lateMinutes: 0,
+      },
+    ]);
+    mockPrisma.leaveRequest.findMany.mockResolvedValue([]);
+
+    const metrics = await (service as any).getAttendanceMetricsForCycle(
+      7,
+      8,
+      2026,
+      1,
+    );
+
+    expect(metrics.totalWorkedHours).toBe(15);
+    expect(metrics.totalExpectedHours).toBe(16);
+    expect(metrics.totalShortfallHours).toBe(1);
+    expect(metrics.overtimeHours).toBe(2);
   });
 });

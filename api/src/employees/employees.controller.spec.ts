@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { BusinessUnitsService } from '../business-units/business-units.service';
 import { createMockPrismaService } from '../../test/helpers/mocks.helper';
 
 describe('EmployeesController', () => {
@@ -17,6 +18,18 @@ describe('EmployeesController', () => {
       providers: [
         EmployeesService,
         { provide: PrismaService, useValue: mockPrisma },
+        {
+          provide: BusinessUnitsService,
+          useValue: {
+            resolveScope: jest.fn().mockResolvedValue({
+              organizationId: 1,
+              allUnits: true,
+              unitIds: [],
+              assignedUnitId: null,
+            }),
+            buildEmployeeBUWhere: jest.fn().mockReturnValue({}),
+          },
+        },
       ],
     })
       .overrideGuard(JwtAuthGuard)

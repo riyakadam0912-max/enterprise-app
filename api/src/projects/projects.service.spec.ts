@@ -11,6 +11,7 @@ import { AuthUser } from '../common/types/auth';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { CreateProjectLinkDto } from './dto/create-project-link.dto';
+import { BusinessUnitsService } from '../business-units/business-units.service';
 
 // Helper to create valid mock AuthUser
 function createMockAuthUser(
@@ -59,6 +60,19 @@ describe('ProjectsService', () => {
       providers: [
         ProjectsService,
         { provide: PrismaService, useValue: mockPrisma },
+        {
+          provide: BusinessUnitsService,
+          useValue: {
+            resolveScope: jest.fn().mockResolvedValue({
+              organizationId: 1,
+              allUnits: true,
+              unitIds: [],
+              assignedUnitId: null,
+            }),
+            buildDirectBUWhere: jest.fn().mockReturnValue({}),
+            assertRecordAccessible: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 

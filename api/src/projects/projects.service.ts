@@ -255,7 +255,9 @@ export class ProjectsService {
         description: dto.description,
         client: dto.client,
         projectLead: dto.projectLead,
-        ...(dtoAny.businessUnitId != null && { businessUnitId: dtoAny.businessUnitId }),
+        ...(dtoAny.businessUnitId != null && {
+          businessUnitId: dtoAny.businessUnitId,
+        }),
       },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
@@ -694,7 +696,9 @@ export class ProjectsService {
               ? new Date(dto.deadline || dto.endDate!)
               : null,
         }),
-        ...(dtoAny.businessUnitId !== undefined && { businessUnitId: dtoAny.businessUnitId }),
+        ...(dtoAny.businessUnitId !== undefined && {
+          businessUnitId: dtoAny.businessUnitId,
+        }),
       },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },

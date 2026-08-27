@@ -1,4 +1,8 @@
-import { ForbiddenException, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { BusinessUnitsService } from './business-units.service';
 import { Role } from '../common/enums/role.enum';
 
@@ -37,7 +41,9 @@ describe('BusinessUnitsService', () => {
     const prisma = createPrismaMock();
     const service = new BusinessUnitsService(prisma);
 
-    await expect(service.list(2, user(Role.HR, 1))).rejects.toThrow(ForbiddenException);
+    await expect(service.list(2, user(Role.HR, 1))).rejects.toThrow(
+      ForbiddenException,
+    );
     expect(prisma.organization.findFirst).not.toHaveBeenCalled();
   });
 
@@ -48,7 +54,11 @@ describe('BusinessUnitsService', () => {
     const service = new BusinessUnitsService(prisma);
 
     await expect(
-      service.create(1, { name: 'Pune', code: 'PUNE', parentId: 99 }, user(Role.ADMIN)),
+      service.create(
+        1,
+        { name: 'Pune', code: 'PUNE', parentId: 99 },
+        user(Role.ADMIN),
+      ),
     ).rejects.toThrow(NotFoundException);
     expect(prisma.businessUnit.create).not.toHaveBeenCalled();
   });
@@ -73,7 +83,9 @@ describe('BusinessUnitsService', () => {
     prisma.businessUnit.count.mockResolvedValue(1);
     const service = new BusinessUnitsService(prisma);
 
-    await expect(service.remove(1, 1, user(Role.ADMIN))).rejects.toThrow(ConflictException);
+    await expect(service.remove(1, 1, user(Role.ADMIN))).rejects.toThrow(
+      ConflictException,
+    );
     expect(prisma.businessUnit.delete).not.toHaveBeenCalled();
   });
 });

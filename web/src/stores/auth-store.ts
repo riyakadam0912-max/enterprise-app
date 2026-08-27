@@ -32,6 +32,8 @@ export type AuthSession = {
   employeeId: number | null;
   organizationId: number | null;
   organizationSlug: string | null;
+  organizationName: string | null;
+  organizationLogo: string | null;
   isSuperAdmin: boolean;
   isPlatformAdmin: boolean;
   availableBusinessUnits: BusinessUnit[];
@@ -47,6 +49,8 @@ type AuthSessionInput = {
   employeeId?: number | string | null;
   organizationId?: number | string | null;
   organizationSlug?: string | null;
+  organizationName?: string | null;
+  organizationLogo?: string | null;
   isSuperAdmin?: boolean;
   isPlatformAdmin?: boolean;
   availableBusinessUnits?: BusinessUnit[];
@@ -66,6 +70,8 @@ const SERVER_AUTH_SESSION: AuthSession = Object.freeze({
   employeeId: null,
   organizationId: null,
   organizationSlug: null,
+  organizationName: null,
+  organizationLogo: null,
   isSuperAdmin: false,
   isPlatformAdmin: false,
   availableBusinessUnits: [],
@@ -177,12 +183,18 @@ function parseBusinessUnits(rawUnits: unknown): BusinessUnit[] {
 
   return rawUnits
     .filter(
-      (unit): unit is BusinessUnit =>
-        typeof unit === 'object' &&
-        unit !== null &&
-        typeof (unit as any).id === 'number' &&
-        typeof (unit as any).name === 'string' &&
-        typeof (unit as any).code === 'string',
+      (unit): unit is BusinessUnit => {
+        if (typeof unit !== 'object' || unit === null) {
+          return false;
+        }
+
+        const candidate = unit as Record<string, unknown>;
+        return (
+          typeof candidate.id === 'number' &&
+          typeof candidate.name === 'string' &&
+          typeof candidate.code === 'string'
+        );
+      },
     );
 }
 
@@ -220,6 +232,8 @@ function loadSessionFromStorage(): AuthSession {
       employeeId: parseEmployeeId(parsed.employeeId == null ? null : String(parsed.employeeId)),
       organizationId: parseOrganizationId(parsed.organizationId == null ? null : String(parsed.organizationId)),
       organizationSlug: parsed.organizationSlug ?? null,
+      organizationName: parsed.organizationName ?? null,
+      organizationLogo: parsed.organizationLogo ?? null,
       availableBusinessUnits: parseBusinessUnits(parsed.availableBusinessUnits),
       activeBusinessUnitId: parseBusinessUnitId(parsed.activeBusinessUnitId == null ? null : String(parsed.activeBusinessUnitId)),
       canSelectAllBusinessUnits: parsed.canSelectAllBusinessUnits === true,
@@ -290,6 +304,8 @@ export function setAuthSession(session: AuthSessionInput): void {
     employeeId: parseEmployeeId(session.employeeId == null ? null : String(session.employeeId)),
     organizationId: parseOrganizationId(session.organizationId == null ? null : String(session.organizationId)),
     organizationSlug: session.organizationSlug ?? null,
+    organizationName: session.organizationName ?? null,
+    organizationLogo: session.organizationLogo ?? null,
     isSuperAdmin: resolved.isSuperAdmin,
     isPlatformAdmin: resolved.isPlatformAdmin,
     availableBusinessUnits: parseBusinessUnits(session.availableBusinessUnits),

@@ -30,7 +30,10 @@ export class QuotesService {
   }
 
   private resolveReadScope(user: AuthUser): number | null {
-    if (!user.organizationId && (user.isSuperAdmin || user.role === Role.SUPER_ADMIN)) {
+    if (
+      !user.organizationId &&
+      (user.isSuperAdmin || user.role === Role.SUPER_ADMIN)
+    ) {
       return null;
     }
     return this.validateOrganization(user);

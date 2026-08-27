@@ -14,6 +14,8 @@ export interface AuthPayload {
   employeeId: number | null;
   organizationId: number | null;
   organizationSlug: string | null;
+  organizationName?: string | null;
+  organizationLogo?: string | null;
   isSuperAdmin: boolean;
   isPlatformAdmin: boolean;
 }

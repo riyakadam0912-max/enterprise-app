@@ -37,6 +37,7 @@ type ShiftLite = {
   startTime: string | null;
   endTime: string | null;
   requiredHours: number;
+  minPresentHours: number;
   gracePeriodMinutes: number;
 };
 
@@ -53,6 +54,7 @@ type DailyAttendanceRow = {
   checkIn: string | null;
   checkOut: string | null;
   workingHours: number | null;
+  shortfallHours: number;
   lateMinutes: number;
   overtimeHours: number;
   status: AttendanceStatus;
@@ -63,6 +65,7 @@ type DailyAttendanceRow = {
     startTime: string | null;
     endTime: string | null;
     requiredHours: number | null;
+    minPresentHours: number | null;
     gracePeriodMinutes: number | null;
   } | null;
 };
@@ -215,6 +218,15 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     return Number(Math.max(0, workingHours - requiredHours).toFixed(2));
   }
 
+  private calculateShortfallHours(
+    workingHours: number | null,
+    shift: ShiftLite | null,
+  ) {
+    if (workingHours == null) return 0;
+    const requiredHours = shift?.requiredHours ?? 8;
+    return Number(Math.max(0, requiredHours - workingHours).toFixed(2));
+  }
+
   private buildSummary(rows: DailyAttendanceRow[]) {
     const summary = rows.reduce(
       (acc, row) => {
@@ -224,6 +236,18 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         if (row.status === AttendanceStatus.HALF_DAY) acc.halfDay += 1;
         if (row.lateMinutes > 0) acc.lateCount += 1;
         acc.overtimeHours += row.overtimeHours ?? 0;
+        acc.shortfallHours += row.shortfallHours ?? 0;
+        acc.totalWorkedHours += row.workingHours ?? 0;
+        const requiredHours = row.shiftDetails?.requiredHours ?? 8;
+        if (
+          row.status === AttendanceStatus.PRESENT ||
+          row.status === AttendanceStatus.HALF_DAY
+        ) {
+          acc.totalExpectedHours +=
+            row.status === AttendanceStatus.HALF_DAY
+              ? requiredHours / 2
+              : requiredHours;
+        }
         return acc;
       },
       {
@@ -233,6 +257,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         halfDay: 0,
         lateCount: 0,
         overtimeHours: 0,
+        shortfallHours: 0,
+        totalWorkedHours: 0,
+        totalExpectedHours: 0,
       },
     );
 
@@ -244,6 +271,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       halfDays: summary.halfDay,
       totalWorkingDays: rows.length,
       overtimeHours: Number(summary.overtimeHours.toFixed(2)),
+      shortfallHours: Number(summary.shortfallHours.toFixed(2)),
+      totalWorkedHours: Number(summary.totalWorkedHours.toFixed(2)),
+      totalExpectedHours: Number(summary.totalExpectedHours.toFixed(2)),
     };
   }
 
@@ -253,13 +283,17 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     checkOut: Date | null;
     workingHours: number | null;
     onLeave: boolean;
+    shift?: ShiftLite | null;
   }) {
-    const { day, checkIn, checkOut, workingHours, onLeave } = params;
+    const { day, checkIn, checkOut, workingHours, onLeave, shift } = params;
     if (onLeave) return AttendanceStatus.LEAVE;
+    const minPresentHours = shift?.minPresentHours ?? 5;
+    const halfDayThreshold = Math.max(1, minPresentHours / 2);
     if (checkIn && checkOut) {
-      return (workingHours ?? 0) >= 4
-        ? AttendanceStatus.PRESENT
-        : AttendanceStatus.HALF_DAY;
+      const worked = workingHours ?? 0;
+      if (worked >= minPresentHours) return AttendanceStatus.PRESENT;
+      if (worked >= halfDayThreshold) return AttendanceStatus.HALF_DAY;
+      return AttendanceStatus.ABSENT;
     }
     if (checkIn) {
       return this.startOfDay(day).getTime() ===
@@ -368,9 +402,14 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     }
 
     const buScope = await this.businessUnitsService.resolveScope(user as any);
-    const buEmployeeIds = await this.businessUnitsService.getEmployeeScopeFilterIds(buScope);
+    const buEmployeeIds =
+      await this.businessUnitsService.getEmployeeScopeFilterIds(buScope);
 
-    if (buEmployeeIds && buEmployeeIds.length === 1 && buEmployeeIds[0] === -1) {
+    if (
+      buEmployeeIds &&
+      buEmployeeIds.length === 1 &&
+      buEmployeeIds[0] === -1
+    ) {
       return [-1];
     }
 
@@ -382,7 +421,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       return buEmployeeIds;
     }
 
-    const intersection = roleBasedIds.filter((id) => buEmployeeIds.includes(id));
+    const intersection = roleBasedIds.filter((id) =>
+      buEmployeeIds.includes(id),
+    );
     return intersection.length === 0 ? [-1] : intersection;
   }
 
@@ -426,19 +467,35 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       shift: ShiftLite | null;
     },
     day: Date,
-    attendance: {
-      id: number;
-      checkIn: Date | null;
-      checkOut: Date | null;
-      workingHours: number | null;
-      lateMinutes: number;
-      overtimeHours: number;
-      status: AttendanceStatus;
-      shift?: ShiftLite | null;
-    } | null,
+    attendance:
+      | ({
+          id: number;
+          checkIn: Date | null;
+          checkOut: Date | null;
+          workingHours: number | null;
+          lateMinutes: number;
+          overtimeHours: number;
+          shortfallHours: number;
+          status: AttendanceStatus;
+          shift?: ShiftLite | null;
+        } & { shortfallHours?: number })
+      | null,
     onLeave: boolean,
   ): DailyAttendanceRow {
     const shift = attendance?.shift ?? employee.shift ?? null;
+    const computedStatus =
+      attendance?.status ??
+      this.calculateStatus({
+        day,
+        checkIn: null,
+        checkOut: null,
+        workingHours: null,
+        onLeave,
+        shift,
+      });
+    const shortfallHours =
+      (attendance as { shortfallHours?: number })?.shortfallHours ??
+      this.calculateShortfallHours(attendance?.workingHours ?? null, shift);
 
     return {
       id: attendance?.id ?? null,
@@ -453,17 +510,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       checkIn: attendance?.checkIn?.toISOString() ?? null,
       checkOut: attendance?.checkOut?.toISOString() ?? null,
       workingHours: attendance?.workingHours ?? null,
+      shortfallHours,
       lateMinutes: attendance?.lateMinutes ?? 0,
       overtimeHours: attendance?.overtimeHours ?? 0,
-      status:
-        attendance?.status ??
-        this.calculateStatus({
-          day,
-          checkIn: null,
-          checkOut: null,
-          workingHours: null,
-          onLeave,
-        }),
+      status: computedStatus,
       shiftDetails: shift
         ? {
             id: shift.id,
@@ -472,6 +522,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             startTime: shift.startTime,
             endTime: shift.endTime,
             requiredHours: shift.requiredHours,
+            minPresentHours: shift.minPresentHours,
             gracePeriodMinutes: shift.gracePeriodMinutes,
           }
         : null,
@@ -479,13 +530,16 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   }
 
   async createShift(dto: CreateShiftDto, user: AttendanceUser) {
+    const requiredHours = dto.requiredHours ?? 8;
+    const minPresentHours = dto.minPresentHours ?? Math.min(5, requiredHours);
     const result = await this.prisma.shift.create({
       data: {
         name: dto.name,
         type: dto.type,
         startTime: dto.startTime,
         endTime: dto.endTime,
-        requiredHours: dto.requiredHours ?? 8,
+        requiredHours,
+        minPresentHours: Math.min(minPresentHours, requiredHours),
         gracePeriodMinutes: dto.gracePeriodMinutes ?? 15,
         rotationPattern: dto.rotationPattern,
         organizationId: user.organizationId,
@@ -657,6 +711,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       checkOutTime,
     );
     const overtimeHours = this.calculateOvertimeHours(workingHours, shift);
+    const shortfallHours = this.calculateShortfallHours(workingHours, shift);
 
     const status = this.calculateStatus({
       day: this.startOfDay(new Date(record.date)),
@@ -664,6 +719,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       checkOut: checkOutTime,
       workingHours,
       onLeave: false,
+      shift,
     });
 
     const result = await this.prisma.attendance.update({
@@ -672,6 +728,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         checkOut: checkOutTime,
         workingHours,
         overtimeHours,
+        shortfallHours,
         status,
       },
       include: { employee: true, shift: true },
@@ -915,9 +972,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       checkIn: string | null;
       checkOut: string | null;
       workingHours: number | null;
+      shortfallHours: number;
       lateMinutes: number;
       overtimeHours: number;
-      shiftDetails: ShiftLite | null;
+      shiftDetails: (ShiftLite & { minPresentHours: number }) | null;
     }> = [];
 
     for (let dayNumber = 1; dayNumber <= daysInMonth; dayNumber++) {
@@ -929,6 +987,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           row.startDate <= this.endOfDay(day) &&
           row.endDate >= this.startOfDay(day),
       );
+      const shift = attendance?.shift ?? employee.shift ?? null;
       const status =
         attendance?.status ??
         this.calculateStatus({
@@ -937,7 +996,26 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           checkOut: null,
           workingHours: null,
           onLeave,
+          shift,
         });
+      const requiredHours = shift?.requiredHours ?? 8;
+      const minPresentHours = shift?.minPresentHours ?? 5;
+      const gracePeriodMinutes = shift?.gracePeriodMinutes ?? 15;
+      const shortfallHours =
+        (attendance as { shortfallHours?: number })?.shortfallHours ??
+        this.calculateShortfallHours(attendance?.workingHours ?? null, shift);
+      const effectiveShift = shift
+        ? {
+            id: shift.id,
+            name: shift.name,
+            type: shift.type,
+            startTime: shift.startTime,
+            endTime: shift.endTime,
+            requiredHours,
+            minPresentHours,
+            gracePeriodMinutes,
+          }
+        : null;
 
       days.push({
         date: this.startOfDay(day).toISOString(),
@@ -946,29 +1024,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         checkIn: attendance?.checkIn?.toISOString() ?? null,
         checkOut: attendance?.checkOut?.toISOString() ?? null,
         workingHours: attendance?.workingHours ?? null,
+        shortfallHours,
         lateMinutes: attendance?.lateMinutes ?? 0,
         overtimeHours: attendance?.overtimeHours ?? 0,
-        shiftDetails: attendance?.shift
-          ? {
-              id: attendance.shift.id,
-              name: attendance.shift.name,
-              type: attendance.shift.type,
-              startTime: attendance.shift.startTime,
-              endTime: attendance.shift.endTime,
-              requiredHours: attendance.shift.requiredHours,
-              gracePeriodMinutes: attendance.shift.gracePeriodMinutes,
-            }
-          : employee.shift
-            ? {
-                id: employee.shift.id,
-                name: employee.shift.name,
-                type: employee.shift.type,
-                startTime: employee.shift.startTime,
-                endTime: employee.shift.endTime,
-                requiredHours: employee.shift.requiredHours,
-                gracePeriodMinutes: employee.shift.gracePeriodMinutes,
-              }
-            : null,
+        shiftDetails: effectiveShift,
       });
     }
 
@@ -986,6 +1045,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         checkIn: d.checkIn,
         checkOut: d.checkOut,
         workingHours: d.workingHours,
+        shortfallHours: d.shortfallHours,
         lateMinutes: d.lateMinutes,
         overtimeHours: d.overtimeHours,
         status: d.status,
@@ -1041,12 +1101,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     const attendanceRows = await this.prisma.attendance.findMany({
       where: whereWithEmployee,
-      select: {
-        employeeId: true,
-        status: true,
-        lateMinutes: true,
-        overtimeHours: true,
-      },
+      include: { shift: true },
     });
 
     const presentDays = attendanceRows.filter(
@@ -1069,6 +1124,32 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         .reduce((sum: number, row) => sum + (row.overtimeHours ?? 0), 0)
         .toFixed(2),
     );
+    const shortfallHours = Number(
+      attendanceRows
+        .reduce((sum: number, row) => {
+          const sf = (row as { shortfallHours?: number }).shortfallHours;
+          if (typeof sf === 'number') return sum + sf;
+          const required = row.requiredHours ?? row.shift?.requiredHours ?? 8;
+          return sum + Math.max(0, required - (row.workingHours ?? 0));
+        }, 0)
+        .toFixed(2),
+    );
+    const totalWorkedHours = Number(
+      attendanceRows
+        .reduce((sum: number, row) => sum + (row.workingHours ?? 0), 0)
+        .toFixed(2),
+    );
+    const totalExpectedHours = Number(
+      attendanceRows
+        .reduce((sum: number, row) => {
+          const required = row.requiredHours ?? row.shift?.requiredHours ?? 8;
+          if (row.status === 'PRESENT' || row.status === 'HALF_DAY') {
+            return sum + (row.status === 'HALF_DAY' ? required / 2 : required);
+          }
+          return sum;
+        }, 0)
+        .toFixed(2),
+    );
 
     const totalWorkingDays = attendanceRows.length;
 
@@ -1079,6 +1160,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       halfDays,
       lateCount,
       overtimeHours,
+      shortfallHours,
+      totalWorkedHours,
+      totalExpectedHours,
       totalWorkingDays,
     };
   }
@@ -1136,11 +1220,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         date: { gte: monthStart, lte: monthEnd },
         ...this.buildOrganizationScope(user),
       },
-      select: {
-        employeeId: true,
-        status: true,
-        lateMinutes: true,
-      },
+      include: { shift: true },
       orderBy: [{ employeeId: 'asc' }, { date: 'asc' }],
     });
 
@@ -1158,6 +1238,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         leaveCount: number;
         workingDays: number;
         attendancePercent: number;
+        totalWorkedHours: number;
+        totalExpectedHours: number;
+        shortfallHours: number;
+        overtimeHours: number;
       }
     >();
 
@@ -1178,6 +1262,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         leaveCount: 0,
         workingDays: 0,
         attendancePercent: 0,
+        totalWorkedHours: 0,
+        totalExpectedHours: 0,
+        shortfallHours: 0,
+        overtimeHours: 0,
       });
     }
 
@@ -1196,6 +1284,29 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
       entry.workingDays += 1;
 
+      const requiredHours = row.requiredHours ?? row.shift?.requiredHours ?? 8;
+      entry.overtimeHours += row.overtimeHours ?? 0;
+      entry.totalWorkedHours += row.workingHours ?? 0;
+      const rowShortfall = (row as { shortfallHours?: number }).shortfallHours;
+      if (typeof rowShortfall === 'number') {
+        entry.shortfallHours += rowShortfall;
+      } else {
+        entry.shortfallHours += Math.max(
+          0,
+          requiredHours - (row.workingHours ?? 0),
+        );
+      }
+
+      if (
+        row.status === AttendanceStatus.PRESENT ||
+        row.status === AttendanceStatus.HALF_DAY
+      ) {
+        entry.totalExpectedHours +=
+          row.status === AttendanceStatus.HALF_DAY
+            ? requiredHours / 2
+            : requiredHours;
+      }
+
       if (row.status === AttendanceStatus.PRESENT) entry.presentCount += 1;
       if (row.status === AttendanceStatus.ABSENT) entry.absentCount += 1;
       if (row.status === AttendanceStatus.HALF_DAY) entry.halfDayCount += 1;
@@ -1205,6 +1316,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     const rows = Array.from(grouped.values()).map((entry) => ({
       ...entry,
+      overtimeHours: Number(entry.overtimeHours.toFixed(2)),
+      shortfallHours: Number(entry.shortfallHours.toFixed(2)),
+      totalWorkedHours: Number(entry.totalWorkedHours.toFixed(2)),
+      totalExpectedHours: Number(entry.totalExpectedHours.toFixed(2)),
       attendancePercent:
         entry.workingDays > 0
           ? Number(((entry.presentCount / entry.workingDays) * 100).toFixed(2))
@@ -1291,6 +1406,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       workingHours != null
         ? this.calculateOvertimeHours(workingHours, shift)
         : 0;
+    const shortfallHours = this.calculateShortfallHours(workingHours, shift);
     const lateMinutes = checkIn
       ? this.calculateLateMinutes(checkIn, nextDate, shift)
       : 0;
@@ -1307,6 +1423,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         checkOut,
         workingHours,
         onLeave: Boolean(leave),
+        shift,
       });
 
     return this.prisma.attendance.update({
@@ -1317,6 +1434,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         checkOut,
         workingHours,
         overtimeHours,
+        shortfallHours,
         lateMinutes,
         status,
         isPaidLeave: leave ? Boolean(leave.isPaid ?? true) : null,
@@ -1392,6 +1510,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           workingHours,
           employee.shift,
         );
+        const shortfallHours = this.calculateShortfallHours(
+          workingHours,
+          employee.shift,
+        );
 
         await this.prisma.attendance.update({
           where: { id: existing.id },
@@ -1399,6 +1521,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             checkOut: autoCheckOut,
             workingHours,
             overtimeHours,
+            shortfallHours,
             isAutoClosed: true,
             status: this.calculateStatus({
               day: target,
@@ -1406,6 +1529,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
               checkOut: autoCheckOut,
               workingHours,
               onLeave: false,
+              shift: employee.shift,
             }),
           },
         });

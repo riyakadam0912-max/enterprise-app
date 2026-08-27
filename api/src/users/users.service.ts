@@ -252,7 +252,8 @@ export class UsersService {
           },
           select: { id: true },
         });
-        if (!businessUnit) throw new NotFoundException('Business Unit not found');
+        if (!businessUnit)
+          throw new NotFoundException('Business Unit not found');
       }
       data.primaryBusinessUnitId = updateUserDto.primaryBusinessUnitId;
     }

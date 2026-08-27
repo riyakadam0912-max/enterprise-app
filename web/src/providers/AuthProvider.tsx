@@ -86,6 +86,8 @@ export function AuthProvider({
           employeeId: current.employeeId,
           organizationId: current.organizationId,
           organizationSlug: current.organizationSlug,
+          organizationName: current.organizationName,
+          organizationLogo: current.organizationLogo,
           isSuperAdmin: current.isSuperAdmin,
           isPlatformAdmin: current.isPlatformAdmin,
 
@@ -168,6 +170,8 @@ export function AuthProvider({
           data.organizationId,
         organizationSlug:
           data.organizationSlug,
+        organizationName: data.organizationName,
+        organizationLogo: data.organizationLogo,
         isSuperAdmin:
           data.isSuperAdmin,
         isPlatformAdmin:

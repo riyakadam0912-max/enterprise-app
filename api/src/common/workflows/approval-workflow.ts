@@ -58,12 +58,7 @@ export function createSubmittedApprovalState(
 export function createManagerApprovalState(
   trail: unknown,
   userId: number,
-): Pick<
-  ApprovalStateWrite,
-  | 'status'
-  | 'approvedBy'
-  | 'approvalTrail'
-> {
+): Pick<ApprovalStateWrite, 'status' | 'approvedBy' | 'approvalTrail'> {
   return {
     status: 'PENDING_HR',
     approvedBy: `MANAGER:${userId}`,
@@ -78,12 +73,7 @@ export function createManagerApprovalState(
 export function createHrApprovalState(
   trail: unknown,
   userId: number,
-): Pick<
-  ApprovalStateWrite,
-  | 'status'
-  | 'approvedBy'
-  | 'approvalTrail'
-> {
+): Pick<ApprovalStateWrite, 'status' | 'approvedBy' | 'approvalTrail'> {
   return {
     status: 'APPROVED',
     approvedBy: `HR:${userId}`,
@@ -100,12 +90,7 @@ export function createRejectionState(
   userRole: string,
   userId: number,
   reason?: string,
-): Pick<
-  ApprovalStateWrite,
-  | 'status'
-  | 'approvedBy'
-  | 'approvalTrail'
-> {
+): Pick<ApprovalStateWrite, 'status' | 'approvedBy' | 'approvalTrail'> {
   return {
     status: 'REJECTED',
     approvedBy: `${userRole}:${userId} (Rejected)`,

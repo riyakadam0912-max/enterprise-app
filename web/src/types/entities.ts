@@ -35,6 +35,9 @@ export interface Employee {
     type: string;
     startTime?: string | null;
     endTime?: string | null;
+    requiredHours?: number;
+    minPresentHours?: number | null;
+    gracePeriodMinutes?: number;
   } | null;
   createdAt: string;
   updatedAt: string;

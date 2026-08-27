@@ -58,7 +58,8 @@ export class EmployeesService {
       Role.HR,
       Role.COMPLIANCE_MANAGER,
     ]);
-    if (user.isPlatformAdmin === true || user.isSuperAdmin === true) return true;
+    if (user.isPlatformAdmin === true || user.isSuperAdmin === true)
+      return true;
     if (user.role && wide.has(user.role as string)) return true;
     if (Array.isArray(user.roles) && user.roles.some((r) => wide.has(r)))
       return true;
@@ -219,23 +220,6 @@ export class EmployeesService {
           'A user with this email already exists in the organization.',
         );
       }
-
-    }
-
-    if (createEmployeeDto.shiftId) {
-      const shift = await this.prisma.shift.findFirst({
-        where: {
-          id: createEmployeeDto.shiftId,
-          organizationId,
-          isActive: true,
-        },
-        select: { id: true },
-      });
-      if (!shift) {
-        throw new NotFoundException(
-          'Selected shift not found in the organization.',
-        );
-      }
     }
 
     if (createEmployeeDto.businessUnitId) {
@@ -252,7 +236,9 @@ export class EmployeesService {
           'Selected Business Unit not found in the organization.',
         );
       }
-      const callerScope = await this.businessUnitsService.resolveScope(user as any);
+      const callerScope = await this.businessUnitsService.resolveScope(
+        user as any,
+      );
       await this.businessUnitsService.assertRecordAccessible(
         callerScope,
         createEmployeeDto.businessUnitId,
@@ -279,9 +265,6 @@ export class EmployeesService {
           manager: createEmployeeDto.manager,
           leaveBalance: createEmployeeDto.leaveBalance,
           status: createEmployeeDto.status,
-          shift: createEmployeeDto.shiftId
-            ? { connect: { id: createEmployeeDto.shiftId } }
-            : undefined,
           businessUnit: createEmployeeDto.businessUnitId
             ? { connect: { id: createEmployeeDto.businessUnitId } }
             : undefined,
@@ -310,7 +293,8 @@ export class EmployeesService {
             role: userRole,
             employeeId: employee.id,
             managerId: createEmployeeDto.managerId ?? undefined,
-            primaryBusinessUnitId: createEmployeeDto.businessUnitId ?? undefined,
+            primaryBusinessUnitId:
+              createEmployeeDto.businessUnitId ?? undefined,
             designation: createEmployeeDto.designation,
           },
           select: {
@@ -414,7 +398,9 @@ export class EmployeesService {
 
     const grouped: Record<string, typeof employees> = {};
     for (const emp of employees) {
-      const key = emp.designation?.trim() ? emp.designation.trim() : 'Unassigned';
+      const key = emp.designation?.trim()
+        ? emp.designation.trim()
+        : 'Unassigned';
       if (!grouped[key]) grouped[key] = [];
       grouped[key].push(emp);
     }
@@ -465,10 +451,7 @@ export class EmployeesService {
       data,
     });
 
-    if (
-      canPrivilegedEdit &&
-      updateEmployeeDto.designation !== undefined
-    ) {
+    if (canPrivilegedEdit && updateEmployeeDto.designation !== undefined) {
       await this.prisma.user.updateMany({
         where: { employeeId: updated.id, organizationId },
         data: { designation: updateEmployeeDto.designation ?? null },

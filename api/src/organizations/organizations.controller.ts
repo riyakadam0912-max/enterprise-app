@@ -33,13 +33,17 @@ import { Permission } from '../common/enums/permissions.enum';
 export class OrganizationsController {
   constructor(private readonly organizationsService: OrganizationsService) {}
 
-  @ApiOperation({ summary: 'Get the authenticated organization admin organization' })
+  @ApiOperation({
+    summary: 'Get the authenticated organization admin organization',
+  })
   @Get('me')
   getMyOrganization(@Req() req: AuthenticatedRequest) {
     return this.organizationsService.getMyOrganization(req.user);
   }
 
-  @ApiOperation({ summary: 'Update the authenticated organization admin organization' })
+  @ApiOperation({
+    summary: 'Update the authenticated organization admin organization',
+  })
   @UseGuards(PermissionsGuard)
   @RequirePermissions(Permission.ADMIN_MANAGE)
   @Patch('me')

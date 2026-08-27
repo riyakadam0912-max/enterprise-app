@@ -28,6 +28,8 @@ export type AuthTokenPayload = {
   employeeId: number | null;
   organizationId: number | null;
   organizationSlug?: string | null;
+  organizationName?: string | null;
+  organizationLogo?: string | null;
   isPlatformAdmin?: boolean;
   isSuperAdmin?: boolean;
   designation?: string | null;
@@ -260,16 +262,25 @@ export class AuthService {
     return user;
   }
 
-  async changePassword(userId: number, currentPassword: string, newPassword: string) {
+  async changePassword(
+    userId: number,
+    currentPassword: string,
+    newPassword: string,
+  ) {
     if (!currentPassword || !newPassword || newPassword.length < 8) {
-      throw new BadRequestException('New password must be at least 8 characters.');
+      throw new BadRequestException(
+        'New password must be at least 8 characters.',
+      );
     }
 
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
       select: { password: true },
     });
-    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    const isCurrentPasswordValid = await bcrypt.compare(
+      currentPassword,
+      user.password,
+    );
     if (!isCurrentPasswordValid) {
       throw new UnauthorizedException('Current password is incorrect.');
     }
@@ -283,17 +294,21 @@ export class AuthService {
     return { message: 'Password updated successfully.' };
   }
 
-  private async resolveOrganizationSlug(organizationId: number | null) {
+  private async resolveOrganizationMeta(organizationId: number | null) {
     if (!organizationId) {
-      return null;
+      return { slug: null, name: null, logoUrl: null };
     }
 
     const organization = await this.prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { slug: true },
+      select: { slug: true, name: true, logoUrl: true },
     });
 
-    return organization?.slug ?? null;
+    return {
+      slug: organization?.slug ?? null,
+      name: organization?.name ?? null,
+      logoUrl: organization?.logoUrl ?? null,
+    };
   }
 
   async login(email: string, password: string) {
@@ -329,7 +344,10 @@ export class AuthService {
           description: `Failed login attempt for ${email}`,
         });
       } catch (e) {
-        this.logger.warn('Audit log (LOGIN_FAILURE) failed non-critically', e as Error);
+        this.logger.warn(
+          'Audit log (LOGIN_FAILURE) failed non-critically',
+          e as Error,
+        );
       }
       throw new UnauthorizedException('Invalid email or password');
     }
@@ -349,7 +367,10 @@ export class AuthService {
           description: `Inactive account login attempt for ${user.email}`,
         });
       } catch (e) {
-        this.logger.warn('Audit log (LOGIN_FAILURE inactive) failed non-critically', e as Error);
+        this.logger.warn(
+          'Audit log (LOGIN_FAILURE inactive) failed non-critically',
+          e as Error,
+        );
       }
       throw new UnauthorizedException('User account is inactive');
     }
@@ -371,7 +392,10 @@ export class AuthService {
           description: `Invalid password for ${user.email}`,
         });
       } catch (e) {
-        this.logger.warn('Audit log (LOGIN_FAILURE password) failed non-critically', e as Error);
+        this.logger.warn(
+          'Audit log (LOGIN_FAILURE password) failed non-critically',
+          e as Error,
+        );
       }
       throw new UnauthorizedException('Invalid email or password');
     }
@@ -412,7 +436,7 @@ export class AuthService {
       ),
     ];
 
-    const organizationSlug = await this.resolveOrganizationSlug(
+    const organizationMeta = await this.resolveOrganizationMeta(
       user.organizationId ?? null,
     );
     const isSuperAdmin = user.role === Role.SUPER_ADMIN;
@@ -430,7 +454,9 @@ export class AuthService {
         permissions: userPermissions,
         employeeId: user.employeeId ?? null,
         organizationId: user.organizationId ?? null,
-        organizationSlug,
+        organizationSlug: organizationMeta.slug,
+        organizationName: organizationMeta.name,
+        organizationLogo: organizationMeta.logoUrl,
         isPlatformAdmin: isSuperAdmin,
         isSuperAdmin,
         designation: user.designation ?? null,
@@ -469,7 +495,10 @@ export class AuthService {
         },
       );
     } catch (e) {
-      this.logger.warn('Audit log (LOGIN_SUCCESS) failed non-critically', e as Error);
+      this.logger.warn(
+        'Audit log (LOGIN_SUCCESS) failed non-critically',
+        e as Error,
+      );
     }
 
     return {
@@ -487,7 +516,9 @@ export class AuthService {
       permissions: userPermissions,
       employeeId: user.employeeId ?? null,
       organizationId: user.organizationId ?? null,
-      organizationSlug,
+      organizationSlug: organizationMeta.slug,
+      organizationName: organizationMeta.name,
+      organizationLogo: organizationMeta.logoUrl,
       isSuperAdmin,
       isPlatformAdmin: isSuperAdmin,
       primaryBusinessUnitId,
@@ -592,7 +623,7 @@ export class AuthService {
       ),
     ];
 
-    const organizationSlug = await this.resolveOrganizationSlug(
+    const organizationMeta = await this.resolveOrganizationMeta(
       user.organizationId ?? null,
     );
     const isSuperAdmin = user.role === Role.SUPER_ADMIN;
@@ -610,7 +641,9 @@ export class AuthService {
         permissions: userPermissions,
         employeeId: user.employeeId ?? null,
         organizationId: user.organizationId ?? null,
-        organizationSlug,
+        organizationSlug: organizationMeta.slug,
+        organizationName: organizationMeta.name,
+        organizationLogo: organizationMeta.logoUrl,
         isPlatformAdmin: isSuperAdmin,
         isSuperAdmin,
         designation: user.designation ?? null,
@@ -636,7 +669,9 @@ export class AuthService {
       permissions: userPermissions,
       employeeId: user.employeeId ?? null,
       organizationId: user.organizationId ?? null,
-      organizationSlug,
+      organizationSlug: organizationMeta.slug,
+      organizationName: organizationMeta.name,
+      organizationLogo: organizationMeta.logoUrl,
       isSuperAdmin,
       isPlatformAdmin: isSuperAdmin,
       primaryBusinessUnitId,

@@ -42,8 +42,7 @@ export class TenantContextMiddleware implements NestMiddleware {
     isPlatformAdmin: boolean,
     headerBU: string | undefined,
   ): Promise<{ businessUnitId: number | null; allBusinessUnits: boolean }> {
-    const roleStr =
-      typeof payload.role === 'string' ? payload.role : undefined;
+    const roleStr = typeof payload.role === 'string' ? payload.role : undefined;
     const rolesArr = Array.isArray(payload.roles) ? payload.roles : [];
     const canScopeMultiple = this.userCanScopeMultipleBusinessUnits(
       roleStr,

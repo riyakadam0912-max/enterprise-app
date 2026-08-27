@@ -23,6 +23,7 @@ import {
 } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../prisma/prisma.service';
 import type { AuthenticatedRequest } from '../common/types/request';
 
 type ProfileUser = {
@@ -43,6 +44,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
   ) {}
 
   private resolveCookieDomain(req: Request): string | undefined {
@@ -307,6 +309,8 @@ export class AuthController {
       employeeId: result.employeeId,
       organizationId: result.organizationId,
       organizationSlug: result.organizationSlug,
+      organizationName: result.organizationName,
+      organizationLogo: result.organizationLogo,
       isSuperAdmin: result.isSuperAdmin,
       isPlatformAdmin: result.isPlatformAdmin,
     };
@@ -319,7 +323,30 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Current user retrieved.' })
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @Get('me')
-  getCurrentUser(@Req() req: AuthenticatedRequest) {
+  async getCurrentUser(@Req() req: AuthenticatedRequest) {
+    const tokenOrgId = req.user.organizationId ?? null;
+    const activeOrgId =
+      typeof req.organizationId === 'number' ? req.organizationId : tokenOrgId;
+
+    let orgName: string | null = req.user.organizationName ?? null;
+    let orgLogo: string | null = req.user.organizationLogo ?? null;
+    let orgSlug: string | null = req.user.organizationSlug ?? null;
+
+    if (
+      activeOrgId != null &&
+      (activeOrgId !== tokenOrgId || orgName == null)
+    ) {
+      const orgRow = await this.prisma.organization.findUnique({
+        where: { id: activeOrgId },
+        select: { name: true, slug: true, logoUrl: true },
+      });
+      if (orgRow) {
+        orgName = orgRow.name;
+        orgSlug = orgRow.slug;
+        orgLogo = orgRow.logoUrl;
+      }
+    }
+
     const response = {
       user: {
         id: req.user.userId ?? req.user.id,
@@ -331,8 +358,10 @@ export class AuthController {
       roles: req.user.roles ?? [],
       permissions: req.user.permissions ?? [],
       employeeId: req.user.employeeId ?? null,
-      organizationId: req.user.organizationId ?? null,
-      organizationSlug: req.user.organizationSlug ?? null,
+      organizationId: activeOrgId,
+      organizationSlug: orgSlug,
+      organizationName: orgName,
+      organizationLogo: orgLogo,
       isSuperAdmin: req.user.isSuperAdmin ?? false,
       isPlatformAdmin: req.user.isPlatformAdmin ?? false,
     };
@@ -372,6 +401,8 @@ export class AuthController {
       employeeId: result.employeeId,
       organizationId: result.organizationId,
       organizationSlug: result.organizationSlug,
+      organizationName: result.organizationName,
+      organizationLogo: result.organizationLogo,
       isSuperAdmin: result.isSuperAdmin,
       isPlatformAdmin: result.isPlatformAdmin,
     };

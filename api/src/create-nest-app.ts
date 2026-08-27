@@ -9,7 +9,9 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { randomBytes } from 'crypto';
 import type { NextFunction, Request, Response } from 'express';
 
-export type ExpressApp = Parameters<typeof NestFactory.create>[1] extends infer T
+export type ExpressApp = Parameters<
+  typeof NestFactory.create
+>[1] extends infer T
   ? T
   : never;
 
@@ -71,11 +73,7 @@ export async function createNestApp() {
 
   const allowedOrigins = new Set(
     (isProduction
-      ? [
-          primaryFrontendUrl,
-          ...configuredOrigins,
-          ...knownProductionOrigins,
-        ]
+      ? [primaryFrontendUrl, ...configuredOrigins, ...knownProductionOrigins]
       : [
           ...(primaryFrontendUrl ? [primaryFrontendUrl] : []),
           ...configuredOrigins,

@@ -26,6 +26,9 @@ interface AuthRefreshPayload {
   permissions: string[];
   employeeId: number | null;
   organizationId: number | null;
+  organizationSlug?: string | null;
+  organizationName?: string | null;
+  organizationLogo?: string | null;
   isSuperAdmin?: boolean;
   isPlatformAdmin?: boolean;
 }
@@ -216,6 +219,9 @@ axiosClient.interceptors.response.use(
             employeeId: payload.employeeId,
 
             organizationId: payload.organizationId,
+            organizationSlug: payload.organizationSlug ?? null,
+            organizationName: payload.organizationName ?? null,
+            organizationLogo: payload.organizationLogo ?? null,
             isSuperAdmin: payload.isSuperAdmin,
             isPlatformAdmin: payload.isPlatformAdmin,
           });

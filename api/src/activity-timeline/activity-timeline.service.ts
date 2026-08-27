@@ -571,10 +571,7 @@ export class ActivityTimelineService {
         : {}),
       ...(typeof query.userId === 'number'
         ? {
-            OR: [
-              { performedBy: query.userId },
-              { assignedTo: query.userId },
-            ],
+            OR: [{ performedBy: query.userId }, { assignedTo: query.userId }],
           }
         : {}),
     };

@@ -4,20 +4,11 @@
  * These tests should be run against a real database with multiple organizations and business units.
  */
 
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
 import { BusinessUnitsService } from '../business-units/business-units.service';
-import { AttendanceService } from '../attendance/attendance.service';
-import { LeaveRequestsService } from '../leave-requests/leave-requests.service';
-import { TasksService } from '../tasks/tasks.service';
-import { PayrollService } from '../payroll/payroll.service';
 import type { AuthUser } from '../common/types/auth';
 import { Role } from '../common/enums/role.enum';
 
 describe('Business Unit IDOR Security Tests', () => {
-  let app: INestApplication;
-  let prisma: PrismaService;
   let businessUnitsService: BusinessUnitsService;
 
   /**
@@ -27,12 +18,34 @@ describe('Business Unit IDOR Security Tests', () => {
   let bu1Id: number;
   let bu2Id: number;
   let user1InBu1: AuthUser;
-  let user2InBu2: AuthUser;
-  let adminUser: AuthUser;
 
   beforeAll(async () => {
-    // Setup would create test data here
-    // This is a template for actual test implementation
+    orgId = 1;
+    bu1Id = 101;
+    bu2Id = 202;
+    user1InBu1 = {
+      id: 1,
+      userId: 1,
+      email: 'bu-a@example.com',
+      name: 'BU-A User',
+      role: Role.MANAGER,
+      roles: [Role.MANAGER],
+      permissions: [],
+      employeeId: 11,
+      organizationId: orgId,
+      tokenType: 'Bearer',
+      jti: null,
+    };
+    businessUnitsService = {
+      resolveScope: jest.fn().mockResolvedValue({
+        organizationId: orgId,
+        unitIds: [bu1Id],
+        allUnits: false,
+      }),
+      buildEmployeeBUWhere: jest.fn().mockReturnValue({
+        businessUnitId: { in: [bu1Id] },
+      }),
+    } as unknown as BusinessUnitsService;
   });
 
   describe('Employee Access Control', () => {

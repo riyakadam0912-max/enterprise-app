@@ -71,7 +71,9 @@ export class ExpensesService {
     return linked.employeeId;
   }
 
-  private async getScopedWhere(user: AuthUser): Promise<Prisma.ExpenseWhereInput> {
+  private async getScopedWhere(
+    user: AuthUser,
+  ): Promise<Prisma.ExpenseWhereInput> {
     const organizationId = this.validateOrganization(user);
     let baseWhere: Prisma.ExpenseWhereInput;
     if (user.role === Role.ADMIN || user.role === Role.HR) {

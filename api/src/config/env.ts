@@ -345,11 +345,14 @@ export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
   const redisEnabledRaw = readOptionalBoolean(env, 'REDIS_ENABLED', false);
   const redisEnabled = isVercel ? false : redisEnabledRaw;
 
-  const websocketEnabledRaw = readOptionalBoolean(env, 'WEBSOCKET_ENABLED', !isProduction);
+  const websocketEnabledRaw = readOptionalBoolean(
+    env,
+    'WEBSOCKET_ENABLED',
+    !isProduction,
+  );
   const websocketEnabledVercelSafe = isVercel ? false : websocketEnabledRaw;
   const websocketEnabled =
-    websocketEnabledVercelSafe &&
-    (redisEnabled || !isProduction)
+    websocketEnabledVercelSafe && (redisEnabled || !isProduction)
       ? true
       : websocketEnabledVercelSafe && isProduction && !redisEnabled
         ? false

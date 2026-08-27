@@ -729,12 +729,13 @@ export class NotificationsService {
       const unreadCountPromise = this.prisma.notificationRecipient.count({
         where: { userId, organizationId, isRead: false },
       });
-      const latestNotificationPromise = this.prisma.notificationRecipient.findFirst({
-        where: { userId, organizationId },
-        include: { notification: true },
-        orderBy: { notification: { createdAt: 'desc' } },
-        take: 1,
-      });
+      const latestNotificationPromise =
+        this.prisma.notificationRecipient.findFirst({
+          where: { userId, organizationId },
+          include: { notification: true },
+          orderBy: { notification: { createdAt: 'desc' } },
+          take: 1,
+        });
       const latestReadPromise = this.prisma.notificationRecipient.findFirst({
         where: { userId, organizationId, isRead: true, readAt: { not: null } },
         orderBy: { readAt: 'desc' },

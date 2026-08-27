@@ -451,11 +451,24 @@ export default function Sidebar({ currentPath }: SidebarProps) {
       >
         <div className="sidebar-brand flex items-center justify-between px-4 py-4 lg:px-5">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="sidebar-brand-mark flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-500">
-              <span className="text-base font-bold text-white">E</span>
-            </div>
+            {session.organizationLogo ? (
+              <img
+                src={session.organizationLogo}
+                alt={session.organizationName ?? 'Organization logo'}
+                className="sidebar-brand-mark h-9 w-9 shrink-0 rounded-xl object-cover"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            ) : (
+              <div className="sidebar-brand-mark flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-500">
+                <span className="text-base font-bold text-white">
+                  {session.organizationName?.trim().charAt(0).toUpperCase() ?? 'E'}
+                </span>
+              </div>
+            )}
             <div className={`min-w-0 transition-all duration-300 ${isCollapsed ? 'hidden' : 'block'}`}>
-              <p className="sidebar-brand-title truncate">Enterprise</p>
+              <p className="sidebar-brand-title truncate">{session.organizationName ?? 'Enterprise'}</p>
               <p className="sidebar-brand-subtitle">Management System</p>
             </div>
           </div>

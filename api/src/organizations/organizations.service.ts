@@ -337,11 +337,27 @@ export class OrganizationsService {
     const organization = await this.prisma.organization.findFirst({
       where: { id: user.organizationId as number, deletedAt: null },
       select: {
-        id: true, name: true, code: true, slug: true, email: true, phone: true,
-        logoUrl: true, address: true, city: true, state: true, country: true,
-        timezone: true, currency: true, status: true, website: true,
-        industry: true, subscriptionPlan: true, trialStartDate: true,
-        trialEndDate: true, createdAt: true, updatedAt: true,
+        id: true,
+        name: true,
+        code: true,
+        slug: true,
+        email: true,
+        phone: true,
+        logoUrl: true,
+        address: true,
+        city: true,
+        state: true,
+        country: true,
+        timezone: true,
+        currency: true,
+        status: true,
+        website: true,
+        industry: true,
+        subscriptionPlan: true,
+        trialStartDate: true,
+        trialEndDate: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
 
@@ -376,7 +392,9 @@ export class OrganizationsService {
         where: { slug: dto.slug.trim(), NOT: { id: organizationId } },
       });
       if (existingSlug) {
-        throw new ConflictException('An organization with that slug already exists');
+        throw new ConflictException(
+          'An organization with that slug already exists',
+        );
       }
     }
 
@@ -385,7 +403,9 @@ export class OrganizationsService {
         where: { name: dto.name.trim(), NOT: { id: organizationId } },
       });
       if (existingName) {
-        throw new ConflictException('An organization with that name already exists');
+        throw new ConflictException(
+          'An organization with that name already exists',
+        );
       }
     }
 

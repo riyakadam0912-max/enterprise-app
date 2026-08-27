@@ -188,16 +188,25 @@ export class TasksService {
       throw new ForbiddenException('Task title is required');
     }
 
-    const callerScope = await this.businessUnitsService.resolveScope(user as any);
-    const employeeBUWhere = this.businessUnitsService.buildEmployeeBUWhere(callerScope);
+    const callerScope = await this.businessUnitsService.resolveScope(
+      user as any,
+    );
+    const employeeBUWhere =
+      this.businessUnitsService.buildEmployeeBUWhere(callerScope);
 
     const project = dto.projectId
       ? await this.db.project.findUnique({
           where: { id: dto.projectId, organizationId },
-          select: { id: true, projectName: true, businessUnitId: true, managerId: true },
+          select: {
+            id: true,
+            projectName: true,
+            businessUnitId: true,
+            managerId: true,
+          },
         })
       : null;
-    if (dto.projectId && !project) throw new NotFoundException('Project not found');
+    if (dto.projectId && !project)
+      throw new NotFoundException('Project not found');
 
     if (project && project.businessUnitId != null) {
       await this.businessUnitsService.assertRecordAccessible(
@@ -207,23 +216,33 @@ export class TasksService {
       );
     }
 
-    const assignee = dto.assignedToUserId || dto.employeeId
-      ? await this.resolveAssignee(
-          organizationId,
-          dto.employeeId ?? null,
-          dto.assignedToUserId ?? null,
-        )
-      : await this.db.user.findUniqueOrThrow({
-          where: { id: user.userId },
-          select: { id: true, name: true, employeeId: true, role: true, managerId: true },
-        });
+    const assignee =
+      dto.assignedToUserId || dto.employeeId
+        ? await this.resolveAssignee(
+            organizationId,
+            dto.employeeId ?? null,
+            dto.assignedToUserId ?? null,
+          )
+        : await this.db.user.findUniqueOrThrow({
+            where: { id: user.userId },
+            select: {
+              id: true,
+              name: true,
+              employeeId: true,
+              role: true,
+              managerId: true,
+            },
+          });
 
     if (
       (dto.assignedToUserId || dto.employeeId) &&
       user.role === Role.MANAGER &&
-      (String(assignee.role) !== String(Role.EMPLOYEE) || assignee.managerId !== user.userId)
+      (String(assignee.role) !== String(Role.EMPLOYEE) ||
+        assignee.managerId !== user.userId)
     ) {
-      throw new ForbiddenException('Managers can assign tasks only to their employees');
+      throw new ForbiddenException(
+        'Managers can assign tasks only to their employees',
+      );
     }
 
     let assigneeEmployeeBU: number | null = null;
@@ -236,7 +255,9 @@ export class TasksService {
         select: { id: true, businessUnitId: true },
       });
       if (!emp) {
-        throw new ForbiddenException('Assigned employee is not within authorized Business Unit scope');
+        throw new ForbiddenException(
+          'Assigned employee is not within authorized Business Unit scope',
+        );
       }
       assigneeEmployeeBU = emp.businessUnitId ?? null;
     }
@@ -328,9 +349,13 @@ export class TasksService {
       );
     }
 
-    const callerScope = await this.businessUnitsService.resolveScope(user as any);
-    const directBUWhere = this.businessUnitsService.buildDirectBUWhere(callerScope);
-    const employeeBUWhere = this.businessUnitsService.buildEmployeeBUWhere(callerScope);
+    const callerScope = await this.businessUnitsService.resolveScope(
+      user as any,
+    );
+    const directBUWhere =
+      this.businessUnitsService.buildDirectBUWhere(callerScope);
+    const employeeBUWhere =
+      this.businessUnitsService.buildEmployeeBUWhere(callerScope);
 
     const existingTask = await this.db.task.findFirst({
       where: { id, ...directBUWhere },
@@ -383,15 +408,25 @@ export class TasksService {
       assigneeData = newAssigneeData;
     }
 
-    let projectData: { projectId?: number; project?: string; businessUnitId?: number | null } = {};
+    let projectData: {
+      projectId?: number;
+      project?: string;
+      businessUnitId?: number | null;
+    } = {};
     if (dto.projectId !== undefined) {
       const project = dto.projectId
         ? await this.db.project.findUnique({
             where: { id: dto.projectId, organizationId },
-            select: { id: true, projectName: true, businessUnitId: true, managerId: true },
+            select: {
+              id: true,
+              projectName: true,
+              businessUnitId: true,
+              managerId: true,
+            },
           })
         : null;
-      if (dto.projectId && !project) throw new NotFoundException('Project not found');
+      if (dto.projectId && !project)
+        throw new NotFoundException('Project not found');
       if (project) {
         if (user.role === Role.MANAGER && project.managerId !== user.userId) {
           throw new ForbiddenException(
@@ -468,15 +503,18 @@ export class TasksService {
   }
 
   async remove(id: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    this.validateOrganization(user);
     const canManage = await this.canManageTask(id, user);
     if (!canManage) {
       throw new ForbiddenException(
         'Only admin or project manager can delete this task',
       );
     }
-    const callerScope = await this.businessUnitsService.resolveScope(user as any);
-    const directBUWhere = this.businessUnitsService.buildDirectBUWhere(callerScope);
+    const callerScope = await this.businessUnitsService.resolveScope(
+      user as any,
+    );
+    const directBUWhere =
+      this.businessUnitsService.buildDirectBUWhere(callerScope);
     const existing = await this.db.task.findFirst({
       where: { id, ...directBUWhere },
     });
@@ -494,9 +532,11 @@ export class TasksService {
     let imported = 0;
     const errors: string[] = [];
     const organizationId = this.validateOrganization(user);
-    const callerScope = await this.businessUnitsService.resolveScope(user as any);
-    const employeeBUWhere = this.businessUnitsService.buildEmployeeBUWhere(callerScope);
-    const directBUWhere = this.businessUnitsService.buildDirectBUWhere(callerScope);
+    const callerScope = await this.businessUnitsService.resolveScope(
+      user as any,
+    );
+    const employeeBUWhere =
+      this.businessUnitsService.buildEmployeeBUWhere(callerScope);
 
     const getString = (obj: Record<string, unknown>, key: string) => {
       const v = obj[key];
@@ -542,7 +582,9 @@ export class TasksService {
           });
           if (emp) inferredBU = emp.businessUnitId ?? null;
           else {
-            errors.push(`Row ${i + 1}: Assigned employee #${assignedToId} not in authorized BU scope`);
+            errors.push(
+              `Row ${i + 1}: Assigned employee #${assignedToId} not in authorized BU scope`,
+            );
             continue;
           }
         }
@@ -597,11 +639,18 @@ export class TasksService {
     }
 
     const organizationId = this.validateOrganization(user);
-    const callerScope = await this.businessUnitsService.resolveScope(user as any);
-    const directBUWhere = this.businessUnitsService.buildDirectBUWhere(callerScope);
+    const callerScope = await this.businessUnitsService.resolveScope(
+      user as any,
+    );
+    const directBUWhere =
+      this.businessUnitsService.buildDirectBUWhere(callerScope);
     const where =
       user.role === Role.MANAGER
-        ? { ...directBUWhere, organizationId, projectRef: { managerId: user.userId } }
+        ? {
+            ...directBUWhere,
+            organizationId,
+            projectRef: { managerId: user.userId },
+          }
         : { ...directBUWhere, organizationId };
     const tasks = await this.db.task.findMany({
       where,
@@ -656,8 +705,11 @@ export class TasksService {
 
   async updateStatus(id: number, status: string, user: AuthUser) {
     const organizationId = this.validateOrganization(user);
-    const callerScope = await this.businessUnitsService.resolveScope(user as any);
-    const directBUWhere = this.businessUnitsService.buildDirectBUWhere(callerScope);
+    const callerScope = await this.businessUnitsService.resolveScope(
+      user as any,
+    );
+    const directBUWhere =
+      this.businessUnitsService.buildDirectBUWhere(callerScope);
     const task = await this.db.task.findFirst({
       where: { id, ...directBUWhere },
       select: {
@@ -712,8 +764,11 @@ export class TasksService {
 
   async submitWork(id: number, dto: SubmitTaskWorkDto, user: AuthUser) {
     const organizationId = this.validateOrganization(user);
-    const callerScope = await this.businessUnitsService.resolveScope(user as any);
-    const directBUWhere = this.businessUnitsService.buildDirectBUWhere(callerScope);
+    const callerScope = await this.businessUnitsService.resolveScope(
+      user as any,
+    );
+    const directBUWhere =
+      this.businessUnitsService.buildDirectBUWhere(callerScope);
     const task = await this.db.task.findFirst({
       where: {
         id,
@@ -803,8 +858,11 @@ export class TasksService {
       );
     }
 
-    const callerScope = await this.businessUnitsService.resolveScope(user as any);
-    const directBUWhere = this.businessUnitsService.buildDirectBUWhere(callerScope);
+    const callerScope = await this.businessUnitsService.resolveScope(
+      user as any,
+    );
+    const directBUWhere =
+      this.businessUnitsService.buildDirectBUWhere(callerScope);
     const task = await this.db.task.findFirst({
       where: { id, ...directBUWhere },
     });

@@ -9,7 +9,13 @@ import { LeaveRequestNotificationListener } from './listeners/leave-request-noti
 import { BusinessUnitsModule } from '../business-units/business-units.module';
 
 @Module({
-  imports: [PrismaModule, NotificationsModule, MailModule, WorkflowModule, BusinessUnitsModule],
+  imports: [
+    PrismaModule,
+    NotificationsModule,
+    MailModule,
+    WorkflowModule,
+    BusinessUnitsModule,
+  ],
   controllers: [LeaveRequestsController],
   providers: [LeaveRequestsService, LeaveRequestNotificationListener],
 })

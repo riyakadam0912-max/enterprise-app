@@ -291,20 +291,20 @@ export class LeaveRequestsService {
         ? { connect: { id: dto.employeeId } }
         : { disconnect: true };
 
-        // Validate new employeeId is within user's BU scope if provided
-        if (dto.employeeId !== undefined && dto.employeeId !== null) {
-          const buScope = await this.businessUnitsService.resolveScope(user as any);
-          const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
-          const targetEmployee = await this.prisma.employee.findFirst({
-            where: { id: dto.employeeId, ...buWhere },
-            select: { id: true },
-          });
-          if (!targetEmployee) {
-            throw new ForbiddenException(
-              'Target employee is not within your authorized Business Unit scope',
-            );
-          }
-        }
+    // Validate new employeeId is within user's BU scope if provided
+    if (dto.employeeId !== undefined && dto.employeeId !== null) {
+      const buScope = await this.businessUnitsService.resolveScope(user as any);
+      const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
+      const targetEmployee = await this.prisma.employee.findFirst({
+        where: { id: dto.employeeId, ...buWhere },
+        select: { id: true },
+      });
+      if (!targetEmployee) {
+        throw new ForbiddenException(
+          'Target employee is not within your authorized Business Unit scope',
+        );
+      }
+    }
 
     if (dto.startDate !== undefined) data.startDate = new Date(dto.startDate);
     if (dto.endDate !== undefined) data.endDate = new Date(dto.endDate);
@@ -547,7 +547,9 @@ export class LeaveRequestsService {
           select: { id: true },
         });
         if (!validEmployee) {
-          errors.push(`Row ${i + 1}: Employee #${r.employeeId} not found or not authorized`);
+          errors.push(
+            `Row ${i + 1}: Employee #${r.employeeId} not found or not authorized`,
+          );
           continue;
         }
       }

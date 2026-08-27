@@ -43,7 +43,10 @@ export class PayrollService {
   }
 
   private resolveReadOrganization(user: AuthUser): number | null {
-    if (!user.organizationId && (user.isSuperAdmin || user.role === Role.SUPER_ADMIN)) {
+    if (
+      !user.organizationId &&
+      (user.isSuperAdmin || user.role === Role.SUPER_ADMIN)
+    ) {
       return null;
     }
     return this.validateOrganization(user);
@@ -62,6 +65,9 @@ export class PayrollService {
     totalWorkingDays: number;
     lateCount: number;
     overtimeHours: number;
+    totalWorkedHours: number;
+    totalExpectedHours: number;
+    totalShortfallHours: number;
   }> {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59, 999);
@@ -107,6 +113,24 @@ export class PayrollService {
         .reduce((sum: number, row) => sum + (row.overtimeHours || 0), 0)
         .toFixed(2),
     );
+    const totalWorkedHours = Number(
+      attendanceRows
+        .reduce((sum: number, row) => sum + (row.workingHours || 0), 0)
+        .toFixed(2),
+    );
+    const totalExpectedHours = Number(
+      attendanceRows
+        .reduce((sum: number, row) => {
+          const required = row.requiredHours || 8;
+          if (row.status === 'PRESENT') return sum + required;
+          if (row.status === 'HALF_DAY') return sum + required / 2;
+          return sum;
+        }, 0)
+        .toFixed(2),
+    );
+    const totalShortfallHours = Number(
+      Math.max(0, totalExpectedHours - totalWorkedHours).toFixed(2),
+    );
 
     const paidLeaves = leaveRows
       .filter((row) => (row.isPaid ?? true) === true)
@@ -146,6 +170,9 @@ export class PayrollService {
       totalWorkingDays,
       lateCount,
       overtimeHours,
+      totalWorkedHours,
+      totalExpectedHours,
+      totalShortfallHours,
     };
   }
 
@@ -159,7 +186,8 @@ export class PayrollService {
   > {
     const organizationId = this.validateOrganization(user);
     const scope = await this.businessUnitsService.resolveScope(user as any);
-    const employeeBUWhere = this.businessUnitsService.buildEmployeeBUWhere(scope);
+    const employeeBUWhere =
+      this.businessUnitsService.buildEmployeeBUWhere(scope);
     const employee = await this.prisma.employee.findFirst({
       where: { id: dto.employeeId, ...employeeBUWhere },
     });
@@ -209,7 +237,8 @@ export class PayrollService {
   > {
     const organizationId = this.validateOrganization(user);
     const scope = await this.businessUnitsService.resolveScope(user as any);
-    const employeeBUWhere = this.businessUnitsService.buildEmployeeBUWhere(scope);
+    const employeeBUWhere =
+      this.businessUnitsService.buildEmployeeBUWhere(scope);
     const employee = await this.prisma.employee.findFirst({
       where: { id: employeeId, ...employeeBUWhere },
     });
@@ -218,10 +247,18 @@ export class PayrollService {
     }
     let buStructureWhere: Prisma.SalaryStructureWhereInput = {};
     if (!scope.allUnits) {
-      buStructureWhere = { employee: { businessUnitId: { in: scope.unitIds } } };
+      buStructureWhere = {
+        employee: { businessUnitId: { in: scope.unitIds } },
+      };
     }
     const activeStructure = await this.prisma.salaryStructure.findFirst({
-      where: { employeeId, isActive: true, deletedAt: null, organizationId, ...buStructureWhere },
+      where: {
+        employeeId,
+        isActive: true,
+        deletedAt: null,
+        organizationId,
+        ...buStructureWhere,
+      },
     });
 
     if (!activeStructure) {
@@ -358,7 +395,10 @@ export class PayrollService {
   > {
     const organizationId = this.resolveReadOrganization(user);
     return this.prisma.payrollCycle.findMany({
-      where: { deletedAt: null, ...(organizationId == null ? {} : { organizationId }) },
+      where: {
+        deletedAt: null,
+        ...(organizationId == null ? {} : { organizationId }),
+      },
       include: { _count: { select: { entries: true } } },
       orderBy: [{ year: 'desc' }, { month: 'desc' }],
     });
@@ -388,10 +428,17 @@ export class PayrollService {
     const scope = await this.businessUnitsService.resolveScope(user as any);
     let buStructureWhere: Prisma.SalaryStructureWhereInput = {};
     if (!scope.allUnits) {
-      buStructureWhere = { employee: { businessUnitId: { in: scope.unitIds } } };
+      buStructureWhere = {
+        employee: { businessUnitId: { in: scope.unitIds } },
+      };
     }
     const activeStructures = await this.prisma.salaryStructure.findMany({
-      where: { isActive: true, deletedAt: null, organizationId, ...buStructureWhere },
+      where: {
+        isActive: true,
+        deletedAt: null,
+        organizationId,
+        ...buStructureWhere,
+      },
       include: { employee: true },
     });
 
@@ -494,7 +541,12 @@ export class PayrollService {
       buEntryWhere = { employee: { businessUnitId: { in: scope.unitIds } } };
     }
     return this.prisma.payrollEntry.findMany({
-      where: { payrollCycleId: cycleId, deletedAt: null, ...(organizationId == null ? {} : { organizationId }), ...buEntryWhere },
+      where: {
+        payrollCycleId: cycleId,
+        deletedAt: null,
+        ...(organizationId == null ? {} : { organizationId }),
+        ...buEntryWhere,
+      },
       include: {
         employee: true,
         payrollCycle: true,
@@ -544,7 +596,8 @@ export class PayrollService {
   > {
     const organizationId = this.validateOrganization(user);
     const scope = await this.businessUnitsService.resolveScope(user as any);
-    const employeeBUWhere = this.businessUnitsService.buildEmployeeBUWhere(scope);
+    const employeeBUWhere =
+      this.businessUnitsService.buildEmployeeBUWhere(scope);
     const employee = await this.prisma.employee.findFirst({
       where: { id: dto.employeeId, ...employeeBUWhere },
     });
@@ -658,7 +711,12 @@ export class PayrollService {
       buEntryWhere = { employee: { businessUnitId: { in: scope.unitIds } } };
     }
     const entries = await this.prisma.payrollEntry.findMany({
-      where: { payrollCycleId: cycleId, deletedAt: null, organizationId, ...buEntryWhere },
+      where: {
+        payrollCycleId: cycleId,
+        deletedAt: null,
+        organizationId,
+        ...buEntryWhere,
+      },
     });
 
     const results: unknown[] = [];
@@ -701,7 +759,8 @@ export class PayrollService {
   > {
     const organizationId = this.validateOrganization(user);
     const scope = await this.businessUnitsService.resolveScope(user as any);
-    const employeeBUWhere = this.businessUnitsService.buildEmployeeBUWhere(scope);
+    const employeeBUWhere =
+      this.businessUnitsService.buildEmployeeBUWhere(scope);
     const employee = await this.prisma.employee.findFirst({
       where: { id: employeeId, ...employeeBUWhere },
     });
@@ -732,7 +791,8 @@ export class PayrollService {
     if (!payslip) {
       throw new NotFoundException('Payslip not found');
     }
-    const employeeBUWhere = this.businessUnitsService.buildEmployeeBUWhere(scope);
+    const employeeBUWhere =
+      this.businessUnitsService.buildEmployeeBUWhere(scope);
     const employee = await this.prisma.employee.findFirst({
       where: { id: payslip.employeeId, ...employeeBUWhere },
     });
@@ -753,7 +813,8 @@ export class PayrollService {
   > {
     const organizationId = this.validateOrganization(user);
     const scope = await this.businessUnitsService.resolveScope(user as any);
-    const employeeBUWhere = this.businessUnitsService.buildEmployeeBUWhere(scope);
+    const employeeBUWhere =
+      this.businessUnitsService.buildEmployeeBUWhere(scope);
     const employee = await this.prisma.employee.findFirst({
       where: { id: employeeId, ...employeeBUWhere },
     });

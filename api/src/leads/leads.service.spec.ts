@@ -44,7 +44,10 @@ describe('LeadsService', () => {
   let service: LeadsService;
   let mockPrisma: ReturnType<typeof createMockPrismaService>;
 
-  const mockAdminUser = createMockAuthUser(Role.ADMIN, { userId: 1 });
+  const mockAdminUser = createMockAuthUser(Role.ADMIN, {
+    userId: 1,
+    employeeId: 101,
+  });
   const _mockManagerUser = createMockAuthUser(Role.MANAGER, { userId: 2 });
   const mockEmployeeUser = createMockAuthUser(Role.EMPLOYEE, {
     userId: 3,
@@ -53,6 +56,10 @@ describe('LeadsService', () => {
 
   beforeEach(async () => {
     mockPrisma = createMockPrismaService();
+    getPrismaDelegate(mockPrisma, 'employee').findFirst.mockResolvedValue({
+      id: 101,
+      name: 'Test Employee',
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [

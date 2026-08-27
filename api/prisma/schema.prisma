@@ -275,6 +275,7 @@ model Shift {
   startTime          String?
   endTime            String?
   requiredHours      Float        @default(8)
+  minPresentHours    Float        @default(5)
   gracePeriodMinutes Int          @default(15)
   rotationPattern    String?
   isActive           Boolean      @default(true)
@@ -304,6 +305,7 @@ model Attendance {
   isPaidLeave    Boolean?
   lateMinutes    Int              @default(0)
   overtimeHours  Float            @default(0)
+  shortfallHours Float            @default(0)
   remarks        String?
   requiredHours  Float?
   organizationId Int

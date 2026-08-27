@@ -9,7 +9,13 @@ import { WorkflowModule } from '../workflows/workflow.module';
 import { BusinessUnitsModule } from '../business-units/business-units.module';
 
 @Module({
-  imports: [PrismaModule, NotificationsModule, AuditLogsModule, WorkflowModule, BusinessUnitsModule],
+  imports: [
+    PrismaModule,
+    NotificationsModule,
+    AuditLogsModule,
+    WorkflowModule,
+    BusinessUnitsModule,
+  ],
   controllers: [TasksController],
   providers: [TasksService, CompletionNotificationInterceptor],
 })

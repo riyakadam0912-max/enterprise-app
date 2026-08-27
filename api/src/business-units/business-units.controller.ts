@@ -31,7 +31,9 @@ export class BusinessUnitsController {
 
   @UseGuards(JwtAuthGuard)
   @Get('me/business-units')
-  @ApiOperation({ summary: 'List Business Units accessible to the authenticated user' })
+  @ApiOperation({
+    summary: 'List Business Units accessible to the authenticated user',
+  })
   async listAccessible(@Req() req: AuthenticatedRequest) {
     const organizationId = req.organizationId ?? req.user.organizationId;
     if (organizationId == null) {
@@ -53,7 +55,9 @@ export class BusinessUnitsController {
   ) {
     const organizationId = req.organizationId ?? req.user.organizationId;
     if (organizationId == null) {
-      throw new ForbiddenException('Select an organization before switching Business Units');
+      throw new ForbiddenException(
+        'Select an organization before switching Business Units',
+      );
     }
     const target =
       dto && typeof dto.businessUnitId === 'number' ? dto.businessUnitId : null;
@@ -67,11 +71,12 @@ export class BusinessUnitsController {
       success: true,
       businessUnitId: resolved.businessUnitId,
       allBusinessUnits: resolved.allBusinessUnits,
-      message: resolved.businessUnitId == null && resolved.allBusinessUnits
-        ? 'Switched to All Units view'
-        : resolved.businessUnitId != null
-          ? 'Switched Business Unit context'
-          : 'No Business Unit context available',
+      message:
+        resolved.businessUnitId == null && resolved.allBusinessUnits
+          ? 'Switched to All Units view'
+          : resolved.businessUnitId != null
+            ? 'Switched Business Unit context'
+            : 'No Business Unit context available',
     };
   }
 
@@ -100,13 +105,12 @@ export class BusinessUnitsController {
   @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR)
   @Get('business-units/:id')
   @ApiOperation({ summary: 'Get a Business Unit' })
-  get(
-    @Param('id', ParseIntPipe) id: number,
-    @Req() req: AuthenticatedRequest,
-  ) {
+  get(@Param('id', ParseIntPipe) id: number, @Req() req: AuthenticatedRequest) {
     const organizationId = req.organizationId ?? req.user.organizationId;
     if (organizationId == null) {
-      throw new ForbiddenException('Select an organization before viewing Business Units');
+      throw new ForbiddenException(
+        'Select an organization before viewing Business Units',
+      );
     }
     return this.businessUnitsService.get(id, organizationId, req.user);
   }

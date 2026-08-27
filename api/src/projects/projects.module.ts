@@ -9,7 +9,12 @@ import { CompletionNotificationInterceptor } from '../common/interceptors/comple
 import { BusinessUnitsModule } from '../business-units/business-units.module';
 
 @Module({
-  imports: [PrismaModule, NotificationsModule, AuditLogsModule, BusinessUnitsModule],
+  imports: [
+    PrismaModule,
+    NotificationsModule,
+    AuditLogsModule,
+    BusinessUnitsModule,
+  ],
   controllers: [ProjectsController],
   providers: [
     ProjectsService,

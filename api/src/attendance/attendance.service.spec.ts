@@ -66,7 +66,10 @@ describe('AttendanceService', () => {
         unitIds: [],
         assignedUnitId: null,
       }),
-      buildEmployeeBUWhere: jest.fn().mockReturnValue({ organizationId: 1, deletedAt: null }),
+      getEmployeeScopeFilterIds: jest.fn().mockResolvedValue(null),
+      buildEmployeeBUWhere: jest
+        .fn()
+        .mockReturnValue({ organizationId: 1, deletedAt: null }),
     };
     service = new AttendanceService(
       prisma as unknown as PrismaService,

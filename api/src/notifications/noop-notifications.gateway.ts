@@ -11,7 +11,10 @@ export class NoOpNotificationsGateway {
 
   handleDisconnect(): void {}
 
-  emitNotification(_userId: number, _notification: NotificationListItem): void {}
+  emitNotification(
+    _userId: number,
+    _notification: NotificationListItem,
+  ): void {}
 
   emitUnreadCount(_userId: number, _unreadCount: number): void {}
 

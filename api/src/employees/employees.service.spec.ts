@@ -71,7 +71,13 @@ describe('EmployeesService', () => {
       providers: [
         EmployeesService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: BusinessUnitsService, useValue: { resolveScope: jest.fn(), buildEmployeeBUWhere: jest.fn() } },
+        {
+          provide: BusinessUnitsService,
+          useValue: {
+            resolveScope: jest.fn(),
+            buildEmployeeBUWhere: jest.fn(),
+          },
+        },
       ],
     }).compile();
 

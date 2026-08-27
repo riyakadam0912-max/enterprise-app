@@ -10,7 +10,13 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ActivityTimelineService } from './activity-timeline.service';
 import { QueryActivityTimelineDto } from './dto/query-activity-timeline.dto';
@@ -170,6 +176,10 @@ export class ActivityTimelineController {
     if (parsedUserId !== null && Number.isFinite(parsedUserId)) {
       serviceQuery.userId = parsedUserId;
     }
-    return this.timelineService.getTimelineSince(cursor, serviceQuery, req.user);
+    return this.timelineService.getTimelineSince(
+      cursor,
+      serviceQuery,
+      req.user,
+    );
   }
 }

@@ -46,7 +46,12 @@ describe('UsersController', () => {
       UsersController,
     ]);
 
-    expect(roles).toEqual([Role.ADMIN]);
+    expect(roles).toEqual([
+      Role.SUPER_ADMIN,
+      Role.ADMIN,
+      Role.COMPLIANCE_MANAGER,
+      Role.HR,
+    ]);
   });
 
   it('restricts assignable-user lookup to privileged roles only', () => {

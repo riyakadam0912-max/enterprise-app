@@ -79,7 +79,7 @@ export class UsersController {
   findAssignable(@Req() req: AuthenticatedRequest) {
     return this.usersService.findAssignable(req.user);
   }
-  
+
   @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR)
   @RequirePermissions(Permission.EMPLOYEE_READ)
   @Get('reporting-managers')

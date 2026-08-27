@@ -33,6 +33,13 @@ export class CreateShiftDto {
 
   @IsOptional()
   @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(24)
+  minPresentHours?: number;
+
+  @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(0)
   @Max(180)

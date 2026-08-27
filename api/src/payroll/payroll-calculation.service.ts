@@ -32,6 +32,9 @@ interface PayrollCalculationInput {
     totalWorkingDays: number;
     lateCount?: number;
     overtimeHours?: number;
+    totalWorkedHours?: number;
+    totalExpectedHours?: number;
+    totalShortfallHours?: number;
   };
   reimbursements?: number;
   bonus?: number;
@@ -166,8 +169,20 @@ export class PayrollCalculationService {
     reimbursements: number,
     bonus: number,
   ) {
-    const prorataFactor =
+    const dayProrata =
       attendanceData.presentDays / attendanceData.totalWorkingDays;
+    const hourProrata =
+      attendanceData.totalExpectedHours != null &&
+      attendanceData.totalExpectedHours > 0 &&
+      attendanceData.totalWorkedHours != null
+        ? Math.min(
+            1,
+            attendanceData.totalWorkedHours / attendanceData.totalExpectedHours,
+          )
+        : null;
+
+    const prorataFactor =
+      hourProrata != null ? Math.min(dayProrata, hourProrata) : dayProrata;
 
     const basic = (salaryStructure.basic || 0) * prorataFactor;
     const hra = (salaryStructure.hra || 0) * prorataFactor;
@@ -202,14 +217,12 @@ export class PayrollCalculationService {
     grossEarnings: number,
     attendanceData: NonNullable<PayrollCalculationInput['attendanceData']>,
   ) {
-    const pfEmployee = this.calculatePF(salaryStructure.basic || 0, true);
-    const pfEmployer = this.calculatePF(salaryStructure.basic || 0, false);
+    const basic = salaryStructure.basic || 0;
+    const pfEmployee = this.calculatePF(basic, true);
+    const pfEmployer = this.calculatePF(basic, false);
     const esi = this.calculateESI(grossEarnings);
     const professionalTax = this.calculateProfessionalTax(grossEarnings);
-    const lossOfPay = this.calculateLossOfPay(
-      salaryStructure.basic || 0,
-      attendanceData.absentDays,
-    );
+    const lossOfPay = this.calculateLossOfPay(basic, attendanceData.absentDays);
     const latePenalty = this.calculateLatePenalty(
       salaryStructure,
       attendanceData.lateCount || 0,
@@ -281,7 +294,8 @@ export class PayrollCalculationService {
    * Calculate Loss of Pay (LOP)
    */
   private calculateLossOfPay(basicSalary: number, absentDays: number): number {
-    return (basicSalary / 30) * absentDays * this.config.defaultLossOfPayRate;
+    const dailyRate = basicSalary / 30;
+    return dailyRate * absentDays * this.config.defaultLossOfPayRate;
   }
 
   /**

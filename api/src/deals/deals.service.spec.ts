@@ -54,7 +54,10 @@ describe('DealsService', () => {
   let mockEventEmitter: ReturnType<typeof createMockEventEmitter2>;
   let mockCacheManager: ReturnType<typeof createMockCacheManager>;
 
-  const mockAdminUser = createMockAuthUser(Role.ADMIN, { userId: 1 });
+  const mockAdminUser = createMockAuthUser(Role.ADMIN, {
+    userId: 1,
+    isPlatformAdmin: true,
+  });
   const _mockManagerUser = createMockAuthUser(Role.MANAGER, { userId: 2 });
   const mockEmployeeUser = createMockAuthUser(Role.EMPLOYEE, {
     userId: 3,

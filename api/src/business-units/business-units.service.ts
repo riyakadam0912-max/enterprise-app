@@ -46,11 +46,17 @@ export class BusinessUnitsService {
     requestedOrganizationId: number,
     user: AuthUser,
   ) {
-    if (!Number.isInteger(requestedOrganizationId) || requestedOrganizationId < 1) {
+    if (
+      !Number.isInteger(requestedOrganizationId) ||
+      requestedOrganizationId < 1
+    ) {
       throw new ForbiddenException('A valid organization is required');
     }
 
-    if (!this.isPlatformAdmin(user) && user.organizationId !== requestedOrganizationId) {
+    if (
+      !this.isPlatformAdmin(user) &&
+      user.organizationId !== requestedOrganizationId
+    ) {
       throw new ForbiddenException('Organization access denied');
     }
 
@@ -98,20 +104,26 @@ export class BusinessUnitsService {
     let ancestor: { id: number; parentId: number | null } | null = parent;
     while (ancestor) {
       if (seen.has(ancestor.id)) {
-        throw new ConflictException('Business Unit hierarchy cannot contain a cycle');
+        throw new ConflictException(
+          'Business Unit hierarchy cannot contain a cycle',
+        );
       }
       seen.add(ancestor.id);
-      ancestor = ancestor.parentId == null
-        ? null
-        : await this.prisma.businessUnit.findFirst({
-            where: { id: ancestor.parentId, organizationId },
-            select: { id: true, parentId: true },
-          });
+      ancestor =
+        ancestor.parentId == null
+          ? null
+          : await this.prisma.businessUnit.findFirst({
+              where: { id: ancestor.parentId, organizationId },
+              select: { id: true, parentId: true },
+            });
     }
   }
 
   async list(organizationId: number, user: AuthUser) {
-    const scopedOrganizationId = await this.resolveOrganizationId(organizationId, user);
+    const scopedOrganizationId = await this.resolveOrganizationId(
+      organizationId,
+      user,
+    );
     return this.prisma.businessUnit.findMany({
       where: { organizationId: scopedOrganizationId },
       include: businessUnitInclude,
@@ -124,7 +136,10 @@ export class BusinessUnitsService {
     dto: CreateBusinessUnitDto,
     user: AuthUser,
   ) {
-    const scopedOrganizationId = await this.resolveOrganizationId(organizationId, user);
+    const scopedOrganizationId = await this.resolveOrganizationId(
+      organizationId,
+      user,
+    );
     await this.validateParent(dto.parentId, scopedOrganizationId);
 
     try {
@@ -141,15 +156,23 @@ export class BusinessUnitsService {
         include: businessUnitInclude,
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new ConflictException('A Business Unit with this code already exists in the organization');
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'A Business Unit with this code already exists in the organization',
+        );
       }
       throw error;
     }
   }
 
   async get(id: number, organizationId: number, user: AuthUser) {
-    const scopedOrganizationId = await this.resolveOrganizationId(organizationId, user);
+    const scopedOrganizationId = await this.resolveOrganizationId(
+      organizationId,
+      user,
+    );
     return this.getUnit(id, scopedOrganizationId);
   }
 
@@ -159,7 +182,10 @@ export class BusinessUnitsService {
     dto: UpdateBusinessUnitDto,
     user: AuthUser,
   ) {
-    const scopedOrganizationId = await this.resolveOrganizationId(organizationId, user);
+    const scopedOrganizationId = await this.resolveOrganizationId(
+      organizationId,
+      user,
+    );
     const existing = await this.getUnit(id, scopedOrganizationId);
     await this.validateParent(dto.parentId, scopedOrganizationId, existing.id);
 
@@ -169,7 +195,10 @@ export class BusinessUnitsService {
         data: {
           name: dto.name?.trim(),
           code: dto.code?.trim().toUpperCase(),
-          description: dto.description === undefined ? undefined : dto.description.trim() || null,
+          description:
+            dto.description === undefined
+              ? undefined
+              : dto.description.trim() || null,
           type: dto.type === undefined ? undefined : dto.type.trim() || null,
           status: dto.status as BusinessUnitStatus | undefined,
           parentId: dto.parentId === undefined ? undefined : dto.parentId,
@@ -177,21 +206,31 @@ export class BusinessUnitsService {
         include: businessUnitInclude,
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new ConflictException('A Business Unit with this code already exists in the organization');
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'A Business Unit with this code already exists in the organization',
+        );
       }
       throw error;
     }
   }
 
   async remove(id: number, organizationId: number, user: AuthUser) {
-    const scopedOrganizationId = await this.resolveOrganizationId(organizationId, user);
+    const scopedOrganizationId = await this.resolveOrganizationId(
+      organizationId,
+      user,
+    );
     const existing = await this.getUnit(id, scopedOrganizationId);
     const childCount = await this.prisma.businessUnit.count({
       where: { organizationId: scopedOrganizationId, parentId: existing.id },
     });
     if (childCount > 0) {
-      throw new ConflictException('Move or remove child Business Units before deleting this unit');
+      throw new ConflictException(
+        'Move or remove child Business Units before deleting this unit',
+      );
     }
 
     await this.prisma.businessUnit.delete({
@@ -204,17 +243,25 @@ export class BusinessUnitsService {
     user: AuthUser,
     scopedOrganizationId: number,
   ): Promise<{
-    units: Array<{ id: number; name: string; code: string; parentId: number | null; status: string }>;
+    units: Array<{
+      id: number;
+      name: string;
+      code: string;
+      parentId: number | null;
+      status: string;
+    }>;
     canSelectAll: boolean;
     assignedUnitId: number | null;
   }> {
     const orgId = await this.resolveOrganizationId(scopedOrganizationId, user);
 
-    const canScopeMultiple = this.isPlatformAdmin(user) ||
+    const canScopeMultiple =
+      this.isPlatformAdmin(user) ||
       user.role === Role.HR ||
       user.role === Role.COMPLIANCE_MANAGER ||
       (Array.isArray(user.roles) &&
-        (user.roles.includes(Role.HR) || user.roles.includes(Role.COMPLIANCE_MANAGER)));
+        (user.roles.includes(Role.HR) ||
+          user.roles.includes(Role.COMPLIANCE_MANAGER)));
 
     const assignedUnitId: number | null =
       (typeof (user as any).employeeBusinessUnitId === 'number'
@@ -227,7 +274,13 @@ export class BusinessUnitsService {
 
     const allUnits = await this.prisma.businessUnit.findMany({
       where: { organizationId: orgId, status: 'ACTIVE' as any },
-      select: { id: true, name: true, code: true, parentId: true, status: true },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        parentId: true,
+        status: true,
+      },
       orderBy: [{ parentId: 'asc' }, { name: 'asc' }],
     });
 
@@ -262,11 +315,13 @@ export class BusinessUnitsService {
   ): Promise<{ businessUnitId: number | null; allBusinessUnits: boolean }> {
     const orgId = await this.resolveOrganizationId(scopedOrganizationId, user);
 
-    const canScopeMultiple = this.isPlatformAdmin(user) ||
+    const canScopeMultiple =
+      this.isPlatformAdmin(user) ||
       user.role === Role.HR ||
       user.role === Role.COMPLIANCE_MANAGER ||
       (Array.isArray(user.roles) &&
-        (user.roles.includes(Role.HR) || user.roles.includes(Role.COMPLIANCE_MANAGER)));
+        (user.roles.includes(Role.HR) ||
+          user.roles.includes(Role.COMPLIANCE_MANAGER)));
 
     const assignedUnitId: number | null =
       (typeof (user as any).employeeBusinessUnitId === 'number'
@@ -282,7 +337,11 @@ export class BusinessUnitsService {
         return { businessUnitId: null, allBusinessUnits: true };
       }
       const bu = await this.prisma.businessUnit.findFirst({
-        where: { id: targetBusinessUnitId, organizationId: orgId, status: 'ACTIVE' as any },
+        where: {
+          id: targetBusinessUnitId,
+          organizationId: orgId,
+          status: 'ACTIVE' as any,
+        },
         select: { id: true },
       });
       if (!bu) {
@@ -297,14 +356,21 @@ export class BusinessUnitsService {
       return { businessUnitId: null, allBusinessUnits: false };
     }
 
-    if (targetBusinessUnitId != null && targetBusinessUnitId !== assignedUnitId) {
+    if (
+      targetBusinessUnitId != null &&
+      targetBusinessUnitId !== assignedUnitId
+    ) {
       throw new ForbiddenException(
         'You are not authorized to access any Business Unit other than your assigned unit',
       );
     }
 
     const bu = await this.prisma.businessUnit.findFirst({
-      where: { id: assignedUnitId, organizationId: orgId, status: 'ACTIVE' as any },
+      where: {
+        id: assignedUnitId,
+        organizationId: orgId,
+        status: 'ACTIVE' as any,
+      },
       select: { id: true },
     });
     if (!bu) {
@@ -321,9 +387,11 @@ export class BusinessUnitsService {
       Role.HR,
       Role.COMPLIANCE_MANAGER,
     ]);
-    if (user.isPlatformAdmin === true || user.isSuperAdmin === true) return true;
+    if (user.isPlatformAdmin === true || user.isSuperAdmin === true)
+      return true;
     if (user.role && wide.has(user.role as string)) return true;
-    if (Array.isArray(user.roles) && user.roles.some((r) => wide.has(r))) return true;
+    if (Array.isArray(user.roles) && user.roles.some((r) => wide.has(r)))
+      return true;
     return false;
   }
 
@@ -351,7 +419,11 @@ export class BusinessUnitsService {
     while (queue.length > 0) {
       const parentId = queue.shift()!;
       const children = await this.prisma.businessUnit.findMany({
-        where: { organizationId, parentId, status: 'ACTIVE' as BusinessUnitStatus },
+        where: {
+          organizationId,
+          parentId,
+          status: 'ACTIVE' as BusinessUnitStatus,
+        },
         select: { id: true },
       });
       for (const child of children) {
@@ -390,42 +462,75 @@ export class BusinessUnitsService {
     user: AuthUser & ScopedRequestContext,
     explicitOrganizationId?: number,
   ): Promise<BusinessUnitScope> {
-    const organizationId = await this.resolveOrganization(user, explicitOrganizationId);
+    const organizationId = await this.resolveOrganization(
+      user,
+      explicitOrganizationId,
+    );
     const wideScoped = this.isWideScopedRole(user);
     const assignedUnitId = this.resolveAssignedUnitId(user);
 
     if (wideScoped) {
       const contextSingleBU =
-        user.allBusinessUnits === false && typeof user.businessUnitId === 'number'
+        user.allBusinessUnits === false &&
+        typeof user.businessUnitId === 'number'
           ? user.businessUnitId
           : null;
       if (contextSingleBU != null) {
         const valid = await this.prisma.businessUnit.findFirst({
-          where: { id: contextSingleBU, organizationId, status: 'ACTIVE' as BusinessUnitStatus },
+          where: {
+            id: contextSingleBU,
+            organizationId,
+            status: 'ACTIVE' as BusinessUnitStatus,
+          },
           select: { id: true },
         });
         if (!valid) {
-          throw new ForbiddenException('Selected Business Unit is not available in this organization');
+          throw new ForbiddenException(
+            'Selected Business Unit is not available in this organization',
+          );
         }
-        const ids = await this.collectDescendantIds(organizationId, [contextSingleBU]);
-        return { organizationId, allUnits: false, unitIds: ids, assignedUnitId };
+        const ids = await this.collectDescendantIds(organizationId, [
+          contextSingleBU,
+        ]);
+        return {
+          organizationId,
+          allUnits: false,
+          unitIds: ids,
+          assignedUnitId,
+        };
       }
       return { organizationId, allUnits: true, unitIds: [], assignedUnitId };
     }
 
     if (assignedUnitId == null) {
-      return { organizationId, allUnits: false, unitIds: [], assignedUnitId: null };
+      return {
+        organizationId,
+        allUnits: false,
+        unitIds: [],
+        assignedUnitId: null,
+      };
     }
 
     const validAssigned = await this.prisma.businessUnit.findFirst({
-      where: { id: assignedUnitId, organizationId, status: 'ACTIVE' as BusinessUnitStatus },
+      where: {
+        id: assignedUnitId,
+        organizationId,
+        status: 'ACTIVE' as BusinessUnitStatus,
+      },
       select: { id: true },
     });
     if (!validAssigned) {
-      return { organizationId, allUnits: false, unitIds: [], assignedUnitId: null };
+      return {
+        organizationId,
+        allUnits: false,
+        unitIds: [],
+        assignedUnitId: null,
+      };
     }
 
-    const authorized = await this.collectDescendantIds(organizationId, [assignedUnitId]);
+    const authorized = await this.collectDescendantIds(organizationId, [
+      assignedUnitId,
+    ]);
     if (
       user.allBusinessUnits === false &&
       typeof user.businessUnitId === 'number'
@@ -453,9 +558,10 @@ export class BusinessUnitsService {
     };
   }
 
-  buildDirectBUWhere(
-    scope: BusinessUnitScope,
-  ): { organizationId: number; businessUnitId?: number | { in: number[] } } {
+  buildDirectBUWhere(scope: BusinessUnitScope): {
+    organizationId: number;
+    businessUnitId?: number | { in: number[] };
+  } {
     const base: {
       organizationId: number;
       businessUnitId?: number | { in: number[] };
@@ -469,9 +575,7 @@ export class BusinessUnitsService {
     return base;
   }
 
-  buildEmployeeBUWhere(
-    scope: BusinessUnitScope,
-  ): Prisma.EmployeeWhereInput {
+  buildEmployeeBUWhere(scope: BusinessUnitScope): Prisma.EmployeeWhereInput {
     const base: Prisma.EmployeeWhereInput = {
       organizationId: scope.organizationId,
       deletedAt: null,
@@ -485,7 +589,7 @@ export class BusinessUnitsService {
 
   buildEmployeeJoinedWhere(
     scope: BusinessUnitScope,
-    employeeRelationAlias?: string,
+    _employeeRelationAlias?: string,
   ): Prisma.EmployeeWhereInput {
     return this.buildEmployeeBUWhere(scope);
   }

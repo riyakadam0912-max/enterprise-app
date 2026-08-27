@@ -13,6 +13,9 @@ export interface AttendanceSummary {
   halfDays?: number;
   lateCount?: number;
   overtimeHours?: number;
+  shortfallHours?: number;
+  totalWorkedHours?: number;
+  totalExpectedHours?: number;
   totalWorkingDays?: number;
 }
 
@@ -23,6 +26,7 @@ export interface ShiftDetails {
   startTime: string | null;
   endTime: string | null;
   requiredHours: number | null;
+  minPresentHours?: number | null;
   gracePeriodMinutes: number | null;
 }
 
@@ -41,6 +45,7 @@ export interface AttendanceRecord {
   checkIn: string | null;
   checkOut: string | null;
   workingHours: number | null;
+  shortfallHours?: number;
   lateMinutes: number;
   overtimeHours: number;
   status: AttendanceStatus;
@@ -69,6 +74,7 @@ export interface EmployeeAttendanceDay {
   checkIn: string | null;
   checkOut: string | null;
   workingHours: number | null;
+  shortfallHours?: number;
   lateMinutes: number;
   overtimeHours: number;
   shiftDetails: ShiftDetails | null;
@@ -94,6 +100,8 @@ export interface MyAttendanceResponse {
   checkOut: string | null;
   lateMinutes: number;
   overtimeHours: number;
+  shortfallHours?: number;
+  workingHours?: number | null;
   status: AttendanceStatus;
   shiftDetails: ShiftDetails | null;
 }
@@ -105,6 +113,9 @@ export interface AttendanceMonthlySummary {
   halfDays: number;
   lateCount: number;
   overtimeHours: number;
+  shortfallHours?: number;
+  totalWorkedHours?: number;
+  totalExpectedHours?: number;
   totalWorkingDays: number;
 }
 
@@ -114,6 +125,7 @@ export interface ShiftPayload {
   startTime?: string;
   endTime?: string;
   requiredHours?: number;
+  minPresentHours?: number;
   gracePeriodMinutes?: number;
   rotationPattern?: string;
 }
@@ -144,6 +156,10 @@ export interface MonthlyAttendanceReportRow {
   leaveCount: number;
   workingDays: number;
   attendancePercent: number;
+  overtimeHours?: number;
+  shortfallHours?: number;
+  totalWorkedHours?: number;
+  totalExpectedHours?: number;
 }
 
 export interface MonthlyAttendanceReportResponse {

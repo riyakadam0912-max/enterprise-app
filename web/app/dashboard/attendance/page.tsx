@@ -31,6 +31,10 @@ interface MonthlyAttendanceReportRow {
   leaveCount: number;
   workingDays: number;
   attendancePercent: number;
+  overtimeHours?: number;
+  shortfallHours?: number;
+  totalWorkedHours?: number;
+  totalExpectedHours?: number;
 }
 
 interface MonthlyAttendanceReportResponse {
@@ -297,6 +301,7 @@ export default function AttendancePage() {
     startTime: '09:00',
     endTime: '18:00',
     requiredHours: '8',
+    minPresentHours: '5',
     gracePeriodMinutes: '15',
   });
   const [assignEmployeeId, setAssignEmployeeId] = useState('');
@@ -436,7 +441,7 @@ export default function AttendancePage() {
     const rows = monthlyReport?.rows ?? [];
     if (rows.length === 0) return;
 
-    const headers = ['Employee Name', 'Employee ID', 'Department', 'Role', 'Total Present', 'Total Absent', 'Late Count', 'Half Days', 'Leaves', 'Working Days', 'Attendance %'];
+    const headers = ['Employee Name', 'Employee ID', 'Department', 'Role', 'Total Present', 'Total Absent', 'Late Count', 'Half Days', 'Leaves', 'Working Days', 'Attendance %', 'Overtime (hrs)', 'Worked (hrs)', 'Expected (hrs)', 'Shortfall (hrs)'];
     const body = rows.map((row) => [
       row.employeeName,
       row.employeeId,
@@ -449,6 +454,10 @@ export default function AttendancePage() {
       row.leaveCount,
       row.workingDays,
       `${row.attendancePercent}%`,
+      row.overtimeHours?.toFixed(2) ?? '0.00',
+      row.totalWorkedHours?.toFixed(2) ?? '0.00',
+      row.totalExpectedHours?.toFixed(2) ?? '0.00',
+      row.shortfallHours?.toFixed(2) ?? '0.00',
     ].map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','));
 
     const csv = [headers.join(','), ...body].join('\n');
@@ -475,6 +484,7 @@ export default function AttendancePage() {
         startTime: newShift.startTime,
         endTime: newShift.endTime,
         requiredHours: Number(newShift.requiredHours) || 8,
+        minPresentHours: Number(newShift.minPresentHours) || 5,
         gracePeriodMinutes: Number(newShift.gracePeriodMinutes) || 15,
       });
       const rows = await getShifts();
@@ -543,9 +553,11 @@ export default function AttendancePage() {
         <StatCard label="Half Day" value={today.data?.summary.halfDay ?? 0} tone="bg-amber-100 text-amber-700" icon="◐" />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <StatCard label="Late Count" value={today.data?.summary.lateCount ?? 0} tone="bg-yellow-100 text-yellow-700" icon="!" />
         <StatCard label="Overtime (hrs)" value={Number(today.data?.summary.overtimeHours ?? 0)} tone="bg-indigo-100 text-indigo-700" icon="+" />
+        <StatCard label="Total Worked (hrs)" value={Number(today.data?.summary.totalWorkedHours ?? 0)} tone="bg-teal-100 text-teal-700" icon="⌚" />
+        <StatCard label="Shortfall (hrs)" value={Number(today.data?.summary.shortfallHours ?? 0)} tone="bg-rose-100 text-rose-700" icon="−" />
       </div>
 
       {canViewAdminAttendance && (

@@ -20,6 +20,7 @@ import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { SubmitTaskWorkDto } from './dto/submit-task-work.dto';
 import { ReviewTaskDto } from './dto/review-task.dto';
+import { BusinessUnitsService } from '../business-units/business-units.service';
 
 // Helper to create valid mock AuthUser
 function createMockAuthUser(
@@ -68,6 +69,14 @@ describe('TasksService', () => {
     mockPrisma = createMockPrismaService();
     mockWorkflowEngine = createMockWorkflowEngineService();
     mockNotifications = createMockNotificationsService();
+    getPrismaDelegate(mockPrisma, 'employee').findFirst.mockResolvedValue({
+      id: 101,
+      businessUnitId: null,
+    });
+    getPrismaDelegate(mockPrisma, 'employee').findFirst.mockResolvedValue({
+      id: 101,
+      businessUnitId: null,
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -75,6 +84,20 @@ describe('TasksService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: WorkflowEngineService, useValue: mockWorkflowEngine },
         { provide: NotificationsService, useValue: mockNotifications },
+        {
+          provide: BusinessUnitsService,
+          useValue: {
+            resolveScope: jest.fn().mockResolvedValue({
+              organizationId: 1,
+              allUnits: true,
+              unitIds: [],
+              assignedUnitId: null,
+            }),
+            buildDirectBUWhere: jest.fn().mockReturnValue({}),
+            buildEmployeeBUWhere: jest.fn().mockReturnValue({}),
+            assertRecordAccessible: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 
@@ -90,7 +113,11 @@ describe('TasksService', () => {
       await expect(
         service.create(
           { title: 'Test Task', projectId: 1 } as CreateTaskDto,
-          mockEmployeeUser,
+          createMockAuthUser(Role.EMPLOYEE, {
+            userId: 3,
+            employeeId: 101,
+            organizationId: null,
+          }),
         ),
       ).rejects.toThrow(ForbiddenException);
     });
@@ -114,6 +141,12 @@ describe('TasksService', () => {
     });
 
     it('should throw ForbiddenException if no projectId provided', async () => {
+      getPrismaDelegate(
+        mockPrisma,
+        'user',
+      ).findUniqueOrThrow.mockRejectedValueOnce(
+        new ForbiddenException('Project is required'),
+      );
       await expect(
         service.create(
           { title: 'Test Task' } as unknown as CreateTaskDto,
@@ -135,6 +168,13 @@ describe('TasksService', () => {
 
     it('should throw ForbiddenException if manager tries to create task in non-assigned project', async () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
+      getPrismaDelegate(mockPrisma, 'user').findUnique.mockResolvedValueOnce({
+        id: 2,
+        name: 'Other Manager',
+        role: Role.MANAGER,
+        employeeId: null,
+        managerId: null,
+      });
       projectDelegate.findUnique.mockResolvedValueOnce({
         id: 1,
         managerId: 99,
@@ -142,7 +182,11 @@ describe('TasksService', () => {
       });
       await expect(
         service.create(
-          { title: 'Test Task', projectId: 1 } as CreateTaskDto,
+          {
+            title: 'Test Task',
+            projectId: 1,
+            assignedToUserId: 2,
+          } as CreateTaskDto,
           mockManagerUser,
         ),
       ).rejects.toThrow(ForbiddenException);
@@ -278,8 +322,7 @@ describe('TasksService', () => {
 
     it('should throw NotFoundException if task not found', async () => {
       const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
-      taskDelegate.findFirst.mockResolvedValueOnce({ id: 1 });
-      taskDelegate.findUnique.mockResolvedValueOnce(null);
+      taskDelegate.findFirst.mockResolvedValueOnce(null);
       await expect(
         service.update(1, {} as UpdateTaskDto, mockAdminUser),
       ).rejects.toThrow(NotFoundException);
@@ -287,8 +330,7 @@ describe('TasksService', () => {
 
     it('should update task successfully', async () => {
       const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
-      taskDelegate.findFirst.mockResolvedValueOnce({ id: 1 });
-      taskDelegate.findUnique.mockResolvedValueOnce({
+      taskDelegate.findFirst.mockResolvedValueOnce({
         id: 1,
         status: 'PENDING',
       });
@@ -317,6 +359,7 @@ describe('TasksService', () => {
 
     it('should soft delete task for admin', async () => {
       const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      taskDelegate.findFirst.mockResolvedValueOnce({ id: 1 });
       taskDelegate.update.mockResolvedValueOnce({ id: 1 });
       await service.remove(1, mockAdminUser);
       expect(taskDelegate.update).toHaveBeenCalledTimes(1);
@@ -390,7 +433,7 @@ describe('TasksService', () => {
   describe('updateStatus', () => {
     it('should throw NotFoundException if task not found', async () => {
       const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
-      taskDelegate.findUnique.mockResolvedValueOnce(null);
+      taskDelegate.findFirst.mockResolvedValueOnce(null);
       await expect(
         service.updateStatus(999, 'IN_PROGRESS', mockAdminUser),
       ).rejects.toThrow(NotFoundException);
@@ -398,7 +441,7 @@ describe('TasksService', () => {
 
     it('should throw ForbiddenException if employee tries to update unassigned task', async () => {
       const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
-      taskDelegate.findUnique.mockResolvedValueOnce({
+      taskDelegate.findFirst.mockResolvedValueOnce({
         id: 1,
         status: 'PENDING',
         assignedToUserId: 999,
@@ -412,7 +455,7 @@ describe('TasksService', () => {
 
     it('should update status successfully for employee', async () => {
       const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
-      taskDelegate.findUnique.mockResolvedValueOnce({
+      taskDelegate.findFirst.mockResolvedValueOnce({
         id: 1,
         status: 'PENDING',
         assignedToUserId: 3,
@@ -486,7 +529,7 @@ describe('TasksService', () => {
     it('should throw ForbiddenException if user cannot manage task', async () => {
       const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
       taskDelegate.findFirst.mockResolvedValueOnce(null); // canManageTask returns false
-      taskDelegate.findUnique.mockResolvedValueOnce({
+      taskDelegate.findFirst.mockResolvedValueOnce({
         id: 1,
         status: 'SUBMITTED',
       });
@@ -501,8 +544,7 @@ describe('TasksService', () => {
 
     it('should throw BadRequestException if task is already approved', async () => {
       const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
-      taskDelegate.findFirst.mockResolvedValueOnce({ id: 1 });
-      taskDelegate.findUnique.mockResolvedValueOnce({
+      taskDelegate.findFirst.mockResolvedValueOnce({
         id: 1,
         status: 'APPROVED',
       });
@@ -517,8 +559,7 @@ describe('TasksService', () => {
 
     it('should approve task successfully', async () => {
       const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
-      taskDelegate.findFirst.mockResolvedValueOnce({ id: 1 });
-      taskDelegate.findUnique.mockResolvedValueOnce({
+      taskDelegate.findFirst.mockResolvedValueOnce({
         id: 1,
         status: 'SUBMITTED',
       });
@@ -544,8 +585,7 @@ describe('TasksService', () => {
 
     it('should reject task successfully', async () => {
       const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
-      taskDelegate.findFirst.mockResolvedValueOnce({ id: 1 });
-      taskDelegate.findUnique.mockResolvedValueOnce({
+      taskDelegate.findFirst.mockResolvedValueOnce({
         id: 1,
         status: 'SUBMITTED',
       });
