@@ -161,9 +161,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
   private parseShiftTime(day: Date, time: string | null | undefined) {
     if (!time) return null;
-    const [hourRaw, minuteRaw] = time.split(':');
-    const hour = Number(hourRaw);
-    const minute = Number(minuteRaw ?? 0);
+    const parts = time.split(':');
+    const hour = Number(parts[0]);
+    const minute = Number(parts[1] ?? 0);
     if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
 
     const parsed = new Date(day);

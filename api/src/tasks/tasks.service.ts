@@ -300,14 +300,14 @@ export class TasksService {
     });
   }
 
-  private getScopedWhere(user: AuthUser): Prisma.TaskWhereInput {
+  private async getScopedWhere(user: AuthUser): Promise<Prisma.TaskWhereInput> {
     const organizationId = this.validateOrganization(user);
-    const accessWhere = this.getTaskAccessWhere(user);
+    const accessWhere = await this.getTaskAccessWhere(user);
     return { organizationId, ...accessWhere } as Prisma.TaskWhereInput;
   }
 
   async findAll(user: AuthUser) {
-    const where = this.getScopedWhere(user);
+    const where = await this.getScopedWhere(user);
     return this.db.task.findMany({
       where,
       include: {
@@ -323,7 +323,7 @@ export class TasksService {
   }
 
   async findOne(id: number, user: AuthUser) {
-    const where = this.getScopedWhere(user);
+    const where = await this.getScopedWhere(user);
     const task = await this.db.task.findFirst({
       where: { id, ...where },
       include: {
@@ -669,7 +669,7 @@ export class TasksService {
   }
 
   async getUpcoming(user: AuthUser) {
-    const where = this.getScopedWhere(user);
+    const where = await this.getScopedWhere(user);
     const now = new Date();
     return this.db.task.findMany({
       where: {
@@ -682,7 +682,7 @@ export class TasksService {
   }
 
   async getByLead(leadId: number, user: AuthUser) {
-    const where = this.getScopedWhere(user);
+    const where = await this.getScopedWhere(user);
     return this.db.task.findMany({
       where: {
         leadId,
@@ -693,7 +693,7 @@ export class TasksService {
   }
 
   async getByDeal(dealId: number, user: AuthUser) {
-    const where = this.getScopedWhere(user);
+    const where = await this.getScopedWhere(user);
     return this.db.task.findMany({
       where: {
         dealId,

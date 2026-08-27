@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   ForbiddenException,
@@ -463,7 +464,7 @@ export class UsersService {
     }
 
     return this.prisma.user.update({
-      where: { id },
+      where: { id, organizationId: existing.organizationId },
       data: { organizationId },
       select: {
         id: true,
@@ -509,15 +510,22 @@ export class UsersService {
     const organizationFilter = this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
       where: { id, ...organizationFilter },
+      select: { id: true, employeeId: true, organizationId: true },
     });
     if (!existing) {
       throw new NotFoundException('User not found');
     }
+    if (!existing.employeeId) {
+      throw new BadRequestException('User has no linked employee record');
+    }
 
-    return this.prisma.user.update({
-      where: { id, organizationId: existing.organizationId },
-      data: { role: existing.role },
+    const employee = await this.prisma.employee.update({
+      where: { id: existing.employeeId },
+      data: { department },
+      select: { id: true, name: true, department: true },
     });
+
+    return { userId: id, employeeId: employee.id, department: employee.department };
   }
 
   async assignManager(id: number, managerId: number | null, user: AuthUser) {
