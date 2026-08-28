@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Building2, CheckCircle2, Plus, Search, Users } from 'lucide-react';
+import { Building2, CheckCircle2, Plus, Search } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -156,16 +156,15 @@ export default function SuperAdminOrganizations() {
                 <th className="px-4 py-3">Organization</th>
                 <th className="px-4 py-3">Health</th>
                 <th className="px-4 py-3">Admin / Country</th>
-                <th className="px-4 py-3">Usage</th>
                 <th className="px-4 py-3">Created</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200/70">
               {loading ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-500">Loading organizations…</td></tr>
+                <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-slate-500">Loading organizations…</td></tr>
               ) : filteredOrganizations.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-500">No organizations match your filters.</td></tr>
+                <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-slate-500">No organizations match your filters.</td></tr>
               ) : filteredOrganizations.map((org) => (
                 <tr key={org.id} className="transition hover:bg-slate-50/70">
                   <td className="px-4 py-4">
@@ -190,13 +189,6 @@ export default function SuperAdminOrganizations() {
                   <td className="px-4 py-4">
                     <p className="font-medium text-slate-900">{org.adminUser ?? '—'}</p>
                     <p className="text-sm text-slate-500">{org.country ?? '—'}</p>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                      <Users className="h-4 w-4 text-slate-400" />
-                      <span>1.8K users</span>
-                    </div>
-                    <p className="mt-1 text-sm text-slate-500">142 GB / 500 GB</p>
                   </td>
                   <td className="px-4 py-4">
                     <p className="font-medium text-slate-900">{formatDate(org.createdAt)}</p>
