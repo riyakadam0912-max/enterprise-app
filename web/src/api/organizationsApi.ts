@@ -94,6 +94,16 @@ export async function updateMyOrganization(
   });
 }
 
+export async function updateOrganization(
+  id: number,
+  payload: Partial<Pick<Organization, 'name' | 'slug' | 'email' | 'phone' | 'address' | 'city' | 'state' | 'country' | 'timezone' | 'currency' | 'website' | 'industry' | 'status'>>,
+): Promise<Organization> {
+  return apiClient<Organization>(`/organizations/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ...payload, businessEmail: payload.email }),
+  });
+}
+
 export async function getPlatformStats(): Promise<PlatformStats> {
   try {
     return await apiClient<PlatformStats>('/organizations/platform-stats');

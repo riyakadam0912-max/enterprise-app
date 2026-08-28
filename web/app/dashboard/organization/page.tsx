@@ -30,7 +30,6 @@ import {
 
 // ─── Static option lists ─────────────────────────────────────────────────────
 const COUNTRY_OPTIONS = getCountryOptions();
-const TIMEZONE_OPTIONS = getTimezoneOptions();
 const CURRENCY_OPTIONS = getCurrencyOptions();
 
 /** Derive initials from an org name for the logo fallback. */
@@ -108,6 +107,7 @@ export default function OrganizationPage() {
   // Cascading state options
   const stateOptions = useMemo(() => getStateOptions(form.country), [form.country]);
   const cityOptions = useMemo(() => getCityOptions(form.country, form.state), [form.country, form.state]);
+  const timezoneOptions = useMemo(() => getTimezoneOptions(form.country), [form.country]);
 
   useEffect(() => {
     setActiveOrgId(getActiveOrganizationId());
@@ -156,7 +156,13 @@ export default function OrganizationPage() {
 
   // Reset state when country changes
   function handleCountryChange(val: string) {
-    setForm((f) => ({ ...f, country: val, state: '', city: '' }));
+    setForm((f) => ({
+      ...f,
+      country: val,
+      state: '',
+      city: '',
+      timezone: getTimezoneOptions(val)[0]?.value ?? '',
+    }));
   }
   // Reset city when state changes
   function handleStateChange(val: string) {
@@ -430,7 +436,7 @@ export default function OrganizationPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-1.5 text-sm">
                 <span className="block font-medium text-slate-700">Time Zone</span>
-                <SearchableSelect options={TIMEZONE_OPTIONS} value={form.timezone}
+                <SearchableSelect options={timezoneOptions} value={form.timezone}
                   onChange={(val) => setForm((f) => ({ ...f, timezone: val }))} placeholder="Select timezone" />
               </div>
               <div className="space-y-1.5 text-sm">

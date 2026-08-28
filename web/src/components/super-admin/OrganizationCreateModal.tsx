@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, Controller, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -15,6 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { PhoneDialCodeInput } from '@/components/ui/phone-dial-code-input';
 import { apiClient } from '@/api/apiClient';
+import { updateOrganization, type Organization } from '@/api/organizationsApi';
 import { toast } from '@/providers/toast-provider';
 import {
   getCountryOptions,
@@ -22,6 +23,8 @@ import {
   getCityOptions,
   getTimezoneOptions,
   getCurrencyOptions,
+  resolveCountryCode,
+  resolveStateCode,
 } from '@/lib/geo-options';
 
 // ─── Zod schema ──────────────────────────────────────────────────────────────
@@ -128,10 +131,33 @@ function getDefaultValues(): FormValues {
   };
 }
 
+function getEditValues(organization: Organization): FormValues {
+  const country = resolveCountryCode(organization.country);
+  return {
+    ...getDefaultValues(),
+    name: organization.name ?? '',
+    slug: organization.slug ?? '',
+    businessEmail: organization.email ?? '',
+    phone: organization.phone ?? '',
+    website: organization.website ?? '',
+    country,
+    state: resolveStateCode(country, organization.state),
+    city: organization.city ?? '',
+    address: organization.address ?? '',
+    timezone: organization.timezone ?? '',
+    currency: organization.currency ?? '',
+    industry: organization.industry ?? '',
+    status: organization.status ?? 'ACTIVE',
+    adminName: '',
+    adminEmail: '',
+    adminPassword: '',
+    confirmPassword: '',
+  };
+}
+
 // ─── Static option lists (computed once) ─────────────────────────────────────
 
 const COUNTRY_OPTIONS = getCountryOptions();
-const TIMEZONE_OPTIONS = getTimezoneOptions();
 const CURRENCY_OPTIONS = getCurrencyOptions();
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -141,11 +167,13 @@ export function OrganizationCreateModal({
   onClose,
   onCreated,
   parentId,
+  organization,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated: () => void;
   parentId?: number;
+  organization?: Organization | null;
 }) {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -168,6 +196,9 @@ export function OrganizationCreateModal({
   const watchedSlug = watch('slug');
   const watchedCountry = watch('country');
   const watchedState = watch('state');
+  const previousCountry = useRef<string | undefined>(undefined);
+  const previousState = useRef<string | undefined>(undefined);
+  const isEditing = Boolean(organization);
 
   const slugPreview = useMemo(() => {
     if (watchedSlug?.trim()) return watchedSlug.trim();
@@ -180,13 +211,31 @@ export function OrganizationCreateModal({
     );
   }, [watchedName, watchedSlug]);
 
+  const timezoneOptions = useMemo(
+    () => getTimezoneOptions(watchedCountry ?? ''),
+    [watchedCountry],
+  );
+
   // Cascading resets
   useEffect(() => {
+    if (previousCountry.current === undefined) {
+      previousCountry.current = watchedCountry;
+      return;
+    }
+    if (previousCountry.current === watchedCountry) return;
+    previousCountry.current = watchedCountry;
     setValue('state', '');
     setValue('city', '');
+    setValue('timezone', getTimezoneOptions(watchedCountry ?? '')[0]?.value ?? '');
   }, [watchedCountry, setValue]);
 
   useEffect(() => {
+    if (previousState.current === undefined) {
+      previousState.current = watchedState;
+      return;
+    }
+    if (previousState.current === watchedState) return;
+    previousState.current = watchedState;
     setValue('city', '');
   }, [watchedState, setValue]);
 
@@ -194,8 +243,12 @@ export function OrganizationCreateModal({
     if (open) {
       setError(null);
       setSuccess(false);
+      const values = organization ? getEditValues(organization) : getDefaultValues();
+      previousCountry.current = values.country;
+      previousState.current = values.state;
+      reset(values);
     }
-  }, [open]);
+  }, [open, organization, reset]);
 
   const stateOptions = useMemo(
     () => getStateOptions(watchedCountry ?? ''),
@@ -241,15 +294,19 @@ export function OrganizationCreateModal({
         parentId: parentId ?? undefined,
       };
 
-      await apiClient('/organizations', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
+      if (organization) {
+        await updateOrganization(organization.id, payload);
+      } else {
+        await apiClient('/organizations', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+      }
 
       setSuccess(true);
       onCreated();
       toast.success(
-        'Organization created',
+        isEditing ? 'Organization updated' : 'Organization created',
         `${payload.name} is now available for your platform team.`,
       );
       reset(getDefaultValues());
@@ -285,9 +342,9 @@ export function OrganizationCreateModal({
           {/* Header */}
           <div className="flex items-center justify-between border-b border-slate-200/80 px-6 py-5">
             <div>
-              <h2 className="text-xl font-semibold text-slate-950">Create organization</h2>
+              <h2 className="text-xl font-semibold text-slate-950">{isEditing ? 'Edit organization' : 'Create organization'}</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Launch a new tenant and provision the first admin account.
+                {isEditing ? 'Update organization details and location.' : 'Launch a new tenant and provision the first admin account.'}
               </p>
             </div>
             <button
@@ -502,7 +559,7 @@ export function OrganizationCreateModal({
                         control={control}
                         render={({ field }) => (
                           <SearchableSelect
-                            options={TIMEZONE_OPTIONS}
+                            options={timezoneOptions}
                             value={field.value ?? ''}
                             onChange={field.onChange}
                             placeholder="Select timezone"
@@ -558,7 +615,7 @@ export function OrganizationCreateModal({
                 </div>
 
                 {/* Primary admin */}
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                {!isEditing ? <div className="rounded-2xl border border-slate-200 bg-white p-4">
                   <h3 className="text-sm font-semibold text-slate-900">Primary Admin</h3>
                   <div className="mt-3 space-y-3">
                     <div>
@@ -605,10 +662,10 @@ export function OrganizationCreateModal({
                       ) : null}
                     </div>
                   </div>
-                </div>
+                </div> : null}
 
                 {/* Options */}
-                <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+                {!isEditing ? <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
                   <label className="flex items-center gap-3">
                     <Checkbox {...register('sendWelcomeEmail')} defaultChecked />
                     <span>Send welcome email</span>
@@ -617,7 +674,7 @@ export function OrganizationCreateModal({
                     <Checkbox {...register('enableImmediately')} defaultChecked />
                     <span>Enable immediately</span>
                   </label>
-                </div>
+                </div> : null}
               </div>
             </div>
 
@@ -637,7 +694,7 @@ export function OrganizationCreateModal({
                 </Button>
                 <Button type="submit" loading={submitting}>
                   <Plus className="mr-2 h-4 w-4" />
-                  Create organization
+                  {isEditing ? 'Save changes' : 'Create organization'}
                 </Button>
               </div>
             </div>

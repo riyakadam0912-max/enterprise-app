@@ -44,21 +44,31 @@ export function getCityOptions(countryCode: string, stateCode: string): SelectOp
 
 // ─── Timezones ────────────────────────────────────────────────────────────────
 
-let _tzCache: SelectOption[] | null = null;
+const _tzCache = new Map<string, SelectOption[]>();
 
-export function getTimezoneOptions(): SelectOption[] {
-  if (_tzCache) return _tzCache;
+export function getTimezoneOptions(countryCode?: string): SelectOption[] {
+  const cacheKey = countryCode?.toUpperCase() ?? '*';
+  const cached = _tzCache.get(cacheKey);
+  if (cached) return cached;
   // Intl.supportedValuesOf is available in Node 18+ and all modern browsers.
   const zones: string[] = (
     typeof Intl !== 'undefined' && 'supportedValuesOf' in Intl
       ? (Intl as typeof Intl & { supportedValuesOf: (k: string) => string[] }).supportedValuesOf('timeZone')
       : []
   );
-  _tzCache = zones.map((tz) => ({
+  const countryZones = countryCode
+    ? (Country.getCountryByCode(countryCode)?.timezones ?? []).map((tz) => tz.zoneName)
+    : [];
+  const availableZones = Array.from(new Set([...countryZones, ...zones]));
+  const filteredZones = countryCode && countryZones.length > 0
+    ? availableZones.filter((tz) => countryZones.includes(tz))
+    : availableZones;
+  const options = filteredZones.map((tz) => ({
     value: tz,
     label: tz.replace(/_/g, ' '),
   }));
-  return _tzCache;
+  _tzCache.set(cacheKey, options);
+  return options;
 }
 
 // ─── Currencies ───────────────────────────────────────────────────────────────

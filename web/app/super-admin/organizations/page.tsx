@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Building2, CheckCircle2, Plus, Search } from 'lucide-react';
+import { Building2, CheckCircle2, Pencil, Plus, Search } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,6 +32,7 @@ export default function SuperAdminOrganizations() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
   const [activeOrg, setActiveOrg] = useState<Organization | null>(null);
   const [busyOrgId, setBusyOrgId] = useState<number | null>(null);
 
@@ -118,7 +119,7 @@ export default function SuperAdminOrganizations() {
       title="Organizations"
       description="Manage tenants, health, and lifecycle with a premium administration experience."
       actions={
-        <Button onClick={() => setModalOpen(true)}>
+        <Button onClick={() => { setEditingOrg(null); setModalOpen(true); }}>
           <Plus className="mr-2 h-4 w-4" />
           Create organization
         </Button>
@@ -200,6 +201,10 @@ export default function SuperAdminOrganizations() {
                         <Building2 className="mr-2 h-4 w-4" />
                         Open
                       </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => { setEditingOrg(org); setModalOpen(true); }}>
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Edit
+                      </Button>
                       <Button type="button" variant="outline" size="sm" loading={busyOrgId === org.id} onClick={() => void handleStatusChange(org, org.status === 'ACTIVE' ? 'suspend' : 'activate')}>
                         {org.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
                       </Button>
@@ -215,7 +220,12 @@ export default function SuperAdminOrganizations() {
         </div>
       </Card>
 
-      <OrganizationCreateModal open={modalOpen} onClose={() => setModalOpen(false)} onCreated={refreshOrganizations} />
+      <OrganizationCreateModal
+        open={modalOpen}
+        onClose={() => { setModalOpen(false); setEditingOrg(null); }}
+        onCreated={refreshOrganizations}
+        organization={editingOrg}
+      />
 
       <Dialog
         open={Boolean(activeOrg)}
