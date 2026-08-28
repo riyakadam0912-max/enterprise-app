@@ -42,7 +42,7 @@ export class CreateOrganizationDto {
 
   @IsOptional()
   @IsString()
-  @ApiPropertyOptional({ example: '+1 555 123 4567' })
+  @ApiPropertyOptional({ example: '+91 9876543210' })
   phone?: string;
 
   @IsOptional()
@@ -52,17 +52,17 @@ export class CreateOrganizationDto {
 
   @IsOptional()
   @IsString()
-  @ApiPropertyOptional({ example: 'United States' })
+  @ApiPropertyOptional({ example: 'IN', description: 'ISO 3166-1 alpha-2 country code' })
   country?: string;
 
   @IsOptional()
   @IsString()
-  @ApiPropertyOptional({ example: 'California' })
+  @ApiPropertyOptional({ example: 'MH', description: 'ISO 3166-2 state/region code' })
   state?: string;
 
   @IsOptional()
   @IsString()
-  @ApiPropertyOptional({ example: 'San Francisco' })
+  @ApiPropertyOptional({ example: 'Mumbai' })
   city?: string;
 
   @IsOptional()
@@ -72,28 +72,18 @@ export class CreateOrganizationDto {
 
   @IsOptional()
   @IsString()
-  @ApiPropertyOptional({ example: 'America/Los_Angeles' })
+  @ApiPropertyOptional({ example: 'Asia/Kolkata', description: 'IANA timezone identifier' })
   timezone?: string;
 
   @IsOptional()
   @IsString()
-  @ApiPropertyOptional({ example: 'USD' })
+  @ApiPropertyOptional({ example: 'INR', description: 'ISO 4217 currency code' })
   currency?: string;
 
   @IsOptional()
   @IsString()
   @ApiPropertyOptional({ example: 'https://cdn.example.com/logo.png' })
   logoUrl?: string;
-
-  @IsOptional()
-  @IsString()
-  @ApiPropertyOptional({ example: 'Enterprise' })
-  subscriptionPlan?: string;
-
-  @IsOptional()
-  @IsInt()
-  @ApiPropertyOptional({ example: 14 })
-  trialDays?: number;
 
   @IsOptional()
   @IsString()

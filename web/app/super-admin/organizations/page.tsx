@@ -58,7 +58,7 @@ export default function SuperAdminOrganizations() {
   const filteredOrganizations = useMemo(() => {
     const normalizedQuery = search.trim().toLowerCase();
     return organizations.filter((org) => {
-      const matchesSearch = !normalizedQuery || [org.name, org.code, org.slug, org.status, org.subscriptionPlan ?? ''].join(' ').toLowerCase().includes(normalizedQuery);
+      const matchesSearch = !normalizedQuery || [org.name, org.code, org.slug, org.status].join(' ').toLowerCase().includes(normalizedQuery);
       const matchesStatus = !statusFilter || org.status.toLowerCase() === statusFilter.toLowerCase();
       return matchesSearch && matchesStatus;
     });
@@ -155,7 +155,7 @@ export default function SuperAdminOrganizations() {
               <tr>
                 <th className="px-4 py-3">Organization</th>
                 <th className="px-4 py-3">Health</th>
-                <th className="px-4 py-3">Subscription</th>
+                <th className="px-4 py-3">Admin / Country</th>
                 <th className="px-4 py-3">Usage</th>
                 <th className="px-4 py-3">Created</th>
                 <th className="px-4 py-3 text-right">Actions</th>
@@ -188,8 +188,8 @@ export default function SuperAdminOrganizations() {
                     </div>
                   </td>
                   <td className="px-4 py-4">
-                    <p className="font-medium text-slate-900">{org.subscriptionPlan ?? 'Starter'}</p>
-                    <p className="text-sm text-slate-500">{org.adminUser ?? 'No admin linked'}</p>
+                    <p className="font-medium text-slate-900">{org.adminUser ?? '—'}</p>
+                    <p className="text-sm text-slate-500">{org.country ?? '—'}</p>
                   </td>
                   <td className="px-4 py-4">
                     <div className="flex items-center gap-2 text-sm text-slate-600">

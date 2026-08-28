@@ -10,15 +10,18 @@ export interface Organization {
   parentId?: number | null;
   logoUrl?: string | null;
   number?: string | null;
-  subscriptionPlan?: string | null;
   adminUser?: string | null;
   email?: string | null;
   phone?: string | null;
   address?: string | null;
   city?: string | null;
+  /** ISO 3166-2 state/region code e.g. "MH" */
   state?: string | null;
+  /** ISO 3166-1 alpha-2 country code e.g. "IN" */
   country?: string | null;
+  /** IANA timezone identifier e.g. "Asia/Kolkata" */
   timezone?: string | null;
+  /** ISO 4217 currency code e.g. "INR" */
   currency?: string | null;
   website?: string | null;
   industry?: string | null;

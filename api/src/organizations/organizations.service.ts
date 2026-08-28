@@ -217,11 +217,7 @@ export class OrganizationsService {
     }
 
     const normalizedStatus = (dto.status ?? 'ACTIVE').toUpperCase();
-    const trialDays = dto.trialDays ?? 14;
     const createdAt = new Date();
-    const trialEndDate = new Date(
-      createdAt.getTime() + trialDays * 24 * 60 * 60 * 1000,
-    );
 
     const organization = await this.prisma.organization.create({
       data: {
@@ -239,8 +235,8 @@ export class OrganizationsService {
         city: dto.city ?? null,
         state: dto.state ?? null,
         country: dto.country ?? null,
-        timezone: dto.timezone ?? 'UTC',
-        currency: dto.currency ?? 'USD',
+        timezone: dto.timezone ?? 'Asia/Kolkata',
+        currency: dto.currency ?? 'INR',
         status: normalizedStatus as
           | 'ACTIVE'
           | 'SUSPENDED'
@@ -248,11 +244,8 @@ export class OrganizationsService {
           | 'CANCELLED',
         website: dto.website ?? null,
         industry: dto.industry ?? null,
-        subscriptionPlan: dto.subscriptionPlan ?? 'STARTER',
         parentId: dto.parentId ?? null,
         createdAt,
-        trialStartDate: createdAt,
-        trialEndDate,
       },
     });
 
@@ -507,7 +500,6 @@ export class OrganizationsService {
         currency: dto.currency ?? organization.currency,
         website: dto.website ?? organization.website,
         industry: dto.industry ?? organization.industry,
-        subscriptionPlan: dto.subscriptionPlan ?? organization.subscriptionPlan,
         status: (dto.status ?? organization.status).toString().toUpperCase() as
           | 'ACTIVE'
           | 'SUSPENDED'
