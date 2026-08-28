@@ -449,9 +449,9 @@ export class OrganizationsService {
     dto: UpdateOrganizationDto,
     user: AuthUser,
   ) {
-    if (!this.isPlatformAdmin(user)) {
+    if (!this.isPlatformAdmin(user) && !this.isOrganizationAdmin(user)) {
       throw new ForbiddenException(
-        'Only platform administrators can update organizations',
+        'Only platform administrators or parent organization admins can update organizations',
       );
     }
 
@@ -460,6 +460,14 @@ export class OrganizationsService {
     });
     if (!organization) {
       throw new NotFoundException('Organization not found');
+    }
+    if (
+      !this.isPlatformAdmin(user) &&
+      organization.parentId !== user.organizationId
+    ) {
+      throw new ForbiddenException(
+        'You can only update organizations directly under your organization',
+      );
     }
 
     if (dto.slug && dto.slug.trim() !== organization.slug) {
@@ -548,9 +556,9 @@ export class OrganizationsService {
   }
 
   async deleteOrganization(id: number, user: AuthUser) {
-    if (!this.isPlatformAdmin(user)) {
+    if (!this.isPlatformAdmin(user) && !this.isOrganizationAdmin(user)) {
       throw new ForbiddenException(
-        'Only platform administrators can delete organizations',
+        'Only platform administrators or parent organization admins can delete organizations',
       );
     }
 
@@ -559,6 +567,14 @@ export class OrganizationsService {
     });
     if (!organization) {
       throw new NotFoundException('Organization not found');
+    }
+    if (
+      !this.isPlatformAdmin(user) &&
+      organization.parentId !== user.organizationId
+    ) {
+      throw new ForbiddenException(
+        'You can only delete organizations directly under your organization',
+      );
     }
 
     await this.prisma.organization.update({

@@ -104,6 +104,10 @@ export async function updateOrganization(
   });
 }
 
+export async function deleteOrganization(id: number): Promise<void> {
+  await apiClient(`/organizations/${id}`, { method: 'DELETE' });
+}
+
 export async function getPlatformStats(): Promise<PlatformStats> {
   try {
     return await apiClient<PlatformStats>('/organizations/platform-stats');

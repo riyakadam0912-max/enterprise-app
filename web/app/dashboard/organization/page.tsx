@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Building2, CheckCircle2, Plus, Save } from 'lucide-react';
+import { Building2, CheckCircle2, Pencil, Plus, Save, Trash2 } from 'lucide-react';
 import {
   getMyOrganization,
   listOrganizations,
   updateMyOrganization,
+  deleteOrganization,
   type Organization,
 } from '@/api/organizationsApi';
 import {
@@ -18,6 +19,7 @@ import {
 import { OrganizationCreateModal } from '@/components/super-admin/OrganizationCreateModal';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { PhoneDialCodeInput } from '@/components/ui/phone-dial-code-input';
+import { Dialog } from '@/components/Dialog';
 import {
   getCountryOptions,
   getStateOptions,
@@ -103,6 +105,9 @@ export default function OrganizationPage() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editingChild, setEditingChild] = useState<Organization | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Organization | null>(null);
+  const [deletingChild, setDeletingChild] = useState(false);
 
   // Cascading state options
   const stateOptions = useMemo(() => getStateOptions(form.country), [form.country]);
@@ -212,6 +217,20 @@ export default function OrganizationPage() {
     }
   }
 
+  async function handleDeleteChild() {
+    if (!deleteTarget) return;
+    setDeletingChild(true);
+    try {
+      await deleteOrganization(deleteTarget.id);
+      setDeleteTarget(null);
+      refreshOrgs();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unable to delete organization');
+    } finally {
+      setDeletingChild(false);
+    }
+  }
+
   // ── Super Admin view ───────────────────────────────────────────────────
   if (isSuperAdmin) {
     const contextLabel = parentOrg ? `Children of ${parentOrg.name}` : 'All Organizations';
@@ -237,7 +256,7 @@ export default function OrganizationPage() {
               ) : null}
             </div>
           </div>
-          <button type="button" onClick={() => setCreateOpen(true)}
+          <button type="button" onClick={() => { setEditingChild(null); setCreateOpen(true); }}
             className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700">
             <Plus className="h-4 w-4" />Create organization
           </button>
@@ -300,6 +319,14 @@ export default function OrganizationPage() {
                             className="rounded-xl bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">
                             Open
                           </button>
+                          <button type="button" onClick={() => { setEditingChild(item); setCreateOpen(true); }}
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                            <Pencil className="h-4 w-4" />Edit
+                          </button>
+                          <button type="button" onClick={() => setDeleteTarget(item)}
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50">
+                            <Trash2 className="h-4 w-4" />Delete
+                          </button>
                         </td>
                       </tr>
                     ))
@@ -310,7 +337,24 @@ export default function OrganizationPage() {
           </div>
         )}
 
-        <OrganizationCreateModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={refreshOrgs} parentId={contextParentId} />
+        <OrganizationCreateModal
+          open={createOpen}
+          onClose={() => { setCreateOpen(false); setEditingChild(null); }}
+          onCreated={refreshOrgs}
+          parentId={contextParentId}
+          organization={editingChild}
+        />
+
+        <Dialog
+          open={Boolean(deleteTarget)}
+          title="Delete child organization"
+          description={`This will remove ${deleteTarget?.name ?? 'this organization'} from the platform. This action cannot be undone.`}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={() => void handleDeleteChild()}
+          confirmLabel={deletingChild ? 'Deleting…' : 'Delete'}
+          cancelLabel="Cancel"
+          destructive
+        />
       </div>
     );
   }
@@ -461,7 +505,7 @@ export default function OrganizationPage() {
       <div className="max-w-4xl">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Sub-organizations</h2>
-          <button type="button" onClick={() => setCreateOpen(true)}
+          <button type="button" onClick={() => { setEditingChild(null); setCreateOpen(true); }}
             className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-3 py-2 text-sm font-medium text-white hover:bg-orange-600">
             <Plus className="h-4 w-4" />Add sub-organization
           </button>
@@ -478,6 +522,7 @@ export default function OrganizationPage() {
                     <th className="px-5 py-3">Code</th>
                     <th className="px-5 py-3">Status</th>
                     <th className="px-5 py-3">Created</th>
+                    <th className="px-5 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -507,6 +552,18 @@ export default function OrganizationPage() {
                         </span>
                       </td>
                       <td className="px-5 py-4 text-slate-600">{new Date(item.createdAt).toLocaleDateString('en-GB')}</td>
+                      <td className="px-5 py-4 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button type="button" onClick={() => { setEditingChild(item); setCreateOpen(true); }}
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                            <Pencil className="h-4 w-4" />Edit
+                          </button>
+                          <button type="button" onClick={() => setDeleteTarget(item)}
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50">
+                            <Trash2 className="h-4 w-4" />Delete
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -516,7 +573,24 @@ export default function OrganizationPage() {
         )}
       </div>
 
-      <OrganizationCreateModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={refreshOrgs} parentId={parentOrg?.id} />
+      <OrganizationCreateModal
+        open={createOpen}
+        onClose={() => { setCreateOpen(false); setEditingChild(null); }}
+        onCreated={refreshOrgs}
+        parentId={parentOrg?.id}
+        organization={editingChild}
+      />
+
+      <Dialog
+        open={Boolean(deleteTarget)}
+        title="Delete child organization"
+        description={`This will remove ${deleteTarget?.name ?? 'this organization'} from the platform. This action cannot be undone.`}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => void handleDeleteChild()}
+        confirmLabel={deletingChild ? 'Deleting…' : 'Delete'}
+        cancelLabel="Cancel"
+        destructive
+      />
     </div>
   );
 }
