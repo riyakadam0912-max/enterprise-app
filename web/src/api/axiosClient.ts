@@ -137,6 +137,7 @@ axiosClient.interceptors.response.use(
     const originalRequest =
       error.config as InternalAxiosRequestConfig & {
         _retry?: boolean;
+        _skipAuthRefresh?: boolean;
       };
 
     const status = error.response?.status;
@@ -162,6 +163,7 @@ axiosClient.interceptors.response.use(
       status === 401 &&
       originalRequest &&
       !originalRequest._retry &&
+      !originalRequest._skipAuthRefresh &&
       !isAuthEndpoint
     ) {
 
@@ -197,9 +199,7 @@ axiosClient.interceptors.response.use(
             success: boolean;
             message: string;
             data: AuthRefreshPayload;
-          }>(
-            '/auth/refresh'
-          );
+          }>('/auth/refresh', { _skipAuthRefresh: true } as never);
 
         const payload = response.data?.data;
 

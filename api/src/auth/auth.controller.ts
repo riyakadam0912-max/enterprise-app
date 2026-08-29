@@ -386,28 +386,33 @@ export class AuthController {
   ) {
     const refreshToken =
       (req.cookies?.enterprise_refresh_token as string | undefined) ?? '';
-    const result = await this.authService.refreshTokens(refreshToken);
-    this.setAuthCookies(
-      res,
-      result.access_token,
-      result.refresh_token ?? result.access_token,
-      req,
-    );
-    const data = {
-      message: result.message,
-      user: result.user,
-      role: result.role,
-      roles: result.roles,
-      permissions: result.permissions,
-      employeeId: result.employeeId,
-      organizationId: result.organizationId,
-      organizationSlug: result.organizationSlug,
-      organizationName: result.organizationName,
-      organizationLogo: result.organizationLogo,
-      isSuperAdmin: result.isSuperAdmin,
-      isPlatformAdmin: result.isPlatformAdmin,
-    };
-    return { success: true, data };
+    try {
+      const result = await this.authService.refreshTokens(refreshToken);
+      this.setAuthCookies(
+        res,
+        result.access_token,
+        result.refresh_token ?? result.access_token,
+        req,
+      );
+      const data = {
+        message: result.message,
+        user: result.user,
+        role: result.role,
+        roles: result.roles,
+        permissions: result.permissions,
+        employeeId: result.employeeId,
+        organizationId: result.organizationId,
+        organizationSlug: result.organizationSlug,
+        organizationName: result.organizationName,
+        organizationLogo: result.organizationLogo,
+        isSuperAdmin: result.isSuperAdmin,
+        isPlatformAdmin: result.isPlatformAdmin,
+      };
+      return { success: true, data };
+    } catch (error) {
+      this.clearAuthCookies(res, req);
+      throw error;
+    }
   }
 
   @Throttle({ default: { limit: 5, ttl: 60 } })
