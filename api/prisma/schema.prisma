@@ -25,6 +25,8 @@ model User {
   phone                   String?
   refreshToken            String?
   designation             String?
+  passwordResetCodeHash   String?
+  passwordResetCodeExpiresAt DateTime?
   activities              Activity[]
   hrApprovedExpenses      Expense[]        @relation("ExpenseHrApprovedBy")
   managerApprovedExpenses Expense[]        @relation("ExpenseManagerApprovedBy")

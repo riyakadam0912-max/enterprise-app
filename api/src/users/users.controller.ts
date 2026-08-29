@@ -146,16 +146,24 @@ export class UsersController {
 
   @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR)
   @RequirePermissions(Permission.USER_UPDATE)
+  @Post(':id/request-reset-code')
+  requestResetCode(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.usersService.requestPasswordResetCode(parseInt(id, 10), req.user);
+  }
+
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR)
+  @RequirePermissions(Permission.USER_UPDATE)
   @Patch(':id/reset-password')
   resetPassword(
     @Param('id') id: string,
-    @Body() body: { password: string },
+    @Body() body: { password: string; securityCode?: string },
     @Req() req: AuthenticatedRequest,
   ) {
     return this.usersService.resetPassword(
       parseInt(id, 10),
       body.password,
       req.user,
+      body.securityCode,
     );
   }
 

@@ -77,3 +77,19 @@ export async function deleteUser(id: number): Promise<{ success: boolean; messag
     method: 'DELETE',
   });
 }
+
+export async function requestPasswordResetCode(id: number): Promise<{ success: boolean; message: string }> {
+  return apiClient<{ success: boolean; message: string }>(`/users/${id}/request-reset-code`, {
+    method: 'POST',
+  });
+}
+
+export async function resetUserPassword(
+  id: number,
+  payload: { password: string; securityCode: string },
+): Promise<{ success: boolean; message: string }> {
+  return apiClient<{ success: boolean; message: string }>(`/users/${id}/reset-password`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}

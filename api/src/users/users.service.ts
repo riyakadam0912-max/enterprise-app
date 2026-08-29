@@ -5,6 +5,8 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
+import { randomInt } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -12,10 +14,16 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { Role } from '../common/enums/role.enum';
 import { AuthUser } from '../common/types/auth';
 import { hashPassword } from './utils/hash-password';
+import { MailService } from '../mail/mail.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mailService: MailService,
+    private readonly auditLogsService: AuditLogsService,
+  ) {}
 
   private isPlatformAdmin(user: AuthUser): boolean {
     return (
@@ -36,6 +44,106 @@ export class UsersService {
     }
 
     throw new ForbiddenException('User has no associated organization');
+  }
+
+  private isSuperAdminUser(user: AuthUser): boolean {
+    return (
+      user?.isPlatformAdmin === true ||
+      user?.isSuperAdmin === true ||
+      user?.role === Role.SUPER_ADMIN ||
+      (Array.isArray(user?.roles) && user.roles.includes(Role.SUPER_ADMIN))
+    );
+  }
+
+  private isAdminUser(user: AuthUser): boolean {
+    return (
+      user?.role === Role.ADMIN ||
+      (Array.isArray(user?.roles) && user.roles.includes(Role.ADMIN)) ||
+      this.isSuperAdminUser(user)
+    );
+  }
+
+  private assertPrivilegedPasswordResetAllowed(
+    actor: AuthUser,
+    target: { id: number; role: string | null; organizationId?: number | null },
+  ) {
+    if (target.id === actor.userId || target.id === actor.id) {
+      throw new ForbiddenException('You cannot reset your own password');
+    }
+
+    if (this.isSuperAdminUser(actor)) {
+      return;
+    }
+
+    if (this.isAdminUser(actor)) {
+      if (target.role === Role.SUPER_ADMIN) {
+        throw new ForbiddenException(
+          'Admins cannot reset Super Admin passwords',
+        );
+      }
+      return;
+    }
+
+    throw new ForbiddenException(
+      'Only Super Admins and Admins may reset user passwords',
+    );
+  }
+
+  private async verifyResetCode(
+    targetUser: { passwordResetCodeHash?: string | null; passwordResetCodeExpiresAt?: Date | string | null },
+    securityCode: string,
+  ): Promise<boolean> {
+    if (!securityCode || !targetUser.passwordResetCodeHash) {
+      return false;
+    }
+
+    const expiresAt =
+      targetUser.passwordResetCodeExpiresAt instanceof Date
+        ? targetUser.passwordResetCodeExpiresAt
+        : targetUser.passwordResetCodeExpiresAt
+          ? new Date(targetUser.passwordResetCodeExpiresAt)
+          : null;
+
+    if (!expiresAt || expiresAt.getTime() <= Date.now()) {
+      return false;
+    }
+
+    return bcrypt.compare(securityCode, targetUser.passwordResetCodeHash);
+  }
+
+  private async issuePasswordResetCode(
+    targetUser: { id: number; email: string; name: string; role: string | null; organizationId?: number | null },
+  ): Promise<string> {
+    const code = String(randomInt(100000, 999999));
+    const hashedCode = await hashPassword(code);
+    const expiry = new Date(Date.now() + 10 * 60 * 1000);
+
+    await this.prisma.user.update({
+      where: {
+        id: targetUser.id,
+        organizationId:
+          targetUser.organizationId == null
+            ? undefined
+            : targetUser.organizationId,
+      },
+      data: {
+        passwordResetCodeHash: hashedCode,
+        passwordResetCodeExpiresAt: expiry,
+      },
+    });
+
+    await this.mailService.sendEmail({
+      to: targetUser.email,
+      subject: 'Security code for employee password reset',
+      html: `
+        <p>Hello ${targetUser.name},</p>
+        <p>Your password reset security code is: <strong>${code}</strong></p>
+        <p>This code expires in 10 minutes.</p>
+      `,
+      metadata: { userId: targetUser.id, template: 'security-code' },
+    });
+
+    return code;
   }
 
   async create(
@@ -410,20 +518,112 @@ export class UsersService {
     });
   }
 
-  async resetPassword(id: number, password: string, user: AuthUser) {
+  async requestPasswordResetCode(id: number, actor: AuthUser) {
+    const organizationFilter = this.buildOrganizationFilter(actor);
+    const targetUser = await this.prisma.user.findFirst({
+      where: { id, ...organizationFilter },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        organizationId: true,
+      },
+    });
+
+    if (!targetUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    this.assertPrivilegedPasswordResetAllowed(actor, targetUser);
+
+    if (!targetUser.email) {
+      throw new BadRequestException('Target user email is required');
+    }
+
+    await this.issuePasswordResetCode(targetUser);
+
+    await this.auditLogsService.logCustomAction(
+      {
+        module: 'Users',
+        entityType: 'User',
+        entityId: targetUser.id,
+        action: 'PASSWORD_RESET_CODE_REQUESTED',
+        description: `${actor.name} requested a password reset security code for ${targetUser.email}`,
+        userId: actor.userId ?? actor.id ?? null,
+        userName: actor.name,
+        userRole: actor.role ?? null,
+      },
+      actor,
+    );
+
+    return {
+      success: true,
+      message: 'Security code sent successfully. Use it to complete the password reset.',
+    };
+  }
+
+  async resetPassword(
+    id: number,
+    password: string,
+    user: AuthUser,
+    securityCode?: string,
+  ) {
     const organizationFilter = this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
       where: { id, ...organizationFilter },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        organizationId: true,
+        passwordResetCodeHash: true,
+        passwordResetCodeExpiresAt: true,
+      },
     });
     if (!existing) {
       throw new NotFoundException('User not found');
     }
 
+    this.assertPrivilegedPasswordResetAllowed(user, existing);
+
+    if (!password || password.trim().length < 8) {
+      throw new BadRequestException(
+        'Password must be at least 8 characters long',
+      );
+    }
+
+    if (!securityCode || !(await this.verifyResetCode(existing, securityCode))) {
+      throw new ForbiddenException(
+        'A valid security code is required before changing this password',
+      );
+    }
+
     const hashedPassword = await hashPassword(password);
     await this.prisma.user.update({
       where: { id, organizationId: existing.organizationId },
-      data: { password: hashedPassword },
+      data: {
+        password: hashedPassword,
+        passwordResetCodeHash: null,
+        passwordResetCodeExpiresAt: null,
+      },
     });
+
+    await this.auditLogsService.logCustomAction(
+      {
+        module: 'Users',
+        entityType: 'User',
+        entityId: existing.id,
+        action: 'PASSWORD_RESET',
+        description: `${user.name} reset the password for ${existing.email}`,
+        userId: user.userId ?? user.id ?? null,
+        userName: user.name,
+        userRole: user.role ?? null,
+      },
+      user,
+    );
+
     return { success: true, message: 'Password reset successfully' };
   }
 

@@ -7,9 +7,15 @@ import {
 } from '../../test/helpers/mocks.helper';
 import { CreateUserDto } from './dto/create-user.dto';
 import { Role } from '../common/enums/role.enum';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { AuthUser } from '../common/types/auth';
 import { hashPassword } from './utils/hash-password';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { MailService } from '../mail/mail.service';
 
 // Mock hashPassword function
 jest.mock('./utils/hash-password');
@@ -22,9 +28,11 @@ function createMockAuthUser(
   role: Role,
   overrides: Partial<AuthUser> = {},
 ): AuthUser {
+  const userId = overrides.userId ?? overrides.id ?? 1;
+
   return {
-    id: 1,
-    userId: 1,
+    id: overrides.id ?? userId,
+    userId,
     email: 'test@example.com',
     name: 'Test User',
     role,
@@ -55,10 +63,22 @@ describe('UsersService', () => {
     jest.clearAllMocks();
     mockHashPassword.mockResolvedValue('hashed-password-123');
 
+    const auditLogsService = {
+      logCustomAction: jest.fn(),
+      logLogin: jest.fn(),
+      logUpdate: jest.fn(),
+      logDelete: jest.fn(),
+      logCreate: jest.fn(),
+      logLogout: jest.fn(),
+      logFieldDiffs: jest.fn(),
+    } as unknown as AuditLogsService;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: AuditLogsService, useValue: auditLogsService },
+        { provide: MailService, useValue: { sendEmail: jest.fn() } },
       ],
     }).compile();
 
@@ -445,35 +465,96 @@ describe('UsersService', () => {
   });
 
   describe('resetPassword', () => {
-    it('should hash and persist a new password within the authenticated tenant', async () => {
-      const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 2 });
+    it('should hash and persist a new password within the authenticated tenant when a valid security code is provided', async () => {
+      const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 2, userId: 9 });
       const userDelegate = getPrismaDelegate(mockPrisma, 'user');
 
       userDelegate.findFirst.mockResolvedValue({
         id: 1,
         email: 'user@example.com',
         organizationId: 2,
+        role: Role.EMPLOYEE,
+        passwordResetCodeHash: 'valid-hash',
+        passwordResetCodeExpiresAt: new Date(Date.now() + 60000),
       });
       userDelegate.update.mockResolvedValue({});
 
-      await service.resetPassword(1, 'new-password', authUser);
+      const code = '123456';
+      jest.spyOn(service as any, 'verifyResetCode').mockResolvedValue(true);
+
+      await service.resetPassword(1, 'new-password', authUser, code);
 
       expect(mockHashPassword).toHaveBeenCalledWith('new-password');
       expect(userDelegate.update).toHaveBeenCalledWith({
         where: { id: 1, organizationId: 2 },
-        data: { password: 'hashed-password-123' },
+        data: {
+          password: 'hashed-password-123',
+          passwordResetCodeHash: null,
+          passwordResetCodeExpiresAt: null,
+        },
       });
     });
 
     it('should reject resetting a password for a user outside the tenant', async () => {
-      const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 2 });
+      const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 2, userId: 9 });
       const userDelegate = getPrismaDelegate(mockPrisma, 'user');
 
       userDelegate.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.resetPassword(99, 'new-password', authUser),
+        service.resetPassword(99, 'new-password', authUser, '123456'),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('blocks self-service password resets for any role', async () => {
+      const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 2, userId: 9, id: 9 });
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      userDelegate.findFirst.mockResolvedValue({
+        id: 9,
+        role: Role.ADMIN,
+        organizationId: 2,
+      });
+
+      await expect(
+        service.resetPassword(9, 'new-password', authUser, '123456'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('prevents admin users from resetting super admin accounts', async () => {
+      const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 2, userId: 9, id: 9 });
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      userDelegate.findFirst.mockResolvedValue({
+        id: 20,
+        role: Role.SUPER_ADMIN,
+        organizationId: 2,
+      });
+
+      await expect(
+        service.resetPassword(20, 'new-password', authUser, '123456'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('allows a super admin to reset another super admin after verification', async () => {
+      const authUser = createMockAuthUser(Role.SUPER_ADMIN, {
+        organizationId: null,
+        userId: 1,
+        id: 1,
+        isSuperAdmin: true,
+      });
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      userDelegate.findFirst.mockResolvedValue({
+        id: 7,
+        role: Role.SUPER_ADMIN,
+        organizationId: null,
+        passwordResetCodeHash: 'valid-hash',
+        passwordResetCodeExpiresAt: new Date(Date.now() + 60000),
+      });
+      userDelegate.update.mockResolvedValue({});
+      jest.spyOn(service as any, 'verifyResetCode').mockResolvedValue(true);
+
+      await expect(
+        service.resetPassword(7, 'new-password', authUser, '123456'),
+      ).resolves.toMatchObject({ success: true });
     });
   });
 

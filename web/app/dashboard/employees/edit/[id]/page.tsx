@@ -4,6 +4,8 @@ import { useState, useEffect, FormEvent } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useEmployee, editEmployee } from '@/hooks/useEmployees';
+import { requestPasswordResetCode, resetUserPassword } from '@/api/usersApi';
+import { useAuthSession } from '@/stores/auth-store';
 
 const DEPARTMENTS = ['Sales', 'Finance', 'HR', 'IT', 'Operations', 'Marketing', 'Legal', 'Other'];
 const STATUSES = ['Active', 'On Leave', 'Resigned', 'Terminated'];
@@ -28,6 +30,19 @@ export default function EditEmployeePage() {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resetState, setResetState] = useState({
+    password: '',
+    securityCode: '',
+    sendingCode: false,
+    resetting: false,
+    requestMessage: '',
+    resetMessage: '',
+    requestError: '',
+    resetError: '',
+  });
+  const authSession = useAuthSession();
+  const currentUser = authSession.user;
+  const isSelfEdit = currentUser?.id != null && currentUser.id === id;
 
   useEffect(() => {
     if (employee) {
@@ -79,6 +94,56 @@ export default function EditEmployeePage() {
     }
   }
 
+  async function handleRequestResetCode() {
+    if (isSelfEdit) {
+      setResetState((prev) => ({ ...prev, requestError: 'You cannot reset your own password here.' }));
+      return;
+    }
+
+    setResetState((prev) => ({ ...prev, sendingCode: true, requestError: '', requestMessage: '' }));
+    try {
+      const response = await requestPasswordResetCode(id);
+      setResetState((prev) => ({ ...prev, requestMessage: response.message }));
+    } catch (err) {
+      setResetState((prev) => ({ ...prev, requestError: err instanceof Error ? err.message : 'Unable to send the reset code.' }));
+    } finally {
+      setResetState((prev) => ({ ...prev, sendingCode: false }));
+    }
+  }
+
+  async function handlePasswordResetSubmit(e: FormEvent) {
+    e.preventDefault();
+
+    if (isSelfEdit) {
+      setResetState((prev) => ({ ...prev, resetError: 'You cannot change your own password here.' }));
+      return;
+    }
+
+    if (!resetState.password || resetState.password.length < 8) {
+      setResetState((prev) => ({ ...prev, resetError: 'New password must be at least 8 characters long.' }));
+      return;
+    }
+
+    if (!resetState.securityCode.trim()) {
+      setResetState((prev) => ({ ...prev, resetError: 'Security code is required.' }));
+      return;
+    }
+
+    setResetState((prev) => ({ ...prev, resetting: true, resetError: '', resetMessage: '' }));
+
+    try {
+      const response = await resetUserPassword(id, {
+        password: resetState.password,
+        securityCode: resetState.securityCode.trim(),
+      });
+      setResetState((prev) => ({ ...prev, resetMessage: response.message, password: '', securityCode: '' }));
+    } catch (err) {
+      setResetState((prev) => ({ ...prev, resetError: err instanceof Error ? err.message : 'Unable to reset the password.' }));
+    } finally {
+      setResetState((prev) => ({ ...prev, resetting: false }));
+    }
+  }
+
   const inputCls = 'w-full px-4 py-2.5 rounded-lg border border-slate-300 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition text-sm';
 
   if (fetching) {
@@ -111,6 +176,82 @@ export default function EditEmployeePage() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
         {error && (
           <div className="mb-5 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">{error}</div>
+        )}
+
+        {!isSelfEdit && (
+          <div className="mb-6 rounded-xl border border-orange-200 bg-orange-50 p-4">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">Password reset</h2>
+                <p className="text-sm text-slate-600">Secure admin reset. Existing passwords are never displayed.</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleRequestResetCode}
+                  disabled={resetState.sendingCode}
+                  className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 disabled:opacity-60"
+                >
+                  {resetState.sendingCode ? 'Sending code…' : 'Send security code'}
+                </button>
+              </div>
+
+              {resetState.requestMessage && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{resetState.requestMessage}</div>
+              )}
+              {resetState.requestError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{resetState.requestError}</div>
+              )}
+
+              <form onSubmit={handlePasswordResetSubmit} className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">New password</label>
+                  <input
+                    type="password"
+                    value={resetState.password}
+                    onChange={(e) => setResetState((prev) => ({ ...prev, password: e.target.value }))}
+                    placeholder="Minimum 8 characters"
+                    className={inputCls}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Security code</label>
+                  <input
+                    type="text"
+                    value={resetState.securityCode}
+                    onChange={(e) => setResetState((prev) => ({ ...prev, securityCode: e.target.value }))}
+                    placeholder="Enter the 6-digit code"
+                    className={inputCls}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={resetState.resetting}
+                  className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-slate-900 rounded-lg hover:bg-slate-700 disabled:opacity-60"
+                >
+                  {resetState.resetting ? 'Resetting…' : 'Reset password'}
+                </button>
+
+                {resetState.resetMessage && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{resetState.resetMessage}</div>
+                )}
+                {resetState.resetError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{resetState.resetError}</div>
+                )}
+              </form>
+            </div>
+          </div>
+        )}
+
+        {isSelfEdit && (
+          <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            You cannot change your own password from this screen.
+          </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
