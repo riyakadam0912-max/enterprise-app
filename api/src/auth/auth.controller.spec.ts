@@ -8,7 +8,7 @@ import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { MailService } from '../mail/mail.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
-import { ThrottlerGuard } from '@nestjs/throttler';
+import { VercelThrottlerGuard } from './vercel-throttler.guard';
 import {
   createMockPrismaService,
   createMockJwtService,
@@ -60,7 +60,7 @@ describe('AuthController', () => {
       .useValue({ canActivate: jest.fn().mockReturnValue(true) })
       .overrideGuard(RolesGuard)
       .useValue({ canActivate: jest.fn().mockReturnValue(true) })
-      .overrideGuard(ThrottlerGuard)
+      .overrideGuard(VercelThrottlerGuard)
       .useValue({ canActivate: jest.fn().mockReturnValue(true) })
       .compile();
 

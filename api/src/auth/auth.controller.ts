@@ -21,7 +21,8 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
+import { VercelThrottlerGuard } from './vercel-throttler.guard';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthenticatedRequest } from '../common/types/request';
@@ -182,7 +183,7 @@ export class AuthController {
   }
 
   @Throttle({ default: { limit: 1, ttl: 60 } })
-  @UseGuards(ThrottlerGuard)
+  @UseGuards(VercelThrottlerGuard)
   @ApiOperation({ summary: 'POST bootstrap admin' })
   @ApiResponse({ status: 201, description: 'Admin created successfully.' })
   @ApiResponse({ status: 409, description: 'Admin already exists.' })
@@ -192,7 +193,7 @@ export class AuthController {
   }
 
   @Throttle({ default: { limit: 1, ttl: 60 } })
-  @UseGuards(ThrottlerGuard)
+  @UseGuards(VercelThrottlerGuard)
   @ApiOperation({ summary: 'POST bootstrap super admin' })
   @ApiResponse({
     status: 201,
@@ -205,7 +206,7 @@ export class AuthController {
   }
 
   @Throttle({ default: { limit: 5, ttl: 60 } })
-  @UseGuards(ThrottlerGuard)
+  @UseGuards(VercelThrottlerGuard)
   @ApiOperation({ summary: 'POST reset password' })
   @ApiResponse({ status: 200, description: 'Password reset successfully.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -281,7 +282,7 @@ export class AuthController {
   }
 
   @Throttle({ default: { limit: 5, ttl: 60 } })
-  @UseGuards(ThrottlerGuard)
+  @UseGuards(VercelThrottlerGuard)
   @ApiOperation({ summary: 'POST login' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -372,7 +373,7 @@ export class AuthController {
   }
 
   @Throttle({ default: { limit: 5, ttl: 60 } })
-  @UseGuards(ThrottlerGuard)
+  @UseGuards(VercelThrottlerGuard)
   @ApiOperation({ summary: 'POST refresh' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -410,7 +411,7 @@ export class AuthController {
   }
 
   @Throttle({ default: { limit: 5, ttl: 60 } })
-  @UseGuards(ThrottlerGuard)
+  @UseGuards(VercelThrottlerGuard)
   @ApiOperation({ summary: 'POST forgot password' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -420,7 +421,7 @@ export class AuthController {
     return this.authService.requestPasswordReset(body.email);
   }
 
-  @UseGuards(JwtAuthGuard, ThrottlerGuard)
+  @UseGuards(JwtAuthGuard, VercelThrottlerGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'POST logout' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
