@@ -370,4 +370,12 @@ describe('AuthService', () => {
       );
     });
   });
+
+  describe('changePassword', () => {
+    it('disables self-service password changes', async () => {
+      await expect(
+        service.changePassword(9, 'current-password', 'new-password'),
+      ).rejects.toThrow('Self-service password changes are disabled');
+    });
+  });
 });

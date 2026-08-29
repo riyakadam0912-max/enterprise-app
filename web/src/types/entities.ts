@@ -41,6 +41,10 @@ export interface Employee {
   } | null;
   createdAt: string;
   updatedAt: string;
+  user?: {
+    id: number;
+    role?: string;
+  } | null;
 }
 
 export interface Lead {

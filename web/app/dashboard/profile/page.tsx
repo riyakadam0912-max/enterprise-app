@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { apiClient } from '@/api/apiClient';
 import { listFilesByEntity } from '@/api/filesApi';
 import { ProfileAvatarUploader } from '@/components/profile/ProfileAvatarUploader';
-import { PasswordInput } from '@/components/ui/password-input';
 import { setAuthSession, useAuthSession } from '@/stores/auth-store';
 
 type LocalUser = {
@@ -121,7 +120,6 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingDetails, setSavingDetails] = useState(false);
-  const [savingPassword, setSavingPassword] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -133,11 +131,6 @@ export default function ProfilePage() {
     department: storedUser?.department ?? '',
     role: storedUser?.role ?? 'EMPLOYEE',
     location: '',
-  });
-  const [passwordForm, setPasswordForm] = useState({
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: '',
   });
 
   useEffect(() => {
@@ -253,41 +246,6 @@ export default function ProfilePage() {
       setError(err instanceof Error ? err.message : 'Failed to save profile details.');
     } finally {
       setSavingDetails(false);
-    }
-  }
-
-  async function handlePasswordSave() {
-    setError(null);
-    setMessage(null);
-
-    if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
-      setError('Please fill out all password fields.');
-      return;
-    }
-
-    if (passwordForm.newPassword.length < 8) {
-      setError('New password must be at least 8 characters.');
-      return;
-    }
-
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setError('New password and confirmation do not match.');
-      return;
-    }
-
-    setSavingPassword(true);
-    try {
-      await apiClient('/auth/change-password', {
-        method: 'POST',
-        body: JSON.stringify({
-          currentPassword: passwordForm.currentPassword,
-          newPassword: passwordForm.newPassword,
-        }),
-      });
-      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-      setMessage('Password updated successfully. Please sign in again.');
-    } finally {
-      setSavingPassword(false);
     }
   }
 
@@ -476,62 +434,6 @@ export default function ProfilePage() {
           </section>
         </div>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="mb-5">
-            <h3 className="text-lg font-semibold text-slate-900">Change Password</h3>
-            <p className="mt-1 text-sm text-slate-500">Update your login password from the profile screen.</p>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <label htmlFor="profile-current-password" className="mb-1 block text-sm font-medium text-slate-700">Current Password</label>
-              <PasswordInput
-                id="profile-current-password"
-                name="currentPassword"
-                autoComplete="current-password"
-                value={passwordForm.currentPassword}
-                onChange={(e) => setPasswordForm((prev) => ({ ...prev, currentPassword: e.target.value }))}
-                className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-transparent focus:ring-2 focus:ring-orange-500"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="profile-new-password" className="mb-1 block text-sm font-medium text-slate-700">New Password</label>
-              <PasswordInput
-                id="profile-new-password"
-                name="newPassword"
-                autoComplete="new-password"
-                value={passwordForm.newPassword}
-                onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))}
-                className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-transparent focus:ring-2 focus:ring-orange-500"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="profile-confirm-password" className="mb-1 block text-sm font-medium text-slate-700">Confirm Password</label>
-              <PasswordInput
-                id="profile-confirm-password"
-                name="confirmPassword"
-                autoComplete="new-password"
-                value={passwordForm.confirmPassword}
-                onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
-                className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-transparent focus:ring-2 focus:ring-orange-500"
-              />
-            </div>
-          </div>
-
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <p className="text-xs text-slate-500">Password changes are shown here for consistency with the profile UI.</p>
-            <button
-              type="button"
-              onClick={handlePasswordSave}
-              disabled={savingPassword}
-              className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:opacity-60"
-            >
-              {savingPassword ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
-        </section>
 
         <p className="text-sm text-slate-500">To update your profile details, contact your administrator.</p>
       </div>

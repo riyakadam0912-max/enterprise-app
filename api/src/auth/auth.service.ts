@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
   ConflictException,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -267,31 +268,9 @@ export class AuthService {
     currentPassword: string,
     newPassword: string,
   ) {
-    if (!currentPassword || !newPassword || newPassword.length < 8) {
-      throw new BadRequestException(
-        'New password must be at least 8 characters.',
-      );
-    }
-
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: { password: true },
-    });
-    const isCurrentPasswordValid = await bcrypt.compare(
-      currentPassword,
-      user.password,
+    throw new ForbiddenException(
+      'Self-service password changes are disabled. Use the authorized reset flow.',
     );
-    if (!isCurrentPasswordValid) {
-      throw new UnauthorizedException('Current password is incorrect.');
-    }
-
-    const password = await bcrypt.hash(newPassword, 10);
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { password, refreshToken: null },
-    });
-
-    return { message: 'Password updated successfully.' };
   }
 
   private async resolveOrganizationMeta(organizationId: number | null) {

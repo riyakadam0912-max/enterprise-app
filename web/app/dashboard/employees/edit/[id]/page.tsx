@@ -41,8 +41,8 @@ export default function EditEmployeePage() {
     resetError: '',
   });
   const authSession = useAuthSession();
-  const currentUser = authSession.user;
-  const isSelfEdit = currentUser?.id != null && currentUser.id === id;
+  const isSelfEdit = authSession.employeeId === id;
+  const canResetPasswords = authSession.isSuperAdmin || authSession.role === 'ADMIN';
 
   useEffect(() => {
     if (employee) {
@@ -178,7 +178,7 @@ export default function EditEmployeePage() {
           <div className="mb-5 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">{error}</div>
         )}
 
-        {!isSelfEdit && (
+        {!isSelfEdit && canResetPasswords && (
           <div className="mb-6 rounded-xl border border-orange-200 bg-orange-50 p-4">
             <div className="flex items-center justify-between gap-3 mb-3">
               <div>

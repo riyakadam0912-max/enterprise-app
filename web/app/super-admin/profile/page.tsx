@@ -6,7 +6,6 @@ import { Heading } from '@/components/typography/Heading';
 import { Caption } from '@/components/typography/Caption';
 import { Text } from '@/components/typography/Text';
 import { Input } from '@/components/ui/input';
-import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/typography/Label';
 import { useAuthSession } from '@/stores/auth-store';
 import { ProfileAvatarUploader } from '@/components/profile/ProfileAvatarUploader';
@@ -19,9 +18,6 @@ export default function SuperAdminProfile() {
   const [designation, setDesignation] = useState(session.user?.designation ?? '');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -39,19 +35,6 @@ export default function SuperAdminProfile() {
     setSaving(true);
     setMessage(null);
     try {
-      if (newPassword || confirmPassword || currentPassword) {
-        if (!currentPassword || !newPassword || newPassword !== confirmPassword) {
-          setMessage('Enter the current password and matching new passwords.');
-          return;
-        }
-        await apiClient('/auth/change-password', {
-          method: 'POST',
-          body: JSON.stringify({ currentPassword, newPassword }),
-        });
-        setCurrentPassword('');
-        setNewPassword('');
-        setConfirmPassword('');
-      }
       await apiClient('/auth/profile/me', {
         method: 'PATCH',
         body: JSON.stringify({ name: name.trim(), designation: designation.trim() || undefined, phone: phone.trim() || undefined, address: address.trim() || undefined }),
@@ -121,26 +104,6 @@ export default function SuperAdminProfile() {
           <div className="space-y-2">
             <Label htmlFor="address">Location</Label>
             <Input id="address" value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Enter your location" />
-          </div>
-
-          <div className="border-t border-slate-200 pt-6">
-            <Heading level={3} className="mb-4">
-              Change Password
-            </Heading>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="current-password">Current Password</Label>
-                <PasswordInput id="current-password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new-password">New Password</Label>
-                <PasswordInput id="new-password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="confirm-password">Confirm New Password</Label>
-                <PasswordInput id="confirm-password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
-              </div>
-            </div>
           </div>
 
           <div className="flex justify-end">
