@@ -21,6 +21,7 @@ import {
 import {
   getCurrentUser,
   loginUser,
+  refreshCurrentSession,
   logoutUser,
 } from '@/api/authApi';
 
@@ -70,8 +71,17 @@ export function AuthProvider({
 
     async function bootstrapAuth() {
       try {
-        const current =
-          await getCurrentUser();
+        let current: Awaited<ReturnType<typeof getCurrentUser>>;
+
+        try {
+          current = await getCurrentUser();
+        } catch (error) {
+          if (!(error instanceof ApiError) || error.status !== 401) {
+            throw error;
+          }
+
+          current = await refreshCurrentSession();
+        }
 
         setAuthSession({
 

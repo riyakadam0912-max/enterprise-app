@@ -50,6 +50,10 @@ export async function getCurrentUser(): Promise<AuthPayload> {
   }
 }
 
+export async function refreshCurrentSession(): Promise<AuthPayload> {
+  return apiClient<AuthPayload>('/auth/refresh', { method: 'POST' });
+}
+
 export async function logoutUser(): Promise<LogoutResponse> {
   try {
     return await apiClient<LogoutResponse>('/auth/logout', {
