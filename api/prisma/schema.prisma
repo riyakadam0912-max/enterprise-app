@@ -8,49 +8,61 @@ datasource db {
 }
 
 model User {
-  id                      Int              @id @default(autoincrement())
-  name                    String
-  email                   String           @unique
-  password                String
-  role                    Role
-  isActive                Boolean          @default(true)
-  createdAt               DateTime         @default(now())
-  updatedAt               DateTime         @updatedAt
-  employeeId              Int?             @unique
-  deletedAt               DateTime?
-  organizationId          Int?
-  primaryBusinessUnitId   Int?
-  address                 String?
-  managerId               Int?
-  phone                   String?
-  refreshToken            String?
-  designation             String?
-  passwordResetCodeHash   String?
+  id                         Int                    @id @default(autoincrement())
+  name                       String
+  email                      String                 @unique
+  password                   String
+  role                       Role
+  isActive                   Boolean                @default(true)
+  createdAt                  DateTime               @default(now())
+  updatedAt                  DateTime               @updatedAt
+  employeeId                 Int?                   @unique
+  deletedAt                  DateTime?
+  organizationId             Int?
+  primaryBusinessUnitId      Int?
+  address                    String?
+  managerId                  Int?
+  phone                      String?
+  refreshToken               String?
+  designation                String?
+  passwordResetCodeHash      String?
   passwordResetCodeExpiresAt DateTime?
-  activities              Activity[]
-  hrApprovedExpenses      Expense[]        @relation("ExpenseHrApprovedBy")
-  managerApprovedExpenses Expense[]        @relation("ExpenseManagerApprovedBy")
-  submittedExpenses       Expense[]        @relation("ExpenseSubmittedBy")
-  uploadedFiles           File[]           @relation("FileUploadedBy")
-  invoices                Invoice[]
-  ledgerEntries           LedgerEntry[]
-  notificationsCreated    Notification[]
-  managedProjects         Project[]        @relation("ProjectManager")
-  projectLinksCreated     ProjectLink[]
-  sentMessages            ProjectMessage[] @relation("ProjectMessageSender")
-  createdTasks            Task[]           @relation("TaskAssignedBy")
-  assignedTasks           Task[]           @relation("TaskAssignedTo")
-  reviewedTasks           Task[]           @relation("TaskReviewedBy")
-  employee                Employee?        @relation("UserEmployee", fields: [employeeId], references: [id])
-  manager                 User?            @relation("UserManager", fields: [managerId], references: [id])
-  teamMembers             User[]           @relation("UserManager")
-  organization            Organization?    @relation(fields: [organizationId], references: [id])
-  primaryBusinessUnit     BusinessUnit?    @relation("UserPrimaryBusinessUnit", fields: [primaryBusinessUnitId], references: [id], onDelete: SetNull)
-  userRoles               UserRole[]
-  coManagedProjects       Project[]        @relation("ProjectCoManagers")
+  activities                 Activity[]
+  hrApprovedExpenses         Expense[]              @relation("ExpenseHrApprovedBy")
+  managerApprovedExpenses    Expense[]              @relation("ExpenseManagerApprovedBy")
+  submittedExpenses          Expense[]              @relation("ExpenseSubmittedBy")
+  uploadedFiles              File[]                 @relation("FileUploadedBy")
+  invoices                   Invoice[]
+  ledgerEntries              LedgerEntry[]
+  notificationsCreated       Notification[]
+  managedProjects            Project[]              @relation("ProjectManager")
+  projectLinksCreated        ProjectLink[]
+  sentMessages               ProjectMessage[]       @relation("ProjectMessageSender")
+  createdTasks               Task[]                 @relation("TaskAssignedBy")
+  assignedTasks              Task[]                 @relation("TaskAssignedTo")
+  reviewedTasks              Task[]                 @relation("TaskReviewedBy")
+  employee                   Employee?              @relation("UserEmployee", fields: [employeeId], references: [id])
+  manager                    User?                  @relation("UserManager", fields: [managerId], references: [id])
+  teamMembers                User[]                 @relation("UserManager")
+  reportingManagers          UserReportingManager[] @relation("ReportingEmployee")
+  reportingEmployees         UserReportingManager[] @relation("ReportingManager")
+  organization               Organization?          @relation(fields: [organizationId], references: [id])
+  primaryBusinessUnit        BusinessUnit?          @relation("UserPrimaryBusinessUnit", fields: [primaryBusinessUnitId], references: [id], onDelete: SetNull)
+  userRoles                  UserRole[]
+  coManagedProjects          Project[]              @relation("ProjectCoManagers")
 
   @@index([organizationId])
   @@index([primaryBusinessUnitId])
+}
+
+model UserReportingManager {
+  employeeId Int
+  managerId  Int
+  employee   User @relation("ReportingEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  manager    User @relation("ReportingManager", fields: [managerId], references: [id], onDelete: Cascade)
+
+  @@id([employeeId, managerId])
+  @@index([managerId])
 }
 
 model AppRole {
@@ -176,23 +188,23 @@ enum BusinessUnitStatus {
 }
 
 model BusinessUnit {
-  id                Int               @id @default(autoincrement())
-  organizationId    Int
-  parentId          Int?
-  name              String
-  code              String
-  description       String?
-  type              String?
-  status            BusinessUnitStatus @default(ACTIVE)
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  parent            BusinessUnit?     @relation("BusinessUnitHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
-  children          BusinessUnit[]    @relation("BusinessUnitHierarchy")
-  users             User[]            @relation("UserPrimaryBusinessUnit")
-  employees         Employee[]        @relation("EmployeeBusinessUnit")
-  projects          Project[]         @relation("ProjectBusinessUnit")
-  tasks             Task[]            @relation("TaskBusinessUnit")
+  id             Int                @id @default(autoincrement())
+  organizationId Int
+  parentId       Int?
+  name           String
+  code           String
+  description    String?
+  type           String?
+  status         BusinessUnitStatus @default(ACTIVE)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent         BusinessUnit?      @relation("BusinessUnitHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children       BusinessUnit[]     @relation("BusinessUnitHierarchy")
+  users          User[]             @relation("UserPrimaryBusinessUnit")
+  employees      Employee[]         @relation("EmployeeBusinessUnit")
+  projects       Project[]          @relation("ProjectBusinessUnit")
+  tasks          Task[]             @relation("TaskBusinessUnit")
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -467,10 +479,10 @@ model Deal {
 }
 
 model Task {
-  id               Int          @id @default(autoincrement())
-  status           String       @default("PENDING")
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  id               Int           @id @default(autoincrement())
+  status           String        @default("PENDING")
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
   actualHours      Float?
   assignee         String?
   dueDate          DateTime?
@@ -496,15 +508,15 @@ model Task {
   submissionNotes  String?
   organizationId   Int
   businessUnitId   Int?
-  assignedByUser   User?        @relation("TaskAssignedBy", fields: [assignedByUserId], references: [id])
-  assignedEmployee Employee?    @relation("TaskAssignee", fields: [assignedToId], references: [id])
-  assignedToUser   User?        @relation("TaskAssignedTo", fields: [assignedToUserId], references: [id])
+  assignedByUser   User?         @relation("TaskAssignedBy", fields: [assignedByUserId], references: [id])
+  assignedEmployee Employee?     @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  assignedToUser   User?         @relation("TaskAssignedTo", fields: [assignedToUserId], references: [id])
   businessUnit     BusinessUnit? @relation("TaskBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
-  deal             Deal?        @relation(fields: [dealId], references: [id])
-  lead             Lead?        @relation(fields: [leadId], references: [id])
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  projectRef       Project?     @relation("ProjectTasks", fields: [projectId], references: [id])
-  reviewedByUser   User?        @relation("TaskReviewedBy", fields: [reviewedBy], references: [id])
+  deal             Deal?         @relation(fields: [dealId], references: [id])
+  lead             Lead?         @relation(fields: [leadId], references: [id])
+  organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectRef       Project?      @relation("ProjectTasks", fields: [projectId], references: [id])
+  reviewedByUser   User?         @relation("TaskReviewedBy", fields: [reviewedBy], references: [id])
 
   @@index([organizationId])
   @@index([businessUnitId])

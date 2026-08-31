@@ -18,6 +18,7 @@ export interface CreateEmployeePayload {
   password?: string;
   role?: EmployeeRole;
   managerId?: number;
+  managerIds?: number[];
   shiftId?: number;
   businessUnitId?: number;
 }

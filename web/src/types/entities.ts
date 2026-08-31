@@ -44,6 +44,11 @@ export interface Employee {
   user?: {
     id: number;
     role?: string;
+    managerId?: number | null;
+    manager?: { id: number; name: string } | null;
+    reportingManagers?: Array<{
+      manager: { id: number; name: string; role: string };
+    }>;
   } | null;
 }
 

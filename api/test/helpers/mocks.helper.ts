@@ -115,6 +115,7 @@ export type MockPrismaService = Partial<
   auditLog: DelegateMock;
   expense: DelegateMock;
   userRole: DelegateMock;
+  userReportingManager: DelegateMock;
   $executeRawUnsafe: jest.Mock;
   $queryRaw: jest.Mock;
   $transaction: jest.Mock;
@@ -189,6 +190,7 @@ export const createMockPrismaService = (): MockPrismaService => ({
   auditLog: createDelegateMock(),
   expense: createDelegateMock(),
   userRole: createDelegateMock(),
+  userReportingManager: createDelegateMock(),
   $executeRawUnsafe: jest.fn(),
   $queryRaw: jest.fn(),
   $transaction: jest.fn(),

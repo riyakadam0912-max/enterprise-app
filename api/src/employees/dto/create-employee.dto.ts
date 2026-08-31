@@ -6,6 +6,7 @@ import {
   MinLength,
   IsInt,
   IsIn,
+  IsArray,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -86,6 +87,16 @@ export class CreateEmployeeDto {
       'Manager user ID for the login account. Used only when password is provided.',
   })
   managerId?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsInt({ each: true })
+  @ApiPropertyOptional({
+    example: [10, 12],
+    type: [Number],
+    description: 'Additional reporting manager user IDs.',
+  })
+  managerIds?: number[];
 
   @IsOptional()
   @Type(() => Number)

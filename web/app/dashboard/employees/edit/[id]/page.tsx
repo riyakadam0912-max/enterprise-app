@@ -4,11 +4,18 @@ import { useState, useEffect, FormEvent } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useEmployee, editEmployee } from '@/hooks/useEmployees';
+import { apiClient } from '@/api/apiClient';
 import { requestPasswordResetCode, resetUserPassword } from '@/api/usersApi';
 import { useAuthSession } from '@/stores/auth-store';
 
-const DEPARTMENTS = ['Sales', 'Finance', 'HR', 'IT', 'Operations', 'Marketing', 'Legal', 'Other'];
+const DEPARTMENTS = ['Sales', 'Finance', 'HR', 'IT', 'Operations', 'Marketing', 'Creative and Production', 'Legal', 'Other'];
 const STATUSES = ['Active', 'On Leave', 'Resigned', 'Terminated'];
+
+interface ManagerOption {
+  id: number;
+  name: string;
+  role: string;
+}
 
 export default function EditEmployeePage() {
   const params = useParams();
@@ -25,11 +32,13 @@ export default function EditEmployeePage() {
     designation: '',
     hireDate: '',
     manager: '',
+    reportingManagerIds: [] as string[],
     leaveBalance: '',
     status: '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [managerOptions, setManagerOptions] = useState<ManagerOption[]>([]);
   const [resetState, setResetState] = useState({
     password: '',
     securityCode: '',
@@ -45,6 +54,12 @@ export default function EditEmployeePage() {
   const canResetPasswords = authSession.isSuperAdmin || authSession.role === 'ADMIN';
 
   useEffect(() => {
+    apiClient<ManagerOption[]>('/users/reporting-managers')
+      .then(setManagerOptions)
+      .catch(() => setManagerOptions([]));
+  }, [authSession.organizationId]);
+
+  useEffect(() => {
     if (employee) {
       setForm({
         name: employee.name,
@@ -54,6 +69,8 @@ export default function EditEmployeePage() {
         designation: employee.designation ?? '',
         hireDate: employee.hireDate ? employee.hireDate.substring(0, 10) : '',
         manager: employee.manager ?? '',
+        reportingManagerIds: employee.user?.reportingManagers?.map(({ manager }) => String(manager.id)) ??
+          (employee.user?.managerId ? [String(employee.user.managerId)] : []),
         leaveBalance: employee.leaveBalance != null ? String(employee.leaveBalance) : '',
         status: employee.status ?? '',
       });
@@ -83,6 +100,7 @@ export default function EditEmployeePage() {
         designation: form.designation.trim() || undefined,
         hireDate: form.hireDate || undefined,
         manager: form.manager.trim() || undefined,
+        managerIds: form.reportingManagerIds.map(Number),
         leaveBalance: form.leaveBalance ? Number(form.leaveBalance) : undefined,
         status: form.status || undefined,
       });
@@ -294,10 +312,29 @@ export default function EditEmployeePage() {
             <input type="date" name="hireDate" value={form.hireDate} onChange={handleChange} className={inputCls} />
           </div>
 
-          {/* Manager */}
+          {/* Reporting managers */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Manager</label>
-            <input type="text" name="manager" value={form.manager} onChange={handleChange} placeholder="Manager name" className={inputCls} />
+            <label className="block text-sm font-medium text-slate-700 mb-1">Reporting to</label>
+            <p className="text-xs text-slate-500 mb-1">Select one or more reporting managers.</p>
+            <select
+              name="reportingManagerIds"
+              multiple
+              value={form.reportingManagerIds}
+              onChange={(event) => setForm((prev) => ({
+                ...prev,
+                reportingManagerIds: Array.from(
+                  event.target.selectedOptions,
+                  (option) => option.value,
+                ),
+              }))}
+              className={inputCls}
+            >
+              {managerOptions.map((manager) => (
+                <option key={manager.id} value={manager.id}>
+                  {manager.name} ({manager.role})
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Leave Balance */}

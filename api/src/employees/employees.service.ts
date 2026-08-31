@@ -20,7 +20,7 @@ const ALLOWED_DEPARTMENTS = [
   'Marketing',
   'HR',
   'Finance',
-  'Creative',
+  'Creative and Production',
   'IT',
   'Engineering',
 ] as const;
@@ -118,6 +118,103 @@ export class EmployeesService {
     );
   }
 
+  private normalizeReportingManagerIds(
+    managerIds?: number[],
+    legacyManagerId?: number,
+  ): number[] | undefined {
+    if (managerIds === undefined && legacyManagerId === undefined) {
+      return undefined;
+    }
+
+    const ids = [...(managerIds ?? [])];
+    if (legacyManagerId !== undefined && !ids.includes(legacyManagerId)) {
+      ids.unshift(legacyManagerId);
+    }
+    if (ids.some((id) => !Number.isInteger(id) || id <= 0)) {
+      throw new BadRequestException(
+        'managerIds must contain only positive integer user IDs.',
+      );
+    }
+    if (new Set(ids).size !== ids.length) {
+      throw new BadRequestException('managerIds must not contain duplicates.');
+    }
+    return ids;
+  }
+
+  private async validateReportingManagers(
+    managerIds: number[],
+    organizationId: number,
+    user: AuthUser,
+    employeeUserId?: number,
+    businessUnitId?: number | null,
+  ) {
+    if (employeeUserId !== undefined && managerIds.includes(employeeUserId)) {
+      throw new BadRequestException('An employee cannot report to themselves.');
+    }
+
+    if (managerIds.length === 0) {
+      return [];
+    }
+
+    const managers = await this.prisma.user.findMany({
+      where: {
+        id: { in: managerIds },
+        isActive: true,
+        OR: [
+          { organizationId },
+          { role: Role.SUPER_ADMIN },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        role: true,
+        organizationId: true,
+        primaryBusinessUnitId: true,
+      },
+    });
+
+    if (managers.length !== managerIds.length) {
+      throw new NotFoundException(
+        'One or more selected reporting managers were not found in the organization.',
+      );
+    }
+
+    const allowedRoles = new Set<Role>([
+      Role.MANAGER,
+      Role.ADMIN,
+      Role.SUPER_ADMIN,
+    ]);
+    if (managers.some((manager) => !allowedRoles.has(manager.role))) {
+      throw new BadRequestException(
+        'Selected reporting managers must have MANAGER, ADMIN, or SUPER_ADMIN role.',
+      );
+    }
+
+    if (businessUnitId != null) {
+      const scope = await this.businessUnitsService.resolveScope(user as any);
+      await this.businessUnitsService.assertRecordAccessible(
+        scope,
+        businessUnitId,
+        'employee:reportingManager',
+      );
+      if (
+        managers.some(
+          (manager) =>
+            manager.organizationId === organizationId &&
+            manager.primaryBusinessUnitId != null &&
+            manager.primaryBusinessUnitId !== businessUnitId,
+        )
+      ) {
+        throw new ForbiddenException(
+          'Reporting managers must belong to the employee Business Unit.',
+        );
+      }
+    }
+
+    return managers;
+  }
+
   async create(
     createEmployeeDto: CreateEmployeeDto,
     user: AuthUser,
@@ -150,7 +247,7 @@ export class EmployeesService {
       )
     ) {
       throw new BadRequestException(
-        'Invalid department. Must be one of: Sales, Operations, Marketing, HR, Finance, Creative, IT, Engineering',
+        'Invalid department. Must be one of: Sales, Operations, Marketing, HR, Finance, Creative and Production, IT, Engineering',
       );
     }
 
@@ -159,6 +256,16 @@ export class EmployeesService {
       createEmployeeDto.password.length > 0;
 
     const userRole = (createEmployeeDto.role ?? Role.EMPLOYEE) as Role;
+    const reportingManagerIds = this.normalizeReportingManagerIds(
+      createEmployeeDto.managerIds,
+      createEmployeeDto.managerId,
+    );
+
+    if (reportingManagerIds !== undefined && !wantsLoginAccount) {
+      throw new BadRequestException(
+        'Reporting managers require an employee login account.',
+      );
+    }
 
     if (wantsLoginAccount) {
       if (!createEmployeeDto.email || !createEmployeeDto.email.trim()) {
@@ -178,34 +285,14 @@ export class EmployeesService {
         );
       }
 
-      if (createEmployeeDto.managerId) {
-        let managerUser = await this.prisma.user.findUnique({
-          where: { id: createEmployeeDto.managerId, organizationId },
-          select: { id: true, role: true },
-        });
-
-        if (!managerUser && callerIsPlatformAdmin) {
-          managerUser = await this.prisma.user.findUnique({
-            where: { id: createEmployeeDto.managerId },
-            select: { id: true, role: true },
-          });
-        }
-        if (!managerUser) {
-          throw new NotFoundException(
-            'Selected manager user not found in the organization.',
-          );
-        }
-
-        const allowedReportingRoles: Role[] = [
-          Role.MANAGER,
-          Role.ADMIN,
-          Role.SUPER_ADMIN,
-        ];
-        if (!allowedReportingRoles.includes(managerUser.role as Role)) {
-          throw new BadRequestException(
-            'Selected reporting manager must have MANAGER, ADMIN, or SUPER_ADMIN role.',
-          );
-        }
+      if (reportingManagerIds !== undefined) {
+        await this.validateReportingManagers(
+          reportingManagerIds,
+          organizationId,
+          user,
+          undefined,
+          createEmployeeDto.businessUnitId,
+        );
       }
 
       const existingUserByEmail = await this.prisma.user.findFirst({
@@ -292,7 +379,7 @@ export class EmployeesService {
             password: hashedPassword!,
             role: userRole,
             employeeId: employee.id,
-            managerId: createEmployeeDto.managerId ?? undefined,
+            managerId: reportingManagerIds?.[0],
             primaryBusinessUnitId:
               createEmployeeDto.businessUnitId ?? undefined,
             designation: createEmployeeDto.designation,
@@ -325,9 +412,34 @@ export class EmployeesService {
           },
         });
 
+        if (reportingManagerIds && reportingManagerIds.length > 0) {
+          await tx.userReportingManager.createMany({
+            data: reportingManagerIds.map((managerId) => ({
+              employeeId: createdUser.id,
+              managerId,
+            })),
+            skipDuplicates: true,
+          });
+        }
+
+        const responseUser = await tx.user.findUnique({
+          where: { id: createdUser.id },
+          select: {
+            id: true,
+            role: true,
+            managerId: true,
+            manager: { select: { id: true, name: true } },
+            reportingManagers: {
+              select: {
+                manager: { select: { id: true, name: true, role: true } },
+              },
+            },
+          },
+        });
+
         return {
           ...employee,
-          user: createdUser,
+          user: { ...createdUser, ...responseUser },
         };
       }
 
@@ -346,6 +458,11 @@ export class EmployeesService {
             id: true,
             managerId: true,
             manager: { select: { id: true, name: true } },
+            reportingManagers: {
+              select: {
+                manager: { select: { id: true, name: true, role: true } },
+              },
+            },
           },
         },
       },
@@ -365,6 +482,11 @@ export class EmployeesService {
             role: true,
             managerId: true,
             manager: { select: { id: true, name: true } },
+            reportingManagers: {
+              select: {
+                manager: { select: { id: true, name: true, role: true } },
+              },
+            },
           },
         },
       },
@@ -442,13 +564,57 @@ export class EmployeesService {
       });
     }
 
-    const data: Prisma.EmployeeUpdateInput = { ...updateEmployeeDto };
+    const reportingManagerIds = this.normalizeReportingManagerIds(
+      updateEmployeeDto.managerIds,
+      updateEmployeeDto.managerId,
+    );
+    const { managerIds: _managerIds, managerId: _managerId, ...employeeDto } =
+      updateEmployeeDto;
+    const data: Prisma.EmployeeUpdateInput = { ...employeeDto };
     if (updateEmployeeDto.hireDate) {
       data.hireDate = new Date(updateEmployeeDto.hireDate);
     }
-    const updated = await this.prisma.employee.update({
-      where: { id, organizationId },
-      data,
+    if (reportingManagerIds !== undefined) {
+      if (!employee.user?.id) {
+        throw new BadRequestException(
+          'Reporting managers require an employee login account.',
+        );
+      }
+      await this.validateReportingManagers(
+        reportingManagerIds,
+        organizationId,
+        user,
+        employee.user.id,
+        updateEmployeeDto.businessUnitId ?? employee.businessUnitId,
+      );
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.employee.update({
+        where: { id, organizationId },
+        data,
+      });
+
+      if (reportingManagerIds !== undefined && employee.user?.id) {
+        await tx.user.update({
+          where: { id: employee.user.id, organizationId },
+          data: { managerId: reportingManagerIds[0] ?? null },
+        });
+        await tx.userReportingManager.deleteMany({
+          where: { employeeId: employee.user.id },
+        });
+        if (reportingManagerIds.length > 0) {
+          await tx.userReportingManager.createMany({
+            data: reportingManagerIds.map((managerId) => ({
+              employeeId: employee.user!.id,
+              managerId,
+            })),
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      return result;
     });
 
     if (canPrivilegedEdit && updateEmployeeDto.designation !== undefined) {
@@ -458,7 +624,7 @@ export class EmployeesService {
       });
     }
 
-    return updated;
+    return this.findOne(id, user);
   }
 
   async remove(id: number, user: AuthUser) {
@@ -481,6 +647,11 @@ export class EmployeesService {
             id: true,
             managerId: true,
             manager: { select: { id: true, name: true } },
+            reportingManagers: {
+              select: {
+                manager: { select: { id: true, name: true, role: true } },
+              },
+            },
           },
         },
       },

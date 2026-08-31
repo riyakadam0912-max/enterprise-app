@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEmployeesByDepartment } from '@/hooks/useEmployees';
 
-const DEPT_COLUMNS = ['Sales', 'Operations', 'Marketing', 'HR', 'Finance', 'Creative', 'IT', 'Engineering'];
+const DEPT_COLUMNS = ['Sales', 'Operations', 'Marketing', 'HR', 'Finance', 'Creative and Production', 'IT', 'Engineering'];
 
 export default function DepartmentsPage() {
   const { grouped, loading, error } = useEmployeesByDepartment();

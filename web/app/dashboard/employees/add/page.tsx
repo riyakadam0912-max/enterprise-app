@@ -10,7 +10,7 @@ import { reportError } from '@/lib/error-handling';
 import { PasswordInput } from '@/components/ui/password-input';
 import { useAuthSession } from '@/stores/auth-store';
 
-const DEPARTMENTS = ['Sales', 'Operations', 'Marketing', 'HR', 'Finance', 'Creative', 'IT'] as const;
+const DEPARTMENTS = ['Sales', 'Operations', 'Marketing', 'HR', 'Finance', 'Creative and Production', 'IT'] as const;
 const ROLES = ['EMPLOYEE', 'MANAGER', 'HR'] as const;
 
 type CurrentUserRole = 'SUPER_ADMIN' | 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
@@ -39,7 +39,7 @@ export default function AddEmployeePage() {
     email: '',
     password: '',
     role: 'EMPLOYEE',
-    reportingManagerId: '',
+    reportingManagerIds: [] as string[],
   });
 
   useEffect(() => {
@@ -62,8 +62,8 @@ export default function AddEmployeePage() {
 
   const canCreateLogin = LOGIN_CREATION_ROLES.includes(currentRole);
   const selectedReportingManager = useMemo(
-    () => managerOptions.find((manager) => String(manager.id) === form.reportingManagerId) ?? null,
-    [form.reportingManagerId, managerOptions],
+    () => managerOptions.filter((manager) => form.reportingManagerIds.includes(String(manager.id))),
+    [form.reportingManagerIds, managerOptions],
   );
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
@@ -74,7 +74,7 @@ export default function AddEmployeePage() {
         return {
           ...prev,
           role: value,
-          reportingManagerId: value === 'MANAGER' ? '' : prev.reportingManagerId,
+          reportingManagerIds: value === 'MANAGER' ? [] : prev.reportingManagerIds,
         };
       }
 
@@ -91,7 +91,7 @@ export default function AddEmployeePage() {
       email: '',
       password: '',
       role: 'EMPLOYEE',
-      reportingManagerId: '',
+      reportingManagerIds: [],
     });
     setError(null);
   }
@@ -125,14 +125,17 @@ export default function AddEmployeePage() {
         department: form.department || undefined,
         designation: form.designation.trim() || undefined,
         hireDate: form.hireDate || undefined,
-        manager: selectedReportingManager?.name || undefined,
+        manager: selectedReportingManager.map((manager) => manager.name).join(', ') || undefined,
         status: 'Active',
         ...(canCreateLogin
           ? {
               password: form.password,
               role: form.role as 'EMPLOYEE' | 'MANAGER' | 'HR',
-              ...(form.reportingManagerId
-                ? { managerId: Number(form.reportingManagerId) }
+              ...(form.reportingManagerIds.length > 0
+                ? {
+                    managerId: Number(form.reportingManagerIds[0]),
+                    managerIds: form.reportingManagerIds.map(Number),
+                  }
                 : {}),
             }
           : {}),
@@ -286,12 +289,18 @@ export default function AddEmployeePage() {
                   <p className="text-xs text-slate-500 mb-1">(Optional — select a Super Admin, organization Admin, or organization Manager)</p>
                   <select
                     id="employee-reporting-manager"
-                    name="reportingManagerId"
-                    value={form.reportingManagerId}
-                    onChange={handleChange}
+                    name="reportingManagerIds"
+                    multiple
+                    value={form.reportingManagerIds}
+                    onChange={(event) => setForm((prev) => ({
+                      ...prev,
+                      reportingManagerIds: Array.from(
+                        event.target.selectedOptions,
+                        (option) => option.value,
+                      ),
+                    }))}
                     className={selectCls}
                   >
-                    <option value="">No manager</option>
                     {managerOptions.map((manager) => (
                       <option key={manager.id} value={manager.id}>
                         {manager.name} ({manager.role})
