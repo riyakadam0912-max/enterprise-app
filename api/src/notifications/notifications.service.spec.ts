@@ -65,4 +65,16 @@ describe('NotificationsService', () => {
       }),
     );
   });
+
+  it('returns empty notification counts when the user has no organization context', async () => {
+    prisma.user.findUnique.mockResolvedValue({ organizationId: null });
+
+    await expect(service.getCounts(42)).resolves.toEqual({
+      unreadCount: 0,
+      latestNotificationId: null,
+      latestNotificationCreatedAt: null,
+      latestReadAt: null,
+      syncCursor: expect.any(String),
+    });
+  });
 });

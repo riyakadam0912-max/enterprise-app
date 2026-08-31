@@ -1,12 +1,12 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Bell, ChevronRight, Menu, Search, Settings2, Sparkles } from 'lucide-react';
+import { ChevronRight, Menu, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 import { useAuthSession } from '@/stores/auth-store';
-import { Input } from '@/components/ui/input';
+import NotificationBell from '@/components/notifications/NotificationBell';
 
 const superAdminNavItems = [
   { label: 'Dashboard', href: '/super-admin/dashboard' },
@@ -61,18 +61,8 @@ export function SuperAdminHeader({ onMenuToggle }: { onMenuToggle: () => void })
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative min-w-55">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input placeholder="Search console" className="pl-9" />
-          </div>
           <div className="flex items-center gap-2">
-            <button type="button" className="rounded-2xl border border-slate-200 bg-white p-2.5 text-slate-600 transition hover:bg-slate-50" aria-label="Open settings">
-              <Settings2 className="h-4 w-4" />
-            </button>
-            <button type="button" className="relative rounded-2xl border border-slate-200 bg-white p-2.5 text-slate-600 transition hover:bg-slate-50" aria-label="Notifications">
-              <Bell className="h-4 w-4" />
-              <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-rose-500" />
-            </button>
+            <NotificationBell />
             <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">
                 {session.user?.name ? session.user.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase() : 'SA'}

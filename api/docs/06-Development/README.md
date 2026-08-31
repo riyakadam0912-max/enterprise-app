@@ -75,6 +75,18 @@ Use these scripts when validating seeded data, auth, dashboard access, leave wor
 - keep environment configuration aligned across local setup
 - avoid introducing documentation drift when changing runtime behavior
 
+## Organization feature validation
+
+When changing organization creation, editing, or hierarchy behavior, validate both packages from the repository root:
+
+```bash
+npm --prefix api run typecheck
+npm --prefix web run typecheck
+npm --prefix web run build
+```
+
+The organization UI is implemented in `web/app/dashboard/organization/page.tsx` and `web/src/components/super-admin/OrganizationCreateModal.tsx`. Shared country, state, city, timezone, and currency option builders are in `web/src/lib/geo-options.ts`. Organization update and delete authorization is enforced by the API service, not only by UI visibility.
+
 ## Related documents
 
 - [Administration](../05-Administration/README.md)

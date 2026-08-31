@@ -49,9 +49,10 @@ function createMockAuthUser(
 // Type assertion to ensure mock Prisma delegates are not undefined and have Jest mock properties
 function getPrismaDelegate(
   mockPrisma: ReturnType<typeof createMockPrismaService>,
-  delegate: keyof PrismaService,
+  delegate: string,
 ): DelegateMock {
-  return mockPrisma[delegate] as unknown as DelegateMock;
+  const record = mockPrisma as Record<string, unknown>;
+  return record[delegate] as unknown as DelegateMock;
 }
 
 describe('UsersService', () => {
@@ -466,7 +467,10 @@ describe('UsersService', () => {
 
   describe('resetPassword', () => {
     it('should hash and persist a new password within the authenticated tenant when a valid security code is provided', async () => {
-      const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 2, userId: 9 });
+      const authUser = createMockAuthUser(Role.ADMIN, {
+        organizationId: 2,
+        userId: 9,
+      });
       const userDelegate = getPrismaDelegate(mockPrisma, 'user');
 
       userDelegate.findFirst.mockResolvedValue({
@@ -496,7 +500,10 @@ describe('UsersService', () => {
     });
 
     it('should reject resetting a password for a user outside the tenant', async () => {
-      const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 2, userId: 9 });
+      const authUser = createMockAuthUser(Role.ADMIN, {
+        organizationId: 2,
+        userId: 9,
+      });
       const userDelegate = getPrismaDelegate(mockPrisma, 'user');
 
       userDelegate.findFirst.mockResolvedValue(null);
@@ -507,7 +514,11 @@ describe('UsersService', () => {
     });
 
     it('blocks self-service password resets for any role', async () => {
-      const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 2, userId: 9, id: 9 });
+      const authUser = createMockAuthUser(Role.ADMIN, {
+        organizationId: 2,
+        userId: 9,
+        id: 9,
+      });
       const userDelegate = getPrismaDelegate(mockPrisma, 'user');
       userDelegate.findFirst.mockResolvedValue({
         id: 9,
@@ -521,7 +532,11 @@ describe('UsersService', () => {
     });
 
     it('prevents admin users from resetting super admin accounts', async () => {
-      const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 2, userId: 9, id: 9 });
+      const authUser = createMockAuthUser(Role.ADMIN, {
+        organizationId: 2,
+        userId: 9,
+        id: 9,
+      });
       const userDelegate = getPrismaDelegate(mockPrisma, 'user');
       userDelegate.findFirst.mockResolvedValue({
         id: 20,

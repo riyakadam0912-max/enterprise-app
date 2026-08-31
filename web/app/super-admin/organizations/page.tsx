@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Building2, CheckCircle2, Pencil, Plus, Search } from 'lucide-react';
+import { Building2, CheckCircle2, ChevronDown, ChevronRight, Pencil, Plus, Search } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,6 +24,38 @@ function formatDate(value: string) {
   });
 }
 
+type OrganizationRow = { organization: Organization; depth: number; hasChildren: boolean };
+
+function flattenOrganizationTree(organizations: Organization[], visibleIds: Set<number>): OrganizationRow[] {
+  const byParent = new Map<number | null, Organization[]>();
+  for (const organization of organizations) {
+    const parentId = organization.parentId ?? null;
+    byParent.set(parentId, [...(byParent.get(parentId) ?? []), organization]);
+  }
+
+  const rows: OrganizationRow[] = [];
+  const visited = new Set<number>();
+  const visit = (parentId: number | null, depth: number) => {
+    for (const organization of byParent.get(parentId) ?? []) {
+      if (visited.has(organization.id) || !visibleIds.has(organization.id)) continue;
+      visited.add(organization.id);
+      const hasChildren = (byParent.get(organization.id) ?? []).some((child) => visibleIds.has(child.id));
+      rows.push({ organization, depth, hasChildren });
+      visit(organization.id, depth + 1);
+    }
+  };
+
+  visit(null, 0);
+  for (const organization of organizations) {
+    if (!visited.has(organization.id) && visibleIds.has(organization.id)) {
+      visited.add(organization.id);
+      rows.push({ organization, depth: 0, hasChildren: false });
+      visit(organization.id, 1);
+    }
+  }
+  return rows;
+}
+
 export default function SuperAdminOrganizations() {
   const router = useRouter();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -41,7 +73,7 @@ export default function SuperAdminOrganizations() {
     const loadOrganizations = async () => {
       try {
         setLoadError(null);
-        const data = await listOrganizations();
+        const data = await listOrganizations({ limit: 1000 });
         if (!active) return;
         setOrganizations(data);
       } catch (error: unknown) {
@@ -56,13 +88,22 @@ export default function SuperAdminOrganizations() {
     return () => { active = false; };
   }, []);
 
-  const filteredOrganizations = useMemo(() => {
+  const organizationRows = useMemo(() => {
     const normalizedQuery = search.trim().toLowerCase();
-    return organizations.filter((org) => {
+    const matches = organizations.filter((org) => {
       const matchesSearch = !normalizedQuery || [org.name, org.code, org.slug, org.status].join(' ').toLowerCase().includes(normalizedQuery);
       const matchesStatus = !statusFilter || org.status.toLowerCase() === statusFilter.toLowerCase();
       return matchesSearch && matchesStatus;
     });
+    const visibleIds = new Set(matches.map((organization) => organization.id));
+    for (const organization of matches) {
+      let parentId = organization.parentId ?? null;
+      while (parentId != null) {
+        visibleIds.add(parentId);
+        parentId = organizations.find((candidate) => candidate.id === parentId)?.parentId ?? null;
+      }
+    }
+    return flattenOrganizationTree(organizations, visibleIds);
   }, [organizations, search, statusFilter]);
 
   const handleOpenOrganization = (organizationId: number) => {
@@ -74,7 +115,7 @@ export default function SuperAdminOrganizations() {
     setLoading(true);
     try {
       setLoadError(null);
-      const data = await listOrganizations();
+      const data = await listOrganizations({ limit: 1000 });
       setOrganizations(data);
     } catch (error: unknown) {
       setOrganizations([]);
@@ -164,12 +205,13 @@ export default function SuperAdminOrganizations() {
             <tbody className="divide-y divide-slate-200/70">
               {loading ? (
                 <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-slate-500">Loading organizations…</td></tr>
-              ) : filteredOrganizations.length === 0 ? (
+              ) : organizationRows.length === 0 ? (
                 <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-slate-500">No organizations match your filters.</td></tr>
-              ) : filteredOrganizations.map((org) => (
+              ) : organizationRows.map(({ organization: org, depth, hasChildren }) => (
                 <tr key={org.id} className="transition hover:bg-slate-50/70">
                   <td className="px-4 py-4">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3" style={{ paddingLeft: `${depth * 28}px` }}>
+                      {hasChildren ? <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" /> : <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />}
                       <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-linear-to-br from-indigo-500 to-violet-500 text-sm font-semibold text-white">
                         {org.name.slice(0, 2).toUpperCase()}
                       </div>

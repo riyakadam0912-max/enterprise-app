@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useEmployee, editEmployee } from '@/hooks/useEmployees';
 import { apiClient } from '@/api/apiClient';
 import { requestPasswordResetCode, resetUserPassword } from '@/api/usersApi';
+import { MultiSelect, type MultiSelectOption } from '@/components/ui/multi-select';
 import { useAuthSession } from '@/stores/auth-store';
 
 const DEPARTMENTS = ['Sales', 'Finance', 'HR', 'IT', 'Operations', 'Marketing', 'Creative and Production', 'Legal', 'Other'];
@@ -32,7 +33,7 @@ export default function EditEmployeePage() {
     designation: '',
     hireDate: '',
     manager: '',
-    reportingManagerIds: [] as string[],
+    reportingManagerIds: [] as number[],
     leaveBalance: '',
     status: '',
   });
@@ -69,8 +70,10 @@ export default function EditEmployeePage() {
         designation: employee.designation ?? '',
         hireDate: employee.hireDate ? employee.hireDate.substring(0, 10) : '',
         manager: employee.manager ?? '',
-        reportingManagerIds: employee.user?.reportingManagers?.map(({ manager }) => String(manager.id)) ??
-          (employee.user?.managerId ? [String(employee.user.managerId)] : []),
+        reportingManagerIds: [
+          ...(employee.user?.reportingManagers?.map(({ manager }) => manager.id) ?? []),
+          ...(employee.user?.managerId && !employee.user.reportingManagers?.some((r) => r.manager.id === employee.user?.managerId) ? [employee.user.managerId] : []),
+        ],
         leaveBalance: employee.leaveBalance != null ? String(employee.leaveBalance) : '',
         status: employee.status ?? '',
       });
@@ -315,26 +318,16 @@ export default function EditEmployeePage() {
           {/* Reporting managers */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Reporting to</label>
-            <p className="text-xs text-slate-500 mb-1">Select one or more reporting managers.</p>
-            <select
-              name="reportingManagerIds"
-              multiple
-              value={form.reportingManagerIds}
-              onChange={(event) => setForm((prev) => ({
+            <p className="text-xs text-slate-500 mb-2">Select one or more reporting managers.</p>
+            <MultiSelect
+              options={managerOptions.map((m) => ({ value: m.id, label: `${m.name} (${m.role})` }))}
+              values={form.reportingManagerIds}
+              onChange={(values) => setForm((prev) => ({
                 ...prev,
-                reportingManagerIds: Array.from(
-                  event.target.selectedOptions,
-                  (option) => option.value,
-                ),
+                reportingManagerIds: values as number[],
               }))}
-              className={inputCls}
-            >
-              {managerOptions.map((manager) => (
-                <option key={manager.id} value={manager.id}>
-                  {manager.name} ({manager.role})
-                </option>
-              ))}
-            </select>
+              placeholder="Search and select managers…"
+            />
           </div>
 
           {/* Leave Balance */}

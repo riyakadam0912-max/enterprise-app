@@ -19,6 +19,14 @@ The documentation is now organized into a numbered structure that keeps the prod
 - Architecture, modules, administration, development, deployment, testing, and troubleshooting now follow a consistent structure
 - Historical implementation reports were separated into the archive
 
+## Organization management update
+
+- Added country-dependent state and state-dependent city selectors to organization forms.
+- Added country-aware timezone options with canonical `Asia/Kolkata` support for India.
+- Added organization editing through the shared organization form and update API.
+- Added Edit and Delete actions for child organizations with confirmation before soft deletion.
+- Restricted organization administrators to managing only direct child organizations while preserving platform administrator access.
+
 ## Related documents
 
 - [Troubleshooting guide](../09-Troubleshooting/README.md)

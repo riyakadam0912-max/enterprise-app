@@ -160,7 +160,7 @@ export class NotificationsService {
   private async resolveOrganizationId(
     userId: number,
     resolvedOrganizationId?: number | null,
-  ): Promise<number> {
+  ): Promise<number | null> {
     if (
       typeof resolvedOrganizationId === 'number' &&
       Number.isInteger(resolvedOrganizationId) &&
@@ -168,7 +168,17 @@ export class NotificationsService {
     ) {
       return resolvedOrganizationId;
     }
-    return this.getOrganizationIdFromUserId(userId);
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { organizationId: true },
+    });
+
+    if (!user || user.organizationId == null) {
+      return null;
+    }
+
+    return this.validateOrganization(user.organizationId);
   }
 
   private isSchemaDriftError(error: unknown): boolean {
@@ -227,6 +237,10 @@ export class NotificationsService {
               payload.organizationId,
             )
           : this.validateOrganization(payload.organizationId);
+
+    if (organizationId == null) {
+      return null;
+    }
 
     const recipientIds = normalizeRecipients(
       payload.recipientIds,
@@ -653,6 +667,21 @@ export class NotificationsService {
         userId,
         resolvedOrganizationId,
       );
+      if (organizationId == null) {
+        return {
+          items: [],
+          unreadCount: 0,
+          meta: {
+            page: 1,
+            limit: 20,
+            total: 0,
+            totalPages: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+          },
+          syncCursor: new Date().toISOString(),
+        };
+      }
       const sinceDate = new Date(sinceISO);
       if (Number.isNaN(sinceDate.getTime())) {
         return this.findAll(userId, { page: 1, limit: 20 }, organizationId);
@@ -726,6 +755,15 @@ export class NotificationsService {
         userId,
         resolvedOrganizationId,
       );
+      if (organizationId == null) {
+        return {
+          unreadCount: 0,
+          latestNotificationId: null,
+          latestNotificationCreatedAt: null,
+          latestReadAt: null,
+          syncCursor: new Date().toISOString(),
+        };
+      }
       const unreadCountPromise = this.prisma.notificationRecipient.count({
         where: { userId, organizationId, isRead: false },
       });
@@ -779,6 +817,19 @@ export class NotificationsService {
         userId,
         resolvedOrganizationId,
       );
+      if (organizationId == null) {
+        return {
+          items: [],
+          meta: {
+            page: Math.max(1, Number(query.page ?? 1)),
+            limit: Math.min(50, Math.max(1, Number(query.limit ?? 20))),
+            total: 0,
+            totalPages: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+          },
+        };
+      }
       const page = Math.max(1, Number(query.page ?? 1));
       const limit = Math.min(50, Math.max(1, Number(query.limit ?? 20)));
       const skip = (page - 1) * limit;
@@ -848,6 +899,9 @@ export class NotificationsService {
         userId,
         resolvedOrganizationId,
       );
+      if (organizationId == null) {
+        return { count: 0 };
+      }
       const count = await this.prisma.notificationRecipient.count({
         where: { userId, organizationId, isRead: false },
       });
@@ -869,6 +923,9 @@ export class NotificationsService {
       userId,
       resolvedOrganizationId,
     );
+    if (organizationId == null) {
+      throw new NotFoundException(`Notification #${id} not found`);
+    }
     const recipient = await this.prisma.notificationRecipient.updateMany({
       where: { notificationId: id, userId, organizationId, isRead: false },
       data: { isRead: true, readAt: new Date(), status: 'READ' },
@@ -887,10 +944,13 @@ export class NotificationsService {
 
   async markAllRead(userId: number, resolvedOrganizationId?: number | null) {
     try {
-      const organizationId =
-        resolvedOrganizationId != null
-          ? this.validateOrganization(resolvedOrganizationId)
-          : await this.getOrganizationIdFromUserId(userId);
+      const organizationId = await this.resolveOrganizationId(
+        userId,
+        resolvedOrganizationId,
+      );
+      if (organizationId == null) {
+        return { count: 0 };
+      }
       const result = await this.prisma.notificationRecipient.updateMany({
         where: { userId, organizationId, isRead: false },
         data: { isRead: true, readAt: new Date(), status: 'READ' },
@@ -912,10 +972,13 @@ export class NotificationsService {
     userId: number,
     resolvedOrganizationId?: number | null,
   ) {
-    const organizationId =
-      resolvedOrganizationId != null
-        ? this.validateOrganization(resolvedOrganizationId)
-        : await this.getOrganizationIdFromUserId(userId);
+    const organizationId = await this.resolveOrganizationId(
+      userId,
+      resolvedOrganizationId,
+    );
+    if (organizationId == null) {
+      throw new NotFoundException(`Notification #${id} not found`);
+    }
     const deleted = await this.prisma.notificationRecipient.deleteMany({
       where: { notificationId: id, userId, organizationId },
     });
@@ -938,10 +1001,22 @@ export class NotificationsService {
   }
 
   async getPreferences(userId: number, resolvedOrganizationId?: number | null) {
-    const organizationId =
-      resolvedOrganizationId != null
-        ? this.validateOrganization(resolvedOrganizationId)
-        : await this.getOrganizationIdFromUserId(userId);
+    const organizationId = await this.resolveOrganizationId(
+      userId,
+      resolvedOrganizationId,
+    );
+    if (organizationId == null) {
+      return {
+        userId,
+        emailEnabled: true,
+        pushEnabled: true,
+        inAppEnabled: true,
+        mentionNotifications: true,
+        approvalNotifications: true,
+        reminderNotifications: true,
+        criticalBypassMute: true,
+      };
+    }
     return this.prisma.notificationPreference.upsert({
       where: { userId },
       update: {},
@@ -954,10 +1029,23 @@ export class NotificationsService {
     dto: UpdateNotificationPreferencesDto,
     resolvedOrganizationId?: number | null,
   ) {
-    const organizationId =
-      resolvedOrganizationId != null
-        ? this.validateOrganization(resolvedOrganizationId)
-        : await this.getOrganizationIdFromUserId(userId);
+    const organizationId = await this.resolveOrganizationId(
+      userId,
+      resolvedOrganizationId,
+    );
+    if (organizationId == null) {
+      return {
+        userId,
+        ...dto,
+        emailEnabled: dto.emailEnabled ?? true,
+        pushEnabled: dto.pushEnabled ?? true,
+        inAppEnabled: dto.inAppEnabled ?? true,
+        mentionNotifications: dto.mentionNotifications ?? true,
+        approvalNotifications: dto.approvalNotifications ?? true,
+        reminderNotifications: dto.reminderNotifications ?? true,
+        criticalBypassMute: dto.criticalBypassMute ?? true,
+      };
+    }
     return this.prisma.notificationPreference.upsert({
       where: { userId },
       update: { ...dto },
@@ -974,6 +1062,11 @@ export class NotificationsService {
       userId,
       resolvedOrganizationId,
     );
+    if (organizationId == null) {
+      throw new NotFoundException(
+        `Notification #${notificationId} not found`,
+      );
+    }
     const row = await this.prisma.notificationRecipient.findFirst({
       where: { notificationId, userId, organizationId },
       include: { notification: true },

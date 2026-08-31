@@ -8,6 +8,7 @@ import { apiClient } from '@/api/apiClient';
 import { canAccessUsers } from '@/utils/auth/permissions';
 import { reportError } from '@/lib/error-handling';
 import { PasswordInput } from '@/components/ui/password-input';
+import { MultiSelect, type MultiSelectOption } from '@/components/ui/multi-select';
 import { useAuthSession } from '@/stores/auth-store';
 
 const DEPARTMENTS = ['Sales', 'Operations', 'Marketing', 'HR', 'Finance', 'Creative and Production', 'IT'] as const;
@@ -39,7 +40,7 @@ export default function AddEmployeePage() {
     email: '',
     password: '',
     role: 'EMPLOYEE',
-    reportingManagerIds: [] as string[],
+    reportingManagerIds: [] as number[],
   });
 
   useEffect(() => {
@@ -62,7 +63,7 @@ export default function AddEmployeePage() {
 
   const canCreateLogin = LOGIN_CREATION_ROLES.includes(currentRole);
   const selectedReportingManager = useMemo(
-    () => managerOptions.filter((manager) => form.reportingManagerIds.includes(String(manager.id))),
+    () => managerOptions.filter((manager) => form.reportingManagerIds.includes(manager.id)),
     [form.reportingManagerIds, managerOptions],
   );
 
@@ -133,8 +134,8 @@ export default function AddEmployeePage() {
               role: form.role as 'EMPLOYEE' | 'MANAGER' | 'HR',
               ...(form.reportingManagerIds.length > 0
                 ? {
-                    managerId: Number(form.reportingManagerIds[0]),
-                    managerIds: form.reportingManagerIds.map(Number),
+                    managerId: form.reportingManagerIds[0],
+                    managerIds: form.reportingManagerIds,
                   }
                 : {}),
             }
@@ -286,27 +287,16 @@ export default function AddEmployeePage() {
 
               <div>
                   <label htmlFor="employee-reporting-manager" className="block text-sm font-medium text-slate-700 mb-1">Reporting to</label>
-                  <p className="text-xs text-slate-500 mb-1">(Optional — select a Super Admin, organization Admin, or organization Manager)</p>
-                  <select
-                    id="employee-reporting-manager"
-                    name="reportingManagerIds"
-                    multiple
-                    value={form.reportingManagerIds}
-                    onChange={(event) => setForm((prev) => ({
+                  <p className="text-xs text-slate-500 mb-2">(Optional — select Super Admin, organization Admin, or organization Manager)</p>
+                  <MultiSelect
+                    options={managerOptions.map((m) => ({ value: m.id, label: `${m.name} (${m.role})` }))}
+                    values={form.reportingManagerIds}
+                    onChange={(values) => setForm((prev) => ({
                       ...prev,
-                      reportingManagerIds: Array.from(
-                        event.target.selectedOptions,
-                        (option) => option.value,
-                      ),
+                      reportingManagerIds: values as number[],
                     }))}
-                    className={selectCls}
-                  >
-                    {managerOptions.map((manager) => (
-                      <option key={manager.id} value={manager.id}>
-                        {manager.name} ({manager.role})
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="Search and select managers…"
+                  />
               </div>
             </div>
           </div>
