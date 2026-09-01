@@ -7,7 +7,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "npx prisma generate && npx nest build",
-    "build:vercel": "npx prisma generate && npx prisma migrate deploy && npx nest build",
+    "build:vercel": "npx prisma generate && npx nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "dev": "node scripts/dev.js",
     "start:dev": "npm run dev",
