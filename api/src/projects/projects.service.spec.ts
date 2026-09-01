@@ -85,15 +85,31 @@ describe('ProjectsService', () => {
 
   it('preserves canonical project statuses instead of silently flattening them to ACTIVE', () => {
     // Legacy status mappings
-    expect((service as any).normalizeProjectStatus('PLANNED')).toBe('NOT_STARTED');
-    expect((service as any).normalizeProjectStatus('ACTIVE')).toBe('IN_PROGRESS');
-    expect((service as any).normalizeProjectStatus('IN PROGRESS')).toBe('IN_PROGRESS');
-    expect((service as any).normalizeProjectStatus('ON HOLD')).toBe('BLOCKED_CANCELLED');
+    expect((service as any).normalizeProjectStatus('PLANNED')).toBe(
+      'NOT_STARTED',
+    );
+    expect((service as any).normalizeProjectStatus('ACTIVE')).toBe(
+      'IN_PROGRESS',
+    );
+    expect((service as any).normalizeProjectStatus('IN PROGRESS')).toBe(
+      'IN_PROGRESS',
+    );
+    expect((service as any).normalizeProjectStatus('ON HOLD')).toBe(
+      'BLOCKED_CANCELLED',
+    );
     // New canonical statuses
-    expect((service as any).normalizeProjectStatus('NOT_STARTED')).toBe('NOT_STARTED');
-    expect((service as any).normalizeProjectStatus('IN_APPROVAL')).toBe('IN_APPROVAL');
-    expect((service as any).normalizeProjectStatus('POSTPONED')).toBe('POSTPONED');
-    expect((service as any).normalizeProjectStatus('COMPLETED')).toBe('COMPLETED');
+    expect((service as any).normalizeProjectStatus('NOT_STARTED')).toBe(
+      'NOT_STARTED',
+    );
+    expect((service as any).normalizeProjectStatus('IN_APPROVAL')).toBe(
+      'IN_APPROVAL',
+    );
+    expect((service as any).normalizeProjectStatus('POSTPONED')).toBe(
+      'POSTPONED',
+    );
+    expect((service as any).normalizeProjectStatus('COMPLETED')).toBe(
+      'COMPLETED',
+    );
   });
 
   describe('create', () => {
@@ -119,13 +135,17 @@ describe('ProjectsService', () => {
 
     it('should create project successfully when manager is not provided (manager is now optional)', async () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
-      projectDelegate.create.mockResolvedValueOnce({ id: 1, projectName: 'Test Project', organizationId: mockAdminUser.organizationId });
-      
+      projectDelegate.create.mockResolvedValueOnce({
+        id: 1,
+        projectName: 'Test Project',
+        organizationId: mockAdminUser.organizationId,
+      });
+
       const result = await service.create(
         { projectName: 'Test Project' } as CreateProjectDto,
         mockAdminUser,
       );
-      
+
       expect(result).toBeDefined();
       expect(result.id).toBe(1);
     });
@@ -290,6 +310,37 @@ describe('ProjectsService', () => {
         expect.objectContaining({ where: {} }),
       );
     });
+
+    it('should resolve project membership from the linked employee when User.employeeId is missing', async () => {
+      const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+
+      userDelegate.findUnique.mockResolvedValueOnce({
+        id: 3,
+        role: Role.EMPLOYEE,
+        managerId: null,
+        employeeId: null,
+      });
+      employeeDelegate.findFirst.mockResolvedValueOnce({ id: 101 });
+      projectDelegate.findMany.mockResolvedValueOnce([]);
+
+      await service.findAll(mockEmployeeUser);
+
+      expect(projectDelegate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            AND: expect.arrayContaining([
+              expect.objectContaining({
+                OR: expect.arrayContaining([
+                  { assignedEmployees: { some: { id: 101 } } },
+                ]),
+              }),
+            ]),
+          }),
+        }),
+      );
+    });
   });
 
   describe('findOne', () => {
@@ -349,7 +400,9 @@ describe('ProjectsService', () => {
 
       const result = await service.findOne(1, mockAdminUser);
       // Status is normalized when retrieved
-      const normalizedStatus = (service as any).normalizeProjectStatus(mockProject.status);
+      const normalizedStatus = (service as any).normalizeProjectStatus(
+        mockProject.status,
+      );
       expect(result).toEqual({
         ...mockProject,
         status: normalizedStatus,

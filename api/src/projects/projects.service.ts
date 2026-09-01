@@ -118,6 +118,25 @@ export class ProjectsService {
     return scopedUser;
   }
 
+  private async resolveEmployeeId(
+    user: AuthUser,
+    scopedUser: { employeeId: number | null },
+  ): Promise<number | null> {
+    if (scopedUser.employeeId != null) {
+      return scopedUser.employeeId;
+    }
+
+    const employee = await this.db.employee.findFirst({
+      where: {
+        organizationId: this.validateOrganization(user),
+        user: { id: user.userId },
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    return employee?.id ?? null;
+  }
+
   private async getProjectAccessWhere(
     user: AuthUser,
   ): Promise<Prisma.ProjectWhereInput> {
@@ -144,20 +163,21 @@ export class ProjectsService {
       };
     } else {
       const scopedUser = await this.getScopedUser(user);
-      if (!scopedUser.employeeId) {
+      const employeeId = await this.resolveEmployeeId(user, scopedUser);
+      if (!employeeId) {
         roleWhere = { ...baseWhere, id: -1 };
       } else {
         roleWhere = {
           ...baseWhere,
           OR: [
             { managerId: scopedUser.managerId },
-            { assignedEmployees: { some: { id: scopedUser.employeeId } } },
+            { assignedEmployees: { some: { id: employeeId } } },
             {
               tasks: {
                 some: {
                   OR: [
                     { assignedToUserId: user.userId },
-                    { assignedToId: scopedUser.employeeId },
+                    { assignedToId: employeeId },
                   ],
                 },
               },
