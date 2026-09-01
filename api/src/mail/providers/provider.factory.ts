@@ -273,18 +273,6 @@ export class EmailProviderFactory {
       }
 
       if (isProduction) {
-        const smtpHost = (
-          this.configService.get<string>('SMTP_HOST') ?? ''
-        ).toLowerCase();
-        if (
-          provider === 'nodemailer' &&
-          (smtpHost.includes('mailtrap') || smtpHost.includes('sandbox'))
-        ) {
-          throw new Error(
-            'Production environment cannot use Mailtrap or sandbox SMTP configuration.',
-          );
-        }
-
         const placeholderChecks = [
           this.configService.get<string>('SENDGRID_API_KEY'),
           this.configService.get<string>('RESEND_API_KEY'),

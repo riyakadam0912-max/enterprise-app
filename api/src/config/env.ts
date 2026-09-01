@@ -313,14 +313,6 @@ export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
         'Production email provider cannot be NONE. Configure RESEND, SENDGRID, or SES.',
       );
     }
-    if (emailProvider.toLowerCase() === 'nodemailer') {
-      const smtpHost = normalizeEnvString(env.SMTP_HOST)?.toLowerCase() ?? '';
-      if (smtpHost.includes('mailtrap') || smtpHost.includes('sandbox')) {
-        throw new Error(
-          'Production environment cannot use Mailtrap or sandbox SMTP.',
-        );
-      }
-    }
   }
 
   const COOKIE_SECURE = readOptionalBoolean(
