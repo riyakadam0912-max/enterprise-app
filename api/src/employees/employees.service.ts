@@ -383,6 +383,22 @@ export class EmployeesService {
       );
     }
 
+    if (createEmployeeDto.shiftId !== undefined) {
+      const shift = await this.prisma.shift.findFirst({
+        where: {
+          id: createEmployeeDto.shiftId,
+          organizationId,
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      if (!shift) {
+        throw new NotFoundException(
+          'Selected shift not found or is inactive in the organization.',
+        );
+      }
+    }
+
     const hashedPassword = wantsLoginAccount
       ? await hashPassword(createEmployeeDto.password!)
       : null;
@@ -404,6 +420,9 @@ export class EmployeesService {
           status: createEmployeeDto.status,
           businessUnit: createEmployeeDto.businessUnitId
             ? { connect: { id: createEmployeeDto.businessUnitId } }
+            : undefined,
+          shift: createEmployeeDto.shiftId
+            ? { connect: { id: createEmployeeDto.shiftId } }
             : undefined,
         },
         include: { user: true },
@@ -626,6 +645,27 @@ export class EmployeesService {
     const { managerIds: _managerIds, managerId: _managerId, ...employeeDto } =
       updateEmployeeDto;
     const data: Prisma.EmployeeUpdateInput = { ...employeeDto };
+    if (updateEmployeeDto.shiftId !== undefined) {
+      if (updateEmployeeDto.shiftId === null) {
+        data.shift = { disconnect: true };
+      } else {
+      const shift = await this.prisma.shift.findFirst({
+        where: {
+          id: updateEmployeeDto.shiftId,
+          organizationId,
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      if (!shift) {
+        throw new NotFoundException(
+          'Selected shift not found or is inactive in the organization.',
+        );
+      }
+      data.shift = { connect: { id: shift.id } };
+      }
+      delete (data as { shiftId?: number | null }).shiftId;
+    }
     if (updateEmployeeDto.hireDate) {
       data.hireDate = new Date(updateEmployeeDto.hireDate);
     }

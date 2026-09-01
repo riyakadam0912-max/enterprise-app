@@ -284,7 +284,7 @@ export default function AttendancePage() {
     name: authSession.user?.name ?? 'User',
   };
   const isAdmin = session.role !== 'EMPLOYEE';
-  const canManageShifts = session.role === 'ADMIN' || session.role === 'HR';
+  const canManageShifts = session.role === 'SUPER_ADMIN' || session.role === 'ADMIN' || session.role === 'HR';
   const initialPage = Number(searchParams.get('page')) || 1;
   const initialLimit = Number(searchParams.get('limit')) || 10;
   const [page, setPage] = useState(initialPage);

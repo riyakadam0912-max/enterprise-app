@@ -10,6 +10,7 @@ import { reportError } from '@/lib/error-handling';
 import { PasswordInput } from '@/components/ui/password-input';
 import { MultiSelect, type MultiSelectOption } from '@/components/ui/multi-select';
 import { useAuthSession } from '@/stores/auth-store';
+import { getShifts, type ShiftRecord } from '@/api/attendanceApi';
 
 const DEPARTMENTS = ['Sales', 'Operations', 'Marketing', 'HR', 'Finance', 'Creative and Production', 'IT'] as const;
 const ROLES = ['EMPLOYEE', 'MANAGER', 'HR'] as const;
@@ -30,6 +31,7 @@ export default function AddEmployeePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [managerOptions, setManagerOptions] = useState<ManagerOption[]>([]);
+  const [shifts, setShifts] = useState<ShiftRecord[]>([]);
   const currentRole: CurrentUserRole = auth.role as CurrentUserRole;
 
   const [form, setForm] = useState({
@@ -41,6 +43,7 @@ export default function AddEmployeePage() {
     password: '',
     role: 'EMPLOYEE',
     reportingManagerIds: [] as number[],
+    shiftId: '',
   });
 
   useEffect(() => {
@@ -55,6 +58,8 @@ export default function AddEmployeePage() {
         reportError(error, 'Unable to load manager options');
         setManagerOptions([]);
       });
+
+    getShifts().then(setShifts).catch(() => setShifts([]));
 
   }, [auth.organizationId, currentRole]);
 
@@ -93,6 +98,7 @@ export default function AddEmployeePage() {
       password: '',
       role: 'EMPLOYEE',
       reportingManagerIds: [],
+      shiftId: '',
     });
     setError(null);
   }
@@ -128,6 +134,7 @@ export default function AddEmployeePage() {
         hireDate: form.hireDate || undefined,
         manager: selectedReportingManager.map((manager) => manager.name).join(', ') || undefined,
         status: 'Active',
+        shiftId: form.shiftId ? Number(form.shiftId) : undefined,
         ...(canCreateLogin
           ? {
               password: form.password,
@@ -229,6 +236,16 @@ export default function AddEmployeePage() {
               onChange={handleChange}
               className={inputCls}
             />
+          </div>
+
+          <div>
+            <label htmlFor="employee-shift" className="block text-sm font-medium text-slate-700 mb-1">Assigned Shift</label>
+            <select id="employee-shift" name="shiftId" value={form.shiftId} onChange={handleChange} className={selectCls}>
+              <option value="">-Unassigned-</option>
+              {shifts.filter((shift) => shift.isActive !== false).map((shift) => (
+                <option key={shift.id} value={shift.id}>{shift.name} ({shift.type})</option>
+              ))}
+            </select>
           </div>
 
           <div className="border-t border-slate-200 pt-5">

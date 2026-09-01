@@ -106,4 +106,13 @@ export class CreateEmployeeDto {
     description: 'Optional Business Unit ID for the employee.',
   })
   businessUnitId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @ApiPropertyOptional({
+    example: 1,
+    description: 'Optional active shift ID in the employee organization.',
+  })
+  shiftId?: number;
 }

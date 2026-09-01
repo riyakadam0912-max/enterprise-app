@@ -8,6 +8,7 @@ import { apiClient } from '@/api/apiClient';
 import { requestPasswordResetCode, resetUserPassword } from '@/api/usersApi';
 import { MultiSelect, type MultiSelectOption } from '@/components/ui/multi-select';
 import { useAuthSession } from '@/stores/auth-store';
+import { getShifts, type ShiftRecord } from '@/api/attendanceApi';
 
 const DEPARTMENTS = ['Sales', 'Finance', 'HR', 'IT', 'Operations', 'Marketing', 'Creative and Production', 'Legal', 'Other'];
 const STATUSES = ['Active', 'On Leave', 'Resigned', 'Terminated'];
@@ -36,10 +37,12 @@ export default function EditEmployeePage() {
     reportingManagerIds: [] as number[],
     leaveBalance: '',
     status: '',
+    shiftId: '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [managerOptions, setManagerOptions] = useState<ManagerOption[]>([]);
+  const [shifts, setShifts] = useState<ShiftRecord[]>([]);
   const [resetState, setResetState] = useState({
     password: '',
     securityCode: '',
@@ -58,6 +61,7 @@ export default function EditEmployeePage() {
     apiClient<ManagerOption[]>('/users/reporting-managers')
       .then(setManagerOptions)
       .catch(() => setManagerOptions([]));
+    getShifts().then(setShifts).catch(() => setShifts([]));
   }, [authSession.organizationId]);
 
   useEffect(() => {
@@ -76,6 +80,7 @@ export default function EditEmployeePage() {
         ],
         leaveBalance: employee.leaveBalance != null ? String(employee.leaveBalance) : '',
         status: employee.status ?? '',
+        shiftId: employee.shift?.id ? String(employee.shift.id) : '',
       });
     }
   }, [employee]);
@@ -106,6 +111,7 @@ export default function EditEmployeePage() {
         managerIds: form.reportingManagerIds.map(Number),
         leaveBalance: form.leaveBalance ? Number(form.leaveBalance) : undefined,
         status: form.status || undefined,
+        shiftId: form.shiftId ? Number(form.shiftId) : null,
       });
       router.push('/dashboard/employees');
     } catch (err) {
@@ -338,12 +344,12 @@ export default function EditEmployeePage() {
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Assigned Shift</label>
-            <input
-              type="text"
-              value={employee?.shift ? `${employee.shift.name} (${employee.shift.type})` : 'Unassigned'}
-              readOnly
-              className={`${inputCls} bg-slate-50 text-slate-600`}
-            />
+            <select name="shiftId" value={form.shiftId} onChange={handleChange} className={inputCls}>
+              <option value="">-Unassigned-</option>
+              {shifts.filter((shift) => shift.isActive !== false).map((shift) => (
+                <option key={shift.id} value={shift.id}>{shift.name} ({shift.type})</option>
+              ))}
+            </select>
           </div>
 
           {/* Status */}

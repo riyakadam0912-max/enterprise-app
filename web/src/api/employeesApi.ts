@@ -19,7 +19,7 @@ export interface CreateEmployeePayload {
   role?: EmployeeRole;
   managerId?: number;
   managerIds?: number[];
-  shiftId?: number;
+  shiftId?: number | null;
   businessUnitId?: number;
 }
 
