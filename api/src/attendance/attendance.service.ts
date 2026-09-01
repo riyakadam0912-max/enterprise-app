@@ -956,12 +956,20 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     const buScope = await this.businessUnitsService.resolveScope(user as any);
     const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
+    const employeeWhere =
+      user.role === Role.EMPLOYEE
+        ? {
+            id: employeeId,
+            organizationId: user.organizationId,
+            deletedAt: null,
+          }
+        : {
+            id: employeeId,
+            ...this.buildOrganizationScope(user),
+            ...buWhere,
+          };
     const employee = await this.prisma.employee.findFirst({
-      where: {
-        id: employeeId,
-        ...this.buildOrganizationScope(user),
-        ...buWhere,
-      },
+      where: employeeWhere,
       include: { shift: true },
     });
 
