@@ -169,16 +169,11 @@ export default function AddProjectPage() {
               className={field}
               value={form.ownerId}
               onChange={(e) => {
-                const selected = managerOptions.find((manager) => String(manager.id) === e.target.value);
                 set('ownerId', e.target.value);
-                if (selected?.role === 'MANAGER') {
-                  set('managerId', e.target.value);
-                  set('manager', selected.name);
-                }
               }}
             >
               <option value="">-No owner assigned-</option>
-              {managerOptions.map((manager) => (
+              {managerOptions.filter((manager) => ['SUPER_ADMIN', 'ADMIN'].includes(manager.role)).map((manager) => (
                 <option key={manager.id} value={manager.id}>
                   {manager.name} ({manager.role}){manager.id === session.userId ? ' (You)' : ''}
                 </option>
