@@ -50,6 +50,7 @@ export class ProjectsService {
     actorUserId: number,
     action: string,
     details: string,
+    additionalRecipientIds: number[] = [],
   ) {
     if (!this.notificationsService) return;
     const recipients = await this.db.user.findMany({
@@ -59,7 +60,14 @@ export class ProjectsService {
       },
       select: { id: true },
     });
-    const recipientIds = Array.from(new Set(recipients.map(({ id }) => id)));
+    const recipientIds = Array.from(
+      new Set([
+        ...recipients.map(({ id }) => id),
+        ...additionalRecipientIds.filter(
+          (id) => Number.isInteger(id) && id > 0,
+        ),
+      ]),
+    );
     if (recipientIds.length === 0) return;
     await this.notificationsService.sendNotification({
       recipientIds,
@@ -702,6 +710,7 @@ export class ProjectsService {
 
     const employee = await this.db.employee.findFirst({
       where: { id: employeeId, organizationId, deletedAt: null },
+      include: { user: { select: { id: true } } },
     });
     if (!employee) {
       throw new NotFoundException('Employee not found');
@@ -742,6 +751,7 @@ export class ProjectsService {
       requestingUser.userId,
       'team updated',
       `Employee ${employee.name || `#${employee.id}`} assigned to the project.`,
+      employee.user?.id ? [employee.user.id] : [],
     );
     return updated;
   }
