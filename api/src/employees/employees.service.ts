@@ -515,8 +515,13 @@ export class EmployeesService {
 
   async findOne(id: number, user: AuthUser) {
     const where = await this.getScope(user);
+    const requestedEmployeeId = this.isWideScoped(user)
+      ? id
+      : user.role === Role.EMPLOYEE
+        ? await this.resolveCurrentEmployeeId(user)
+        : id;
     const employee = await this.prisma.employee.findFirst({
-      where: { id, ...(where ?? {}) },
+      where: { id: requestedEmployeeId, ...(where ?? {}) },
       include: {
         shift: true,
         user: {
