@@ -471,7 +471,8 @@ function EmployeeDashboard({ session }: { session: Session }) {
   const myTasks = useMemo(() => sortByDueDate(tasks.filter((task) => task.assignedToUserId === session.employeeId || task.assignedToUser?.id === session.userId)), [session.employeeId, session.userId, tasks]);
   const openTasks = useMemo(() => myTasks.filter(isTaskActive).length, [myTasks]);
   const leaveBalance = employee?.leaveBalance ?? 0;
-  const canCheckIn = !attendance?.checkIn;
+  const hasAssignedShift = Boolean(attendance?.shiftDetails);
+  const canCheckIn = !attendance?.checkIn && hasAssignedShift;
   const canCheckOut = Boolean(attendance?.checkIn && !attendance?.checkOut);
 
   const handleAttendanceAction = useCallback(async (mode: 'check-in' | 'check-out') => {
@@ -536,6 +537,7 @@ function EmployeeDashboard({ session }: { session: Session }) {
         <div className="space-y-6">
           <Panel title="Attendance Toggle" description="Use this card to check in or check out quickly.">
             <div className="space-y-4">
+              {!hasAssignedShift ? <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Assign an active flexible or fixed shift before checking in.</div> : null}
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Check In</p>

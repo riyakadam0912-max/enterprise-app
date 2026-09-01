@@ -630,7 +630,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const employee = await this.ensureEmployee(employeeId, user);
 
     if (!employee.shift) {
-      throw new BadRequestException('Employee has no active shift assigned');
+      throw new BadRequestException(
+        'Assign an active flexible or fixed shift before checking in',
+      );
     }
 
     const checkInTime = dto.timestamp ? new Date(dto.timestamp) : new Date();
