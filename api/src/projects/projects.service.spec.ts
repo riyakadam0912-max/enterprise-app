@@ -324,6 +324,12 @@ describe('ProjectsService', () => {
       });
       employeeDelegate.findFirst.mockResolvedValueOnce({ id: 101 });
       projectDelegate.findMany.mockResolvedValueOnce([]);
+      jest
+        .spyOn((service as any).businessUnitsService, 'buildDirectBUWhere')
+        .mockReturnValue({
+          organizationId: 1,
+          businessUnitId: { in: [10] },
+        });
 
       await service.findAll(mockEmployeeUser);
 
