@@ -325,6 +325,9 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @Get('me')
   async getCurrentUser(@Req() req: AuthenticatedRequest) {
+    const resolvedEmployeeId = await this.authService.reconcileUserEmployeeLink(
+      req.user,
+    );
     const tokenOrgId = req.user.organizationId ?? null;
     const activeOrgId =
       typeof req.organizationId === 'number' ? req.organizationId : tokenOrgId;
@@ -358,7 +361,7 @@ export class AuthController {
       role: req.user.role ?? Role.EMPLOYEE,
       roles: req.user.roles ?? [],
       permissions: req.user.permissions ?? [],
-      employeeId: req.user.employeeId ?? null,
+      employeeId: resolvedEmployeeId,
       organizationId: activeOrgId,
       organizationSlug: orgSlug,
       organizationName: orgName,

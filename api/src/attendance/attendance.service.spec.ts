@@ -271,6 +271,7 @@ describe('AttendanceService', () => {
       employeeId: 7,
     };
 
+    prisma.employee.findFirst.mockResolvedValue({ id: 7 } as any);
     prisma.employee.findMany
       .mockResolvedValueOnce([{ id: 8 }])
       .mockResolvedValueOnce([
@@ -303,6 +304,7 @@ describe('AttendanceService', () => {
       employeeId: 7,
     };
 
+    prisma.employee.findFirst.mockResolvedValue({ id: 7 } as any);
     jest.spyOn(service, 'getToday').mockResolvedValue({
       date: '2026-03-13T00:00:00.000Z',
       summary: {

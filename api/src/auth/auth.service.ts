@@ -290,7 +290,9 @@ export class AuthService {
     };
   }
 
-  private async reconcileUserEmployeeLink(user: UserWithRoles) {
+  async reconcileUserEmployeeLink(
+    user: Pick<UserWithRoles, 'id' | 'email' | 'employeeId' | 'organizationId'>,
+  ) {
     const organizationId = user.organizationId ?? null;
     if (organizationId == null) {
       return user.employeeId ?? null;

@@ -305,12 +305,23 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async resolveCurrentEmployeeId(user: AttendanceUser) {
-    if (user.employeeId) {
-      return user.employeeId;
+    if (user.employeeId != null) {
+      const linkedEmployee = await this.prisma.employee.findFirst({
+        where: {
+          id: user.employeeId,
+          organizationId: user.organizationId,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+
+      if (linkedEmployee) {
+        return linkedEmployee.id;
+      }
     }
 
     const linked = await this.prisma.user.findUnique({
-      where: { id: user.userId },
+      where: { id: user.userId, organizationId: user.organizationId },
       select: { employeeId: true },
     });
 
@@ -318,7 +329,22 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       throw new ForbiddenException('Employee account is not linked to a user');
     }
 
-    return linked.employeeId;
+    const currentEmployee = await this.prisma.employee.findFirst({
+      where: {
+        id: linked.employeeId,
+        organizationId: user.organizationId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+
+    if (!currentEmployee) {
+      throw new ForbiddenException(
+        'Employee account is not linked to an active employee profile',
+      );
+    }
+
+    return currentEmployee.id;
   }
 
   private shouldUseCrossOrganizationScope(user: AttendanceUser) {
