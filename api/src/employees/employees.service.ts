@@ -67,21 +67,64 @@ export class EmployeesService {
   }
 
   private async resolveCurrentEmployeeId(user: AuthUser) {
-    if (user.employeeId) {
-      return user.employeeId;
+    const organizationId = this.validateOrganization(user);
+
+    if (user.employeeId != null) {
+      const linkedEmployee = await this.prisma.employee.findFirst({
+        where: {
+          id: user.employeeId,
+          organizationId,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+
+      if (linkedEmployee) {
+        return linkedEmployee.id;
+      }
     }
 
-    const organizationId = this.validateOrganization(user);
     const linked = await this.prisma.user.findUnique({
-      where: { id: user.userId, organizationId },
-      select: { employeeId: true },
+      where: { id: user.userId ?? user.id, organizationId },
+      select: { employeeId: true, email: true },
     });
 
-    if (!linked?.employeeId) {
-      throw new ForbiddenException('User is not linked to an employee profile');
+    if (linked?.employeeId != null) {
+      const currentEmployee = await this.prisma.employee.findFirst({
+        where: {
+          id: linked.employeeId,
+          organizationId,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+
+      if (currentEmployee) {
+        return currentEmployee.id;
+      }
     }
 
-    return linked.employeeId;
+    const emailMatch = user.email
+      ? await this.prisma.employee.findFirst({
+          where: {
+            email: user.email,
+            organizationId,
+            deletedAt: null,
+          },
+          orderBy: { id: 'asc' },
+          select: { id: true },
+        })
+      : null;
+
+    if (emailMatch) {
+      await this.prisma.user.update({
+        where: { id: user.userId ?? user.id, organizationId },
+        data: { employeeId: emailMatch.id },
+      });
+      return emailMatch.id;
+    }
+
+    throw new ForbiddenException('User is not linked to an active employee profile');
   }
 
   private async getScope(

@@ -50,19 +50,35 @@ export class EmployeeSelfServiceService {
    * Handles cases where user.employeeId is null by looking up employee by email
    */
   private async resolveEmployeeId(user: AuthUser): Promise<number> {
-    // If employeeId is directly available, use it
-    if (user.employeeId) {
-      return user.employeeId;
-    }
+    const organizationId = await this.resolveOrganizationId(user);
 
-    // If no employeeId, try to find employee by user email
-    if (user.email) {
+    if (user.employeeId != null) {
       const employee = await this.prisma.employee.findFirst({
-        where: { email: user.email },
+        where: {
+          id: user.employeeId,
+          organizationId,
+          deletedAt: null,
+        },
+        select: { id: true },
       });
 
       if (employee) {
-        // Update user record to cache the employeeId for future requests
+        return employee.id;
+      }
+    }
+
+    if (user.email) {
+      const employee = await this.prisma.employee.findFirst({
+        where: {
+          email: user.email,
+          organizationId,
+          deletedAt: null,
+        },
+        orderBy: { id: 'asc' },
+        select: { id: true },
+      });
+
+      if (employee) {
         await this.prisma.user.update({
           where: { id: user.userId || user.id },
           data: { employeeId: employee.id },
@@ -72,9 +88,8 @@ export class EmployeeSelfServiceService {
       }
     }
 
-    // If still no employee found, throw error
     throw new NotFoundException(
-      'No employee record found for your account. Please contact HR to set up your employee profile.',
+      'No active employee record was found for your account in this organization. Please contact HR to set up your employee profile.',
     );
   }
 

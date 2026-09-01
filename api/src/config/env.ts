@@ -294,13 +294,13 @@ export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
     if (!cookieSecureValue) {
       throw new Error('Production environment requires COOKIE_SECURE=true.');
     }
-    if (!cookieSameSite) {
+    if (!cookieSameSite && !isVercel) {
       throw new Error('Production environment requires COOKIE_SAME_SITE.');
     }
     const normalizedSameSite = readCookieSameSite(
       env,
       'COOKIE_SAME_SITE',
-      'lax',
+      isVercel ? 'none' : 'lax',
     );
     if (normalizedSameSite === 'none' && !cookieSecureValue) {
       throw new Error('COOKIE_SAME_SITE=none requires COOKIE_SECURE=true.');
@@ -328,9 +328,8 @@ export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
     'COOKIE_SECURE',
     isProduction ? true : false,
   );
-  const cookieSameSiteDefault: 'lax' | 'strict' | 'none' = isProduction
-    ? 'lax'
-    : 'lax';
+  const cookieSameSiteDefault: 'lax' | 'strict' | 'none' =
+    isProduction && isVercel ? 'none' : 'lax';
   const COOKIE_SAME_SITE = readCookieSameSite(
     env,
     'COOKIE_SAME_SITE',

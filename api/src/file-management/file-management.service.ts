@@ -26,7 +26,8 @@ import {
 import { StreamableFile } from '@nestjs/common';
 import { Readable } from 'stream';
 import { extname } from 'path';
-import { File, Prisma } from '@prisma/client';
+
+type FileRecord = Record<string, any>;
 
 type UploadedFileInput = Express.Multer.File;
 
@@ -51,6 +52,10 @@ export class FileManagementService {
     @Inject(FILE_STORAGE_PROVIDER)
     private readonly storageProvider: StorageProviderModule.StorageProvider,
   ) {}
+
+  private get prismaCompat(): any {
+    return this.prisma as any;
+  }
 
   private async validateOrganization(
     user?: Partial<FileUserContext>,
@@ -120,7 +125,7 @@ export class FileManagementService {
 
   async findAll(query: FileListQuery = {}, user?: Partial<FileUserContext>) {
     const organizationId = await this.validateOrganization(user);
-    const where: Prisma.FileWhereInput = {
+    const where: Record<string, any> = {
       deletedAt: null,
       organizationId,
     };
@@ -146,14 +151,14 @@ export class FileManagementService {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
 
-    const [items, total] = await this.prisma.$transaction([
-      this.prisma.file.findMany({
+    const [items, total] = await this.prismaCompat.$transaction([
+      this.prismaCompat.file.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
       }),
-      this.prisma.file.count({ where }),
+      this.prismaCompat.file.count({ where }),
     ]);
 
     const visibleItems = items.filter((item) =>
@@ -173,7 +178,7 @@ export class FileManagementService {
     user?: Partial<FileUserContext>,
   ) {
     const organizationId = await this.validateOrganization(user);
-    const files = await this.prisma.file.findMany({
+    const files = await this.prismaCompat.file.findMany({
       where: {
         entityType,
         entityId,
@@ -190,7 +195,7 @@ export class FileManagementService {
 
   async findRecordById(id: number, user: Partial<FileUserContext>) {
     const organizationId = await this.validateOrganization(user);
-    return this.prisma.file.findFirst({
+    return this.prismaCompat.file.findFirst({
       where: {
         id,
         deletedAt: null,
@@ -230,7 +235,7 @@ export class FileManagementService {
     if (!this.canUserAccessFile(file, user))
       throw new ForbiddenException('You do not have access to this file');
 
-    const updated = await this.prisma.file.update({
+    const updated = await this.prismaCompat.file.update({
       where: { id, organizationId },
       data: {
         originalName: dto.originalName?.trim() || file.originalName,
@@ -278,7 +283,7 @@ export class FileManagementService {
       throw new ForbiddenException('You do not have access to this file');
 
     await this.storageProvider.delete(file.path).catch(() => undefined);
-    const removed = await this.prisma.file.update({
+    const removed = await this.prismaCompat.file.update({
       where: { id, organizationId },
       data: {
         status: 'DELETED',
@@ -363,16 +368,16 @@ export class FileManagementService {
 
   async dashboard(user?: Partial<FileUserContext>) {
     const organizationId = await this.validateOrganization(user);
-    const baseWhere: Prisma.FileWhereInput = {
+    const baseWhere: Record<string, any> = {
       deletedAt: null,
       organizationId,
     };
 
     const [totalFiles, totalStorage, recentFiles, mostDownloaded, byCategory] =
       await Promise.all([
-        this.prisma.file.count({ where: baseWhere }),
-        this.prisma.file.aggregate({ where: baseWhere, _sum: { size: true } }),
-        this.prisma.file.findMany({
+        this.prismaCompat.file.count({ where: baseWhere }),
+        this.prismaCompat.file.aggregate({ where: baseWhere, _sum: { size: true } }),
+        this.prismaCompat.file.findMany({
           where: baseWhere,
           orderBy: { createdAt: 'desc' },
           take: 8,
@@ -382,7 +387,7 @@ export class FileManagementService {
           orderBy: { downloadCount: 'desc' },
           take: 8,
         }),
-        this.prisma.file.groupBy({
+        this.prismaCompat.file.groupBy({
           by: ['category'],
           where: baseWhere,
           _count: { category: true },
@@ -407,7 +412,7 @@ export class FileManagementService {
 
   canUserAccessFile(
     file: Pick<
-      File,
+      FileRecord,
       | 'isPublic'
       | 'uploadedBy'
       | 'module'
@@ -473,7 +478,7 @@ export class FileManagementService {
     if (!this.canUserAccessFile(current, user))
       throw new ForbiddenException('You do not have access to this file');
 
-    await this.prisma.file.update({
+    await this.prismaCompat.file.update({
       where: { id: current.id, organizationId },
       data: { status: 'ARCHIVED' },
     });
@@ -498,7 +503,7 @@ export class FileManagementService {
       replaceFileId?: number;
     },
     user: FileUserContext,
-    previous?: File,
+    previous?: FileRecord,
   ) {
     if (!file) throw new BadRequestException('A file is required');
     const organizationId = await this.validateOrganization(user);
@@ -522,7 +527,7 @@ export class FileManagementService {
     });
 
     const nextVersion = previous ? previous.version + 1 : 1;
-    const record = await this.prisma.file.create({
+    const record = await this.prismaCompat.file.create({
       data: {
         organizationId,
         originalName: sanitizeFileName(file.originalname),
@@ -590,8 +595,8 @@ export class FileManagementService {
     userId: number | null,
     organizationId: number,
   ) {
-    await this.prisma.$transaction([
-      this.prisma.file.update({
+    await this.prismaCompat.$transaction([
+      this.prismaCompat.file.update({
         where: { id: fileId, organizationId },
         data: {
           lastAccessedAt: new Date(),
@@ -600,7 +605,7 @@ export class FileManagementService {
             : { previewCount: { increment: 1 } }),
         },
       }),
-      this.prisma.fileActivity.create({
+      this.prismaCompat.fileActivity.create({
         data: {
           organizationId,
           fileId,
@@ -618,7 +623,7 @@ export class FileManagementService {
     organizationId: number,
     metadata?: Record<string, unknown>,
   ) {
-    await this.prisma.fileActivity.create({
+    await this.prismaCompat.fileActivity.create({
       data: {
         organizationId,
         fileId,
@@ -629,25 +634,23 @@ export class FileManagementService {
     });
   }
 
-  private toInputJsonValue(
-    value: Record<string, unknown> | Prisma.JsonValue | null | undefined,
-  ): Prisma.InputJsonValue | undefined {
+  private toInputJsonValue(value: Record<string, unknown> | any | null | undefined): any {
     if (value === null || value === undefined) {
       return undefined;
     }
 
-    return value as Prisma.InputJsonValue;
+    return value as any;
   }
 
   private parseJson(value: string) {
     try {
-      return JSON.parse(value) as Prisma.InputJsonValue;
+      return JSON.parse(value) as any;
     } catch {
       throw new BadRequestException('metadata must be valid JSON');
     }
   }
 
-  private toResponse(file: File) {
+  private toResponse(file: FileRecord) {
     return {
       ...file,
       downloadUrl: `/files/download/${file.id}`,

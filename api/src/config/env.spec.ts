@@ -25,6 +25,19 @@ describe('validateServerEnv', () => {
     expect(() => validateServerEnv(validProductionEnv)).not.toThrow();
   });
 
+  it('defaults Vercel production cookies to secure cross-site settings', () => {
+    const vercelProd = {
+      ...validProductionEnv,
+      VERCEL: '1',
+      VERCEL_ENV: 'production',
+      COOKIE_SECURE: 'true',
+      COOKIE_SAME_SITE: undefined,
+    } as Record<string, unknown>;
+
+    expect(() => validateServerEnv(vercelProd)).not.toThrow();
+    expect(validateServerEnv(vercelProd).COOKIE_SAME_SITE).toBe('none');
+  });
+
   it('rejects placeholder JWT secrets and localhost frontend origins in production', () => {
     const invalid = {
       ...validProductionEnv,

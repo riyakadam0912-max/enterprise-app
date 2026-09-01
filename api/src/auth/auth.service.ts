@@ -290,6 +290,60 @@ export class AuthService {
     };
   }
 
+  private async reconcileUserEmployeeLink(user: UserWithRoles) {
+    const organizationId = user.organizationId ?? null;
+    if (organizationId == null) {
+      return user.employeeId ?? null;
+    }
+
+    const isActiveEmployeeLink =
+      user.employeeId != null
+        ? await this.prisma.employee.findFirst({
+            where: {
+              id: user.employeeId,
+              organizationId,
+              deletedAt: null,
+            },
+            select: { id: true },
+          })
+        : null;
+
+    if (isActiveEmployeeLink) {
+      return user.employeeId;
+    }
+
+    const matchedEmployee = user.email
+      ? await this.prisma.employee.findFirst({
+          where: {
+            email: user.email,
+            organizationId,
+            deletedAt: null,
+          },
+          orderBy: { id: 'asc' },
+          select: { id: true },
+        })
+      : null;
+
+    if (matchedEmployee) {
+      if (user.employeeId !== matchedEmployee.id) {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { employeeId: matchedEmployee.id },
+        });
+      }
+      return matchedEmployee.id;
+    }
+
+    if (user.employeeId != null) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { employeeId: null },
+      });
+    }
+
+    return null;
+  }
+
   async login(email: string, password: string) {
     const user = (await this.prisma.user.findUnique({
       where: { email },
@@ -379,6 +433,9 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
+    const resolvedEmployeeId = await this.reconcileUserEmployeeLink(user);
+    const userEmployeeId = resolvedEmployeeId ?? user.employeeId ?? null;
+
     let processedUserRoles = user.userRoles || [];
     if (processedUserRoles.length === 0 && user.role) {
       try {
@@ -431,7 +488,7 @@ export class AuthService {
         role: user.role,
         roles: userRoles,
         permissions: userPermissions,
-        employeeId: user.employeeId ?? null,
+        employeeId: userEmployeeId,
         organizationId: user.organizationId ?? null,
         organizationSlug: organizationMeta.slug,
         organizationName: organizationMeta.name,
@@ -467,7 +524,7 @@ export class AuthService {
           role: user.role,
           roles: processedUserRoles.map((ur) => ur.role.name),
           permissions: userPermissions,
-          employeeId: user.employeeId,
+          employeeId: userEmployeeId,
           organizationId: user.organizationId,
           tokenType: 'access',
           jti: null,
@@ -493,7 +550,7 @@ export class AuthService {
       role: user.role,
       roles: userRoles,
       permissions: userPermissions,
-      employeeId: user.employeeId ?? null,
+      employeeId: userEmployeeId,
       organizationId: user.organizationId ?? null,
       organizationSlug: organizationMeta.slug,
       organizationName: organizationMeta.name,
@@ -562,6 +619,9 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
+    const resolvedEmployeeId = await this.reconcileUserEmployeeLink(user);
+    const userEmployeeId = resolvedEmployeeId ?? user.employeeId ?? null;
+
     // Backward compatibility: if no userRoles, create one based on user.role
     let processedUserRoles = user.userRoles || [];
     if (processedUserRoles.length === 0 && user.role) {
@@ -618,7 +678,7 @@ export class AuthService {
         role: user.role,
         roles: userRoles,
         permissions: userPermissions,
-        employeeId: user.employeeId ?? null,
+        employeeId: userEmployeeId,
         organizationId: user.organizationId ?? null,
         organizationSlug: organizationMeta.slug,
         organizationName: organizationMeta.name,
@@ -646,7 +706,7 @@ export class AuthService {
       role: user.role,
       roles: userRoles,
       permissions: userPermissions,
-      employeeId: user.employeeId ?? null,
+      employeeId: userEmployeeId,
       organizationId: user.organizationId ?? null,
       organizationSlug: organizationMeta.slug,
       organizationName: organizationMeta.name,
