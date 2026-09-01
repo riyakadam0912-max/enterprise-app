@@ -1006,6 +1006,38 @@ export class ProjectsService {
     return grouped;
   }
 
+  async getEligibleManagers(user: AuthUser) {
+    const organizationId = this.validateOrganization(user);
+
+    // Get users who are:
+    // 1. SUPER_ADMIN or ADMIN in the current organization
+    // 2. OR SUPER_ADMIN at platform level (organizationId = null)
+    return this.db.user.findMany({
+      where: {
+        isActive: true,
+        OR: [
+          // Organization-scoped SUPER_ADMIN and ADMIN
+          {
+            organizationId,
+            role: { in: [Role.SUPER_ADMIN, Role.ADMIN] },
+          },
+          // Platform-level SUPER_ADMIN
+          {
+            organizationId: null,
+            role: Role.SUPER_ADMIN,
+          },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        role: true,
+        email: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
+
   async getLinks(projectId: number, user: AuthUser) {
     const organizationId = this.validateOrganization(user);
     const hasAccess = await this.canViewProject(projectId, user);

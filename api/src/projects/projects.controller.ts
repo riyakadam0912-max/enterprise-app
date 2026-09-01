@@ -189,6 +189,19 @@ export class ProjectsController {
     return this.service.getByStatus(req.user);
   }
 
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @ApiOperation({ summary: 'GET eligible managers and owners for projects' })
+  @ApiResponse({ status: 200, description: 'GET request successful.' })
+  @ApiResponse({ status: 400, description: 'Bad request.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @Get('eligible-managers')
+  getEligibleManagers(
+    @Req()
+    req: ProjectRequest,
+  ) {
+    return this.service.getEligibleManagers(req.user);
+  }
+
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.EMPLOYEE)
   @ApiOperation({ summary: 'GET :id' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })

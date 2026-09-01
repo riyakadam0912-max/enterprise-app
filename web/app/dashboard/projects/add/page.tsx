@@ -63,8 +63,9 @@ export default function AddProjectPage() {
       return;
     }
 
-    apiClient<Array<{ id: number; name: string; role: string }>>('/users')
-      .then((users) => setManagers(users.filter((user) => ['SUPER_ADMIN', 'ADMIN', 'MANAGER'].includes(user.role))))
+    // Load eligible managers and owners (includes platform super admins)
+    apiClient<Array<{ id: number; name: string; role: string }>>('/projects/eligible-managers')
+      .then((users) => setManagers(users))
       .catch((error) => {
         reportError(error, 'Unable to load project managers');
         setManagers([]);
