@@ -179,7 +179,13 @@ export class ProjectsService {
     projectId: number,
     user: AuthUser,
   ): Promise<boolean> {
-    if (user.role === Role.ADMIN) {
+    if (
+      user.role === Role.ADMIN ||
+      user.role === Role.SUPER_ADMIN ||
+      user.isPlatformAdmin === true ||
+      user.isSuperAdmin === true ||
+      user.roles.includes(Role.SUPER_ADMIN)
+    ) {
       return true;
     }
     if (user.role !== Role.MANAGER) {

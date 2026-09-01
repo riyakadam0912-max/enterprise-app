@@ -48,7 +48,7 @@ export class ProjectsController {
     private readonly messagesService: ProjectMessagesService,
   ) {}
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
   @ApiOperation({ summary: 'POST /' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -64,7 +64,7 @@ export class ProjectsController {
     return this.service.create(dto, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
   @ApiOperation({ summary: 'POST :id/co-managers' })
   @ApiResponse({ status: 200, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -80,7 +80,7 @@ export class ProjectsController {
     return this.service.addCoManager(id, Number(body.userId), req.user);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
   @ApiOperation({ summary: 'DELETE :id/co-managers/:userId' })
   @ApiResponse({ status: 200, description: 'DELETE request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -96,7 +96,7 @@ export class ProjectsController {
     return this.service.removeCoManager(id, userId, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
   @ApiOperation({ summary: 'POST :id/employees' })
   @ApiResponse({ status: 200, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -112,7 +112,7 @@ export class ProjectsController {
     return this.service.assignEmployee(id, Number(body.employeeId), req.user);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
   @ApiOperation({ summary: 'DELETE :id/employees/:employeeId' })
   @ApiResponse({ status: 200, description: 'DELETE request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -128,7 +128,7 @@ export class ProjectsController {
     return this.service.removeEmployee(id, employeeId, req.user);
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @ApiOperation({ summary: 'PATCH :id/assign-manager' })
   @ApiResponse({ status: 200, description: 'PATCH request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -145,7 +145,7 @@ export class ProjectsController {
     return this.service.assignManager(id, dto.managerId, req.user);
   }
 
-  @Roles(Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @ApiOperation({ summary: 'POST import' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -175,7 +175,7 @@ export class ProjectsController {
     return this.service.findAll(req.user);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
   @ApiOperation({ summary: 'GET by-status' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -219,7 +219,7 @@ export class ProjectsController {
     return this.service.getProgress(id, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
   @ApiOperation({ summary: 'PATCH :id' })
   @ApiResponse({ status: 200, description: 'PATCH request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -236,7 +236,7 @@ export class ProjectsController {
     return this.service.update(id, dto, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
   @ApiOperation({ summary: 'PATCH :id/status' })
   @ApiResponse({ status: 200, description: 'PATCH request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -253,7 +253,7 @@ export class ProjectsController {
     return this.service.updateStatus(id, dto.status, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
   @ApiOperation({ summary: 'DELETE :id' })
   @ApiResponse({ status: 200, description: 'DELETE request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -283,7 +283,7 @@ export class ProjectsController {
     return this.service.getLinks(id, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
   @ApiOperation({ summary: 'POST :id/links' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -300,7 +300,7 @@ export class ProjectsController {
     return this.service.createLink(id, dto, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
   @ApiOperation({ summary: 'DELETE :id/links/:linkId' })
   @ApiResponse({ status: 200, description: 'DELETE request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })

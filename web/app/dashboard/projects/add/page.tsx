@@ -12,7 +12,7 @@ const STATUSES = ['ACTIVE', 'COMPLETED'];
 
 const field = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400';
 
-type DashboardRole = 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
+type DashboardRole = 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
 
 function parseSession() {
   if (typeof window === 'undefined') {
@@ -20,7 +20,7 @@ function parseSession() {
   }
 
   const snapshot = getAuthSessionSnapshot();
-  const role = (snapshot.role === 'MANAGER' || snapshot.role === 'ADMIN' ? snapshot.role : 'EMPLOYEE') as DashboardRole;
+  const role = (snapshot.role === 'SUPER_ADMIN' || snapshot.role === 'MANAGER' || snapshot.role === 'ADMIN' ? snapshot.role : 'EMPLOYEE') as DashboardRole;
   const user = snapshot.user;
 
   return { role, userId: user?.id ?? null, name: user?.name ?? '' };
@@ -46,7 +46,7 @@ export default function AddProjectPage() {
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState('');
 
-  const canCreateProject = session.role === 'ADMIN' || session.role === 'MANAGER';
+  const canCreateProject = session.role === 'SUPER_ADMIN' || session.role === 'ADMIN' || session.role === 'MANAGER';
 
   useEffect(() => {
     if (!canAccessUsers(session.role)) {
