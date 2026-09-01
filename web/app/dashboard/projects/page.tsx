@@ -598,7 +598,10 @@ export default function ProjectsWorkflowPage() {
             }`}
           >
             <div className="mb-2 flex items-center justify-between gap-2">
-              <p className="font-semibold text-slate-900">{project.projectName}</p>
+              <div>
+                <p className="font-semibold text-slate-900">{project.projectName}</p>
+                {project.projectCode && <p className="text-xs text-slate-400">Code: {project.projectCode}</p>}
+              </div>
               <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadgeClass(project.status)}`}>
                 {project.status}
               </span>

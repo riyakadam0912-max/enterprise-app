@@ -36,7 +36,6 @@ export default function AddProjectPage() {
 
   const [form, setForm] = useState({
     projectName: '',
-    projectCode: '',
     startDate:   '',
     endDate:     '',
     manager:     session.role === 'MANAGER' ? session.name : '',
@@ -110,7 +109,6 @@ export default function AddProjectPage() {
 
       await createProject({
         projectName: form.projectName.trim(),
-        projectCode: form.projectCode.trim() || undefined,
         startDate:   form.startDate          || undefined,
         endDate:     form.endDate            || undefined,
         manager:     form.manager.trim() || undefined,
@@ -164,29 +162,6 @@ export default function AddProjectPage() {
             />
           </div>
 
-          {/* Project Code */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Project Code</label>
-            <input
-              className={field}
-              value={form.projectCode}
-              onChange={(e) => set('projectCode', e.target.value)}
-              placeholder="e.g. PM-2026-001"
-            />
-          </div>
-
-          {/* Start Date */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-            <input type="date" className={field} value={form.startDate} onChange={(e) => set('startDate', e.target.value)} />
-          </div>
-
-          {/* End Date */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-            <input type="date" className={field} value={form.endDate} onChange={(e) => set('endDate', e.target.value)} />
-          </div>
-
           {/* Project Owner */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Project Owner (optional)</label>
@@ -209,6 +184,18 @@ export default function AddProjectPage() {
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Start Date */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+            <input type="date" className={field} value={form.startDate} onChange={(e) => set('startDate', e.target.value)} />
+          </div>
+
+          {/* End Date */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+            <input type="date" className={field} value={form.endDate} onChange={(e) => set('endDate', e.target.value)} />
           </div>
 
           <div>
@@ -296,7 +283,6 @@ export default function AddProjectPage() {
               type="button"
               onClick={() => setForm({
                 projectName: '',
-                projectCode: '',
                 startDate: '',
                 endDate: '',
                 manager: session.role === 'MANAGER' ? session.name : '',
