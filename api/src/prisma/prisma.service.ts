@@ -1,4 +1,9 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { softDeleteMiddleware } from '../../prisma/middleware/softDelete';
@@ -88,6 +93,8 @@ export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
+  private readonly logger = new Logger(PrismaService.name);
+
   constructor(private readonly configService: ConfigService) {
     super({
       datasources: {
@@ -217,23 +224,47 @@ export class PrismaService
           return result;
         }
 
-        if (action === 'update' && beforeRecord && afterRecord) {
-          const changedFields = new Set([
-            ...Object.keys(beforeRecord),
-            ...Object.keys(afterRecord),
-          ]);
-          for (const fieldName of changedFields) {
-            if (
-              fieldName === 'createdAt' ||
-              fieldName === 'updatedAt' ||
-              fieldName === 'deletedAt'
-            )
-              continue;
-            const oldValue = redactValue(beforeRecord[fieldName]);
-            const newValue = redactValue(afterRecord[fieldName]);
-            if (stringifyStable(oldValue) === stringifyStable(newValue))
-              continue;
+        try {
+          if (action === 'update' && beforeRecord && afterRecord) {
+            const changedFields = new Set([
+              ...Object.keys(beforeRecord),
+              ...Object.keys(afterRecord),
+            ]);
+            for (const fieldName of changedFields) {
+              if (
+                fieldName === 'createdAt' ||
+                fieldName === 'updatedAt' ||
+                fieldName === 'deletedAt'
+              )
+                continue;
+              const oldValue = redactValue(beforeRecord[fieldName]);
+              const newValue = redactValue(afterRecord[fieldName]);
+              if (stringifyStable(oldValue) === stringifyStable(newValue))
+                continue;
 
+              await this.auditLog.create({
+                data: {
+                  userId: auditContext.userId ?? undefined,
+                  userName: auditContext.userName ?? undefined,
+                  userRole: auditContext.userRole ?? undefined,
+                  module: moduleName,
+                  entityType: modelName,
+                  entityId: entityId ?? undefined,
+                  action: 'UPDATE',
+                  fieldName,
+                  oldValue: oldValue as Prisma.InputJsonValue | undefined,
+                  newValue: newValue as Prisma.InputJsonValue | undefined,
+                  description: `${auditContext.userRole ?? auditContext.userName ?? 'System'} updated ${modelName} #${entityId ?? 'N/A'}`,
+                  ipAddress: auditContext.ipAddress ?? undefined,
+                  deviceInfo: auditContext.deviceInfo ?? undefined,
+                  requestMethod: auditContext.requestMethod ?? undefined,
+                  endpoint: auditContext.endpoint ?? undefined,
+                  status: 'SUCCESS',
+                  organizationId,
+                },
+              });
+            }
+          } else {
             await this.auditLog.create({
               data: {
                 userId: auditContext.userId ?? undefined,
@@ -242,11 +273,17 @@ export class PrismaService
                 module: moduleName,
                 entityType: modelName,
                 entityId: entityId ?? undefined,
-                action: 'UPDATE',
-                fieldName,
-                oldValue: oldValue as Prisma.InputJsonValue | undefined,
-                newValue: newValue as Prisma.InputJsonValue | undefined,
-                description: `${auditContext.userRole ?? auditContext.userName ?? 'System'} updated ${modelName} #${entityId ?? 'N/A'}`,
+                action: action.toUpperCase(),
+                fieldName: undefined,
+                oldValue:
+                  action === 'delete'
+                    ? (redactValue(beforeRecord) as Prisma.InputJsonValue)
+                    : undefined,
+                newValue:
+                  action === 'create'
+                    ? (redactValue(afterRecord) as Prisma.InputJsonValue)
+                    : undefined,
+                description: `${auditContext.userRole ?? auditContext.userName ?? 'System'} ${action}d ${modelName}${entityId ? ` #${entityId}` : ''}`,
                 ipAddress: auditContext.ipAddress ?? undefined,
                 deviceInfo: auditContext.deviceInfo ?? undefined,
                 requestMethod: auditContext.requestMethod ?? undefined,
@@ -256,34 +293,11 @@ export class PrismaService
               },
             });
           }
-        } else {
-          await this.auditLog.create({
-            data: {
-              userId: auditContext.userId ?? undefined,
-              userName: auditContext.userName ?? undefined,
-              userRole: auditContext.userRole ?? undefined,
-              module: moduleName,
-              entityType: modelName,
-              entityId: entityId ?? undefined,
-              action: action.toUpperCase(),
-              fieldName: undefined,
-              oldValue:
-                action === 'delete'
-                  ? (redactValue(beforeRecord) as Prisma.InputJsonValue)
-                  : undefined,
-              newValue:
-                action === 'create'
-                  ? (redactValue(afterRecord) as Prisma.InputJsonValue)
-                  : undefined,
-              description: `${auditContext.userRole ?? auditContext.userName ?? 'System'} ${action}d ${modelName}${entityId ? ` #${entityId}` : ''}`,
-              ipAddress: auditContext.ipAddress ?? undefined,
-              deviceInfo: auditContext.deviceInfo ?? undefined,
-              requestMethod: auditContext.requestMethod ?? undefined,
-              endpoint: auditContext.endpoint ?? undefined,
-              status: 'SUCCESS',
-              organizationId,
-            },
-          });
+        } catch (error) {
+          this.logger.error(
+            `Audit logging failed for ${action} ${modelName}${entityId ? ` #${entityId}` : ''}`,
+            error instanceof Error ? error.stack : String(error),
+          );
         }
 
         return result;

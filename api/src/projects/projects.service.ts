@@ -1,6 +1,7 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
@@ -31,6 +32,8 @@ const TASK_STATUSES = [
 ] as const;
 @Injectable()
 export class ProjectsService {
+  private readonly logger = new Logger(ProjectsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly businessUnitsService: BusinessUnitsService,
@@ -52,10 +55,7 @@ export class ProjectsService {
     const recipients = await this.db.user.findMany({
       where: {
         isActive: true,
-        OR: [
-          { role: Role.SUPER_ADMIN },
-          { role: Role.ADMIN, organizationId },
-        ],
+        OR: [{ role: Role.SUPER_ADMIN }, { role: Role.ADMIN, organizationId }],
       },
       select: { id: true },
     });
@@ -155,11 +155,28 @@ export class ProjectsService {
     if (!status) return 'NOT_STARTED';
 
     const normalized = status.trim().toUpperCase();
-    if (normalized === 'NOT_STARTED' || normalized === 'PLANNED' || normalized === 'PLANNING') return 'NOT_STARTED';
-    if (normalized === 'IN_PROGRESS' || normalized === 'IN PROGRESS' || normalized === 'ACTIVE') return 'IN_PROGRESS';
-    if (normalized === 'IN_APPROVAL' || normalized === 'IN APPROVAL') return 'IN_APPROVAL';
-    if (normalized === 'BLOCKED_CANCELLED' || normalized === 'BLOCKED/CANCELLED' || normalized === 'ON HOLD') return 'BLOCKED_CANCELLED';
-    if (normalized === 'POSTPONED' || normalized === 'POSTPONDED') return 'POSTPONED';
+    if (
+      normalized === 'NOT_STARTED' ||
+      normalized === 'PLANNED' ||
+      normalized === 'PLANNING'
+    )
+      return 'NOT_STARTED';
+    if (
+      normalized === 'IN_PROGRESS' ||
+      normalized === 'IN PROGRESS' ||
+      normalized === 'ACTIVE'
+    )
+      return 'IN_PROGRESS';
+    if (normalized === 'IN_APPROVAL' || normalized === 'IN APPROVAL')
+      return 'IN_APPROVAL';
+    if (
+      normalized === 'BLOCKED_CANCELLED' ||
+      normalized === 'BLOCKED/CANCELLED' ||
+      normalized === 'ON HOLD'
+    )
+      return 'BLOCKED_CANCELLED';
+    if (normalized === 'POSTPONED' || normalized === 'POSTPONDED')
+      return 'POSTPONED';
     if (normalized === 'COMPLETED') return 'COMPLETED';
 
     return 'NOT_STARTED';
@@ -180,7 +197,9 @@ export class ProjectsService {
       Role.MANAGER,
     ];
     if (!owner || !allowedOwnerRoles.includes(owner.role)) {
-      throw new NotFoundException('Project owner not found or has an invalid role');
+      throw new NotFoundException(
+        'Project owner not found or has an invalid role',
+      );
     }
     return owner;
   }
@@ -296,9 +315,14 @@ export class ProjectsService {
     }
 
     const ownerId = dto.ownerId ?? undefined;
-    const owner = ownerId ? await this.validateOwner(ownerId, organizationId) : null;
-    const managerId = dto.managerId ?? (user.role === Role.MANAGER ? user.userId : undefined);
-    const manager = managerId ? await this.assertManager(managerId, organizationId) : null;
+    const owner = ownerId
+      ? await this.validateOwner(ownerId, organizationId)
+      : null;
+    const managerId =
+      dto.managerId ?? (user.role === Role.MANAGER ? user.userId : undefined);
+    const manager = managerId
+      ? await this.assertManager(managerId, organizationId)
+      : null;
     const managerName = dto.manager ?? manager?.name ?? null;
 
     const project = await this.db.project.create({
@@ -350,13 +374,20 @@ export class ProjectsService {
         links: { where: { organizationId } },
       },
     });
-    await this.notifyProjectChange(
-      project.id,
-      organizationId,
-      user.userId,
-      'created',
-      `Project ${project.projectName} was created.`,
-    );
+    try {
+      await this.notifyProjectChange(
+        project.id,
+        organizationId,
+        user.userId,
+        'created',
+        `Project ${project.projectName} was created.`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Project notification failed for #${project.id}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
     return project;
   }
 
@@ -807,7 +838,9 @@ export class ProjectsService {
         ...(dto.clientName !== undefined && { clientName: dto.clientName }),
         ...(dto.category !== undefined && { category: dto.category }),
         ...(dto.projectType !== undefined && { projectType: dto.projectType }),
-        ...(dto.specificTask !== undefined && { specificTask: dto.specificTask }),
+        ...(dto.specificTask !== undefined && {
+          specificTask: dto.specificTask,
+        }),
         ...(dto.priority !== undefined && { priority: dto.priority }),
         ...(dto.remarks !== undefined && { remarks: dto.remarks }),
         ...(dto.finalDeliverablesLink !== undefined && {
