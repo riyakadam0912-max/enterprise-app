@@ -273,6 +273,23 @@ describe('ProjectsService', () => {
       const result = await service.findAll(mockAdminUser);
       expect(result).toEqual(mockProjects);
     });
+
+    it('should return projects for a global super admin without an organization', async () => {
+      const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
+      const mockProjects = [{ id: 1, projectName: 'Cross-org Project' }];
+      const globalSuperAdmin = createMockAuthUser(Role.SUPER_ADMIN, {
+        organizationId: null,
+      });
+
+      projectDelegate.findMany.mockResolvedValueOnce(mockProjects);
+
+      const result = await service.findAll(globalSuperAdmin);
+
+      expect(result).toEqual(mockProjects);
+      expect(projectDelegate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: {} }),
+      );
+    });
   });
 
   describe('findOne', () => {

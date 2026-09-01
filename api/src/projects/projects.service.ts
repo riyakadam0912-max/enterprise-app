@@ -44,6 +44,15 @@ export class ProjectsService {
     return this.prisma;
   }
 
+  private isPlatformAdmin(user: AuthUser): boolean {
+    return (
+      user.role === Role.SUPER_ADMIN ||
+      user.isPlatformAdmin === true ||
+      user.isSuperAdmin === true ||
+      user.roles.includes(Role.SUPER_ADMIN)
+    );
+  }
+
   private async notifyProjectChange(
     projectId: number,
     organizationId: number,
@@ -112,6 +121,10 @@ export class ProjectsService {
   private async getProjectAccessWhere(
     user: AuthUser,
   ): Promise<Prisma.ProjectWhereInput> {
+    if (this.isPlatformAdmin(user) && user.organizationId == null) {
+      return {};
+    }
+
     const organizationId = this.validateOrganization(user);
     const scope = await this.businessUnitsService.resolveScope(user as any);
     const buWhere = this.businessUnitsService.buildDirectBUWhere(scope);
@@ -446,6 +459,8 @@ export class ProjectsService {
 
   async findAll(user: AuthUser) {
     const where = await this.getProjectScope(user);
+    const organizationId = user.organizationId;
+    const organizationFilter = organizationId == null ? {} : { organizationId };
 
     return this.db.project.findMany({
       where,
@@ -453,11 +468,11 @@ export class ProjectsService {
         managerUser: { select: { id: true, name: true, email: true } },
         owner: { select: { id: true, name: true, email: true, role: true } },
         coManagers: {
-          where: { organizationId: this.validateOrganization(user) },
+          where: organizationFilter,
           select: { id: true, name: true, email: true },
         },
         assignedEmployees: {
-          where: { organizationId: this.validateOrganization(user) },
+          where: organizationFilter,
           select: {
             id: true,
             name: true,
@@ -466,14 +481,14 @@ export class ProjectsService {
             designation: true,
           },
         },
-        links: { where: { organizationId: this.validateOrganization(user) } },
+        links: { where: organizationFilter },
       },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   async findOne(id: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    const organizationId = user.organizationId;
     const hasAccess = await this.canViewProject(id, user);
     if (!hasAccess) {
       throw new ForbiddenException('You can only access allowed projects');
@@ -482,17 +497,20 @@ export class ProjectsService {
     const tasksWhere =
       user.role === Role.EMPLOYEE
         ? {
-            organizationId,
+            ...(organizationId == null ? {} : { organizationId }),
             projectId: id,
             OR: [
               { assignedToUserId: user.userId },
               ...(user.employeeId ? [{ assignedToId: user.employeeId }] : []),
             ],
           }
-        : { organizationId, projectId: id };
+        : {
+            ...(organizationId == null ? {} : { organizationId }),
+            projectId: id,
+          };
 
     const project = await this.db.project.findUnique({
-      where: { id, organizationId },
+      where: organizationId == null ? { id } : { id, organizationId },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
         coManagers: {
@@ -500,7 +518,7 @@ export class ProjectsService {
           select: { id: true, name: true, email: true },
         },
         assignedEmployees: {
-          where: { organizationId },
+          where: organizationId == null ? {} : { organizationId },
           select: {
             id: true,
             name: true,
@@ -509,7 +527,7 @@ export class ProjectsService {
             designation: true,
           },
         },
-        links: { where: { organizationId } },
+        links: { where: organizationId == null ? {} : { organizationId } },
       },
     });
     if (!project) throw new NotFoundException(`Project #${id} not found`);
@@ -526,7 +544,7 @@ export class ProjectsService {
     const teamMembers = project.managerId
       ? await this.db.user.findMany({
           where: {
-            organizationId,
+            ...(organizationId == null ? {} : { organizationId }),
             managerId: project.managerId,
             role: Role.EMPLOYEE,
             isActive: true,
