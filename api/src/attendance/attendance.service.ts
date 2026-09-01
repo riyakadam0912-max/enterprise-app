@@ -428,6 +428,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     }
 
     const buScope = await this.businessUnitsService.resolveScope(user as any);
+    if (user.role === Role.EMPLOYEE) {
+      return roleBasedIds;
+    }
     const buEmployeeIds =
       await this.businessUnitsService.getEmployeeScopeFilterIds(buScope);
 

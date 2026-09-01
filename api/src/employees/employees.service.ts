@@ -149,6 +149,13 @@ export class EmployeesService {
     }
 
     const employeeId = await this.resolveCurrentEmployeeId(user);
+    if (user.role === Role.EMPLOYEE) {
+      return {
+        organizationId: scope.organizationId,
+        deletedAt: null,
+        id: employeeId,
+      };
+    }
     return { AND: [buWhere, { id: employeeId }] };
   }
 
