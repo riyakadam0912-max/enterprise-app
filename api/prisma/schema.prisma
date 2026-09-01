@@ -36,6 +36,7 @@ model User {
   ledgerEntries              LedgerEntry[]
   notificationsCreated       Notification[]
   managedProjects            Project[]              @relation("ProjectManager")
+  ownedProjects              Project[]              @relation("ProjectOwner")
   projectLinksCreated        ProjectLink[]
   sentMessages               ProjectMessage[]       @relation("ProjectMessageSender")
   createdTasks               Task[]                 @relation("TaskAssignedBy")
@@ -645,35 +646,45 @@ model Expense {
 }
 
 model Project {
-  id                Int              @id @default(autoincrement())
-  projectName       String
-  projectCode       String?
-  startDate         DateTime?
-  endDate           DateTime?
-  manager           String?
-  status            String           @default("PLANNED")
-  budget            Float?
-  description       String?
-  client            String?
-  projectLead       String?
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  deletedAt         DateTime?
-  managerId         Int?
-  organizationId    Int
-  businessUnitId    Int?
-  managerUser       User?            @relation("ProjectManager", fields: [managerId], references: [id])
-  businessUnit      BusinessUnit?    @relation("ProjectBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
-  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  links             ProjectLink[]
-  members           ProjectMember[]
-  messages          ProjectMessage[]
-  tasks             Task[]           @relation("ProjectTasks")
-  assignedEmployees Employee[]       @relation("ProjectAssignedEmployees")
-  coManagers        User[]           @relation("ProjectCoManagers")
+  id                    Int              @id @default(autoincrement())
+  projectName           String
+  projectCode           String?
+  clientName            String?
+  category              String?
+  projectType           String?
+  startDate             DateTime?
+  endDate               DateTime?
+  specificTask          String?
+  manager               String?
+  status                String           @default("NOT_STARTED")
+  priority              String?
+  budget                Float?
+  description           String?
+  remarks               String?
+  finalDeliverablesLink String?
+  client                String?
+  projectLead           String?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  deletedAt             DateTime?
+  managerId             Int?
+  ownerId               Int?
+  organizationId        Int
+  businessUnitId        Int?
+  managerUser           User?            @relation("ProjectManager", fields: [managerId], references: [id])
+  owner                 User?            @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  businessUnit          BusinessUnit?    @relation("ProjectBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
+  organization          Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  links                 ProjectLink[]
+  members               ProjectMember[]
+  messages              ProjectMessage[]
+  tasks                 Task[]           @relation("ProjectTasks")
+  assignedEmployees     Employee[]       @relation("ProjectAssignedEmployees")
+  coManagers            User[]           @relation("ProjectCoManagers")
 
   @@index([organizationId])
   @@index([businessUnitId])
+  @@index([ownerId])
 }
 
 model ProjectMessage {

@@ -9,12 +9,21 @@ import {
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export const PROJECT_STATUSES = [
-  'ACTIVE',
+  'NOT_STARTED',
+  'IN_PROGRESS',
+  'IN_APPROVAL',
+  'BLOCKED_CANCELLED',
+  'POSTPONED',
   'COMPLETED',
-  'PLANNING',
-  'PLANNED',
-  'IN PROGRESS',
-  'ON HOLD',
+] as const;
+
+export const PROJECT_TYPES = [
+  'EVENT_MANAGEMENT',
+  'PRODUCTION_EM',
+  'DIGITAL_MARKETING',
+  'PRODUCTION_DM',
+  'PRODUCTION_OTHER',
+  'TECH_PROJECTS',
 ] as const;
 
 export class CreateProjectDto {
@@ -59,9 +68,43 @@ export class CreateProjectDto {
   managerId?: number;
 
   @IsOptional()
+  @IsInt()
+  @ApiPropertyOptional({ description: 'Optional owner user ID.' })
+  ownerId?: number | null;
+
+  @IsOptional()
+  @IsString()
+  clientName?: string;
+
+  @IsOptional()
+  @IsString()
+  category?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(PROJECT_TYPES)
+  projectType?: string;
+
+  @IsOptional()
+  @IsString()
+  specificTask?: string;
+
+  @IsOptional()
+  @IsString()
+  priority?: string;
+
+  @IsOptional()
+  @IsString()
+  remarks?: string;
+
+  @IsOptional()
+  @IsString()
+  finalDeliverablesLink?: string;
+
+  @IsOptional()
   @IsString()
   @IsIn(PROJECT_STATUSES)
-  @ApiPropertyOptional({ example: 'ACTIVE' })
+  @ApiPropertyOptional({ example: 'NOT_STARTED' })
   status?: string;
 
   @IsOptional()

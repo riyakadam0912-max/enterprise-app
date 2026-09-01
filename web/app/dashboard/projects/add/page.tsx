@@ -8,7 +8,9 @@ import { canAccessUsers } from '@/utils/auth/permissions';
 import { reportError } from '@/lib/error-handling';
 import { getAuthSessionSnapshot } from '@/stores/auth-store';
 
-const STATUSES = ['ACTIVE', 'COMPLETED'];
+const STATUSES = ['NOT_STARTED', 'IN_PROGRESS', 'IN_APPROVAL', 'BLOCKED_CANCELLED', 'POSTPONED', 'COMPLETED'];
+const PROJECT_TYPES = ['EVENT_MANAGEMENT', 'PRODUCTION_EM', 'DIGITAL_MARKETING', 'PRODUCTION_DM', 'PRODUCTION_OTHER', 'TECH_PROJECTS'];
+const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
 
 const field = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400';
 
@@ -39,9 +41,17 @@ export default function AddProjectPage() {
     endDate:     '',
     manager:     session.role === 'MANAGER' ? session.name : '',
     managerId:   session.role === 'MANAGER' && session.userId ? String(session.userId) : '',
+    ownerId:     '',
     status:      '',
     description: '',
     client:      '',
+    category:    '',
+    projectType: '',
+    specificTask: '',
+    priority:    'MEDIUM',
+    budget:      '',
+    remarks:     '',
+    finalDeliverablesLink: '',
   });
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState('');
@@ -55,7 +65,7 @@ export default function AddProjectPage() {
     }
 
     apiClient<Array<{ id: number; name: string; role: string }>>('/users')
-      .then((users) => setManagers(users.filter((user) => user.role === 'MANAGER')))
+      .then((users) => setManagers(users.filter((user) => ['SUPER_ADMIN', 'ADMIN', 'MANAGER'].includes(user.role))))
       .catch((error) => {
         reportError(error, 'Unable to load project managers');
         setManagers([]);
@@ -96,12 +106,7 @@ export default function AddProjectPage() {
     setSaving(true);
     setError('');
     try {
-      const managerId = Number(form.managerId);
-      if (!managerId) {
-        setError('Please assign a manager to this project');
-        setSaving(false);
-        return;
-      }
+      const managerId = form.managerId ? Number(form.managerId) : undefined;
 
       await createProject({
         projectName: form.projectName.trim(),
@@ -110,9 +115,18 @@ export default function AddProjectPage() {
         endDate:     form.endDate            || undefined,
         manager:     form.manager.trim() || undefined,
         managerId,
+        ownerId: form.ownerId ? Number(form.ownerId) : null,
         status:      form.status             || undefined,
         description: form.description.trim() || undefined,
         client:      form.client             || undefined,
+        clientName:  form.client.trim()      || undefined,
+        category:    form.category.trim()    || undefined,
+        projectType: form.projectType        || undefined,
+        specificTask: form.specificTask.trim() || undefined,
+        priority:    form.priority           || undefined,
+        budget:      form.budget ? Number(form.budget) : undefined,
+        remarks:     form.remarks.trim()     || undefined,
+        finalDeliverablesLink: form.finalDeliverablesLink.trim() || undefined,
       });
       router.push('/dashboard/projects');
     } catch {
@@ -173,28 +187,41 @@ export default function AddProjectPage() {
             <input type="date" className={field} value={form.endDate} onChange={(e) => set('endDate', e.target.value)} />
           </div>
 
-          {/* Manager */}
+          {/* Project Owner */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Manager</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Project Owner (optional)</label>
             <select
               className={field}
-              value={form.managerId}
+              value={form.ownerId}
               onChange={(e) => {
                 const selected = managerOptions.find((manager) => String(manager.id) === e.target.value);
-                set('managerId', e.target.value);
-                set('manager', selected?.name ?? '');
+                set('ownerId', e.target.value);
+                if (selected?.role === 'MANAGER') {
+                  set('managerId', e.target.value);
+                  set('manager', selected.name);
+                }
               }}
             >
-              <option value="">-Select manager-</option>
+              <option value="">-No owner assigned-</option>
               {managerOptions.map((manager) => (
                 <option key={manager.id} value={manager.id}>
-                  {manager.name}{manager.id === session.userId ? ' (You)' : ''}
+                  {manager.name} ({manager.role}){manager.id === session.userId ? ' (You)' : ''}
                 </option>
               ))}
             </select>
-            {session.role === 'MANAGER' && (
-              <p className="mt-1 text-xs text-gray-500">Defaults to you, but you can assign the project to another manager if needed.</p>
-            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+            <input className={field} value={form.category} onChange={(e) => set('category', e.target.value)} placeholder="Project category" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Project Type</label>
+            <select className={field} value={form.projectType} onChange={(e) => set('projectType', e.target.value)}>
+              <option value="">-Select project type-</option>
+              {PROJECT_TYPES.map((type) => <option key={type} value={type}>{type.replaceAll('_', ' ')}</option>)}
+            </select>
           </div>
 
           {/* Status */}
@@ -204,6 +231,33 @@ export default function AddProjectPage() {
               <option value="">-Select-</option>
               {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Specific Task</label>
+            <input className={field} value={form.specificTask} onChange={(e) => set('specificTask', e.target.value)} placeholder="Primary project task" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+            <select className={field} value={form.priority} onChange={(e) => set('priority', e.target.value)}>
+              {PRIORITIES.map((priority) => <option key={priority} value={priority}>{priority}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Budget</label>
+            <input type="number" min="0" className={field} value={form.budget} onChange={(e) => set('budget', e.target.value)} placeholder="0" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Remarks</label>
+            <textarea rows={3} className={field} value={form.remarks} onChange={(e) => set('remarks', e.target.value)} placeholder="Project remarks" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Final Deliverables Link</label>
+            <input type="url" className={field} value={form.finalDeliverablesLink} onChange={(e) => set('finalDeliverablesLink', e.target.value)} placeholder="https://..." />
           </div>
 
           {/* Description */}
@@ -247,9 +301,17 @@ export default function AddProjectPage() {
                 endDate: '',
                 manager: session.role === 'MANAGER' ? session.name : '',
                 managerId: session.role === 'MANAGER' && session.userId ? String(session.userId) : '',
+                ownerId: '',
                 status: '',
                 description: '',
                 client: '',
+                category: '',
+                projectType: '',
+                specificTask: '',
+                priority: 'MEDIUM',
+                budget: '',
+                remarks: '',
+                finalDeliverablesLink: '',
               })}
               className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold px-6 py-2 rounded-lg transition-colors"
             >

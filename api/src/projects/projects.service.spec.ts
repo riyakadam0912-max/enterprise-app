@@ -84,14 +84,16 @@ describe('ProjectsService', () => {
   });
 
   it('preserves canonical project statuses instead of silently flattening them to ACTIVE', () => {
-    expect((service as any).normalizeProjectStatus('PLANNED')).toBe('PLANNED');
-    expect((service as any).normalizeProjectStatus('IN PROGRESS')).toBe(
-      'IN PROGRESS',
-    );
-    expect((service as any).normalizeProjectStatus('ACTIVE')).toBe('ACTIVE');
-    expect((service as any).normalizeProjectStatus('COMPLETED')).toBe(
-      'COMPLETED',
-    );
+    // Legacy status mappings
+    expect((service as any).normalizeProjectStatus('PLANNED')).toBe('NOT_STARTED');
+    expect((service as any).normalizeProjectStatus('ACTIVE')).toBe('IN_PROGRESS');
+    expect((service as any).normalizeProjectStatus('IN PROGRESS')).toBe('IN_PROGRESS');
+    expect((service as any).normalizeProjectStatus('ON HOLD')).toBe('BLOCKED_CANCELLED');
+    // New canonical statuses
+    expect((service as any).normalizeProjectStatus('NOT_STARTED')).toBe('NOT_STARTED');
+    expect((service as any).normalizeProjectStatus('IN_APPROVAL')).toBe('IN_APPROVAL');
+    expect((service as any).normalizeProjectStatus('POSTPONED')).toBe('POSTPONED');
+    expect((service as any).normalizeProjectStatus('COMPLETED')).toBe('COMPLETED');
   });
 
   describe('create', () => {
@@ -115,13 +117,17 @@ describe('ProjectsService', () => {
       ).rejects.toThrow(ForbiddenException);
     });
 
-    it('should throw ForbiddenException if manager is required but not provided', async () => {
-      await expect(
-        service.create(
-          { projectName: 'Test Project' } as CreateProjectDto,
-          mockAdminUser,
-        ),
-      ).rejects.toThrow(ForbiddenException);
+    it('should create project successfully when manager is not provided (manager is now optional)', async () => {
+      const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
+      projectDelegate.create.mockResolvedValueOnce({ id: 1, projectName: 'Test Project', organizationId: mockAdminUser.organizationId });
+      
+      const result = await service.create(
+        { projectName: 'Test Project' } as CreateProjectDto,
+        mockAdminUser,
+      );
+      
+      expect(result).toBeDefined();
+      expect(result.id).toBe(1);
     });
 
     it('should throw NotFoundException if manager not found', async () => {
@@ -325,9 +331,11 @@ describe('ProjectsService', () => {
       userDelegate.findMany.mockResolvedValueOnce(mockTeamMembers);
 
       const result = await service.findOne(1, mockAdminUser);
+      // Status is normalized when retrieved
+      const normalizedStatus = (service as any).normalizeProjectStatus(mockProject.status);
       expect(result).toEqual({
         ...mockProject,
-        status: 'ACTIVE',
+        status: normalizedStatus,
         tasks: mockTasks,
         teamMembers: mockTeamMembers,
       });
@@ -777,15 +785,15 @@ describe('ProjectsService', () => {
     it('should preserve real project status groupings without flattening legacy values', async () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
       projectDelegate.findMany.mockResolvedValueOnce([
-        { id: 1, status: 'ACTIVE' },
+        { id: 1, status: 'IN_PROGRESS' },
         { id: 2, status: 'COMPLETED' },
-        { id: 3, status: 'IN PROGRESS' },
+        { id: 3, status: 'NOT_STARTED' },
       ]);
 
       const result = await service.getByStatus(mockAdminUser);
-      expect(result.ACTIVE).toHaveLength(1);
-      expect(result['IN PROGRESS']).toHaveLength(1);
+      expect(result.IN_PROGRESS).toHaveLength(1);
       expect(result.COMPLETED).toHaveLength(1);
+      expect(result.NOT_STARTED).toHaveLength(1);
     });
   });
 

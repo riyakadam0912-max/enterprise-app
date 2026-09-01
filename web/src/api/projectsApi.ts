@@ -10,6 +10,15 @@ export interface Project {
   deadline?: string | null;
   manager: string | null;
   managerId: number | null;
+  ownerId?: number | null;
+  owner?: { id: number; name: string; email: string; role: string } | null;
+  clientName?: string | null;
+  category?: string | null;
+  projectType?: string | null;
+  specificTask?: string | null;
+  priority?: string | null;
+  remarks?: string | null;
+  finalDeliverablesLink?: string | null;
   managerUser?: {
     id: number;
     name: string;
@@ -97,10 +106,18 @@ export interface CreateProjectPayload {
   deadline?: string;
   manager?: string;
   managerId?: number;
+  ownerId?: number | null;
   status?: string;
   budget?: number;
   description?: string;
   client?: string;
+  clientName?: string;
+  category?: string;
+  projectType?: string;
+  specificTask?: string;
+  priority?: string;
+  remarks?: string;
+  finalDeliverablesLink?: string;
   projectLead?: string;
 }
 
@@ -174,7 +191,7 @@ export async function removeEmployee(projectId: number, employeeId: number): Pro
   });
 }
 
-export async function updateProjectStatus(id: number, status: 'ACTIVE' | 'COMPLETED'): Promise<Project> {
+export async function updateProjectStatus(id: number, status: string): Promise<Project> {
   return apiClient<Project>(`/projects/${id}/status`, {
     method: 'PATCH',
     body: JSON.stringify({ status }),

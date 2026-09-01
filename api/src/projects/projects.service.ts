@@ -11,12 +11,15 @@ import { Role } from '../common/enums/role.enum';
 import { CreateProjectLinkDto } from './dto/create-project-link.dto';
 import { AuthUser } from '../common/types/auth';
 import { BusinessUnitsService } from '../business-units/business-units.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { Optional } from '@nestjs/common';
 
 const PROJECT_STATUSES = [
-  'ACTIVE',
-  'PLANNED',
-  'IN PROGRESS',
-  'ON HOLD',
+  'NOT_STARTED',
+  'IN_PROGRESS',
+  'IN_APPROVAL',
+  'BLOCKED_CANCELLED',
+  'POSTPONED',
   'COMPLETED',
 ] as const;
 const TASK_STATUSES = [
@@ -31,10 +34,48 @@ export class ProjectsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly businessUnitsService: BusinessUnitsService,
+    @Optional() private readonly notificationsService?: NotificationsService,
   ) {}
 
   private get db() {
     return this.prisma;
+  }
+
+  private async notifyProjectChange(
+    projectId: number,
+    organizationId: number,
+    actorUserId: number,
+    action: string,
+    details: string,
+  ) {
+    if (!this.notificationsService) return;
+    const recipients = await this.db.user.findMany({
+      where: {
+        isActive: true,
+        OR: [
+          { role: Role.SUPER_ADMIN },
+          { role: Role.ADMIN, organizationId },
+        ],
+      },
+      select: { id: true },
+    });
+    const recipientIds = Array.from(new Set(recipients.map(({ id }) => id)));
+    if (recipientIds.length === 0) return;
+    await this.notificationsService.sendNotification({
+      recipientIds,
+      organizationId,
+      createdBy: actorUserId,
+      title: `Project ${action}: #${projectId}`,
+      message: details,
+      module: 'Projects',
+      entityType: 'Project',
+      entityId: projectId,
+      actionUrl: `/dashboard/projects?projectId=${projectId}`,
+      type: 'INFO',
+      priority: 'MEDIUM',
+      category: 'PROJECT',
+      channels: ['IN_APP', 'EMAIL'],
+    });
   }
 
   private validateOrganization(user: AuthUser): number {
@@ -111,18 +152,37 @@ export class ProjectsService {
   private normalizeProjectStatus(
     status?: string | null,
   ): (typeof PROJECT_STATUSES)[number] {
-    if (!status) return 'PLANNED';
+    if (!status) return 'NOT_STARTED';
 
     const normalized = status.trim().toUpperCase();
-    if (normalized === 'ACTIVE') return 'ACTIVE';
+    if (normalized === 'NOT_STARTED' || normalized === 'PLANNED' || normalized === 'PLANNING') return 'NOT_STARTED';
+    if (normalized === 'IN_PROGRESS' || normalized === 'IN PROGRESS' || normalized === 'ACTIVE') return 'IN_PROGRESS';
+    if (normalized === 'IN_APPROVAL' || normalized === 'IN APPROVAL') return 'IN_APPROVAL';
+    if (normalized === 'BLOCKED_CANCELLED' || normalized === 'BLOCKED/CANCELLED' || normalized === 'ON HOLD') return 'BLOCKED_CANCELLED';
+    if (normalized === 'POSTPONED' || normalized === 'POSTPONDED') return 'POSTPONED';
     if (normalized === 'COMPLETED') return 'COMPLETED';
-    if (normalized === 'PLANNED') return 'PLANNED';
-    if (normalized === 'PLANNING') return 'PLANNED';
-    if (normalized === 'IN PROGRESS' || normalized === 'IN_PROGRESS')
-      return 'IN PROGRESS';
-    if (normalized === 'ON HOLD' || normalized === 'ONHOLD') return 'ON HOLD';
 
-    return 'PLANNED';
+    return 'NOT_STARTED';
+  }
+
+  private async validateOwner(ownerId: number, organizationId: number) {
+    const owner = await this.db.user.findFirst({
+      where: {
+        id: ownerId,
+        isActive: true,
+        OR: [{ organizationId }, { role: Role.SUPER_ADMIN }],
+      },
+      select: { id: true, name: true, role: true, organizationId: true },
+    });
+    const allowedOwnerRoles: Role[] = [
+      Role.SUPER_ADMIN,
+      Role.ADMIN,
+      Role.MANAGER,
+    ];
+    if (!owner || !allowedOwnerRoles.includes(owner.role)) {
+      throw new NotFoundException('Project owner not found or has an invalid role');
+    }
+    return owner;
   }
 
   private async getProjectScope(
@@ -235,30 +295,35 @@ export class ProjectsService {
       throw new ForbiddenException('Project name is required');
     }
 
-    const managerId =
-      dto.managerId ?? (user.role === Role.MANAGER ? user.userId : undefined);
-    if (!managerId) {
-      throw new ForbiddenException('Project manager is required');
-    }
+    const ownerId = dto.ownerId ?? undefined;
+    const owner = ownerId ? await this.validateOwner(ownerId, organizationId) : null;
+    const managerId = dto.managerId ?? (user.role === Role.MANAGER ? user.userId : undefined);
+    const manager = managerId ? await this.assertManager(managerId, organizationId) : null;
+    const managerName = dto.manager ?? manager?.name ?? null;
 
-    const manager = await this.assertManager(managerId, organizationId);
-    const managerName = manager.name;
-
-    return this.db.project.create({
+    const project = await this.db.project.create({
       data: {
         organizationId,
         projectName: resolvedName,
         projectCode: dto.projectCode,
+        clientName: dto.clientName ?? dto.client,
+        category: dto.category,
+        projectType: dto.projectType,
         startDate: dto.startDate ? new Date(dto.startDate) : undefined,
         endDate:
           dto.deadline || dto.endDate
             ? new Date(dto.deadline || dto.endDate!)
             : undefined,
-        manager: dto.manager ?? managerName,
+        manager: managerName,
         managerId: managerId,
+        ownerId: owner?.id ?? null,
         status: this.normalizeProjectStatus(dto.status),
         budget: dto.budget,
         description: dto.description,
+        specificTask: dto.specificTask,
+        priority: dto.priority,
+        remarks: dto.remarks,
+        finalDeliverablesLink: dto.finalDeliverablesLink,
         client: dto.client,
         projectLead: dto.projectLead,
         ...(dtoAny.businessUnitId != null && {
@@ -267,6 +332,7 @@ export class ProjectsService {
       },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
+        owner: { select: { id: true, name: true, email: true, role: true } },
         coManagers: {
           where: { organizationId },
           select: { id: true, name: true, email: true },
@@ -284,18 +350,26 @@ export class ProjectsService {
         links: { where: { organizationId } },
       },
     });
+    await this.notifyProjectChange(
+      project.id,
+      organizationId,
+      user.userId,
+      'created',
+      `Project ${project.projectName} was created.`,
+    );
+    return project;
   }
 
   async assignManager(projectId: number, managerId: number, user: AuthUser) {
     const organizationId = this.validateOrganization(user);
-    const project = await this.db.project.findUnique({
+    const existing = await this.db.project.findUnique({
       where: { id: projectId, organizationId },
     });
-    if (!project)
+    if (!existing)
       throw new NotFoundException(`Project #${projectId} not found`);
 
     const manager = await this.assertManager(managerId, organizationId);
-    return this.db.project.update({
+    const updated = await this.db.project.update({
       where: { id: projectId, organizationId },
       data: {
         managerId,
@@ -303,6 +377,7 @@ export class ProjectsService {
       },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
+        owner: { select: { id: true, name: true, email: true, role: true } },
         coManagers: {
           where: { organizationId },
           select: { id: true, name: true, email: true },
@@ -320,6 +395,14 @@ export class ProjectsService {
         links: { where: { organizationId } },
       },
     });
+    await this.notifyProjectChange(
+      updated.id,
+      organizationId,
+      user.userId,
+      'owner updated',
+      `Project manager changed to ${manager.name}.`,
+    );
+    return updated;
   }
 
   async findAll(user: AuthUser) {
@@ -329,6 +412,7 @@ export class ProjectsService {
       where,
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
+        owner: { select: { id: true, name: true, email: true, role: true } },
         coManagers: {
           where: { organizationId: this.validateOrganization(user) },
           select: { id: true, name: true, email: true },
@@ -468,7 +552,7 @@ export class ProjectsService {
       return this.findOne(projectId, requestingUser);
     }
 
-    return this.db.project.update({
+    const updated = await this.db.project.update({
       where: { id: projectId, organizationId },
       data: { coManagers: { connect: { id: manager.id } } },
       include: {
@@ -490,6 +574,14 @@ export class ProjectsService {
         links: { where: { organizationId } },
       },
     });
+    await this.notifyProjectChange(
+      updated.id,
+      organizationId,
+      requestingUser.userId,
+      'team updated',
+      `Co-manager ${manager.name} added to the project.`,
+    );
+    return updated;
   }
 
   async removeCoManager(
@@ -522,9 +614,9 @@ export class ProjectsService {
       );
     }
 
-    await this.assertManager(userId, organizationId);
+    const coManager = await this.assertManager(userId, organizationId);
 
-    return this.db.project.update({
+    const updated = await this.db.project.update({
       where: { id: projectId, organizationId },
       data: { coManagers: { disconnect: { id: userId } } },
       include: {
@@ -546,6 +638,14 @@ export class ProjectsService {
         links: { where: { organizationId } },
       },
     });
+    await this.notifyProjectChange(
+      updated.id,
+      organizationId,
+      requestingUser.userId,
+      'team updated',
+      `Co-manager ${coManager.name} removed from the project.`,
+    );
+    return updated;
   }
 
   async assignEmployee(
@@ -583,7 +683,7 @@ export class ProjectsService {
       return this.findOne(projectId, requestingUser);
     }
 
-    return this.db.project.update({
+    const updated = await this.db.project.update({
       where: { id: projectId, organizationId },
       data: { assignedEmployees: { connect: { id: employeeId } } },
       include: {
@@ -605,6 +705,14 @@ export class ProjectsService {
         links: { where: { organizationId } },
       },
     });
+    await this.notifyProjectChange(
+      updated.id,
+      organizationId,
+      requestingUser.userId,
+      'team updated',
+      `Employee ${employee.name || `#${employee.id}`} assigned to the project.`,
+    );
+    return updated;
   }
 
   async removeEmployee(
@@ -622,13 +730,13 @@ export class ProjectsService {
 
     const employee = await this.db.employee.findFirst({
       where: { id: employeeId, organizationId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, name: true },
     });
     if (!employee) {
       throw new NotFoundException('Employee not found');
     }
 
-    return this.db.project.update({
+    const updated = await this.db.project.update({
       where: { id: projectId, organizationId },
       data: { assignedEmployees: { disconnect: { id: employeeId } } },
       include: {
@@ -650,6 +758,14 @@ export class ProjectsService {
         links: { where: { organizationId } },
       },
     });
+    await this.notifyProjectChange(
+      updated.id,
+      organizationId,
+      requestingUser.userId,
+      'team updated',
+      `Employee ${employee.name || `#${employee.id}`} removed from the project.`,
+    );
+    return updated;
   }
 
   async update(id: number, dto: UpdateProjectDto, user: AuthUser) {
@@ -677,12 +793,27 @@ export class ProjectsService {
       managerName = manager.name;
     }
 
-    return this.db.project.update({
+    const owner =
+      dto.ownerId === undefined || dto.ownerId === null
+        ? null
+        : await this.validateOwner(dto.ownerId, organizationId);
+
+    const updated = await this.db.project.update({
       where: { id, organizationId },
       data: {
         ...((dto.projectName !== undefined || dto.name !== undefined) && {
           projectName: dto.projectName ?? dto.name,
         }),
+        ...(dto.clientName !== undefined && { clientName: dto.clientName }),
+        ...(dto.category !== undefined && { category: dto.category }),
+        ...(dto.projectType !== undefined && { projectType: dto.projectType }),
+        ...(dto.specificTask !== undefined && { specificTask: dto.specificTask }),
+        ...(dto.priority !== undefined && { priority: dto.priority }),
+        ...(dto.remarks !== undefined && { remarks: dto.remarks }),
+        ...(dto.finalDeliverablesLink !== undefined && {
+          finalDeliverablesLink: dto.finalDeliverablesLink,
+        }),
+        ...(dto.ownerId !== undefined && { ownerId: owner?.id ?? null }),
         ...(dto.projectCode !== undefined && { projectCode: dto.projectCode }),
         ...(dto.managerId !== undefined && { managerId: dto.managerId }),
         ...(managerName !== undefined && { manager: managerName }),
@@ -711,6 +842,14 @@ export class ProjectsService {
         links: { where: { organizationId } },
       },
     });
+    await this.notifyProjectChange(
+      updated.id,
+      organizationId,
+      user.userId,
+      'updated',
+      'Project details were updated.',
+    );
+    return updated;
   }
 
   async updateStatus(id: number, status: string, user: AuthUser) {
@@ -722,13 +861,21 @@ export class ProjectsService {
       );
     }
 
-    return this.db.project.update({
+    const updated = await this.db.project.update({
       where: { id, organizationId },
       data: { status: this.normalizeProjectStatus(status) },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
       },
     });
+    await this.notifyProjectChange(
+      updated.id,
+      organizationId,
+      user.userId,
+      'status changed',
+      `Project status updated to ${this.normalizeProjectStatus(status)}.`,
+    );
+    return updated;
   }
 
   async remove(id: number, user: AuthUser) {

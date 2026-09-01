@@ -355,7 +355,7 @@ export default function ProjectsWorkflowPage() {
     }
   }
 
-  async function onUpdateProjectStatus(status: 'ACTIVE' | 'COMPLETED') {
+  async function onUpdateProjectStatus(status: string) {
     if (!selectedProjectId) return;
     setBusy(true);
     setActionMessage('');
@@ -675,10 +675,14 @@ export default function ProjectsWorkflowPage() {
               {canManageProject && (
                 <select
                   value={projectDetails.status}
-                  onChange={(e) => onUpdateProjectStatus(e.target.value as 'ACTIVE' | 'COMPLETED')}
+                  onChange={(e) => onUpdateProjectStatus(e.target.value)}
                   className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
                 >
-                  <option value="ACTIVE">ACTIVE</option>
+                  <option value="NOT_STARTED">NOT STARTED</option>
+                  <option value="IN_PROGRESS">IN PROGRESS</option>
+                  <option value="IN_APPROVAL">IN APPROVAL</option>
+                  <option value="BLOCKED_CANCELLED">BLOCKED/CANCELLED</option>
+                  <option value="POSTPONED">POSTPONED</option>
                   <option value="COMPLETED">COMPLETED</option>
                 </select>
               )}
@@ -736,6 +740,21 @@ export default function ProjectsWorkflowPage() {
                     <p>Deadline: {formatDate(projectDetails.deadline ?? projectDetails.endDate)}</p>
                     <p>Status: {projectDetails.status}</p>
                     <p>Budget: {formatBudget(projectDetails.budget)}</p>
+                    {projectDetails.clientName && <p>Client: {projectDetails.clientName}</p>}
+                    {projectDetails.category && <p>Category: {projectDetails.category}</p>}
+                    {projectDetails.projectType && <p>Type: {projectDetails.projectType}</p>}
+                    {projectDetails.priority && <p>Priority: {projectDetails.priority}</p>}
+                    {projectDetails.specificTask && <p>Task: {projectDetails.specificTask}</p>}
+                    {projectDetails.owner && <p>Owner: {projectDetails.owner.name}</p>}
+                    {projectDetails.remarks && <p>Remarks: {projectDetails.remarks}</p>}
+                    {projectDetails.finalDeliverablesLink && (
+                      <p>
+                        Deliverables:{' '}
+                        <a href={projectDetails.finalDeliverablesLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                          View
+                        </a>
+                      </p>
+                    )}
                   </div>
                 </article>
 
