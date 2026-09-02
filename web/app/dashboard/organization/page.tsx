@@ -150,12 +150,12 @@ function SummaryStat({
   };
 
   return (
-    <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_16px_42px_-30px_rgba(15,23,42,0.45)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_20px_50px_-30px_rgba(15,23,42,0.5)]">
-      <div className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-[0.12em] uppercase ring-1 ${toneClasses[tone]}`}>
+    <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_12px_30px_-26px_rgba(15,23,42,0.45)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_30px_-24px_rgba(15,23,42,0.42)]">
+      <div className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-[0.12em] uppercase ring-1 ${toneClasses[tone]}`}>
         {label}
       </div>
-      <p className="mt-4 text-[28px] font-semibold tracking-[-0.04em] text-slate-900">{value}</p>
-      <p className="mt-1.5 text-xs text-slate-500">{hint}</p>
+      <p className="mt-4 text-[26px] font-semibold tracking-[-0.04em] text-slate-900">{value}</p>
+      <p className="mt-1.5 text-[11px] text-slate-500">{hint}</p>
     </div>
   );
 }
@@ -489,20 +489,20 @@ export default function OrganizationPage() {
       </div>
 
       {parentOrg ? (
-        <div className="mb-8 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_55px_-26px_rgba(15,23,42,0.35)]">
-          <div className="flex items-center justify-between border-b border-slate-200 bg-gradient-to-r from-slate-50 via-white to-orange-50 px-5 py-4 sm:px-6">
+        <div className="mb-8 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_10px_28px_-24px_rgba(15,23,42,0.3)]">
+          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3.5 sm:px-5">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Performance overview</p>
-              <h2 className="mt-1 text-lg font-semibold tracking-tight text-slate-900">Child organizations: profit vs loss</h2>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Overview</p>
+              <h2 className="mt-1 text-base font-semibold tracking-tight text-slate-900">Profit vs loss</h2>
             </div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-orange-100 px-2.5 py-1.5 text-xs font-semibold text-orange-700 ring-1 ring-orange-200">
-              <TrendingUp className="h-3.5 w-3.5" />
-              {childProfitLossData.length > 0 ? `${childProfitLossData.length} tracked units` : 'No data'}
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-orange-100 px-2 py-1 text-[10px] font-semibold text-orange-700 ring-1 ring-orange-200">
+              <TrendingUp className="h-3 w-3" />
+              {childProfitLossData.length > 0 ? `${childProfitLossData.length} tracked` : 'No data'}
             </div>
           </div>
 
-          <div className="grid gap-5 p-5 sm:p-6 lg:grid-cols-[1.5fr_0.8fr]">
-            <div className="h-[330px] rounded-[22px] border border-slate-200 bg-slate-50/70 p-3 shadow-inner shadow-slate-200/40">
+          <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-[1.5fr_0.8fr]">
+            <div className="h-[300px] rounded-[18px] border border-slate-200 bg-slate-50/60 p-2">
               {childProfitLossData.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-sm text-slate-500">No child organization performance data available yet.</div>
               ) : (
@@ -559,11 +559,11 @@ export default function OrganizationPage() {
 
       {/* ── Edit form ── */}
       {parentOrg ? (
-        <form onSubmit={handleSubmit} className="mb-8 max-w-4xl rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_55px_-26px_rgba(15,23,42,0.35)] sm:p-6">
-          <div className="mb-5 flex items-center justify-between border-b border-slate-200 pb-4">
+        <form onSubmit={handleSubmit} className="mb-8 max-w-4xl rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_10px_28px_-24px_rgba(15,23,42,0.3)] sm:p-5">
+          <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3.5">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Profile</p>
-              <p className="mt-1 text-lg font-semibold text-slate-900">Organization profile</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Profile</p>
+              <p className="mt-1 text-base font-semibold text-slate-900">Organization profile</p>
               <p className="text-sm text-slate-500">Status: {parentOrg.status}</p>
             </div>
             {saved ? <span className="text-sm font-medium text-emerald-600">Saved ✓</span> : null}
@@ -723,22 +723,22 @@ export default function OrganizationPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-5 py-4 text-slate-600">{item.code}</td>
-                      <td className="px-5 py-4">
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                      <td className="px-4 py-3 text-slate-600">{item.code}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
                           <CheckCircle2 className="h-3.5 w-3.5" />{item.status}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-slate-600">{new Date(item.createdAt).toLocaleDateString('en-GB')}</td>
-                      <td className="px-5 py-4 text-right">
+                      <td className="px-4 py-3 text-slate-600">{new Date(item.createdAt).toLocaleDateString('en-GB')}</td>
+                      <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-2">
                           <button type="button" onClick={() => { setEditingChild(item); setCreateOpen(true); }}
-                            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
-                            <Pencil className="h-4 w-4" />Edit
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
+                            <Pencil className="h-3.5 w-3.5" />Edit
                           </button>
                           <button type="button" onClick={() => setDeleteTarget(item)}
-                            className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-100">
-                            <Trash2 className="h-4 w-4" />Delete
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-medium text-rose-600 transition hover:bg-rose-100">
+                            <Trash2 className="h-3.5 w-3.5" />Delete
                           </button>
                         </div>
                       </td>
