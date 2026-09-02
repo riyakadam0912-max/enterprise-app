@@ -14,6 +14,7 @@ export interface ReportsUserContext {
   userId: number;
   role: 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
   employeeId?: number | null;
+  organizationId?: number | null;
 }
 
 export interface ReportsQueryFilters {
@@ -31,6 +32,7 @@ interface ScopeInfo {
   role: ReportsUserContext['role'];
   employeeIds?: number[];
   requestedEmployeeId?: number;
+  organizationId?: number;
 }
 
 interface DateRange {
