@@ -22,6 +22,7 @@ import { CheckOutDto } from './dto/check-out.dto';
 import { CreateShiftDto } from './dto/create-shift.dto';
 import { QueryAttendanceDto } from './dto/query-attendance.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
+import { UpdateShiftDto } from './dto/update-shift.dto';
 
 type AttendanceUser = {
   userId: number;
@@ -619,6 +620,76 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       where: { id: dto.employeeId, organizationId: user.organizationId },
       data: { shiftId: dto.shiftId },
       include: { shift: true },
+    });
+
+    await this.invalidateDashboardCache();
+    return result;
+  }
+
+  async updateShift(
+    id: number,
+    dto: UpdateShiftDto,
+    user: AttendanceUser,
+  ) {
+    // First verify the shift belongs to this organization
+    const shift = await this.prisma.shift.findFirst({
+      where: { id, organizationId: user.organizationId },
+    });
+
+    if (!shift) {
+      throw new NotFoundException('Shift not found');
+    }
+
+    // Prepare update data, filtering out undefined values
+    const updateData: any = {};
+    if (dto.name !== undefined) updateData.name = dto.name;
+    if (dto.type !== undefined) updateData.type = dto.type;
+    if (dto.startTime !== undefined) updateData.startTime = dto.startTime;
+    if (dto.endTime !== undefined) updateData.endTime = dto.endTime;
+    if (dto.requiredHours !== undefined) updateData.requiredHours = dto.requiredHours;
+    if (dto.minPresentHours !== undefined) {
+      updateData.minPresentHours = Math.min(
+        dto.minPresentHours,
+        updateData.requiredHours ?? shift.requiredHours,
+      );
+    }
+    if (dto.gracePeriodMinutes !== undefined) updateData.gracePeriodMinutes = dto.gracePeriodMinutes;
+    if (dto.rotationPattern !== undefined) updateData.rotationPattern = dto.rotationPattern;
+
+    const result = await this.prisma.shift.update({
+      where: { id },
+      data: updateData,
+    });
+
+    await this.invalidateDashboardCache();
+    return result;
+  }
+
+  async deleteShift(id: number, user: AttendanceUser) {
+    // First verify the shift belongs to this organization
+    const shift = await this.prisma.shift.findFirst({
+      where: { id, organizationId: user.organizationId },
+    });
+
+    if (!shift) {
+      throw new NotFoundException('Shift not found');
+    }
+
+    // Check if any employees are assigned to this shift
+    const assignedEmployees = await this.prisma.employee.count({
+      where: { shiftId: id, deletedAt: null },
+    });
+
+    if (assignedEmployees > 0) {
+      throw new BadRequestException(
+        `Cannot delete shift. ${assignedEmployees} employee(s) are assigned to this shift.`,
+      );
+    }
+
+    // Soft delete or hard delete - checking if the model supports soft deletes
+    const result = await this.prisma.shift.update({
+      where: { id },
+      data: { isActive: false },
     });
 
     await this.invalidateDashboardCache();

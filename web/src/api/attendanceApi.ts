@@ -267,6 +267,19 @@ export function assignShift(employeeId: number, shiftId: number): Promise<unknow
   });
 }
 
+export function updateShift(id: number, data: Partial<ShiftPayload>): Promise<ShiftRecord> {
+  return apiClient<ShiftRecord>(`/attendance/shifts/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteShift(id: number): Promise<unknown> {
+  return apiClient(`/attendance/shifts/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 export function checkIn(data: AttendanceActionPayload): Promise<AttendanceRecord> {
   return apiClient<AttendanceRecord>('/attendance/check-in', {
     method: 'POST',

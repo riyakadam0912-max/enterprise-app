@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -22,6 +23,7 @@ import { CheckOutDto } from './dto/check-out.dto';
 import { CreateShiftDto } from './dto/create-shift.dto';
 import { QueryAttendanceDto } from './dto/query-attendance.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
+import { UpdateShiftDto } from './dto/update-shift.dto';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -151,6 +153,52 @@ export class AttendanceController {
     },
   ) {
     return this.attendanceService.assignShift(dto, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'PATCH shifts/:id' })
+  @ApiResponse({ status: 200, description: 'PATCH request successful.' })
+  @ApiResponse({ status: 400, description: 'Bad request.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @ApiResponse({ status: 404, description: 'Resource not found.' })
+  @ApiBody({ type: UpdateShiftDto })
+  @Patch('shifts/:id')
+  updateShift(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateShiftDto,
+    @Req()
+    req: {
+      user: {
+        userId: number;
+        role: Role;
+        employeeId?: number | null;
+        organizationId: number;
+      };
+    },
+  ) {
+    return this.attendanceService.updateShift(id, dto, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'DELETE shifts/:id' })
+  @ApiResponse({ status: 200, description: 'DELETE request successful.' })
+  @ApiResponse({ status: 400, description: 'Bad request.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @ApiResponse({ status: 404, description: 'Resource not found.' })
+  @Delete('shifts/:id')
+  deleteShift(
+    @Param('id', ParseIntPipe) id: number,
+    @Req()
+    req: {
+      user: {
+        userId: number;
+        role: Role;
+        employeeId?: number | null;
+        organizationId: number;
+      };
+    },
+  ) {
+    return this.attendanceService.deleteShift(id, req.user);
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)

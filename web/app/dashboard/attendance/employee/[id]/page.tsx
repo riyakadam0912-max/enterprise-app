@@ -6,6 +6,7 @@ import { useMemo, useState } from 'react';
 import { AttendanceStatus } from '@/api/attendanceApi';
 import { useEmployeeAttendance } from '@/hooks/useAttendance';
 import { useAuthSession } from '@/stores/auth-store';
+import { formatShiftTime, formatShiftRange } from '@/lib/time-format';
 
 const DAY_HEADERS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -96,7 +97,7 @@ export default function EmployeeAttendancePage() {
               </p>
               <p className="mt-1 text-xs text-slate-500">
                 {data?.employee?.shift?.startTime && data?.employee?.shift?.endTime
-                  ? `${data.employee.shift.startTime} - ${data.employee.shift.endTime}`
+                  ? formatShiftRange(data.employee.shift.startTime, data.employee.shift.endTime)
                   : data?.employee?.shift?.type ?? 'No shift'}
               </p>
             </div>
@@ -125,8 +126,8 @@ export default function EmployeeAttendancePage() {
                         <span className="text-[10px] font-semibold uppercase tracking-wide">{day.status === 'HALF_DAY' ? 'Half Day' : day.status.toLowerCase()}</span>
                       </div>
                       <div className="mt-4 space-y-1 text-xs">
-                        <p>{day.checkIn ? `In ${new Date(day.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'No check-in'}</p>
-                        <p>{day.checkOut ? `Out ${new Date(day.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'No check-out'}</p>
+                        <p>{day.checkIn ? `In ${new Date(day.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}` : 'No check-in'}</p>
+                        <p>{day.checkOut ? `Out ${new Date(day.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}` : 'No check-out'}</p>
                         <p>{day.workingHours != null ? `${day.workingHours.toFixed(2)} hrs` : '—'}</p>
                         <p>{day.lateMinutes > 0 ? `Late by ${day.lateMinutes} mins` : 'On time'}</p>
                         <p>{day.overtimeHours > 0 ? `Overtime +${day.overtimeHours.toFixed(2)} hrs` : 'No overtime'}</p>

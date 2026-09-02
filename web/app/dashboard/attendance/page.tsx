@@ -3,12 +3,13 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { assignShift, AttendanceRecord, AttendanceStatus, createShift, getMonthlyAttendanceReport, getShifts, ShiftRecord } from '@/api/attendanceApi';
+import { assignShift, AttendanceRecord, AttendanceStatus, createShift, deleteShift, getMonthlyAttendanceReport, getShifts, ShiftRecord, updateShift } from '@/api/attendanceApi';
 import { useAttendance, useCheckIn, useCheckOut, useTodayAttendance, useUpdateAttendance } from '@/hooks/useAttendance';
 import { useEmployees } from '@/hooks/useEmployees';
 import TableActions from '@/components/common/TableActions';
 import { reportError } from '@/lib/error-handling';
 import { useAuthSession } from '@/stores/auth-store';
+import { formatTime, formatShiftTime, formatShiftRange } from '@/lib/time-format';
 
 const STATUS_STYLES: Record<AttendanceStatus, string> = {
   PRESENT: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -49,16 +50,20 @@ function todayString() {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function formatTime(value: string | null) {
-  if (!value) return '—';
-  return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+// Kept for backward compatibility, but uses the 12-hour format function
+function formatTimeForDisplay(value: string | null) {
+  return formatTime(value);
 }
 
-function formatShiftRange(row: AttendanceRecord) {
+function formatShiftRangeForDisplay(row: AttendanceRecord) {
   const details = row.shiftDetails;
   if (!details) return 'Unassigned';
   if (!details.startTime || !details.endTime) return `${details.name} (${details.type})`;
-  return `${details.startTime} - ${details.endTime}`;
+  return formatShiftRange(details.startTime, details.endTime);
+}
+
+function isShiftFormComplete(shift: { name: string; startTime: string; endTime: string }) {
+  return Boolean(shift.name.trim() && shift.startTime && shift.endTime);
 }
 
 function formatDateInput(value: string) {
@@ -295,6 +300,7 @@ export default function AttendancePage() {
   const [status, setStatus] = useState(searchParams.get('status') || '');
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
   const [shifts, setShifts] = useState<ShiftRecord[]>([]);
+  const [editingShift, setEditingShift] = useState<ShiftRecord | null>(null);
   const [newShift, setNewShift] = useState({
     name: '',
     type: 'FIXED' as 'FIXED' | 'FLEXIBLE' | 'ROTATIONAL',
@@ -505,6 +511,49 @@ export default function AttendancePage() {
       setShiftSuccess('Shift assigned successfully.');
     } catch (err) {
       setShiftError(err instanceof Error ? err.message : 'Unable to assign shift.');
+    }
+  }
+
+  async function handleUpdateShift() {
+    if (!editingShift) return;
+
+    try {
+      setShiftError(null);
+      setShiftSuccess(null);
+      await updateShift(editingShift.id, {
+        name: editingShift.name,
+        type: editingShift.type,
+        startTime: editingShift.startTime,
+        endTime: editingShift.endTime,
+        requiredHours: editingShift.requiredHours,
+        minPresentHours: editingShift.minPresentHours,
+        gracePeriodMinutes: editingShift.gracePeriodMinutes,
+      });
+      const rows = await getShifts();
+      setShifts(rows);
+      setShiftSuccess('Shift updated successfully.');
+      setEditingShift(null);
+    } catch (err) {
+      setShiftError(err instanceof Error ? err.message : 'Unable to update shift.');
+    }
+  }
+
+  async function handleDeleteShift(shiftId: number) {
+    const shift = shifts.find((item) => item.id === shiftId);
+    if (!shift) return;
+
+    const confirmed = window.confirm(`Delete the "${shift.name}" shift? This action cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+      setShiftError(null);
+      setShiftSuccess(null);
+      await deleteShift(shiftId);
+      const rows = await getShifts();
+      setShifts(rows);
+      setShiftSuccess('Shift deleted successfully.');
+    } catch (err) {
+      setShiftError(err instanceof Error ? err.message : 'Unable to delete shift.');
     }
   }
 
@@ -735,8 +784,194 @@ export default function AttendancePage() {
             <button onClick={handleAssignShift} disabled={!assignEmployeeId || !assignShiftId} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Assign Shift</button>
           </div>
 
+          <div className="overflow-hidden rounded-2xl border border-slate-200">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Shift</th>
+                    <th className="px-4 py-3">Type</th>
+                    <th className="px-4 py-3">Time</th>
+                    <th className="px-4 py-3">Hours</th>
+                    <th className="px-4 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {shifts.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-10 text-center text-slate-500">No shifts created yet.</td>
+                    </tr>
+                  ) : (
+                    shifts.map((shift) => (
+                      <tr key={shift.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-slate-900">{shift.name}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{shift.type}</span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {shift.startTime && shift.endTime ? `${formatShiftTime(shift.startTime)} - ${formatShiftTime(shift.endTime)}` : 'Flexible'}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">{shift.requiredHours ?? '—'} hrs</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setEditingShift(shift)}
+                              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteShift(shift.id)}
+                              className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           {shiftError && <p id="shift-error" className="text-sm text-red-600">{shiftError}</p>}
           {shiftSuccess && <p className="text-sm text-emerald-600">{shiftSuccess}</p>}
+        </div>
+      )}
+
+      {editingShift && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-[2px]">
+          <div className="w-full max-w-2xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_80px_-24px_rgba(15,23,42,0.35)]">
+            <div className="flex items-start justify-between border-b border-slate-200 bg-gradient-to-r from-orange-50 via-white to-slate-50 px-5 py-4 sm:px-6">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-orange-100 text-lg text-orange-600 shadow-sm ring-1 ring-orange-200">⏰</div>
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">Edit Shift</h3>
+                  <p className="mt-1 text-xs text-slate-500">Update the details for this shift assignment.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingShift(null)}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-xl text-slate-400 transition hover:border-slate-300 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2"
+                aria-label="Close edit shift modal"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="space-y-5 px-5 py-5 sm:px-6">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Shift summary</p>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-base font-semibold text-slate-900">{editingShift.name}</p>
+                    <p className="text-sm text-slate-500">{editingShift.type}</p>
+                  </div>
+                  <span className="inline-flex rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-700 ring-1 ring-orange-200">
+                    {editingShift.requiredHours ?? 8} hrs
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Shift name</label>
+                  <input
+                    value={editingShift.name}
+                    onChange={(event) => setEditingShift((current) => current ? { ...current, name: event.target.value } : current)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-orange-400 focus:outline-none focus:ring-4 focus:ring-orange-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Type</label>
+                  <select
+                    value={editingShift.type}
+                    onChange={(event) => setEditingShift((current) => current ? { ...current, type: event.target.value as 'FIXED' | 'FLEXIBLE' | 'ROTATIONAL' } : current)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-orange-400 focus:outline-none focus:ring-4 focus:ring-orange-100"
+                  >
+                    <option value="FIXED">Fixed</option>
+                    <option value="FLEXIBLE">Flexible</option>
+                    <option value="ROTATIONAL">Rotational</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Required hours</label>
+                  <input
+                    type="number"
+                    value={editingShift.requiredHours ?? 8}
+                    onChange={(event) => setEditingShift((current) => current ? { ...current, requiredHours: Number(event.target.value) || 0 } : current)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-orange-400 focus:outline-none focus:ring-4 focus:ring-orange-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Start time</label>
+                  <input
+                    type="time"
+                    value={editingShift.startTime ?? '09:00'}
+                    onChange={(event) => setEditingShift((current) => current ? { ...current, startTime: event.target.value } : current)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-orange-400 focus:outline-none focus:ring-4 focus:ring-orange-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">End time</label>
+                  <input
+                    type="time"
+                    value={editingShift.endTime ?? '18:00'}
+                    onChange={(event) => setEditingShift((current) => current ? { ...current, endTime: event.target.value } : current)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-orange-400 focus:outline-none focus:ring-4 focus:ring-orange-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Min present hours</label>
+                  <input
+                    type="number"
+                    value={editingShift.minPresentHours ?? 5}
+                    onChange={(event) => setEditingShift((current) => current ? { ...current, minPresentHours: Number(event.target.value) || 0 } : current)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-orange-400 focus:outline-none focus:ring-4 focus:ring-orange-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Grace period (min)</label>
+                  <input
+                    type="number"
+                    value={editingShift.gracePeriodMinutes ?? 15}
+                    onChange={(event) => setEditingShift((current) => current ? { ...current, gracePeriodMinutes: Number(event.target.value) || 0 } : current)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-orange-400 focus:outline-none focus:ring-4 focus:ring-orange-100"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:px-6">
+              <button
+                onClick={() => setEditingShift(null)}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUpdateShift}
+                className="rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600 focus:outline-none focus:ring-4 focus:ring-orange-200 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!isShiftFormComplete({
+                  name: editingShift.name,
+                  startTime: editingShift.startTime ?? '',
+                  endTime: editingShift.endTime ?? '',
+                })}
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -855,7 +1090,7 @@ export default function AttendancePage() {
                   <td className="px-5 py-4 text-slate-600">{formatTime(row.checkIn)}</td>
                   <td className="px-5 py-4 text-slate-600">{formatTime(row.checkOut)}</td>
                   <td className="px-5 py-4 text-slate-700">{row.workingHours != null ? `${row.workingHours.toFixed(2)} hrs` : '—'}</td>
-                  <td className="px-5 py-4 text-slate-700">{formatShiftRange(row)}</td>
+                  <td className="px-5 py-4 text-slate-700">{formatShiftRangeForDisplay(row)}</td>
                   <td className="px-5 py-4">
                     {row.lateMinutes > 0 ? (
                       <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">Late by {row.lateMinutes} mins</span>
