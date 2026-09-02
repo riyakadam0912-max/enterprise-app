@@ -1,3 +1,7 @@
+.vercel-home-api/**
+.vercel-home-web/**
+.env*
+!.env*.example
 node_modules
 api/coverage
 api/.localappdata
