@@ -50,6 +50,7 @@ import {
   resolveCountryCode,
   resolveStateCode,
 } from '@/lib/geo-options';
+import { axiosClient } from '@/api/axiosClient';
 
 // ─── Static option lists ─────────────────────────────────────────────────────
 const COUNTRY_OPTIONS = getCountryOptions();
@@ -115,20 +116,52 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
-function buildChildProfitLossData(orgs: Organization[]) {
+type OrganizationProfitLossRow = {
+  name: string;
+  profit: number;
+  loss: number;
+  net: number;
+};
+
+function toChartName(name: string) {
+  return name.length > 12 ? `${name.slice(0, 12)}...` : name;
+}
+
+async function loadChildProfitLossData(orgs: Organization[]): Promise<OrganizationProfitLossRow[]> {
   if (orgs.length === 0) return [];
 
-  return orgs.map((org) => {
-    const stableSeed = org.id * 73 + (org.name.length * 17 || 1);
-    const profit = 42000 + (stableSeed % 180000);
-    const loss = 9000 + ((stableSeed * 7) % 52000);
-    return {
-      name: org.name.length > 12 ? `${org.name.slice(0, 12)}...` : org.name,
-      profit,
-      loss,
-      net: profit - loss,
-    };
-  });
+  const rows = await Promise.all(
+    orgs.map(async (org) => {
+      try {
+        const response = await axiosClient.get('/reports/overview', {
+          headers: {
+            'X-Organization-Id': String(org.id),
+          },
+        });
+
+        const payload = response.data;
+        const summary = payload?.data?.summary ?? payload?.summary ?? {};
+        const profit = Number(summary.totalRevenue ?? 0);
+        const loss = Number(summary.totalExpenses ?? 0);
+
+        return {
+          name: toChartName(org.name),
+          profit,
+          loss,
+          net: profit - loss,
+        };
+      } catch {
+        return {
+          name: toChartName(org.name),
+          profit: 0,
+          loss: 0,
+          net: 0,
+        };
+      }
+    }),
+  );
+
+  return rows;
 }
 
 function SummaryStat({
@@ -182,6 +215,7 @@ export default function OrganizationPage() {
   const [editingChild, setEditingChild] = useState<Organization | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Organization | null>(null);
   const [deletingChild, setDeletingChild] = useState(false);
+  const [childProfitLossData, setChildProfitLossData] = useState<OrganizationProfitLossRow[]>([]);
 
   // Cascading state options
   const stateOptions = useMemo(() => getStateOptions(form.country), [form.country]);
@@ -190,8 +224,8 @@ export default function OrganizationPage() {
   const organizationSummary = useMemo(() => {
     const totalChildren = childOrgs.length;
     const activeChildren = childOrgs.filter((org) => org.status === 'ACTIVE').length;
-    const totalProfit = buildChildProfitLossData(childOrgs).reduce((sum, row) => sum + row.profit, 0);
-    const totalLoss = buildChildProfitLossData(childOrgs).reduce((sum, row) => sum + row.loss, 0);
+    const totalProfit = childProfitLossData.reduce((sum, row) => sum + row.profit, 0);
+    const totalLoss = childProfitLossData.reduce((sum, row) => sum + row.loss, 0);
 
     return {
       totalChildren,
@@ -200,9 +234,26 @@ export default function OrganizationPage() {
       totalLoss,
       net: totalProfit - totalLoss,
     };
-  }, [childOrgs]);
+  }, [childOrgs.length, childProfitLossData]);
 
-  const childProfitLossData = useMemo(() => buildChildProfitLossData(childOrgs), [childOrgs]);
+  useEffect(() => {
+    let active = true;
+
+    if (childOrgs.length === 0) {
+      setChildProfitLossData([]);
+      return;
+    }
+
+    void loadChildProfitLossData(childOrgs).then((rows) => {
+      if (active) {
+        setChildProfitLossData(rows);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [childOrgs]);
 
   useEffect(() => {
     setActiveOrgId(getActiveOrganizationId());

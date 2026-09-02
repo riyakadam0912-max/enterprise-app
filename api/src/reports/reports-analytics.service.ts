@@ -804,6 +804,11 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
       throw new ForbiddenException('Access denied');
     }
 
+    const organizationId =
+      typeof user.organizationId === 'number' && user.organizationId > 0
+        ? user.organizationId
+        : undefined;
+
     const requestedEmployeeId = filters.employeeId
       ? Number(filters.employeeId)
       : undefined;
@@ -817,9 +822,10 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
           role: user.role,
           employeeIds: [requestedEmployeeId],
           requestedEmployeeId,
+          organizationId,
         };
       }
-      return { role: user.role };
+      return { role: user.role, organizationId };
     }
 
     if (user.role === 'EMPLOYEE') {
@@ -837,6 +843,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
         role: user.role,
         employeeIds: [user.employeeId],
         requestedEmployeeId: user.employeeId,
+        organizationId,
       };
     }
 
@@ -871,12 +878,14 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
         role: user.role,
         employeeIds: [requestedEmployeeId],
         requestedEmployeeId,
+        organizationId,
       };
     }
 
     return {
       role: user.role,
       employeeIds: distinctTeamEmployeeIds,
+      organizationId,
     };
   }
 
@@ -967,6 +976,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
     role?: string,
   ) {
     return {
+      organizationId: scope.organizationId,
       date: {
         gte: dateRange.start,
         lte: dateRange.end,
@@ -977,6 +987,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
           }
         : undefined,
       employee: {
+        organizationId: scope.organizationId,
         department: department || undefined,
         user: role
           ? {
@@ -994,6 +1005,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
     role?: string,
   ) {
     return {
+      organizationId: scope.organizationId,
       createdAt: {
         gte: dateRange.start,
         lte: dateRange.end,
@@ -1004,6 +1016,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
           }
         : undefined,
       employee: {
+        organizationId: scope.organizationId,
         department: department || undefined,
         user: role
           ? {
@@ -1016,6 +1029,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
 
   private employeeWhere(scope: ScopeInfo, department?: string, role?: string) {
     return {
+      organizationId: scope.organizationId,
       id: scope.employeeIds?.length
         ? {
             in: scope.employeeIds,
@@ -1036,7 +1050,8 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
     filters: ReportsQueryFilters,
     producer: () => Promise<T>,
   ): Promise<T> {
-    const key = `${namespace}:${user.role}:${user.userId}:${user.employeeId ?? 'NA'}:${JSON.stringify(filters)}`;
+    const organizationKey = user.organizationId ?? 'NA';
+    const key = `${namespace}:${user.role}:${user.userId}:${organizationKey}:${user.employeeId ?? 'NA'}:${JSON.stringify(filters)}`;
     const cached = await this.cacheManager.get<{
       cachedAt: number;
       payload: T;
