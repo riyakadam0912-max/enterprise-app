@@ -105,20 +105,21 @@ function StatusBadge({ status }: { status: string }) {
 
 function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</p>
-      <div className="mt-3 text-2xl font-bold text-slate-900">{value}</div>
-      {hint ? <p className="mt-2 text-sm text-slate-500">{hint}</p> : null}
+    <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.4)]">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</p>
+      <div className="mt-3 text-[27px] font-semibold tracking-[-0.04em] text-slate-900">{value}</div>
+      {hint ? <p className="mt-2 text-xs text-slate-500">{hint}</p> : null}
     </div>
   );
 }
 
 function Panel({ title, description, children, action }: { title: string; description?: string; children: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_16px_45px_-28px_rgba(15,23,42,0.35)]">
+      <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Overview</p>
+          <h2 className="mt-1 text-lg font-semibold tracking-tight text-slate-900">{title}</h2>
           {description ? <p className="mt-1 text-sm text-slate-500">{description}</p> : null}
         </div>
         {action}

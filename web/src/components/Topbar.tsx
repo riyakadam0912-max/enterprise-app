@@ -151,7 +151,7 @@ export default function Topbar() {
   if (pathname.includes('/add')) pageLabel = `Add ${segmentLabels[segments[segments.indexOf('add') - 1]] ?? ''}`;
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white/90 px-4 shadow-sm backdrop-blur sm:px-6">
+    <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white/80 px-4 shadow-[0_12px_32px_-28px_rgba(15,23,42,0.45)] backdrop-blur sm:px-6">
 
       {/* ── Breadcrumb ── */}
       <div className="flex min-w-0 items-center gap-1.5 text-sm">
@@ -200,7 +200,7 @@ export default function Topbar() {
 
         {/* User avatar */}
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center shadow-sm">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center shadow-sm shadow-orange-500/20">
             <span className="text-white text-xs font-bold">{sessionUser.name.charAt(0).toUpperCase()}</span>
           </div>
           <div className="hidden sm:block">

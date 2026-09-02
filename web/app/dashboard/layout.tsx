@@ -106,11 +106,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-100">
+    <div className="flex h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(251,146,60,0.10),transparent_28%),linear-gradient(135deg,#fff7ed_0%,#ffffff_35%,#fffaf5_100%)]">
       <Sidebar currentPath={pathname} />
       <div className="flex flex-col flex-1 overflow-hidden">
         <Topbar />
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-5">
           <ImpersonationBanner />
           {children}
         </main>
