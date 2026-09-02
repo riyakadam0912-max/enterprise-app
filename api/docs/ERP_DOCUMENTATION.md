@@ -1,263 +1,424 @@
-# Enterprise ERP/CRM Platform Documentation
+# ERP Overview & Setup
 
-## 1. Executive Summary
+## Table of Contents
 
-This platform is a full ERP/CRM system designed to unify sales, human resources, finance, attendance, payroll, analytics, and notifications in one operational suite. It provides a single source of truth for employee, customer, and transaction data while giving each department a role-aware experience tailored to its daily work.
+1. [Purpose and current scope](#purpose-and-current-scope)
+2. [Product overview](#product-overview)
+3. [Architecture and technology stack](#architecture-and-technology-stack)
+4. [Module-wise overview](#module-wise-overview)
+5. [Database overview and important relationships](#database-overview-and-important-relationships)
+6. [Administration, roles, permissions, and multi-tenancy](#administration-roles-permissions-and-multi-tenancy)
+7. [Local setup and configuration](#local-setup-and-configuration)
+8. [System architecture and request flow](#system-architecture-and-request-flow)
+9. [Current behavior, known issues, and historical changes](#current-behavior-known-issues-and-historical-changes)
+10. [Cross-references](#cross-references)
 
-The system is built for:
+## Purpose and current scope
 
-- HR teams managing employees, leave, attendance, payroll, and performance.
-- Sales teams tracking leads, deals, contacts, quotes, and pipeline progression.
-- Finance teams handling invoices, payments, ledger entries, and expenses.
-- Administrators overseeing access, workflow approvals, reporting, and governance.
+This ERP is the current application implemented in this workspace: a multi-tenant NestJS backend, a Next.js frontend, and a Prisma-backed relational database. The codebase is broader than a single HR or CRM module and includes user identity, organization hierarchy, business-unit scoping, attendance, payroll, projects, CRM, finance, workflows, notifications, and auditing.
 
-The core value proposition is operational consistency. Instead of maintaining separate spreadsheets or disconnected tools for HR, CRM, and finance, the platform uses shared records, controlled workflows, and real-time reporting. That reduces duplication, improves auditability, and gives leadership faster access to reliable business metrics.
+The documentation below reflects the actual current implementation from these source files:
 
-## 2. System Architecture
+- `api/src/app.module.ts`
+- `api/src/config/env.ts`
+- `api/prisma/schema.prisma`
+- `api/src/auth/auth.service.ts`
+- `api/src/business-units/business-units.service.ts`
+- `api/src/organizations/organizations.service.ts`
+- `api/src/users/users.service.ts`
+- `api/src/common/middleware/tenant-context.middleware.ts`
 
-The solution uses a three-tier enterprise architecture:
+## Product overview
 
-1. Frontend: Next.js App Router application written in TypeScript.
-2. Backend: NestJS API exposing REST endpoints and workflow services.
-3. Database: Prisma ORM backed by a SQL database for transactional storage and relational integrity.
+The ERP is designed as a modular business platform for:
 
-### High-Level Flow
+- HR and employee administration
+- attendance and leave workflows
+- payroll and payslip generation
+- CRM and sales tracking
+- project, task, and timesheet tracking
+- invoices, ledger, expenses, and payments
+- organization hierarchy and business-unit scoping
+- approvals, notifications, and audit logging
+
+The product is structured as a monorepo with two primary runtime applications:
+
+- API: `api/` using NestJS
+- Frontend: `web/` using Next.js
+
+The backend is the authoritative system of record. The frontend is a role-aware portal that calls the API and relies on JWT auth, org selection, and BU scoping.
+
+## Architecture and technology stack
+
+### System components
+
+```mermaid
+flowchart LR
+  A[Next.js Web App] --> B[NestJS API]
+  B --> C[Prisma ORM]
+  C --> D[PostgreSQL Database]
+  B --> E[Redis / queues / websockets if configured]
+  B --> F[Email provider / SES / Resend / SendGrid]
+```
+
+### Technology stack
+
+- Frontend: Next.js 16 + React 19 + TypeScript
+- Backend: NestJS 11 + TypeScript
+- Database: PostgreSQL via Prisma ORM
+- Auth: JWT + cookies + passport-jwt
+- Access control: role guard + permissions guard + org/BU scoping middleware
+- Runtime support: optional Redis, BullMQ queues, web sockets, and email provider integrations
+- Deployment: Vercel for API and frontend targets
+
+### Backend and API structure
+
+The API is organized into domain modules and shared infrastructure:
+
+- `api/src/app.module.ts` is the root application module
+- `api/src/domains/*.module.ts` groups business domains
+- `api/src/auth/` handles identity and token generation
+- `api/src/users/`, `api/src/organizations/`, `api/src/business-units/` handle tenant and RBAC setup
+- `api/src/workflows/` handles workflow logic
+- `api/src/notifications/` and `api/src/audit-logs/` handle audit and user communication
+- `api/src/common/` contains reusable guards, middleware, types, and filters
+
+## Module-wise overview
+
+### Identity and access
+
+- `User` account lifecycle and authentication
+- `AppRole`, `Permission`, `RolePermission`, `UserRole` for permission-based RBAC
+- login, password reset, token issuance, and bootstrap admin flows
+
+### HR and operations
+
+- `employees` and related employee records
+- `attendance`, `leave-requests`, `employee-self-service`
+- `performance`, `ats`, `payroll`
+- `tasks`, `timesheets`, `projects`
+
+### CRM and sales
+
+- `leads`, `contacts`, `deals`, `campaign-leads`, `marketing-campaigns`, `quotes`, `tickets`
+
+### Finance and accounting
+
+- `invoices`, `payments`, `ledger-entries`, `expenses`
+
+### Inventory and product management
+
+- `products`
+
+### Notifications, workflow, and audit
+
+- `notifications`
+- `workflows`
+- audit logs and activity tracking
+
+### Organizations and business units
+
+- hierarchy-driven organization and BU management
+- admin-level and platform-admin-level org control
+- scoped access for HR or admin roles
+
+## Database overview and important relationships
+
+The source of truth is `api/prisma/schema.prisma`.
+
+### Core models
+
+The live schema includes models such as:
+
+- `User`
+- `Organization`
+- `BusinessUnit`
+- `Employee`
+- `Attendance`
+- `LeaveRequest`
+- `Project`
+- `Task`
+- `Lead`
+- `Deal`
+- `Invoice`
+- `Payment`
+- `Expense`
+- `Notification`
+- `WorkflowInstance`
+- `AuditLog`
+- `SystemSetting`
+
+### Important relationships
+
+```mermaid
+erDiagram
+  ORGANIZATION ||--o{ USER : owns
+  ORGANIZATION ||--o{ BUSINESSUNIT : owns
+  ORGANIZATION ||--o{ EMPLOYEE : owns
+  BUSINESSUNIT ||--o{ EMPLOYEE : assigned
+  USER }o--o| EMPLOYEE : linked
+  USER ||--o{ USERROLE : has
+  APPROLE ||--o{ USERROLE : grants
+  APPROLE ||--o{ ROLEPERMISSION : authorizes
+  PERMISSION ||--o{ ROLEPERMISSION : assigned
+  BUSINESSUNIT ||--o{ PROJECT : scoped
+  BUSINESSUNIT ||--o{ TASK : scoped
+  EMPLOYEE ||--o{ ATTENDANCE : tracks
+  EMPLOYEE ||--o{ LEAVE_REQUEST : submits
+  ORGANIZATION ||--o{ INVOICE : records
+```
+
+### Key tenant and ownership rules
+
+- `User.organizationId` is the main tenant pointer for user-owned records.
+- `Organization` supports `parentId` hierarchy for org nesting.
+- `BusinessUnit` also supports `parentId` hierarchy and is scoped to an organization.
+- `Employee` is organization-scoped and optionally linked to a `BusinessUnit`.
+- `Project`, `Task`, and other operational records are commonly org-scoped and sometimes BU-scoped.
+
+### Prisma and audit behavior
+
+`api/src/prisma/prisma.service.ts` applies middleware to:
+
+- soft-delete records via `deletedAt` instead of permanent removal
+- log create/update/delete actions to `AuditLog`
+- redact sensitive values such as passwords and tokens
+- resolve organization context for audit entries when possible
+
+## Administration, roles, permissions, and multi-tenancy
+
+### Roles in the schema
+
+The live enum in `schema.prisma` contains the current roles:
+
+- `ADMIN`
+- `EMPLOYEE`
+- `HR`
+- `SUPER_ADMIN`
+- `COMPLIANCE_MANAGER`
+- `MANAGER`
+
+### Permission model
+
+The code defines permissions in `api/src/common/enums/permissions.enum.ts`. They include access groups for:
+
+- employee management
+- payroll
+- invoice and finance tasks
+- projects
+- expense and leave approval
+- attendance
+- leads and deals
+- tasks
+- user and role administration
+
+### Access control architecture
+
+The live auth and guard stack is:
+
+- `JwtAuthGuard` for authentication
+- `RolesGuard` for role checks
+- `PermissionsGuard` for permission checks
+- `TenantContextMiddleware` for org and BU resolution
+
+### Platform administration vs organization administration
+
+The current implementation clearly distinguishes between:
+
+- platform-level access (`SUPER_ADMIN`)
+- organization-admin access (`ADMIN` in an org context)
+- HR / compliance / manager / employee roles
+
+`OrganizationsService` and `BusinessUnitsService` explicitly enforce org access rules. In practice, a platform admin can switch org context through org headers; a non-platform user cannot override org scope.
+
+### Multi-tenant organization structure
+
+The current implementation supports:
+
+- multiple organizations
+- organization hierarchy via `parentId`
+- child org management by admins under a parent org
+- BU hierarchy within an org
+- cross-tenant restrictions for ordinary users
+
+### Business-unit scoping rules
+
+Business-unit access is resolved through `BusinessUnitsService.resolveScope()` and `TenantContextMiddleware.resolveBusinessUnitContext()`.
+
+Current behavior:
+
+- wide-scoped roles such as `SUPER_ADMIN`, `ADMIN`, `HR`, and `COMPLIANCE_MANAGER` can scope to all BUs or a selected BU
+- non-wide users are limited to their assigned BU
+- overrides via `X-Business-Unit-Id` are ignored for non-privileged users
+
+## Local setup and configuration
+
+### Repository layout
 
 ```text
-User Browser
-   -> Next.js Frontend
-   -> NestJS API (/api/v1/...)
-   -> Service Layer
-   -> Prisma ORM
-   -> SQL Database
+enterprise-app/
+├─ api/
+├─ web/
+├─ scripts/
+├─ package.json
+├─ README.md
+├─ deploy.ps1
+└─ ...
 ```
 
-### Request Flow
+### Root dev commands
 
-1. The user interacts with a page in the frontend, such as a leave request form or a dashboard report.
-2. The frontend sends an authenticated request to the backend API.
-3. NestJS routes the request to the correct controller.
-4. The controller delegates business logic to a service.
-5. The service validates permissions, applies workflow rules, and reads or writes data using Prisma.
-6. The database persists the transaction, and the service returns a typed response.
-7. The frontend refreshes the view and shows updated data.
+From repo root:
 
-### API Structure
-
-The API follows a versioned REST pattern under `/api/v1/...`. Example routes include:
-
-- `/api/v1/analytics/summary`
-- `/api/v1/leads`
-- `/api/v1/leave-requests`
-- `/api/v1/attendance`
-- `/api/v1/payroll`
-
-Versioning keeps the platform stable as modules evolve and allows the business to add future features without breaking older clients.
-
-## 3. Technology Stack
-
-### Next.js
-
-Next.js is used for the frontend because it provides a modern App Router structure, server-friendly routing, and an excellent developer experience for complex enterprise portals. It is well suited to authenticated dashboards, module-based navigation, and data-driven views.
-
-Benefits:
-
-- Strong routing model for large business applications.
-- Good performance for dashboard pages and code splitting.
-- Easy integration with TypeScript and reusable UI components.
-- Supports both interactive screens and reporting-heavy pages.
-
-### NestJS
-
-NestJS is used for the backend because it provides a structured, modular architecture with clear separation of controllers, services, guards, and providers. That makes it ideal for ERP systems where business rules, permissions, and workflows must remain predictable.
-
-Benefits:
-
-- Modular codebase that scales with many business domains.
-- Built-in support for validation, dependency injection, and guards.
-- Clean separation of API, workflow, and persistence logic.
-- Well suited to role-based enterprise workflows.
-
-### Prisma
-
-Prisma is used for the database layer because it gives a type-safe ORM over a relational SQL database. It reduces schema mistakes, makes relationships explicit, and keeps the data model aligned with TypeScript application code.
-
-Benefits:
-
-- Type-safe database access.
-- Clear relational modeling.
-- Easier migrations and schema evolution.
-- Better maintainability for enterprise-grade domain models.
-
-## 4. Module Overview
-
-### 4.1 CRM Module
-
-The CRM module manages the sales pipeline from lead capture to deal closure.
-
-Core capabilities:
-
-- Lead management for storing and tracking prospects.
-- Deal pipeline management for revenue opportunities.
-- Stage tracking with probability and close date forecasting.
-- Activity logging for calls, follow-ups, and touchpoints.
-
-Why it matters:
-
-- Sales teams can see pipeline health in one place.
-- Managers can measure conversion rates and forecast revenue.
-- Activities are tied to people and records instead of living in email threads.
-
-### 4.2 HRMS Module
-
-The HRMS module manages the employee lifecycle and work-related records.
-
-Core capabilities:
-
-- Employee master data.
-- Leave request submission and multi-step approvals.
-- Attendance tracking with check-in and check-out.
-- Payroll basics such as salary structures, payroll cycles, and payroll entries.
-
-Why it matters:
-
-- HR has one consistent employee record across all workflows.
-- Managers and HR can approve leave with audit history.
-- Attendance and leave data can feed payroll and reporting.
-
-### 4.3 Finance Module
-
-The finance module covers core transaction and bookkeeping workflows.
-
-Core capabilities:
-
-- Invoices for billing and receivables.
-- Payments for invoice settlement.
-- Ledger entries for accounting visibility.
-- Expense tracking for employee and company spend.
-
-Why it matters:
-
-- Finance can track money movement without manual spreadsheets.
-- Each transaction is linked back to the relevant user or employee.
-- Reporting is easier because records are structured and queryable.
-
-### 4.4 Analytics & Dashboard
-
-The analytics layer provides cross-module executive visibility.
-
-Core capabilities:
-
-- KPI cards for quick operational overview.
-- Reports for sales, HR, finance, and attendance.
-- Real-time or near-real-time summary statistics.
-
-Why it matters:
-
-- Leadership can monitor business health in one dashboard.
-- Aggregate views reduce manual reporting effort.
-- Operational bottlenecks are easier to spot early.
-
-### 4.5 Notifications System
-
-The notifications system captures business alerts and workflow messages.
-
-Core capabilities:
-
-- Real-time alerts for approvals, actions, and workflow events.
-- Unread counts for user attention management.
-- Notification records stored in the database for traceability.
-
-Why it matters:
-
-- Users do not need to constantly refresh screens or search for updates.
-- Approvals and exceptions are visible immediately.
-- The business maintains an auditable message trail.
-
-### 4.6 Timesheets
-
-The timesheets module records work logs and supports reporting.
-
-Core capabilities:
-
-- Work logging by employee or task.
-- Daily and period-based reporting.
-- Support for downstream payroll and productivity visibility.
-
-Why it matters:
-
-- Managers can see how time is being spent.
-- Time data can support billing, planning, and performance analysis.
-- Work entries are structured instead of being captured informally.
-
-## 5. Database Design (Prisma)
-
-The database is designed around relational entities that represent people, work, money, and workflow status. Key models are linked through foreign keys and unique constraints to preserve integrity.
-
-### Key Models
-
-#### User
-
-The `User` model stores login identity, roles, and employee linkage.
-
-```prisma
-model User {
-  id         Int     @id @default(autoincrement())
-  name       String
-  email      String  @unique
-  password   String
-  role       Role
-  employeeId Int?    @unique
-  managerId  Int?
-}
+```bash
+npm install
+npm run dev
 ```
 
-#### Lead
+This uses `scripts/dev.js` to start the API and web app concurrently.
 
-Leads represent sales prospects and can be assigned to employees.
+### API commands
 
-```prisma
-model Lead {
-  id            Int   @id @default(autoincrement())
-  name          String
-  status        String @default("New")
-  assignedToId  Int?
-  leadScore     Int?
-}
+```bash
+cd api
+npm install
+npx prisma generate
+npx prisma validate
+npx prisma migrate deploy
+npm run dev
 ```
 
-#### Deal
+### Web commands
 
-Deals capture pipeline opportunities linked to leads and contacts.
-
-```prisma
-model Deal {
-  id           Int    @id @default(autoincrement())
-  title        String
-  value        Float
-  stage        String @default("NEW")
-  probability  Float?
-  leadId       Int?
-  contactId    Int?
-  assignedToId Int?
-}
+```bash
+cd web
+npm install
+npm run dev
 ```
 
-#### LeaveRequest
+### Environment configuration
 
-Leave requests store HR approval workflows.
+The API environment validator is in `api/src/config/env.ts` and enforces required variables for production and dev.
 
-```prisma
-model LeaveRequest {
-  id           Int      @id @default(autoincrement())
-  employeeId   Int?
-  startDate    DateTime
-  endDate      DateTime
-  leaveType    String
-  status       String   @default("PENDING")
-  approvalTrail Json?
-}
+Required categories include:
+
+- `DATABASE_URL`
+- `JWT_ACCESS_SECRET`
+- `JWT_REFRESH_SECRET`
+- `JWT_ISSUER`
+- `JWT_AUDIENCE`
+- `FRONTEND_URL` or `FRONTEND_ORIGIN`
+- `EMAIL_PROVIDER`
+
+Optional but commonly required in production:
+
+- `REDIS_ENABLED`
+- `REDIS_URL`
+- `WEBSOCKET_ENABLED`
+- `EMAIL_*` provider settings
+- `BOOTSTRAP_ADMIN_PASSWORD`
+- `BOOTSTRAP_SUPER_ADMIN_EMAIL`
+- `BOOTSTRAP_SUPER_ADMIN_PASSWORD`
+
+### Production validation rules
+
+The current code explicitly rejects:
+
+- placeholder JWT secrets
+- localhost or LAN frontend origins in production
+- missing secure cookies in production
+- invalid `COOKIE_SAME_SITE` and `COOKIE_SECURE` combinations
+- missing email provider configuration
+
+## System architecture and request flow
+
+### Request path
+
+```mermaid
+sequenceDiagram
+  participant User
+  participant Web as Next.js App
+  participant API as NestJS API
+  participant Scope as TenantContextMiddleware
+  participant Guards as JWT / Roles / Permissions
+  participant Service as Domain Service
+  participant Prisma as PrismaService
+  participant DB as PostgreSQL
+
+  User->>Web: perform action
+  Web->>API: authenticated request
+  API->>Scope: resolve org + BU context
+  Scope->>Guards: attach request user scope
+  Guards->>Service: validate access
+  Service->>Prisma: query/update data
+  Prisma->>DB: SQL operation
+  DB-->>Prisma: result
+  Prisma-->>Service: typed data
+  Service-->>API: response
+  API-->>Web: JSON payload
+  Web-->>User: rendered result
 ```
+
+### API bootstrap and CORS
+
+`api/src/create-nest-app.ts` sets up:
+
+- global `/api/v1` prefix
+- cookie parsing
+- validation pipe
+- CORS with trusted origins
+- global HTTP interceptors and filters
+- app shutdown hooks
+
+### Swagger and developer API docs
+
+`api/src/main.ts` exposes Swagger at `/api` in non-production mode.
+
+## Current behavior, known issues, and historical changes
+
+### Current behavior
+
+The current implementation is operationally a multi-tenant ERP with a hybrid RBAC model. It supports:
+
+- organization hierarchy and child org management
+- business-unit hierarchy and unit access control
+- JWT auth with cookie and header support
+- role and permission-based route guarding
+- audit logging on model changes
+- soft-delete semantics
+- workflow and notification infrastructure
+- Vercel deployment configuration for both API and frontend
+
+### Known issues and current status
+
+1. Older documentation files in the repository still describe a more generic ERP and may include outdated instructions.
+   - Current status: use the implementation in the codebase as the source of truth.
+
+2. The project uses hybrid RBAC (`User.role` plus `AppRole` / `Permission` records).
+   - Current status: this is intentional in the code, but it needs careful review when adding new access checks.
+
+3. Some modules appear broad and partially documented, but not all have fully polished public-facing documentation.
+   - Current status: treat unverified module functionality as planned or incomplete until confirmed in code.
+
+4. Production deployment depends on secure configuration and bootstrap secrets.
+   - Current status: required deployment prerequisite, not optional.
+
+### Historical changes reflected in repo artifacts
+
+The repository keeps historical documentation and notes such as:
+
+- changelog and architecture notes under `api/docs`
+- onboarding notes under `/memories/repo/*`
+- earlier product reports and archive materials in historical docs
+
+These are preserved for context, but should not override the current implementation.
+
+## Cross-references
+
+- Development, testing, and deployment: [DEVELOPMENT_TESTING_DEPLOYMENT.md](./DEVELOPMENT_TESTING_DEPLOYMENT.md)
+- Technical workflows and code documentation: [TECHNICAL_WORKFLOWS_AND_CODE_DOCUMENTATION.md](./TECHNICAL_WORKFLOWS_AND_CODE_DOCUMENTATION.md)
+- Database overview: [DATABASE_OVERVIEW.md](./DATABASE_OVERVIEW.md)
+
 
 #### Attendance
 

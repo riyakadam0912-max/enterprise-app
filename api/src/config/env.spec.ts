@@ -25,19 +25,19 @@ describe('validateServerEnv', () => {
     expect(() => validateServerEnv(validProductionEnv)).not.toThrow();
   });
 
-  it('accepts Mailtrap SMTP when production credentials are configured', () => {
-    const mailtrapProductionEnv = {
+  it('accepts SMTP Nodemailer when production credentials are configured', () => {
+    const smtpProductionEnv = {
       ...validProductionEnv,
       EMAIL_PROVIDER: 'NODEMAILER',
-      SMTP_HOST: 'sandbox.smtp.mailtrap.io',
+      SMTP_HOST: 'smtp.example.com',
       SMTP_PORT: 2525,
-      SMTP_USER: 'mailtrap-user',
-      SMTP_PASS: 'mailtrap-password',
+      SMTP_USER: 'smtp-user',
+      SMTP_PASS: 'smtp-password',
       SMTP_FROM_EMAIL: 'noreply@company.test',
       SMTP_FROM_NAME: 'Enterprise ERP',
     } as Record<string, unknown>;
 
-    expect(() => validateServerEnv(mailtrapProductionEnv)).not.toThrow();
+    expect(() => validateServerEnv(smtpProductionEnv)).not.toThrow();
   });
 
   it('defaults Vercel production cookies to secure cross-site settings', () => {

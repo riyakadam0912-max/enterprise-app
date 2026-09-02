@@ -6,7 +6,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
-import { createMockPrismaService } from '../../test/helpers/mocks.helper';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { MailService } from '../mail/mail.service';
+import {
+  createMockAuditLogsService,
+  createMockPrismaService,
+} from '../../test/helpers/mocks.helper';
 import { ROLES_KEY } from '../common/decorators/roles.decorator';
 import { Role } from '../common/enums/role.enum';
 
@@ -23,6 +28,11 @@ describe('UsersController', () => {
       providers: [
         UsersService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: MailService, useValue: { sendEmail: jest.fn() } },
+        {
+          provide: AuditLogsService,
+          useValue: createMockAuditLogsService(),
+        },
       ],
     })
       .overrideGuard(JwtAuthGuard)

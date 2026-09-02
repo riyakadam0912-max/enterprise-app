@@ -75,9 +75,6 @@ export class NodemailerProvider extends BaseEmailProvider {
       return;
     }
 
-    const isMailtrap =
-      this.smtpHost.includes('mailtrap') ||
-      this.smtpHost.includes('sandbox.smtp');
     const transportOptions = {
       host: this.smtpHost,
       port: this.smtpPort,
@@ -88,15 +85,8 @@ export class NodemailerProvider extends BaseEmailProvider {
       },
       logger: false,
       debug: false,
-      ...(isMailtrap
-        ? {
-            secure: false,
-            requireTLS: false,
-          }
-        : {}),
     } as nodemailer.TransportOptions & {
       secure?: boolean;
-      requireTLS?: boolean;
       host: string;
       port: number;
       auth: { user: string; pass: string };

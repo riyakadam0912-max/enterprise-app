@@ -58,6 +58,7 @@ function getPrismaDelegate(
 describe('UsersService', () => {
   let service: UsersService;
   let mockPrisma: ReturnType<typeof createMockPrismaService>;
+  let mockMailService: { sendEmail: jest.Mock };
 
   beforeEach(async () => {
     mockPrisma = createMockPrismaService();
@@ -74,12 +75,14 @@ describe('UsersService', () => {
       logFieldDiffs: jest.fn(),
     } as unknown as AuditLogsService;
 
+    mockMailService = { sendEmail: jest.fn() };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: AuditLogsService, useValue: auditLogsService },
-        { provide: MailService, useValue: { sendEmail: jest.fn() } },
+        { provide: MailService, useValue: mockMailService },
       ],
     }).compile();
 
@@ -466,6 +469,37 @@ describe('UsersService', () => {
   });
 
   describe('resetPassword', () => {
+    it('sends the security code from the logged-in user to the target user only', async () => {
+      const authUser = createMockAuthUser(Role.ADMIN, {
+        email: 'admin@example.com',
+        userId: 9,
+      });
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+
+      userDelegate.findFirst.mockResolvedValue({
+        id: 1,
+        email: 'target@example.com',
+        name: 'Target User',
+        organizationId: 1,
+        role: Role.EMPLOYEE,
+      });
+      userDelegate.update.mockResolvedValue({});
+
+      await service.requestPasswordResetCode(1, authUser);
+
+      expect(mockMailService.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          from: 'admin@example.com',
+          to: 'target@example.com',
+        }),
+      );
+      expect(mockMailService.sendEmail.mock.calls[0][0]).not.toEqual(
+        expect.objectContaining({
+          to: expect.arrayContaining(['admin@example.com']),
+        }),
+      );
+    });
+
     it('should hash and persist a new password within the authenticated tenant when a valid security code is provided', async () => {
       const authUser = createMockAuthUser(Role.ADMIN, {
         organizationId: 2,

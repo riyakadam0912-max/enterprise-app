@@ -90,7 +90,10 @@ export class UsersService {
   }
 
   private async verifyResetCode(
-    targetUser: { passwordResetCodeHash?: string | null; passwordResetCodeExpiresAt?: Date | string | null },
+    targetUser: {
+      passwordResetCodeHash?: string | null;
+      passwordResetCodeExpiresAt?: Date | string | null;
+    },
     securityCode: string,
   ): Promise<boolean> {
     if (!securityCode || !targetUser.passwordResetCodeHash) {
@@ -112,7 +115,14 @@ export class UsersService {
   }
 
   private async issuePasswordResetCode(
-    targetUser: { id: number; email: string; name: string; role: string | null; organizationId?: number | null },
+    targetUser: {
+      id: number;
+      email: string;
+      name: string;
+      role: string | null;
+      organizationId?: number | null;
+    },
+    actor: AuthUser,
   ): Promise<string> {
     const code = String(randomInt(100000, 999999));
     const hashedCode = await hashPassword(code);
@@ -134,6 +144,7 @@ export class UsersService {
 
     await this.mailService.sendEmail({
       to: targetUser.email,
+      from: actor.email,
       subject: 'Security code for employee password reset',
       html: `
         <p>Hello ${targetUser.name},</p>
@@ -541,7 +552,7 @@ export class UsersService {
       throw new BadRequestException('Target user email is required');
     }
 
-    await this.issuePasswordResetCode(targetUser);
+    await this.issuePasswordResetCode(targetUser, actor);
 
     await this.auditLogsService.logCustomAction(
       {
@@ -559,7 +570,8 @@ export class UsersService {
 
     return {
       success: true,
-      message: 'Security code sent successfully. Use it to complete the password reset.',
+      message:
+        'Security code sent successfully. Use it to complete the password reset.',
     };
   }
 
@@ -594,7 +606,10 @@ export class UsersService {
       );
     }
 
-    if (!securityCode || !(await this.verifyResetCode(existing, securityCode))) {
+    if (
+      !securityCode ||
+      !(await this.verifyResetCode(existing, securityCode))
+    ) {
       throw new ForbiddenException(
         'A valid security code is required before changing this password',
       );

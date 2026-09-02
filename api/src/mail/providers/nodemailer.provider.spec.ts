@@ -7,7 +7,7 @@ jest.mock('nodemailer', () => ({
 }));
 
 describe('NodemailerProvider', () => {
-  it('parses SMTP_SECURE=false from dotenv values for STARTTLS', () => {
+  it('parses SMTP_SECURE=false for STARTTLS', () => {
     const createTransport = nodemailer.createTransport as jest.Mock;
     createTransport.mockReturnValue({} as nodemailer.Transporter);
     const configService = new ConfigService({
