@@ -97,7 +97,10 @@ export class LeaveRequestsService {
     const where: Prisma.LeaveRequestWhereInput = {
       id,
       organizationId,
-      employee: buWhere,
+      employee:
+        user.role === Role.EMPLOYEE
+          ? { organizationId, deletedAt: null }
+          : buWhere,
     };
 
     if (user.role === Role.EMPLOYEE) {
@@ -276,7 +279,10 @@ export class LeaveRequestsService {
 
     const where: Prisma.LeaveRequestWhereInput = {
       organizationId,
-      employee: buWhere,
+      employee:
+        user.role === Role.EMPLOYEE
+          ? { organizationId, deletedAt: null }
+          : buWhere,
     };
 
     if (user.role === Role.EMPLOYEE) {

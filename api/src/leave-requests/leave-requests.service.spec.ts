@@ -353,6 +353,42 @@ describe('LeaveRequestsService', () => {
       const result = await service.findAll(mockAdminUser);
       expect(result).toEqual(mockRequests);
     });
+
+    it('should show an employee their own requests without a business unit', async () => {
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      const leaveRequestDelegate = getPrismaDelegate(
+        mockPrisma,
+        'leaveRequest',
+      );
+      mockBusinessUnitsService.resolveScope.mockResolvedValueOnce({
+        organizationId: 1,
+        allUnits: false,
+        unitIds: [],
+        assignedUnitId: null,
+      });
+      mockBusinessUnitsService.buildEmployeeBUWhere.mockReturnValueOnce({
+        organizationId: 1,
+        deletedAt: null,
+        id: -1,
+      });
+      employeeDelegate.findFirst.mockResolvedValueOnce({ id: 101 });
+      leaveRequestDelegate.findMany.mockResolvedValueOnce([
+        { id: 4, employeeId: 101, leaveType: 'SICK' },
+      ]);
+
+      const result = await service.findAll(mockEmployeeUser);
+
+      expect(result).toEqual([{ id: 4, employeeId: 101, leaveType: 'SICK' }]);
+      expect(leaveRequestDelegate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: 1,
+            employeeId: 101,
+            employee: { organizationId: 1, deletedAt: null },
+          }),
+        }),
+      );
+    });
   });
 
   describe('findOne', () => {
