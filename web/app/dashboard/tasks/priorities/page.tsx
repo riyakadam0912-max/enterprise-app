@@ -4,7 +4,12 @@ import { useEffect, useState } from 'react';
 import { getTasksByPriority, Task } from '@/api/tasksApi';
 import { useAuthSession } from '@/stores/auth-store';
 
-const COLUMNS = ['High', 'Low', 'Medium', 'Critical'];
+const COLUMNS = [
+  { key: 'HIGH', label: 'High' },
+  { key: 'LOW', label: 'Low' },
+  { key: 'MEDIUM', label: 'Medium' },
+  { key: 'CRITICAL', label: 'Critical' },
+];
 
 export default function TaskPrioritiesPage() {
   const session = useAuthSession();
@@ -46,13 +51,13 @@ export default function TaskPrioritiesPage() {
       <h1 className="text-xl font-bold text-gray-900 mb-6">Priorities</h1>
 
       <div className="flex gap-4 overflow-x-auto pb-4">
-        {COLUMNS.map((col) => {
-          const cards = grouped[col] ?? [];
+        {COLUMNS.map((column) => {
+          const cards = grouped[column.key] ?? [];
           return (
-            <div key={col} className="shrink-0 w-64">
+            <div key={column.key} className="shrink-0 w-64">
               {/* Column Header */}
               <div className="bg-white border-l-4 border-l-orange-500 border border-gray-200 rounded-t-lg px-4 py-3 mb-1">
-                <span className="font-semibold text-gray-800 text-sm">{col}</span>
+                <span className="font-semibold text-gray-800 text-sm">{column.label}</span>
               </div>
 
               {/* Cards */}

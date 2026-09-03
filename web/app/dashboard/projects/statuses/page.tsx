@@ -4,7 +4,12 @@ import { useEffect, useState } from 'react';
 import { getProjectsByStatus, Project } from '@/api/projectsApi';
 import { useAuthSession } from '@/stores/auth-store';
 
-const COLUMNS = ['On Hold', 'Completed', 'In Progress', 'Planned'];
+const COLUMNS = [
+  { key: 'ON_HOLD', label: 'On Hold' },
+  { key: 'COMPLETED', label: 'Completed' },
+  { key: 'IN_PROGRESS', label: 'In Progress' },
+  { key: 'NOT_STARTED', label: 'Planned' },
+];
 
 export default function ProjectStatusesPage() {
   const session = useAuthSession();
@@ -47,13 +52,13 @@ export default function ProjectStatusesPage() {
       <h1 className="text-xl font-bold text-gray-900 mb-6">Projects</h1>
 
       <div className="flex gap-4 overflow-x-auto pb-4">
-        {COLUMNS.map((col) => {
-          const cards = grouped[col] ?? [];
+        {COLUMNS.map((column) => {
+          const cards = grouped[column.key] ?? [];
           return (
-            <div key={col} className="shrink-0 w-64">
+            <div key={column.key} className="shrink-0 w-64">
               {/* Column Header */}
               <div className="bg-white border-l-4 border-l-orange-500 border border-gray-200 rounded-t-lg px-4 py-3 mb-1">
-                <span className="font-semibold text-gray-800 text-sm">{col}</span>
+                <span className="font-semibold text-gray-800 text-sm">{column.label}</span>
               </div>
 
               {/* Cards */}
