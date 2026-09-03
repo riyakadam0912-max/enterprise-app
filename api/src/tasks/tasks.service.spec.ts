@@ -379,9 +379,19 @@ describe('TasksService', () => {
   });
 
   describe('getByPriority', () => {
-    it('should throw ForbiddenException if user is EMPLOYEE', async () => {
-      await expect(service.getByPriority(mockEmployeeUser)).rejects.toThrow(
-        ForbiddenException,
+    it('should return only employee-scoped tasks for an EMPLOYEE', async () => {
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      taskDelegate.findMany.mockResolvedValueOnce([]);
+
+      await service.getByPriority(mockEmployeeUser);
+
+      expect(taskDelegate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: mockEmployeeUser.organizationId,
+            AND: expect.any(Array),
+          }),
+        }),
       );
     });
 

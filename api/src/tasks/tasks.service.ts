@@ -634,28 +634,10 @@ export class TasksService {
   }
 
   async getByPriority(user: AuthUser) {
-    if (user.role === Role.EMPLOYEE) {
-      throw new ForbiddenException(
-        'Employees cannot view global priority report',
-      );
-    }
-
     const organizationId = this.validateOrganization(user);
-    const callerScope = await this.businessUnitsService.resolveScope(
-      user as any,
-    );
-    const directBUWhere =
-      this.businessUnitsService.buildDirectBUWhere(callerScope);
-    const where =
-      user.role === Role.MANAGER
-        ? {
-            ...directBUWhere,
-            organizationId,
-            projectRef: { managerId: user.userId },
-          }
-        : { ...directBUWhere, organizationId };
+    const accessWhere = await this.getTaskAccessWhere(user);
     const tasks = await this.db.task.findMany({
-      where,
+      where: { organizationId, ...accessWhere },
       orderBy: { createdAt: 'desc' },
     });
     const grouped: Record<string, typeof tasks> = {};

@@ -10,11 +10,10 @@ export default function TaskPrioritiesPage() {
   const session = useAuthSession();
   const [grouped, setGrouped] = useState<Record<string, Task[]>>({});
   const [loading, setLoading] = useState(true);
-  const canViewReport = ['ADMIN', 'MANAGER', 'SUPER_ADMIN'].includes(session.role);
+  const canViewReport = ['ADMIN', 'MANAGER', 'SUPER_ADMIN', 'EMPLOYEE'].includes(session.role);
 
   useEffect(() => {
     if (!canViewReport) {
-      setLoading(false);
       return;
     }
 
@@ -28,7 +27,7 @@ export default function TaskPrioritiesPage() {
     return (
       <div className="p-6">
         <h1 className="text-xl font-bold text-gray-900 mb-6">Priorities</h1>
-        <p className="text-sm text-gray-500">This report is available to managers and administrators.</p>
+        <p className="text-sm text-gray-500">This report is available to employees, managers, and administrators.</p>
       </div>
     );
   }
