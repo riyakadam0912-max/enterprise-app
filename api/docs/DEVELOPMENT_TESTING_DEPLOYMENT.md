@@ -306,6 +306,7 @@ The API has a Vercel config in `api/vercel.json` and a build entry in `api/packa
 Important behavior:
 
 - build command: `npm run build:vercel`
+- build does not connect to the production database or run migrations; run `npm --prefix api run prisma:migrate` as a separate release step
 - output directory: `.`
 - dispatches API routes through `api/index.ts`
 - uses a redirect from `/` to `/api/v1/`
