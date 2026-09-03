@@ -174,7 +174,6 @@ export class ProjectsService {
         roleWhere = {
           ...baseWhere,
           OR: [
-            { managerId: scopedUser.managerId },
             { assignedEmployees: { some: { id: employeeId } } },
             {
               tasks: {
@@ -1085,10 +1084,11 @@ export class ProjectsService {
     if (
       user.role !== Role.ADMIN &&
       user.role !== Role.MANAGER &&
-      user.role !== Role.SUPER_ADMIN
+      user.role !== Role.SUPER_ADMIN &&
+      user.role !== Role.EMPLOYEE
     ) {
       throw new ForbiddenException(
-        'Only admin, manager, or super admin can view grouped status report',
+        'Only employees, managers, or administrators can view grouped status report',
       );
     }
 

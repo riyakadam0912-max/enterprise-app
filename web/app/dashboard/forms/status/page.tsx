@@ -4,6 +4,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { getFormSubmissions, FormSubmission, FormSubmissionStatus } from '@/api/formSubmissionsApi';
+import { getLeaveRequests, LeaveRequest } from '@/api/leaveRequestsApi';
+import { getExpenses, Expense } from '@/api/expensesApi';
+import { getTasks, Task } from '@/api/tasksApi';
 import { useAuthSession } from '@/stores/auth-store';
 import { reportError } from '@/lib/error-handling';
 
@@ -28,6 +31,91 @@ function fmtDate(s: string | null) {
 
 function normalizeText(value: string | null | undefined) {
   return value?.trim().toLowerCase() ?? '';
+}
+
+function prettyStatus(value: string) {
+  return value.toLowerCase().replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function StatusBadge({ status }: { status: string }) {
+  return (
+    <span className="inline-block px-3 py-1 rounded text-xs font-semibold bg-slate-100 text-slate-700">
+      {prettyStatus(status)}
+    </span>
+  );
+}
+
+function OtherSubmissions({
+  leaveRequests,
+  expenses,
+  tasks,
+}: {
+  leaveRequests: LeaveRequest[];
+  expenses: Expense[];
+  tasks: Task[];
+}) {
+  const rows = [
+    ...leaveRequests.map((request) => ({
+      id: `leave-${request.id}`,
+      type: 'Leave request',
+      subject: `${prettyStatus(request.leaveType)} leave`,
+      date: request.appliedOn,
+      status: request.status,
+    })),
+    ...expenses.map((expense) => ({
+      id: `expense-${expense.id}`,
+      type: 'Expense',
+      subject: expense.description || expense.category || 'Expense submission',
+      date: expense.expenseDate,
+      status: expense.status,
+    })),
+    ...tasks.map((task) => ({
+      id: `task-${task.id}`,
+      type: 'Task',
+      subject: task.taskName,
+      date: task.createdAt,
+      status: task.status,
+    })),
+  ].sort((left, right) => (right.date ?? '').localeCompare(left.date ?? ''));
+
+  return (
+    <section>
+      <div className="flex items-baseline justify-between mb-3">
+        <h2 className="text-base font-semibold text-slate-900 flex items-center gap-2">
+          Other Submissions
+          <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-xs font-medium">{rows.length}</span>
+        </h2>
+        <p className="text-xs text-slate-400">Leave requests, expenses, and tasks assigned to you</p>
+      </div>
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        {rows.length === 0 ? (
+          <p className="py-14 text-center text-sm font-medium text-slate-500">No other submissions yet</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  {['Type', 'Submission', 'Date', 'Current Status'].map((header) => (
+                    <th key={header} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{header}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {rows.map((row) => (
+                  <tr key={row.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{row.type}</td>
+                    <td className="px-4 py-3 text-slate-600">{row.subject}</td>
+                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{fmtDate(row.date)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap"><StatusBadge status={row.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </section>
+  );
 }
 
 function SubmissionsTable({
@@ -107,14 +195,23 @@ export default function FormStatusPage() {
   const router = useRouter();
   const { user } = useAuthSession();
   const [rows, setRows] = useState<FormSubmission[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
 
   const myName = normalizeText(user?.name);
 
   useEffect(() => {
     let cancelled = false;
-    getFormSubmissions()
-      .then((list) => { if (!cancelled) setRows(list); })
+    Promise.all([getFormSubmissions(), getLeaveRequests(), getExpenses(), getTasks()])
+      .then(([formList, leaveList, expenseList, taskList]) => {
+        if (cancelled) return;
+        setRows(formList);
+        setLeaveRequests(leaveList);
+        setExpenses(expenseList);
+        setTasks(taskList);
+      })
       .catch((e) => { reportError(e, 'Unable to load form statuses'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -189,6 +286,7 @@ export default function FormStatusPage() {
               <SubmissionsTable rows={mySubmissions} mode="mine" />
             </div>
           </section>
+          <OtherSubmissions leaveRequests={leaveRequests} expenses={expenses} tasks={tasks} />
         </>
       )}
     </div>
