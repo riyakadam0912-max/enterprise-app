@@ -176,3 +176,12 @@ npm run typecheck
 - [api/docs/ERP_DOCUMENTATION.md](api/docs/ERP_DOCUMENTATION.md)
 - [api/docs/DEVELOPMENT_TESTING_DEPLOYMENT.md](api/docs/DEVELOPMENT_TESTING_DEPLOYMENT.md)
 - [api/docs/TECHNICAL_WORKFLOWS_AND_CODE_DOCUMENTATION.md](api/docs/TECHNICAL_WORKFLOWS_AND_CODE_DOCUMENTATION.md)
+
+## Cleanup audit - 2026-09-03
+
+- Removed generated Jest result files: `api/jest-results.json` and `api/jest-summary.json`.
+- Removed duplicate or unused diagnostics: `api/scripts/password-verify-readonly.js`, `api/scripts/start-dev.js`, and `api/scripts/kill-port.ps1`.
+- Removed completed upload test artifacts: `expense-upload-test.js`, `test-file.txt`, and `test-image.jpg`.
+- Removed the local backup environment file `api/.env.local.bak`; production secrets must remain in Vercel environment settings.
+- Removed generated API logs: `api/hr-report.log`, `api/jest-output.log`, and `api/test-output.log`.
+- Kept active root/API development scripts, deployment configs, package manifests, Prisma migrations, documentation, dependencies, and generated build/cache directories because they are used by development or deployment workflows.
