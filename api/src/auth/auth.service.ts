@@ -436,7 +436,7 @@ export class AuthService {
     }
 
     const resolvedEmployeeId = await this.reconcileUserEmployeeLink(user);
-    const userEmployeeId = resolvedEmployeeId ?? user.employeeId ?? null;
+    const userEmployeeId = resolvedEmployeeId;
 
     let processedUserRoles = user.userRoles || [];
     if (processedUserRoles.length === 0 && user.role) {
@@ -622,7 +622,7 @@ export class AuthService {
     }
 
     const resolvedEmployeeId = await this.reconcileUserEmployeeLink(user);
-    const userEmployeeId = resolvedEmployeeId ?? user.employeeId ?? null;
+    const userEmployeeId = resolvedEmployeeId;
 
     // Backward compatibility: if no userRoles, create one based on user.role
     let processedUserRoles = user.userRoles || [];
