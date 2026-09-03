@@ -2,6 +2,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
@@ -33,6 +34,8 @@ function isFinalLeaveStatus(status: string): status is FinalLeaveStatus {
 
 @Injectable()
 export class LeaveRequestsService {
+  private readonly logger = new Logger(LeaveRequestsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventEmitter: EventEmitter2,
@@ -183,24 +186,31 @@ export class LeaveRequestsService {
       include: { employee: true },
     });
 
-    await this.workflowEngine.submitWorkflow({
-      definitionKey: 'leave-request-approval',
-      entityType: 'LeaveRequest',
-      entityId: leaveRequest.id,
-      initiatedBy: user.userId,
-      organizationId,
-      context: {
-        employeeId,
-        requestorUserId: user.userId,
-        leaveType: dto.leaveType,
-        startDate: leaveRequest.startDate.toISOString(),
-        endDate: leaveRequest.endDate.toISOString(),
-      },
-      metadata: {
-        leaveType: dto.leaveType,
-        reason: dto.reason ?? null,
-      },
-    });
+    try {
+      await this.workflowEngine.submitWorkflow({
+        definitionKey: 'leave-request-approval',
+        entityType: 'LeaveRequest',
+        entityId: leaveRequest.id,
+        initiatedBy: user.userId,
+        organizationId,
+        context: {
+          employeeId,
+          requestorUserId: user.userId,
+          leaveType: dto.leaveType,
+          startDate: leaveRequest.startDate.toISOString(),
+          endDate: leaveRequest.endDate.toISOString(),
+        },
+        metadata: {
+          leaveType: dto.leaveType,
+          reason: dto.reason ?? null,
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Leave request ${leaveRequest.id} was created, but workflow initialization failed`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
 
     await this.invalidateDashboardCache();
 

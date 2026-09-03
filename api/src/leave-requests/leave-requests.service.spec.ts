@@ -198,6 +198,46 @@ describe('LeaveRequestsService', () => {
         }),
       );
     });
+
+    it('should return the created request when workflow initialization fails', async () => {
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      const leaveRequestDelegate = getPrismaDelegate(
+        mockPrisma,
+        'leaveRequest',
+      );
+      employeeDelegate.findFirst.mockResolvedValueOnce({
+        id: 101,
+        organizationId: 1,
+        user: {
+          id: 4,
+          name: 'Test Employee',
+          email: 'emp@example.com',
+          managerId: 3,
+        },
+      });
+      leaveRequestDelegate.create.mockResolvedValueOnce({
+        id: 2,
+        employeeId: 101,
+        leaveType: 'SICK',
+        startDate: new Date('2026-01-01'),
+        endDate: new Date('2026-01-02'),
+      });
+      mockWorkflowEngine.submitWorkflow.mockRejectedValueOnce(
+        new Error('Workflow definition is unavailable'),
+      );
+
+      await expect(
+        service.create(
+          {
+            startDate: '2026-01-01',
+            endDate: '2026-01-02',
+            leaveType: 'SICK',
+            employeeId: 101,
+          } as CreateLeaveRequestDto,
+          mockAdminUser,
+        ),
+      ).resolves.toMatchObject({ id: 2, employeeId: 101 });
+    });
   });
 
   describe('findAll', () => {
