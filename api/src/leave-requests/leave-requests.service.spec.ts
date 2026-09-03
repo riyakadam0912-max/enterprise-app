@@ -126,6 +126,48 @@ describe('LeaveRequestsService', () => {
       ).rejects.toThrow(ForbiddenException);
     });
 
+    it('should resolve a stale employee claim by email within the organization', async () => {
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      const leaveRequestDelegate = getPrismaDelegate(
+        mockPrisma,
+        'leaveRequest',
+      );
+      employeeDelegate.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 101 })
+        .mockResolvedValueOnce({
+          id: 101,
+          organizationId: 1,
+          user: {
+            id: 4,
+            name: 'Test Employee',
+            email: 'test@example.com',
+            managerId: 3,
+          },
+        });
+      leaveRequestDelegate.create.mockResolvedValueOnce({
+        id: 3,
+        employeeId: 101,
+        leaveType: 'SICK',
+        startDate: new Date('2026-01-01'),
+        endDate: new Date('2026-01-02'),
+      });
+
+      await expect(
+        service.create(
+          {
+            startDate: '2026-01-01',
+            endDate: '2026-01-02',
+            leaveType: 'SICK',
+          } as CreateLeaveRequestDto,
+          createMockAuthUser(Role.EMPLOYEE, {
+            employeeId: 999,
+            email: 'test@example.com',
+          }),
+        ),
+      ).resolves.toMatchObject({ id: 3, employeeId: 101 });
+    });
+
     it('should throw NotFoundException if employee not found', async () => {
       const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
       employeeDelegate.findFirst.mockResolvedValueOnce(null);

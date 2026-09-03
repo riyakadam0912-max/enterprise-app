@@ -57,18 +57,36 @@ export class LeaveRequestsService {
   }
 
   private async resolveCurrentEmployeeId(user: AuthUser) {
-    if (user.employeeId) return user.employeeId;
+    const organizationId = this.getOrganizationId(user);
+    if (user.employeeId) {
+      const linkedEmployee = await this.prisma.employee.findFirst({
+        where: {
+          id: user.employeeId,
+          organizationId,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (linkedEmployee) return linkedEmployee.id;
+    }
 
-    const linked = await this.prisma.user.findUnique({
-      where: { id: user.userId },
-      select: { employeeId: true },
-    });
+    const employee = user.email
+      ? await this.prisma.employee.findFirst({
+          where: {
+            email: user.email,
+            organizationId,
+            deletedAt: null,
+          },
+          orderBy: { id: 'asc' },
+          select: { id: true },
+        })
+      : null;
 
-    if (!linked?.employeeId) {
+    if (!employee) {
       throw new ForbiddenException('User is not linked to an employee profile');
     }
 
-    return linked.employeeId;
+    return employee.id;
   }
 
   private async findScoped(id: number, user: AuthUser) {
@@ -134,7 +152,10 @@ export class LeaveRequestsService {
 
   async create(dto: CreateLeaveRequestDto, user: AuthUser) {
     const organizationId = this.getOrganizationId(user);
-    const currentEmployeeId = user.employeeId ?? null;
+    const currentEmployeeId =
+      user.role === Role.EMPLOYEE
+        ? await this.resolveCurrentEmployeeId(user)
+        : (user.employeeId ?? null);
     const employeeId = dto.employeeId ?? currentEmployeeId;
 
     if (user.role === Role.EMPLOYEE) {
