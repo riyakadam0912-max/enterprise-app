@@ -489,7 +489,7 @@ describe('UsersService', () => {
 
       expect(mockMailService.sendEmail).toHaveBeenCalledWith(
         expect.objectContaining({
-          from: 'admin@example.com',
+          replyTo: 'admin@example.com',
           to: 'target@example.com',
         }),
       );

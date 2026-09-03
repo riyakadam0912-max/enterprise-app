@@ -144,7 +144,7 @@ export class UsersService {
 
     await this.mailService.sendEmail({
       to: targetUser.email,
-      from: actor.email,
+      replyTo: actor.email,
       subject: 'Security code for employee password reset',
       html: `
         <p>Hello ${targetUser.name},</p>

@@ -134,7 +134,7 @@ export class NodemailerProvider extends BaseEmailProvider {
 
     try {
       const to = this.normalizeRecipients(params.to);
-      const from = this.getFromAddress(params);
+      const from = this.getFromAddress({ ...params, from: undefined });
 
       const mailOptions: nodemailer.SendMailOptions = {
         to,

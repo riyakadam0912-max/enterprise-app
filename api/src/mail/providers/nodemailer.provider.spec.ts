@@ -34,4 +34,41 @@ describe('NodemailerProvider', () => {
       }),
     );
   });
+
+  it('uses the configured SMTP sender when a request supplies another From address', async () => {
+    const sendMail = jest.fn().mockResolvedValue({ messageId: 'msg-1' });
+    const createTransport = nodemailer.createTransport as jest.Mock;
+    createTransport.mockReturnValue({
+      sendMail,
+      verify: jest.fn(),
+    } as unknown as nodemailer.Transporter);
+    const configService = new ConfigService({
+      SMTP_HOST: 'smtp.example.com',
+      SMTP_PORT: 587,
+      SMTP_SECURE: false,
+      SMTP_USER: 'smtp-user@example.com',
+      SMTP_PASS: 'secret',
+      SMTP_FROM_EMAIL: 'edadmin@ekdrishti.com',
+      SMTP_FROM_NAME: 'Enterprise ERP',
+      SMTP_VERIFY_ON_STARTUP: 'false',
+    });
+
+    const provider = new NodemailerProvider(configService);
+
+    await provider.send({
+      to: 'target@example.com',
+      from: 'actor@example.com',
+      replyTo: 'actor@example.com',
+      subject: 'Account updated',
+      html: '<p>Updated</p>',
+    });
+
+    expect(sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        from: 'Enterprise ERP <edadmin@ekdrishti.com>',
+        to: ['target@example.com'],
+        replyTo: 'actor@example.com',
+      }),
+    );
+  });
 });
