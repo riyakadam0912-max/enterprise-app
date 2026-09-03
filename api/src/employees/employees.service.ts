@@ -404,6 +404,15 @@ export class EmployeesService {
       : null;
 
     return this.prisma.$transaction(async (tx) => {
+      const assignedBusinessUnitId =
+        createEmployeeDto.businessUnitId ??
+        (
+          await tx.businessUnit?.findFirst?.({
+            where: { organizationId, status: 'ACTIVE' },
+            orderBy: { id: 'asc' },
+            select: { id: true },
+          })
+        )?.id;
       const employee = await tx.employee.create({
         data: {
           organization: { connect: { id: organizationId } },
@@ -418,8 +427,8 @@ export class EmployeesService {
           manager: createEmployeeDto.manager,
           leaveBalance: createEmployeeDto.leaveBalance,
           status: createEmployeeDto.status,
-          businessUnit: createEmployeeDto.businessUnitId
-            ? { connect: { id: createEmployeeDto.businessUnitId } }
+          businessUnit: assignedBusinessUnitId
+            ? { connect: { id: assignedBusinessUnitId } }
             : undefined,
           shift: createEmployeeDto.shiftId
             ? { connect: { id: createEmployeeDto.shiftId } }
@@ -450,7 +459,7 @@ export class EmployeesService {
             employeeId: employee.id,
             managerId: reportingManagerIds?.[0],
             primaryBusinessUnitId:
-              createEmployeeDto.businessUnitId ?? undefined,
+              assignedBusinessUnitId,
             designation: createEmployeeDto.designation,
           },
           select: {
