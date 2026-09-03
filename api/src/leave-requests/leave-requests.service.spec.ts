@@ -53,6 +53,10 @@ describe('LeaveRequestsService', () => {
   let mockWorkflowEngine: ReturnType<typeof createMockWorkflowEngineService>;
   let mockCacheManager: ReturnType<typeof createMockCacheManager>;
   let mockEventEmitter: ReturnType<typeof createMockEventEmitter2>;
+  let mockBusinessUnitsService: {
+    resolveScope: jest.Mock;
+    buildEmployeeBUWhere: jest.Mock;
+  };
 
   const mockAdminUser = createMockAuthUser(Role.ADMIN, { userId: 1 });
   const mockHRUser = createMockAuthUser(Role.HR, { userId: 2 });
@@ -68,6 +72,15 @@ describe('LeaveRequestsService', () => {
     mockWorkflowEngine = createMockWorkflowEngineService();
     mockCacheManager = createMockCacheManager();
     mockEventEmitter = createMockEventEmitter2();
+    mockBusinessUnitsService = {
+      resolveScope: jest.fn().mockResolvedValue({
+        organizationId: 1,
+        allUnits: true,
+        unitIds: [],
+        assignedUnitId: null,
+      }),
+      buildEmployeeBUWhere: jest.fn().mockReturnValue({}),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -76,18 +89,7 @@ describe('LeaveRequestsService', () => {
         { provide: WorkflowEngineService, useValue: mockWorkflowEngine },
         { provide: CACHE_MANAGER, useValue: mockCacheManager },
         { provide: EventEmitter2, useValue: mockEventEmitter },
-        {
-          provide: BusinessUnitsService,
-          useValue: {
-            resolveScope: jest.fn().mockResolvedValue({
-              organizationId: 1,
-              allUnits: true,
-              unitIds: [],
-              assignedUnitId: null,
-            }),
-            buildEmployeeBUWhere: jest.fn().mockReturnValue({}),
-          },
-        },
+        { provide: BusinessUnitsService, useValue: mockBusinessUnitsService },
       ],
     }).compile();
 
@@ -166,6 +168,55 @@ describe('LeaveRequestsService', () => {
           }),
         ),
       ).resolves.toMatchObject({ id: 3, employeeId: 101 });
+    });
+
+    it('should allow self-service leave when the employee has no business unit', async () => {
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      const leaveRequestDelegate = getPrismaDelegate(
+        mockPrisma,
+        'leaveRequest',
+      );
+      mockBusinessUnitsService.resolveScope.mockResolvedValueOnce({
+        organizationId: 1,
+        allUnits: false,
+        unitIds: [],
+        assignedUnitId: null,
+      });
+      mockBusinessUnitsService.buildEmployeeBUWhere.mockReturnValueOnce({
+        organizationId: 1,
+        deletedAt: null,
+        id: -1,
+      });
+      employeeDelegate.findFirst
+        .mockResolvedValueOnce({ id: 101 })
+        .mockResolvedValueOnce({
+          id: 101,
+          organizationId: 1,
+          user: {
+            id: 4,
+            name: 'Test Employee',
+            email: 'test@example.com',
+            managerId: 3,
+          },
+        });
+      leaveRequestDelegate.create.mockResolvedValueOnce({
+        id: 4,
+        employeeId: 101,
+        leaveType: 'SICK',
+        startDate: new Date('2026-01-01'),
+        endDate: new Date('2026-01-02'),
+      });
+
+      await expect(
+        service.create(
+          {
+            startDate: '2026-01-01',
+            endDate: '2026-01-02',
+            leaveType: 'SICK',
+          } as CreateLeaveRequestDto,
+          mockEmployeeUser,
+        ),
+      ).resolves.toMatchObject({ id: 4, employeeId: 101 });
     });
 
     it('should throw NotFoundException if employee not found', async () => {

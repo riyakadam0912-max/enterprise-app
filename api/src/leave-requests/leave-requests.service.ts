@@ -179,7 +179,9 @@ export class LeaveRequestsService {
     const employee = await this.prisma.employee.findFirst({
       where: {
         id: employeeId,
-        ...buWhere,
+        ...(user.role === Role.EMPLOYEE
+          ? { organizationId, deletedAt: null }
+          : buWhere),
       },
       include: {
         user: {
