@@ -1,0 +1,2 @@
+ALTER TABLE "Task" ADD COLUMN "driveLink" TEXT;
+ALTER TABLE "Project" ADD COLUMN "driveLink" TEXT;

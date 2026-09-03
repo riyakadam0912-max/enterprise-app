@@ -19,6 +19,7 @@ export interface Project {
   priority?: string | null;
   remarks?: string | null;
   finalDeliverablesLink?: string | null;
+  driveLink?: string | null;
   managerUser?: {
     id: number;
     name: string;
@@ -118,6 +119,7 @@ export interface CreateProjectPayload {
   priority?: string;
   remarks?: string;
   finalDeliverablesLink?: string;
+  driveLink?: string;
   projectLead?: string;
 }
 
@@ -178,10 +180,10 @@ export async function removeCoManager(projectId: number, userId: number): Promis
   });
 }
 
-export async function assignEmployee(projectId: number, employeeId: number): Promise<Project> {
+export async function assignEmployee(projectId: number, employeeId: number, driveLink?: string): Promise<Project> {
   return apiClient<Project>(`/projects/${projectId}/employees`, {
     method: 'POST',
-    body: JSON.stringify({ employeeId }),
+    body: JSON.stringify({ employeeId, driveLink: driveLink || undefined }),
   });
 }
 

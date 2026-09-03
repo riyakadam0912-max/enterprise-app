@@ -51,6 +51,7 @@ export default function AddProjectPage() {
     budget:      '',
     remarks:     '',
     finalDeliverablesLink: '',
+    driveLink:                '',
   });
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState('');
@@ -126,6 +127,7 @@ export default function AddProjectPage() {
         budget:      form.budget ? Number(form.budget) : undefined,
         remarks:     form.remarks.trim()     || undefined,
         finalDeliverablesLink: form.finalDeliverablesLink.trim() || undefined,
+        driveLink: form.driveLink.trim() || undefined,
       });
       router.push('/dashboard/projects');
     } catch {
@@ -239,6 +241,11 @@ export default function AddProjectPage() {
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Google Drive link <span className="font-normal text-gray-400">(optional)</span></label>
+            <input type="url" className={field} value={form.driveLink} onChange={(e) => set('driveLink', e.target.value)} placeholder="https://drive.google.com/..." />
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Final Deliverables Link</label>
             <input type="url" className={field} value={form.finalDeliverablesLink} onChange={(e) => set('finalDeliverablesLink', e.target.value)} placeholder="https://..." />
           </div>
@@ -294,6 +301,7 @@ export default function AddProjectPage() {
                 budget: '',
                 remarks: '',
                 finalDeliverablesLink: '',
+                driveLink: '',
               })}
               className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold px-6 py-2 rounded-lg transition-colors"
             >

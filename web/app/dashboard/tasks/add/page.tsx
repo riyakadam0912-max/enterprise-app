@@ -38,6 +38,7 @@ export default function AddTaskPage() {
     estimatedHours: '',
     actualHours:    '',
     notes:          '',
+    driveLink:      '',
   });
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState('');
@@ -91,6 +92,7 @@ export default function AddTaskPage() {
         estimatedHours: form.estimatedHours ? parseFloat(form.estimatedHours) : null,
         actualHours:    form.actualHours    ? parseFloat(form.actualHours)    : null,
         notes:          form.notes.trim()          || null,
+        driveLink:      form.driveLink.trim()      || undefined,
       });
       router.push('/dashboard/tasks');
     } catch {
@@ -111,6 +113,12 @@ export default function AddTaskPage() {
       <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-5">
 
         {/* Task Name */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Google Drive link <span className="font-normal text-gray-400">(optional)</span></label>
+          <input type="url" className={field} value={form.driveLink} onChange={(e) => set('driveLink', e.target.value)} placeholder="https://drive.google.com/..." />
+        </div>
+
+        {/* Due Date */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Task Name</label>
           <input
@@ -230,7 +238,7 @@ export default function AddTaskPage() {
           </button>
           <button
             type="button"
-            onClick={() => setForm({ taskName:'', project:'', projectId:'', assignee:'', assignedToUserId:'', dueDate:'', priority:'', status:'', estimatedHours:'', actualHours:'', notes:'' })}
+            onClick={() => setForm({ taskName:'', project:'', projectId:'', assignee:'', assignedToUserId:'', dueDate:'', priority:'', status:'', estimatedHours:'', actualHours:'', notes:'', driveLink:'' })}
             className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold px-6 py-2 rounded-lg transition-colors"
           >
             Reset

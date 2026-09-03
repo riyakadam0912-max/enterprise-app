@@ -283,6 +283,7 @@ export class TasksService {
         description: dto.description ?? dto.notes,
         category: dto.category,
         links: dto.links,
+        driveLink: dto.driveLink,
         assignee: dto.assignee ?? assignee.name,
         assignedToId: assignee.employeeId ?? undefined,
         assignedToUserId: assignee.id,
@@ -467,6 +468,7 @@ export class TasksService {
         ...(dto.project !== undefined && { project: dto.project }),
         ...projectData,
         ...(dto.assignee !== undefined && { assignee: dto.assignee }),
+        ...(dto.driveLink !== undefined && { driveLink: dto.driveLink }),
         ...assigneeData,
         ...(dto.priority !== undefined && { priority: dto.priority }),
         ...(dto.status !== undefined && {

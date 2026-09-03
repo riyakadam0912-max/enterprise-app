@@ -404,6 +404,7 @@ export class ProjectsService {
         priority: dto.priority,
         remarks: dto.remarks,
         finalDeliverablesLink: dto.finalDeliverablesLink,
+        driveLink: dto.driveLink,
         client: dto.client,
         projectLead: dto.projectLead,
         ...(dtoAny.businessUnitId != null && {
@@ -744,6 +745,7 @@ export class ProjectsService {
     projectId: number,
     employeeId: number,
     requestingUser: AuthUser,
+    driveLink?: string,
   ) {
     const organizationId = this.validateOrganization(requestingUser);
     const allowed = await this.canManageProject(projectId, requestingUser);
@@ -778,7 +780,10 @@ export class ProjectsService {
 
     const updated = await this.db.project.update({
       where: { id: projectId, organizationId },
-      data: { assignedEmployees: { connect: { id: employeeId } } },
+      data: {
+        assignedEmployees: { connect: { id: employeeId } },
+        ...(driveLink !== undefined && { driveLink }),
+      },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
         coManagers: {
@@ -909,6 +914,7 @@ export class ProjectsService {
         ...(dto.finalDeliverablesLink !== undefined && {
           finalDeliverablesLink: dto.finalDeliverablesLink,
         }),
+        ...(dto.driveLink !== undefined && { driveLink: dto.driveLink }),
         ...(dto.ownerId !== undefined && { ownerId: owner?.id ?? null }),
         ...(dto.projectCode !== undefined && { projectCode: dto.projectCode }),
         ...(dto.managerId !== undefined && { managerId: dto.managerId }),

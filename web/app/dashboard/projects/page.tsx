@@ -132,6 +132,7 @@ export default function ProjectsWorkflowPage() {
   const [showEmployeePicker, setShowEmployeePicker] = useState(false);
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+  const [projectDriveLink, setProjectDriveLink] = useState('');
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [taskForm, setTaskForm] = useState({
@@ -139,6 +140,7 @@ export default function ProjectsWorkflowPage() {
     category: '',
     description: '',
     links: '',
+    driveLink: '',
     assignedEmployeeId: '',
     dueDate: '',
     priority: 'MEDIUM',
@@ -406,6 +408,7 @@ export default function ProjectsWorkflowPage() {
         category: taskForm.category.trim() || null,
         description: taskForm.description.trim() || null,
         links: taskForm.links.trim() || null,
+        driveLink: taskForm.driveLink.trim() || undefined,
         projectId: selectedProjectId,
         assignedToUserId: selectedEmployee.userId,
         employeeId: Number(taskForm.assignedEmployeeId),
@@ -418,6 +421,7 @@ export default function ProjectsWorkflowPage() {
         category: '',
         description: '',
         links: '',
+        driveLink: '',
         assignedEmployeeId: '',
         dueDate: '',
         priority: 'MEDIUM',
@@ -503,11 +507,16 @@ export default function ProjectsWorkflowPage() {
     setBusy(true);
     setActionMessage('');
     try {
-      await assignEmployee(selectedProjectId, Number(selectedEmployeeId));
+      await assignEmployee(
+        selectedProjectId,
+        Number(selectedEmployeeId),
+        projectDriveLink.trim() || undefined,
+      );
       await refreshProjects(selectedProjectId);
       setShowEmployeePicker(false);
       setEmployeeSearch('');
       setSelectedEmployeeId('');
+      setProjectDriveLink('');
       setActionMessage('Team member added successfully.');
     } catch (err) {
       setActionMessage(err instanceof Error ? err.message : 'Failed to add employee');
@@ -758,6 +767,14 @@ export default function ProjectsWorkflowPage() {
                         </a>
                       </p>
                     )}
+                    {projectDetails.driveLink && (
+                      <p>
+                        Drive:{' '}
+                        <a href={projectDetails.driveLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                          Open
+                        </a>
+                      </p>
+                    )}
                   </div>
                 </article>
 
@@ -840,6 +857,13 @@ export default function ProjectsWorkflowPage() {
                     onChange={(e) => setTaskForm((prev) => ({ ...prev, links: e.target.value }))}
                     className="rounded-lg border border-slate-200 px-3 py-2 text-sm md:col-span-2"
                     placeholder="Paste URLs or document links here (comma separated)"
+                  />
+                  <input
+                    type="url"
+                    value={taskForm.driveLink}
+                    onChange={(e) => setTaskForm((prev) => ({ ...prev, driveLink: e.target.value }))}
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm md:col-span-2"
+                    placeholder="Google Drive link (optional)"
                   />
                   <div className="grid gap-3 md:grid-cols-3">
                     <select
@@ -1059,6 +1083,13 @@ export default function ProjectsWorkflowPage() {
                       onChange={(e) => setEmployeeSearch(e.target.value)}
                       className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                       placeholder="Search employee by name, department, or designation"
+                    />
+                    <input
+                      type="url"
+                      value={projectDriveLink}
+                      onChange={(e) => setProjectDriveLink(e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      placeholder="Google Drive link (optional)"
                     />
                     <div className="max-h-52 overflow-y-auto rounded-lg border border-slate-200 bg-white">
                       {filteredEmployeeOptions.length === 0 ? (

@@ -22,6 +22,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '../common/enums/role.enum';
 import { CreateProjectLinkDto } from './dto/create-project-link.dto';
 import { AssignManagerDto } from './dto/assign-manager.dto';
+import { AssignProjectEmployeeDto } from './dto/assign-project-employee.dto';
 import { UpdateProjectStatusDto } from './dto/update-project-status.dto';
 import { CompletionNotificationInterceptor } from '../common/interceptors/completion-notification.interceptor';
 import {
@@ -105,11 +106,16 @@ export class ProjectsController {
   @Post(':id/employees')
   assignEmployeeToProject(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { employeeId: number },
+    @Body() body: AssignProjectEmployeeDto,
     @Req()
     req: ProjectRequest,
   ) {
-    return this.service.assignEmployee(id, Number(body.employeeId), req.user);
+    return this.service.assignEmployee(
+      id,
+      Number(body.employeeId),
+      req.user,
+      body.driveLink,
+    );
   }
 
   @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)

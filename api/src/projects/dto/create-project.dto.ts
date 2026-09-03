@@ -5,6 +5,7 @@ import {
   IsDateString,
   IsInt,
   IsIn,
+  IsUrl,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -100,6 +101,11 @@ export class CreateProjectDto {
   @IsOptional()
   @IsString()
   finalDeliverablesLink?: string;
+
+  @IsOptional()
+  @IsUrl()
+  @ApiPropertyOptional({ example: 'https://drive.google.com/drive/folders/example' })
+  driveLink?: string;
 
   @IsOptional()
   @IsString()

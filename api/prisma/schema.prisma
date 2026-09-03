@@ -503,6 +503,7 @@ model Task {
   category         String?
   description      String?
   links            String?
+  driveLink        String?
   projectId        Int?
   reviewedAt       DateTime?
   reviewedBy       Int?
@@ -664,6 +665,7 @@ model Project {
   finalDeliverablesLink String?
   client                String?
   projectLead           String?
+  driveLink             String?
   createdAt             DateTime         @default(now())
   updatedAt             DateTime         @updatedAt
   deletedAt             DateTime?

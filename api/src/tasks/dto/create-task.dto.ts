@@ -60,6 +60,11 @@ export class CreateTaskDto {
   links?: string;
 
   @IsOptional()
+  @IsUrl()
+  @ApiPropertyOptional({ example: 'https://drive.google.com/drive/folders/example' })
+  driveLink?: string;
+
+  @IsOptional()
   @IsString()
   @ApiPropertyOptional({ example: 'sample-assignee' })
   assignee?: string;

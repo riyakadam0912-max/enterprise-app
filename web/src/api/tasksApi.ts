@@ -11,6 +11,7 @@ export interface Task {
   description?: string | null;
   category?: string | null;
   links?: string | null;
+  driveLink?: string | null;
   project: string | null;
   projectId?: number | null;
   projectRef?: {
@@ -59,6 +60,7 @@ export interface TaskPayload {
   description?: string | null;
   category?: string | null;
   links?: string | null;
+  driveLink?: string | null;
   project?: string | null;
   projectId?: number;
   assignee?: string | null;
