@@ -33,6 +33,7 @@ function CreditCardIcon()   { return <svg viewBox="0 0 24 24" className="w-4.25 
 function BarChartIcon()     { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>; }
 function ShieldAlertIcon()  { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>; }
 function OrganizationIcon() { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h2M14 7h2M8 11h2M14 11h2M8 15h2M14 15h2"/></svg>; }
+function MailIcon()         { return <svg viewBox="0 0 24 24" className="w-4.25 h-4.25 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3 7 12 13 21 7"/></svg>; }
 
 function ChevronRightIcon({ className }: { className?: string }) {
   return (
@@ -224,6 +225,9 @@ const navConfig: NavItem[] = [
   },
   {
     type: 'link', label: 'Organization', href: '/dashboard/organization', icon: <OrganizationIcon />,
+  },
+  {
+    type: 'link', label: 'Email Preview', href: '/dashboard/email-preview', icon: <MailIcon />,
   },
 ];
 
