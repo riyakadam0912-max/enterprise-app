@@ -1,4 +1,4 @@
-import { axiosClient } from './axiosClient';
+import { apiClient } from './apiClient';
 
 export type EmailTemplateOption = {
   name: string;
@@ -12,17 +12,15 @@ export type EmailPreviewResponse = {
 };
 
 export async function listEmailTemplates(): Promise<EmailTemplateOption[]> {
-  const response = await axiosClient.get<EmailTemplateOption[]>('/email/templates');
-  return response.data;
+  return apiClient<EmailTemplateOption[]>('/email/templates');
 }
 
 export async function previewEmailTemplate(
   template: string,
   context: Record<string, string>,
 ): Promise<EmailPreviewResponse> {
-  const response = await axiosClient.post<EmailPreviewResponse>('/email/preview', {
-    template,
-    context,
+  return apiClient<EmailPreviewResponse>('/email/preview', {
+    method: 'POST',
+    body: JSON.stringify({ template, context }),
   });
-  return response.data;
 }
