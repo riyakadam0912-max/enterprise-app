@@ -438,6 +438,13 @@ export class FileManagementService {
     if (file.isPublic) return true;
     if (!user?.userId) return false;
 
+    if (
+      file.entityType.toLowerCase() === 'user' &&
+      file.category.toLowerCase() === 'profile photo'
+    ) {
+      return true;
+    }
+
     const role = String(user.role ?? '').toUpperCase();
     if (['SUPER_ADMIN', 'ADMIN', 'COMPLIANCE_MANAGER', 'HR'].includes(role))
       return true;

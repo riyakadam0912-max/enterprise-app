@@ -91,4 +91,21 @@ describe('FileManagementService', () => {
       }),
     ).rejects.toThrow(ForbiddenException);
   });
+
+  it('allows authenticated users to view profile photos', () => {
+    expect(
+      service.canUserAccessFile(
+        {
+          isPublic: false,
+          uploadedBy: 27,
+          module: 'users',
+          entityType: 'User',
+          entityId: 27,
+          category: 'Profile Photo',
+          status: 'ACTIVE',
+        },
+        { userId: 88, role: Role.EMPLOYEE, organizationId: 5 },
+      ),
+    ).toBe(true);
+  });
 });
