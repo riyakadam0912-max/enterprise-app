@@ -1,0 +1,206 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
+import { useState } from "react";
+import {
+  Alert,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { apiError } from "@/src/api/client";
+import { createDeal } from "@/src/api/crm";
+import { Dropdown } from "@/src/components/Dropdown";
+const stages = ["NEW", "QUALIFIED", "PROPOSAL", "WON", "LOST"];
+export default function AddDeal() {
+  const router = useRouter();
+  const client = useQueryClient();
+  const [form, setForm] = useState({
+    title: "",
+    value: "",
+    stage: "NEW",
+    probability: "",
+    closeDate: "",
+    contact: "",
+    owner: "",
+    pipeline: "",
+  });
+  const [error, setError] = useState("");
+  const mutation = useMutation({
+    mutationFn: () =>
+      createDeal({
+        title: form.title.trim(),
+        value: Number(form.value),
+        stage: form.stage,
+        probability: form.probability
+          ? Number(form.probability) / 100
+          : undefined,
+        closeDate: form.closeDate || undefined,
+        contact: form.contact.trim() || undefined,
+        owner: form.owner.trim() || undefined,
+        pipeline: form.pipeline.trim() || undefined,
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["deals"] });
+      Alert.alert("Deal created", "The deal was added to CRM.", [
+        { text: "Done", onPress: () => router.replace("/deals") },
+      ]);
+    },
+    onError: (value) => setError(apiError(value)),
+  });
+  const set = (key: keyof typeof form, value: string) =>
+    setForm((current) => ({ ...current, [key]: value }));
+  const submit = () => {
+    setError("");
+    const value = Number(form.value);
+    const probability = form.probability ? Number(form.probability) : undefined;
+    if (!form.title.trim()) return setError("Deal title is required.");
+    if (!Number.isFinite(value) || value < 0)
+      return setError("Value must be zero or greater.");
+    if (
+      probability != null &&
+      (!Number.isFinite(probability) || probability < 0 || probability > 100)
+    )
+      return setError("Probability must be between 0 and 100.");
+    if (form.closeDate && !/^\d{4}-\d{2}-\d{2}$/.test(form.closeDate))
+      return setError("Use a date in YYYY-MM-DD format.");
+    mutation.mutate();
+  };
+  return (
+    <ScrollView contentContainerStyle={styles.page}>
+      <Pressable accessibilityRole="button" onPress={() => router.back()}>
+        <Text style={styles.back}>Back to deals</Text>
+      </Pressable>
+      <Text style={styles.title}>Add deal</Text>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <View style={styles.card}>
+        <Field
+          label="Title *"
+          value={form.title}
+          onChangeText={(value) => set("title", value)}
+          placeholder="Deal title"
+        />
+        <Field
+          label="Value *"
+          value={form.value}
+          onChangeText={(value) => set("value", value)}
+          placeholder="0.00"
+          keyboardType="decimal-pad"
+        />
+        <Field
+          label="Probability (%)"
+          value={form.probability}
+          onChangeText={(value) => set("probability", value)}
+          placeholder="0-100"
+          keyboardType="decimal-pad"
+        />
+        <Field
+          label="Close date"
+          value={form.closeDate}
+          onChangeText={(value) => set("closeDate", value)}
+          placeholder="YYYY-MM-DD"
+        />
+        <Field
+          label="Contact"
+          value={form.contact}
+          onChangeText={(value) => set("contact", value)}
+          placeholder="Contact name"
+        />
+        <Field
+          label="Owner"
+          value={form.owner}
+          onChangeText={(value) => set("owner", value)}
+          placeholder="Deal owner"
+        />
+        <Field
+          label="Pipeline"
+          value={form.pipeline}
+          onChangeText={(value) => set("pipeline", value)}
+          placeholder="Pipeline name"
+        />
+        <Dropdown label="Stage" value={form.stage} options={stages} onChange={(value) => set("stage", value)} />
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        disabled={mutation.isPending}
+        onPress={submit}
+        style={styles.submit}
+      >
+        <Text style={styles.submitText}>
+          {mutation.isPending ? "Saving..." : "Create deal"}
+        </Text>
+      </Pressable>
+    </ScrollView>
+  );
+}
+function Field({
+  label,
+  ...props
+}: { label: string } & React.ComponentProps<typeof TextInput>) {
+  return (
+    <View style={{ marginTop: 13 }}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput {...props} style={styles.input} />
+    </View>
+  );
+}
+const styles = {
+  page: { padding: 20, backgroundColor: "#f8fafc", flexGrow: 1 } as const,
+  back: { color: "#2563eb", fontWeight: "700" } as const,
+  title: {
+    color: "#172033",
+    fontSize: 28,
+    fontWeight: "800",
+    marginTop: 18,
+    marginBottom: 18,
+  } as const,
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 14,
+  } as const,
+  label: {
+    color: "#475569",
+    fontSize: 13,
+    fontWeight: "700",
+    marginBottom: 6,
+    marginTop: 12,
+  } as const,
+  input: {
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 10,
+    padding: 13,
+    color: "#172033",
+  } as const,
+  options: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 8,
+  } as const,
+  option: {
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 9,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  } as const,
+  selected: { backgroundColor: "#172033", borderColor: "#172033" } as const,
+  error: {
+    color: "#9f1239",
+    backgroundColor: "#fff1f2",
+    padding: 13,
+    borderRadius: 10,
+    marginBottom: 14,
+  } as const,
+  submit: {
+    backgroundColor: "#ea580c",
+    borderRadius: 10,
+    padding: 16,
+    alignItems: "center",
+  } as const,
+  submitText: { color: "#fff", fontWeight: "800" } as const,
+};

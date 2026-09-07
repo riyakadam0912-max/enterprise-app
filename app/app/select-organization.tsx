@@ -1,0 +1,8 @@
+import { useQuery } from '@tanstack/react-query';
+import { Redirect, useRouter } from 'expo-router';
+import { ActivityIndicator, Pressable, ScrollView, Text } from 'react-native';
+import { Building2 } from '@/src/components/icons';
+import { listOrganizations } from '@/src/api/organizations';
+import { useAuth } from '@/src/providers/AuthProvider';
+import { useOrganization } from '@/src/providers/OrganizationProvider';
+export default function SelectOrganization() { const { session } = useAuth(); const { selectOrganization } = useOrganization(); const router = useRouter(); const query = useQuery({ queryKey: ['organizations'], queryFn: listOrganizations, enabled: Boolean(session?.isPlatformAdmin) }); if (!session?.isPlatformAdmin) return <Redirect href="/(app)/(tabs)/dashboard" />; return <ScrollView contentContainerStyle={{ padding: 20, backgroundColor: '#fff7ed', flexGrow: 1 }}><Building2 color="#ea580c" size={34} /><Text style={{ fontSize: 28, fontWeight: '800', color: '#172033', marginTop: 16 }}>Choose workspace</Text><Text style={{ color: '#64748b', marginTop: 6, marginBottom: 22 }}>Select an active organization to continue.</Text>{query.isLoading ? <ActivityIndicator color="#ea580c" /> : query.data?.map((org) => <Pressable key={org.id} disabled={org.status !== 'ACTIVE'} onPress={async () => { await selectOrganization(org.id, org.name); router.replace('/(app)/(tabs)/dashboard'); }} style={{ backgroundColor: '#fff', borderRadius: 14, padding: 18, marginBottom: 10, opacity: org.status === 'ACTIVE' ? 1 : 0.5 }}><Text style={{ color: '#172033', fontWeight: '800', fontSize: 16 }}>{org.name}</Text><Text style={{ color: '#64748b', marginTop: 5 }}>{org.code} · {org.status}</Text></Pressable>)}</ScrollView>; }

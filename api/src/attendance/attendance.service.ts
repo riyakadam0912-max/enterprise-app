@@ -626,11 +626,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     return result;
   }
 
-  async updateShift(
-    id: number,
-    dto: UpdateShiftDto,
-    user: AttendanceUser,
-  ) {
+  async updateShift(id: number, dto: UpdateShiftDto, user: AttendanceUser) {
     // First verify the shift belongs to this organization
     const shift = await this.prisma.shift.findFirst({
       where: { id, organizationId: user.organizationId },
@@ -646,15 +642,18 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     if (dto.type !== undefined) updateData.type = dto.type;
     if (dto.startTime !== undefined) updateData.startTime = dto.startTime;
     if (dto.endTime !== undefined) updateData.endTime = dto.endTime;
-    if (dto.requiredHours !== undefined) updateData.requiredHours = dto.requiredHours;
+    if (dto.requiredHours !== undefined)
+      updateData.requiredHours = dto.requiredHours;
     if (dto.minPresentHours !== undefined) {
       updateData.minPresentHours = Math.min(
         dto.minPresentHours,
         updateData.requiredHours ?? shift.requiredHours,
       );
     }
-    if (dto.gracePeriodMinutes !== undefined) updateData.gracePeriodMinutes = dto.gracePeriodMinutes;
-    if (dto.rotationPattern !== undefined) updateData.rotationPattern = dto.rotationPattern;
+    if (dto.gracePeriodMinutes !== undefined)
+      updateData.gracePeriodMinutes = dto.gracePeriodMinutes;
+    if (dto.rotationPattern !== undefined)
+      updateData.rotationPattern = dto.rotationPattern;
 
     const result = await this.prisma.shift.update({
       where: { id },

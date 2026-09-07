@@ -66,7 +66,9 @@ describe('ReportsAnalyticsService', () => {
 
   it('scopes attendance and employee analytics to the active organization', async () => {
     prisma.attendance.count.mockResolvedValue(12);
-    prisma.attendance.aggregate.mockResolvedValue({ _sum: { overtimeHours: 0 } });
+    prisma.attendance.aggregate.mockResolvedValue({
+      _sum: { overtimeHours: 0 },
+    });
     prisma.employee.count.mockResolvedValue(8);
 
     await service.getAttendanceReport(

@@ -181,6 +181,9 @@ The Enterprise ERP application is **production-ready**. All critical blockers ha
 - `SMTP_PASS` - Vercel Secrets
 - `SMTP_FROM_EMAIL` - Vercel
 - `SMTP_FROM_NAME` - Vercel
+- `SMTP_VERIFY_ON_STARTUP` - Vercel (optional, default: true)
+
+**📖 See [Nodemailer Implementation Log](./api/docs/NODEMAILER_IMPLEMENTATION_LOG.md) for complete setup, configuration examples, troubleshooting, and production deployment guide.**
 
 **If using Redis queues:**
 - `REDIS_ENABLED` - Vercel (set to "false" for current Vercel deployment)

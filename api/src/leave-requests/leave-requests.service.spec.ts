@@ -315,7 +315,7 @@ describe('LeaveRequestsService', () => {
         startDate: new Date('2026-01-01'),
         endDate: new Date('2026-01-02'),
       });
-      mockWorkflowEngine.submitWorkflow.mockRejectedValueOnce(
+      (mockWorkflowEngine.submitWorkflow as jest.Mock).mockRejectedValueOnce(
         new Error('Workflow definition is unavailable'),
       );
 

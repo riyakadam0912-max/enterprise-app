@@ -124,7 +124,9 @@ export class EmployeesService {
       return emailMatch.id;
     }
 
-    throw new ForbiddenException('User is not linked to an active employee profile');
+    throw new ForbiddenException(
+      'User is not linked to an active employee profile',
+    );
   }
 
   private async getScope(
@@ -210,10 +212,7 @@ export class EmployeesService {
       where: {
         id: { in: managerIds },
         isActive: true,
-        OR: [
-          { organizationId },
-          { role: Role.SUPER_ADMIN },
-        ],
+        OR: [{ organizationId }, { role: Role.SUPER_ADMIN }],
       },
       select: {
         id: true,
@@ -458,8 +457,7 @@ export class EmployeesService {
             role: userRole,
             employeeId: employee.id,
             managerId: reportingManagerIds?.[0],
-            primaryBusinessUnitId:
-              assignedBusinessUnitId,
+            primaryBusinessUnitId: assignedBusinessUnitId,
             designation: createEmployeeDto.designation,
           },
           select: {
@@ -651,27 +649,30 @@ export class EmployeesService {
       updateEmployeeDto.managerIds,
       updateEmployeeDto.managerId,
     );
-    const { managerIds: _managerIds, managerId: _managerId, ...employeeDto } =
-      updateEmployeeDto;
+    const {
+      managerIds: _managerIds,
+      managerId: _managerId,
+      ...employeeDto
+    } = updateEmployeeDto;
     const data: Prisma.EmployeeUpdateInput = { ...employeeDto };
     if (updateEmployeeDto.shiftId !== undefined) {
       if (updateEmployeeDto.shiftId === null) {
         data.shift = { disconnect: true };
       } else {
-      const shift = await this.prisma.shift.findFirst({
-        where: {
-          id: updateEmployeeDto.shiftId,
-          organizationId,
-          isActive: true,
-        },
-        select: { id: true },
-      });
-      if (!shift) {
-        throw new NotFoundException(
-          'Selected shift not found or is inactive in the organization.',
-        );
-      }
-      data.shift = { connect: { id: shift.id } };
+        const shift = await this.prisma.shift.findFirst({
+          where: {
+            id: updateEmployeeDto.shiftId,
+            organizationId,
+            isActive: true,
+          },
+          select: { id: true },
+        });
+        if (!shift) {
+          throw new NotFoundException(
+            'Selected shift not found or is inactive in the organization.',
+          );
+        }
+        data.shift = { connect: { id: shift.id } };
       }
       delete (data as { shiftId?: number | null }).shiftId;
     }

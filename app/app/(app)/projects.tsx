@@ -1,0 +1,6 @@
+import { ModuleListScreen, RecordCard } from '@/src/components/ModuleListScreen';
+import { listEndpoint } from '@/src/api/modules';
+import { Link } from 'expo-router';
+import { Pressable, Text } from 'react-native';
+import { useAuth } from '@/src/providers/AuthProvider';
+export default function Projects() { const { session } = useAuth(); const canCreate = ['ADMIN', 'SUPER_ADMIN', 'MANAGER'].includes(session?.role ?? ''); return <ModuleListScreen title="Projects" subtitle="Projects in your current scope." queryKey={['projects']} load={() => listEndpoint('/projects')} searchKeys={['projectName', 'description', 'status']} filters={[{ key: 'status', label: 'Status', options: ['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED'] }]} sortOptions={[{ key: 'projectName', label: 'Name' }, { key: 'deadline', label: 'Deadline' }]} headerAction={canCreate ? <Link href="/(app)/projects/add" asChild><Pressable style={{ backgroundColor: '#ea580c', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11 }}><Text style={{ color: '#fff', fontWeight: '700' }}>Add project</Text></Pressable></Link> : null} renderItem={(item) => <Link href={`/(app)/project/${String(item.id)}` as never} asChild><Pressable><RecordCard item={item} titleKey="projectName" detailKeys={['status', 'manager', 'deadline']} /></Pressable></Link>} />; }

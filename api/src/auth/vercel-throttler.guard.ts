@@ -7,7 +7,8 @@ export class VercelThrottlerGuard extends ThrottlerGuard {
       return forwardedFor.split(',')[0].trim();
     }
 
-    const socketAddress = req.socket?.remoteAddress ?? req.connection?.remoteAddress;
+    const socketAddress =
+      req.socket?.remoteAddress ?? req.connection?.remoteAddress;
     return typeof socketAddress === 'string' && socketAddress
       ? socketAddress
       : 'unknown-client';

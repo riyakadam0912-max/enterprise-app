@@ -16,6 +16,7 @@ import { MarkPayrollEntryPaidDto } from './dto/mark-payroll-entry-paid.dto';
 import { PayrollCalculationService } from './payroll-calculation.service';
 import { PayslipGenerationService } from './payslip-generation.service';
 import { UpdateSalaryStructureDto } from './dto/update-salary-structure.dto';
+import { UpdatePayslipDto } from './dto/update-payslip.dto';
 import { DASHBOARD_CACHE_KEY } from '../common/utils/cache-keys';
 import type { AuthUser } from '../common/types/auth';
 import { Role } from '../common/enums/role.enum';
@@ -746,6 +747,44 @@ export class PayrollService {
       throw new NotFoundException('Payslip not found');
     }
     return payslip;
+  }
+
+  async updatePayslip(
+    payslipId: number,
+    dto: UpdatePayslipDto,
+    user: AuthUser,
+  ) {
+    const current = await this.getPayslip(payslipId, user);
+    const earnings = {
+      basicSalary: dto.basicSalary ?? current.basicSalary,
+      hra: dto.hra ?? current.hra,
+      allowances: dto.allowances ?? current.allowances,
+      bonus: dto.bonus ?? current.bonus,
+      overtime: dto.overtime ?? current.overtime,
+      reimbursements: dto.reimbursements ?? current.reimbursements,
+    };
+    const deductions = {
+      pfDeduction: dto.pfDeduction ?? current.pfDeduction,
+      esiDeduction: dto.esiDeduction ?? current.esiDeduction,
+      professionalTax: dto.professionalTax ?? current.professionalTax,
+      tdsDeduction: dto.tdsDeduction ?? current.tdsDeduction,
+      lossOfPay: dto.lossOfPay ?? current.lossOfPay,
+      otherDeductions: dto.otherDeductions ?? current.otherDeductions,
+    };
+    const grossEarnings = Object.values(earnings).reduce((sum, value) => sum + value, 0);
+    const totalDeductions = Object.values(deductions).reduce((sum, value) => sum + value, 0);
+    return this.prisma.payslip.update({
+      where: { id: payslipId },
+      data: {
+        ...(dto.month !== undefined && { month: dto.month }),
+        ...(dto.year !== undefined && { year: dto.year }),
+        ...earnings,
+        ...deductions,
+        grossEarnings,
+        totalDeductions,
+        netPay: grossEarnings - totalDeductions,
+      },
+    });
   }
 
   async getEmployeePayslips(

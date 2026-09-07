@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getTasksByPriority, Task } from '@/api/tasksApi';
-import { useAuthSession } from '@/stores/auth-store';
+ import { useAuthSession } from '@/stores/auth-store';
 
 const COLUMNS = [
   { key: 'HIGH', label: 'High' },

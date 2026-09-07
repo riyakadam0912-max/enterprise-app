@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { usePathname } from 'next/navigation';
 
 import { ApiError } from '@/api/apiClient';
 
@@ -49,6 +50,7 @@ export function AuthProvider({
   children: React.ReactNode;
 }) {
   const session = useAuthSession();
+  const pathname = usePathname();
   const bootstrapAttemptedRef = useRef(false);
 
   const [loading, setLoading] =
@@ -60,6 +62,11 @@ export function AuthProvider({
 
 
   useEffect(() => {
+
+    if (pathname === '/login') {
+      setLoading(false);
+      return;
+    }
 
     if (bootstrapAttemptedRef.current) {
       return;
@@ -139,7 +146,7 @@ export function AuthProvider({
 
     };
 
-  }, []);
+  }, [pathname]);
 
 
 

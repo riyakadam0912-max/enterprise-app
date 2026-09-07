@@ -52,12 +52,18 @@ export class CreateOrganizationDto {
 
   @IsOptional()
   @IsString()
-  @ApiPropertyOptional({ example: 'IN', description: 'ISO 3166-1 alpha-2 country code' })
+  @ApiPropertyOptional({
+    example: 'IN',
+    description: 'ISO 3166-1 alpha-2 country code',
+  })
   country?: string;
 
   @IsOptional()
   @IsString()
-  @ApiPropertyOptional({ example: 'MH', description: 'ISO 3166-2 state/region code' })
+  @ApiPropertyOptional({
+    example: 'MH',
+    description: 'ISO 3166-2 state/region code',
+  })
   state?: string;
 
   @IsOptional()
@@ -72,12 +78,18 @@ export class CreateOrganizationDto {
 
   @IsOptional()
   @IsString()
-  @ApiPropertyOptional({ example: 'Asia/Kolkata', description: 'IANA timezone identifier' })
+  @ApiPropertyOptional({
+    example: 'Asia/Kolkata',
+    description: 'IANA timezone identifier',
+  })
   timezone?: string;
 
   @IsOptional()
   @IsString()
-  @ApiPropertyOptional({ example: 'INR', description: 'ISO 4217 currency code' })
+  @ApiPropertyOptional({
+    example: 'INR',
+    description: 'ISO 4217 currency code',
+  })
   currency?: string;
 
   @IsOptional()

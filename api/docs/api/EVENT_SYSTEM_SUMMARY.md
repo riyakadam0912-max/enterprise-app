@@ -215,26 +215,40 @@ curl http://localhost:3000/notifications \
 
 ## 🔧 Production Deployment
 
-Replace mock email with:
+### Option 1: Nodemailer (SMTP) - **Recommended for Self-Hosted SMTP**
+
+📖 **Complete setup guide:** [Nodemailer Implementation Log](../NODEMAILER_IMPLEMENTATION_LOG.md)
+
 ```bash
 npm install @nestjs/mailer nodemailer
-# or
+```
+
+Set environment variables:
+```bash
+EMAIL_PROVIDER=nodemailer
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your_app_password
+SMTP_FROM_EMAIL=noreply@company.com
+SMTP_FROM_NAME=Enterprise ERP
+```
+
+### Option 2: SendGrid / Mailgun / AWS SES
+
+```bash
+# SendGrid
 npm install sendgrid
-# or
+
+# Mailgun
 npm install mailgun-js
+
+# AWS SES
+npm install @aws-sdk/client-ses
 ```
 
-Update `mail.service.ts`:
-```typescript
-@Injectable()
-export class MailService {
-  constructor(private readonly mailer: MailerService) {}
-
-  async sendLeaveRequestNotification(...) {
-    return this.mailer.sendMail({...});  // Real email
-  }
-}
-```
+Then update `mail.service.ts` to use the selected service.
 
 ---
 

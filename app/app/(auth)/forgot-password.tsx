@@ -1,0 +1,3 @@
+import { Link } from 'expo-router';
+import { Pressable, Text, View } from 'react-native';
+export default function ForgotPassword() { return <View style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#fff7ed' }}><Text style={{ fontSize: 28, fontWeight: '800', color: '#172033' }}>Reset access</Text><Text style={{ color: '#64748b', fontSize: 16, lineHeight: 24, marginTop: 10 }}>Password reset is handled by the existing ERP email flow. Request it from the web portal, then return here to sign in.</Text><Link href="/(auth)/login" asChild><Pressable style={{ backgroundColor: '#ea580c', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 24 }}><Text style={{ color: '#fff', fontWeight: '700' }}>Back to sign in</Text></Pressable></Link></View>; }

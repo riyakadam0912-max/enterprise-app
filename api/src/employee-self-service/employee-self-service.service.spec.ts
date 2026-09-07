@@ -37,7 +37,9 @@ describe('EmployeeSelfServiceService', () => {
       ],
     }).compile();
 
-    service = module.get<EmployeeSelfServiceService>(EmployeeSelfServiceService);
+    service = module.get<EmployeeSelfServiceService>(
+      EmployeeSelfServiceService,
+    );
   });
 
   it('resolves a linked employee only within the current organization and active records', async () => {

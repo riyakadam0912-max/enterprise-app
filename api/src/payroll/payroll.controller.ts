@@ -18,6 +18,7 @@ import { CreateSalaryStructureDto } from './dto/create-salary-structure.dto';
 import { CreateTaxDeclarationDto } from './dto/create-tax-declaration.dto';
 import { MarkPayrollEntryPaidDto } from './dto/mark-payroll-entry-paid.dto';
 import { UpdateSalaryStructureDto } from './dto/update-salary-structure.dto';
+import { UpdatePayslipDto } from './dto/update-payslip.dto';
 import { PayrollService } from './payroll.service';
 import {
   ApiBearerAuth,
@@ -236,6 +237,22 @@ export class PayrollController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.service.getPayslip(payslipId, user);
+  }
+
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'PATCH payslips/:payslipId' })
+  @ApiResponse({ status: 200, description: 'Payslip updated successfully.' })
+  @ApiResponse({ status: 400, description: 'Bad request.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @ApiResponse({ status: 404, description: 'Resource not found.' })
+  @ApiBody({ type: UpdatePayslipDto })
+  @Patch('payslips/:payslipId')
+  updatePayslip(
+    @Param('payslipId', ParseIntPipe) payslipId: number,
+    @Body() dto: UpdatePayslipDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.service.updatePayslip(payslipId, dto, user);
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN, Role.EMPLOYEE)

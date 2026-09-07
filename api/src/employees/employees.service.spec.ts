@@ -287,7 +287,12 @@ describe('EmployeesService', () => {
 
       userDelegate.findFirst.mockResolvedValueOnce(null);
       userDelegate.findMany.mockResolvedValueOnce([
-        { id: 77, role: Role.MANAGER, organizationId: 3, primaryBusinessUnitId: null },
+        {
+          id: 77,
+          role: Role.MANAGER,
+          organizationId: 3,
+          primaryBusinessUnitId: null,
+        },
       ]);
 
       employeeDelegate.create.mockResolvedValue({
@@ -323,8 +328,18 @@ describe('EmployeesService', () => {
       );
 
       expect(userDelegate.findMany).toHaveBeenCalledWith({
-        where: { id: { in: [77] }, isActive: true, OR: [{ organizationId: 3 }, { role: Role.SUPER_ADMIN }] },
-        select: { id: true, name: true, role: true, organizationId: true, primaryBusinessUnitId: true },
+        where: {
+          id: { in: [77] },
+          isActive: true,
+          OR: [{ organizationId: 3 }, { role: Role.SUPER_ADMIN }],
+        },
+        select: {
+          id: true,
+          name: true,
+          role: true,
+          organizationId: true,
+          primaryBusinessUnitId: true,
+        },
       });
 
       expect(userDelegate.create).toHaveBeenCalledWith({
@@ -503,32 +518,75 @@ describe('EmployeesService', () => {
 
       userDelegate.findMany
         .mockResolvedValueOnce([
-          { id: 10, name: 'Super Admin', role: Role.SUPER_ADMIN, organizationId: null, primaryBusinessUnitId: null },
-          { id: 12, name: 'Admin', role: Role.ADMIN, organizationId: 5, primaryBusinessUnitId: null },
+          {
+            id: 10,
+            name: 'Super Admin',
+            role: Role.SUPER_ADMIN,
+            organizationId: null,
+            primaryBusinessUnitId: null,
+          },
+          {
+            id: 12,
+            name: 'Admin',
+            role: Role.ADMIN,
+            organizationId: 5,
+            primaryBusinessUnitId: null,
+          },
         ])
         .mockResolvedValueOnce([]);
       userDelegate.findFirst.mockResolvedValue(null);
-      employeeDelegate.create.mockResolvedValue({ id: 80, name: 'Multi Report', organizationId: 5, user: null });
+      employeeDelegate.create.mockResolvedValue({
+        id: 80,
+        name: 'Multi Report',
+        organizationId: 5,
+        user: null,
+      });
       appRoleDelegate.upsert.mockResolvedValue({ id: 2, name: Role.EMPLOYEE });
-      userDelegate.create.mockResolvedValue({ id: 81, name: 'Multi Report', email: 'multi@example.com', role: Role.EMPLOYEE, isActive: true, employeeId: 80, managerId: 10, organizationId: 5, createdAt: new Date() });
+      userDelegate.create.mockResolvedValue({
+        id: 81,
+        name: 'Multi Report',
+        email: 'multi@example.com',
+        role: Role.EMPLOYEE,
+        isActive: true,
+        employeeId: 80,
+        managerId: 10,
+        organizationId: 5,
+        createdAt: new Date(),
+      });
       userRoleDelegate.upsert.mockResolvedValue({} as never);
       reportingDelegate.createMany.mockResolvedValue({ count: 2 });
 
-      await service.create({
-        name: 'Multi Report', email: 'multi@example.com', password: 'password',
-        managerIds: [10, 12], managerId: 10,
-      }, authUser);
+      await service.create(
+        {
+          name: 'Multi Report',
+          email: 'multi@example.com',
+          password: 'password',
+          managerIds: [10, 12],
+          managerId: 10,
+        },
+        authUser,
+      );
 
       expect(reportingDelegate.createMany).toHaveBeenCalledWith({
-        data: [{ employeeId: 81, managerId: 10 }, { employeeId: 81, managerId: 12 }],
+        data: [
+          { employeeId: 81, managerId: 10 },
+          { employeeId: 81, managerId: 12 },
+        ],
         skipDuplicates: true,
       });
     });
 
     it('rejects duplicate and self reporting manager IDs', async () => {
       const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 5 });
-      await expect(service.create({ name: 'Duplicate', managerIds: [10, 10] }, authUser)).rejects.toThrow(BadRequestException);
-      await expect(service.create({ name: 'Self', managerIds: [1] }, { ...authUser, userId: 1 })).rejects.toThrow(BadRequestException);
+      await expect(
+        service.create({ name: 'Duplicate', managerIds: [10, 10] }, authUser),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.create(
+          { name: 'Self', managerIds: [1] },
+          { ...authUser, userId: 1 },
+        ),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('throws ConflictException when a User with the same email exists in the org', async () => {
@@ -700,8 +758,8 @@ describe('EmployeesService', () => {
         (callback: (tx: unknown) => Promise<unknown>) =>
           callback(mockPrisma as unknown as Parameters<typeof callback>[0]),
       );
-      getDelegate(mockPrisma, 'employee').findFirst
-        .mockResolvedValueOnce(employee)
+      getDelegate(mockPrisma, 'employee')
+        .findFirst.mockResolvedValueOnce(employee)
         .mockResolvedValueOnce(employee);
       employeeDelegate.update.mockResolvedValue(employee);
       userDelegate.findMany.mockResolvedValue(
@@ -747,19 +805,27 @@ describe('EmployeesService', () => {
           id: 81,
           managerId: 10,
           reportingManagers: [
-            { manager: { id: 10, name: 'Super Admin', role: Role.SUPER_ADMIN } },
+            {
+              manager: { id: 10, name: 'Super Admin', role: Role.SUPER_ADMIN },
+            },
             { manager: { id: 12, name: 'Admin', role: Role.ADMIN } },
           ],
         },
       };
-      getDelegate(mockPrisma, 'employee').findMany.mockResolvedValue([response]);
+      getDelegate(mockPrisma, 'employee').findMany.mockResolvedValue([
+        response,
+      ]);
       const result = await service.findAll(authUser);
       expect(result).toEqual([response]);
       expect(employeeDelegate.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          include: expect.objectContaining({ user: expect.objectContaining({
-            select: expect.objectContaining({ reportingManagers: expect.any(Object) }),
-          }) }),
+          include: expect.objectContaining({
+            user: expect.objectContaining({
+              select: expect.objectContaining({
+                reportingManagers: expect.any(Object),
+              }),
+            }),
+          }),
         }),
       );
     });

@@ -8,6 +8,8 @@ export class AssignProjectEmployeeDto {
 
   @IsOptional()
   @IsUrl()
-  @ApiPropertyOptional({ example: 'https://drive.google.com/drive/folders/example' })
+  @ApiPropertyOptional({
+    example: 'https://drive.google.com/drive/folders/example',
+  })
   driveLink?: string;
 }

@@ -74,17 +74,28 @@ create() → emit event → listener → notification + email → manager notifi
 
 ## 🔧 Production Deployment
 
-Replace mock email with real provider:
+Replace mock email with real provider. For **Nodemailer (SMTP)**, see:
+
+📖 **[Complete Nodemailer Implementation Log](../NODEMAILER_IMPLEMENTATION_LOG.md)**
+- Setup and configuration instructions
+- Environment variables reference
+- SMTP provider examples (Gmail, Office 365, AWS SES, custom)
+- Troubleshooting and error handling
+- Security best practices
+- Production deployment checklist
+
+Alternatively, use other providers:
 
 ```bash
+# Nodemailer (SMTP)
 npm install @nestjs/mailer nodemailer
-# or
+
+# SendGrid
 npm install sendgrid
-# or
+
+# Mailgun
 npm install mailgun-js
 ```
-
-Then update `mail/mail.service.ts` to use the real service.
 
 ---
 

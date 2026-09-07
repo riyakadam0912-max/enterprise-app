@@ -376,7 +376,10 @@ export class FileManagementService {
     const [totalFiles, totalStorage, recentFiles, mostDownloaded, byCategory] =
       await Promise.all([
         this.prismaCompat.file.count({ where: baseWhere }),
-        this.prismaCompat.file.aggregate({ where: baseWhere, _sum: { size: true } }),
+        this.prismaCompat.file.aggregate({
+          where: baseWhere,
+          _sum: { size: true },
+        }),
         this.prismaCompat.file.findMany({
           where: baseWhere,
           orderBy: { createdAt: 'desc' },
@@ -634,7 +637,9 @@ export class FileManagementService {
     });
   }
 
-  private toInputJsonValue(value: Record<string, unknown> | any | null | undefined): any {
+  private toInputJsonValue(
+    value: Record<string, unknown> | any | null | undefined,
+  ): any {
     if (value === null || value === undefined) {
       return undefined;
     }

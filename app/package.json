@@ -52,6 +52,7 @@
   },
   "scripts": {
     "start": "expo start",
+    "start:lan": "expo start --lan --port 8081",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "lint": "eslint .",

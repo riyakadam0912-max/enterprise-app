@@ -1,0 +1,1 @@
+export type EmployeeRole = 'EMPLOYEE' | 'MANAGER' | 'HR';

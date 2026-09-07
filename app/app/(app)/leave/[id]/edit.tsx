@@ -1,0 +1,22 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { apiError } from '@/src/api/client';
+import { leaveRequest, updateLeaveRequest } from '@/src/api/leave';
+
+export default function EditLeave() {
+  const router = useRouter(); const client = useQueryClient(); const { id } = useLocalSearchParams<{ id: string }>(); const requestId = Number(id);
+  const query = useQuery({ queryKey: ['leave', requestId], queryFn: () => leaveRequest(requestId), enabled: Number.isInteger(requestId) && requestId > 0 });
+  const [form, setForm] = useState({ leaveType: '', startDate: '', endDate: '', reason: '' }); const [error, setError] = useState('');
+  useEffect(() => { if (query.data) setForm({ leaveType: query.data.leaveType ?? 'PAID', startDate: query.data.startDate ?? '', endDate: query.data.endDate ?? '', reason: query.data.reason ?? '' }); }, [query.data]);
+  const mutation = useMutation({ mutationFn: () => updateLeaveRequest(requestId, { leaveType: form.leaveType.trim().toUpperCase(), startDate: form.startDate, endDate: form.endDate, reason: form.reason.trim() || undefined }), onSuccess: () => { void client.invalidateQueries({ queryKey: ['leave'] }); Alert.alert('Leave updated', 'Your request was updated.', [{ text: 'Done', onPress: () => router.back() }]); }, onError: (value) => setError(apiError(value)) });
+  const set = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const submit = () => { setError(''); if (!form.leaveType.trim() || !form.startDate || !form.endDate) return setError('Leave type and dates are required.'); if (!/^\d{4}-\d{2}-\d{2}$/.test(form.startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(form.endDate)) return setError('Use dates in YYYY-MM-DD format.'); mutation.mutate(); };
+  if (query.isLoading) return <View style={styles.page}><Text>Loading leave request...</Text></View>;
+  if (query.isError || !query.data) return <View style={styles.page}><Text style={styles.error}>{apiError(query.error)}</Text></View>;
+  if (query.data.status === 'APPROVED' || query.data.status === 'REJECTED' || query.data.status === 'CANCELLED') return <View style={styles.page}><Text style={styles.error}>This request can no longer be edited.</Text></View>;
+  return <ScrollView contentContainerStyle={styles.page}><Pressable onPress={() => router.back()}><Text style={styles.back}>Back to request</Text></Pressable><Text style={styles.title}>Edit leave request</Text>{error ? <Text style={styles.error}>{error}</Text> : null}<View style={styles.card}><Field label="Leave type *" value={form.leaveType} onChangeText={(value) => set('leaveType', value)} placeholder="PAID" /><Field label="Start date *" value={form.startDate} onChangeText={(value) => set('startDate', value)} placeholder="YYYY-MM-DD" /><Field label="End date *" value={form.endDate} onChangeText={(value) => set('endDate', value)} placeholder="YYYY-MM-DD" /><Field label="Reason" value={form.reason} onChangeText={(value) => set('reason', value)} multiline placeholder="Reason" /></View><Pressable disabled={mutation.isPending} onPress={submit} style={styles.submit}><Text style={styles.submitText}>{mutation.isPending ? 'Saving...' : 'Save changes'}</Text></Pressable></ScrollView>;
+}
+function Field({ label, ...props }: { label: string } & React.ComponentProps<typeof TextInput>) { return <View style={{ marginTop: 14 }}><Text style={styles.label}>{label}</Text><TextInput {...props} style={[styles.input, props.multiline && { minHeight: 80, textAlignVertical: 'top' }]} /></View>; }
+const styles = { page: { padding: 20, backgroundColor: '#f8fafc', flexGrow: 1 } as const, back: { color: '#2563eb', fontWeight: '700' } as const, title: { color: '#172033', fontSize: 28, fontWeight: '800', marginTop: 18, marginBottom: 18 } as const, card: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 14 } as const, label: { color: '#475569', fontSize: 13, fontWeight: '700', marginBottom: 6 } as const, input: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, padding: 13, color: '#172033' } as const, submit: { backgroundColor: '#ea580c', borderRadius: 10, padding: 16, alignItems: 'center' } as const, submitText: { color: '#fff', fontWeight: '800' } as const, error: { backgroundColor: '#fff1f2', color: '#9f1239', padding: 13, borderRadius: 10, marginBottom: 14 } as const };

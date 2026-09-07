@@ -1,0 +1,7 @@
+import { Link } from 'expo-router';
+import { Pressable, Text } from 'react-native';
+import { ModuleListScreen, RecordCard } from '@/src/components/ModuleListScreen';
+import { leads } from '@/src/api/modules';
+import { useAuth } from '@/src/providers/AuthProvider';
+
+export default function Leads() { const { session } = useAuth(); const canCreate = ['ADMIN', 'SUPER_ADMIN'].includes(session?.role ?? ''); return <ModuleListScreen title="Leads" subtitle="CRM opportunities within your authorized organization scope." queryKey={['leads']} load={leads} searchKeys={['name', 'company', 'status', 'source']} filters={[{ key: 'status', label: 'Status', options: ['NEW', 'CONTACTED', 'QUALIFIED', 'CONVERTED'] }]} sortOptions={[{ key: 'name', label: 'Name' }, { key: 'leadScore', label: 'Score' }]} headerAction={canCreate ? <Link href={"/create-lead" as never} asChild><Pressable style={{ backgroundColor: '#ea580c', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11 }}><Text style={{ color: '#fff', fontWeight: '700' }}>Add lead</Text></Pressable></Link> : null} renderItem={(item) => <Link href={`/(app)/lead/${String(item.id)}` as never} asChild><Pressable><RecordCard item={item} titleKey="name" detailKeys={['company', 'status', 'source', 'leadScore']} /></Pressable></Link>} />; }

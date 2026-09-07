@@ -27,17 +27,6 @@ const nextConfig: NextConfig = {
     root: monorepoRoot,
   },
   async rewrites() {
-    const publicApiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? '/api/v1';
-    const shouldProxyApi = publicApiBaseUrl.startsWith('/');
-    if (!shouldProxyApi) {
-      return [
-        {
-          source: '/@vite/client',
-          destination: '/@vite/client.js',
-        },
-      ];
-    }
-
     const apiProxyTarget = resolveApiProxyTarget();
 
     return [

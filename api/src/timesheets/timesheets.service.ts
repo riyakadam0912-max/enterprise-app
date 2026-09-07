@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueryTimesheetDto } from './dto/query-timesheet.dto';
 import { CreateTimesheetDto } from './dto/create-timesheet.dto';
+import { UpdateTimesheetDto } from './dto/update-timesheet.dto';
 import type { AuthUser } from '../common/types/auth';
 
 @Injectable()
@@ -113,6 +114,31 @@ export class TimesheetsService {
         hours: dto.hours,
         status: dto.status ?? 'PENDING',
         notes: dto.notes,
+      },
+    });
+  }
+
+  async findOne(id: number, user: AuthUser) {
+    const organizationId = await this.resolveOrganizationId(user);
+    const timesheet = await this.prisma.timesheet.findFirst({ where: { id, organizationId, deletedAt: null } });
+    if (!timesheet) throw new ForbiddenException('Timesheet not found in your organization');
+    return { ...timesheet, date: timesheet.date.toISOString().split('T')[0] };
+  }
+
+  async update(id: number, dto: UpdateTimesheetDto, user: AuthUser) {
+    const organizationId = await this.resolveOrganizationId(user);
+    const existing = await this.prisma.timesheet.findFirst({ where: { id, organizationId, deletedAt: null } });
+    if (!existing) throw new ForbiddenException('Timesheet not found in your organization');
+    if (existing.status === 'APPROVED') throw new ForbiddenException('Approved timesheets cannot be edited');
+    return this.prisma.timesheet.update({
+      where: { id },
+      data: {
+        ...(dto.task !== undefined && { task: dto.task }),
+        ...(dto.project !== undefined && { project: dto.project }),
+        ...(dto.date !== undefined && { date: new Date(dto.date) }),
+        ...(dto.hours !== undefined && { hours: dto.hours }),
+        ...(dto.status !== undefined && { status: dto.status }),
+        ...(dto.notes !== undefined && { notes: dto.notes }),
       },
     });
   }

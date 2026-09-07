@@ -45,6 +45,7 @@ Mock email service with methods:
 - `sendLeaveApprovalNotification()` - Sends email when leave is approved
 - `sendLeaveRejectionNotification()` - Sends email when leave is rejected
 - Logs emails to console (production: integrate with SendGrid, Mailgun, Nodemailer, etc.)
+- For **Nodemailer setup**, see: [Nodemailer Implementation Log](../NODEMAILER_IMPLEMENTATION_LOG.md)
 
 ### 4. **Module Integration**
 - `mail/mail.module.ts` - MailModule with exports

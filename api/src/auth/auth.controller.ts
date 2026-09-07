@@ -303,6 +303,8 @@ export class AuthController {
     );
     const data = {
       message: result.message,
+      access_token: result.access_token,
+      refresh_token: result.refresh_token,
       user: result.user,
       role: result.role,
       roles: result.roles,
@@ -387,8 +389,14 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const refreshToken =
-      (req.cookies?.enterprise_refresh_token as string | undefined) ?? '';
+    const cookieRefreshToken = req.cookies?.enterprise_refresh_token as
+      | string
+      | undefined;
+    const authorization = req.headers.authorization;
+    const bearerRefreshToken = authorization?.startsWith('Bearer ')
+      ? authorization.slice(7)
+      : undefined;
+    const refreshToken = cookieRefreshToken ?? bearerRefreshToken ?? '';
     try {
       const result = await this.authService.refreshTokens(refreshToken);
       this.setAuthCookies(
@@ -399,6 +407,8 @@ export class AuthController {
       );
       const data = {
         message: result.message,
+        access_token: result.access_token,
+        refresh_token: result.refresh_token,
         user: result.user,
         role: result.role,
         roles: result.roles,

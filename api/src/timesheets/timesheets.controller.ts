@@ -4,6 +4,9 @@ import {
   Post,
   Body,
   Query,
+  Param,
+  ParseIntPipe,
+  Patch,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -13,6 +16,7 @@ import { TimesheetsService } from './timesheets.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { QueryTimesheetDto } from './dto/query-timesheet.dto';
 import { CreateTimesheetDto } from './dto/create-timesheet.dto';
+import { UpdateTimesheetDto } from './dto/update-timesheet.dto';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../common/types/request';
 @ApiTags('HR - Timesheets')
@@ -44,6 +48,23 @@ export class TimesheetsController {
   @HttpCode(201)
   create(@Body() dto: CreateTimesheetDto, @Req() req: AuthenticatedRequest) {
     return this.timesheetsService.create(dto, req.user);
+  }
+
+  @ApiOperation({ summary: 'GET :id' })
+  @ApiResponse({ status: 200, description: 'Timesheet fetched successfully.' })
+  @ApiResponse({ status: 404, description: 'Timesheet not found.' })
+  @Get(':id')
+  findOne(@Param('id', ParseIntPipe) id: number, @Req() req: AuthenticatedRequest) {
+    return this.timesheetsService.findOne(id, req.user);
+  }
+
+  @ApiOperation({ summary: 'PATCH :id' })
+  @ApiResponse({ status: 200, description: 'Timesheet updated successfully.' })
+  @ApiResponse({ status: 404, description: 'Timesheet not found.' })
+  @ApiBody({ type: UpdateTimesheetDto })
+  @Patch(':id')
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateTimesheetDto, @Req() req: AuthenticatedRequest) {
+    return this.timesheetsService.update(id, dto, req.user);
   }
 
   @ApiOperation({ summary: 'POST import' })

@@ -3,6 +3,7 @@ import { createNestApp } from './create-nest-app';
 
 async function bootstrap() {
   const PORT = Number(process.env.PORT ?? 3000);
+  const HOST = process.env.HOST ?? (process.env.NODE_ENV === 'production' ? '127.0.0.1' : '0.0.0.0');
 
   const app = await createNestApp();
 
@@ -56,9 +57,9 @@ async function bootstrap() {
     void app.close().finally(() => process.exit(1));
   });
 
-  await app.listen(PORT);
+  await app.listen(PORT, HOST);
 
-  console.log(`[API] Running on port ${PORT}`);
+  console.log(`[API] Running on ${HOST}:${PORT}`);
   console.log('[EVENTS] Event bus initialized');
 
   if (process.env.NODE_ENV !== 'production') {

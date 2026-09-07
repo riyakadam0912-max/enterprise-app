@@ -1063,9 +1063,7 @@ export class NotificationsService {
       resolvedOrganizationId,
     );
     if (organizationId == null) {
-      throw new NotFoundException(
-        `Notification #${notificationId} not found`,
-      );
+      throw new NotFoundException(`Notification #${notificationId} not found`);
     }
     const row = await this.prisma.notificationRecipient.findFirst({
       where: { notificationId, userId, organizationId },

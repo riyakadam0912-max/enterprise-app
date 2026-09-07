@@ -1,0 +1,26 @@
+export const tokens = {
+  colors: {
+    page: '#f8fafc',
+    surface: '#ffffff',
+    ink: '#172033',
+    text: '#334155',
+    muted: '#64748b',
+    border: '#cbd5e1',
+    primary: '#ea580c',
+    primaryPressed: '#c2410c',
+    success: '#059669',
+    danger: '#be123c',
+    dangerSoft: '#fff1f2',
+    successSoft: '#ecfdf5',
+    info: '#2563eb',
+  },
+  spacing: { page: 20, section: 16, card: 16, control: 12, compact: 8 },
+  radius: { card: 14, control: 10, chip: 9 },
+  type: {
+    title: { fontSize: 28, fontWeight: '800' as const },
+    section: { fontSize: 20, fontWeight: '800' as const },
+    body: { fontSize: 14 },
+    label: { fontSize: 12, fontWeight: '700' as const },
+    button: { fontSize: 14, fontWeight: '800' as const },
+  },
+} as const;

@@ -148,7 +148,10 @@ export class UsersController {
   @RequirePermissions(Permission.USER_UPDATE)
   @Post(':id/request-reset-code')
   requestResetCode(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    return this.usersService.requestPasswordResetCode(parseInt(id, 10), req.user);
+    return this.usersService.requestPasswordResetCode(
+      parseInt(id, 10),
+      req.user,
+    );
   }
 
   @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.COMPLIANCE_MANAGER, Role.HR)
