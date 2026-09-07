@@ -8,7 +8,9 @@ if (!apiUrl) {
   throw new Error('EXPO_PUBLIC_API_URL is required in production. Set it to the API /api/v1 endpoint.');
 }
 
-if (__DEV__ && /production|vercel\.app/i.test(apiUrl)) {
+const productionApiAllowedInDev = process.env.EXPO_PUBLIC_ALLOW_PRODUCTION_API_IN_DEV === 'true';
+
+if (__DEV__ && /production|vercel\.app/i.test(apiUrl) && !productionApiAllowedInDev) {
   console.warn('[app] Development build is configured for a production API.');
 }
 

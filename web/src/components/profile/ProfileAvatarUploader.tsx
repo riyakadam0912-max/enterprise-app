@@ -5,10 +5,11 @@ import { Camera, Loader2 } from 'lucide-react';
 import { ChangeEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { listFilesByEntity, uploadFile } from '@/api/filesApi';
+import { ImageCropDialog } from '@/components/common/ImageCropDialog';
 import { useAuthSession } from '@/stores/auth-store';
 
 const MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024;
-const ACCEPTED_AVATAR_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+const ACCEPTED_AVATAR_TYPES = ['image/png', 'image/jpeg'];
 
 export type ProfileAvatarUploaderProps = {
   userName?: string | null;
@@ -41,6 +42,7 @@ export function ProfileAvatarUploader({
   const session = useAuthSession();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [currentAvatarUrl, setCurrentAvatarUrl] = useState<string | null>(avatarUrl ?? null);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [status, setStatus] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
 
@@ -129,6 +131,34 @@ export function ProfileAvatarUploader({
     [handleOpenPicker],
   );
 
+  const uploadAvatar = useCallback(
+    async (file: File) => {
+      setStatus(null);
+      setIsUploading(true);
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('module', 'users');
+        formData.append('entityType', 'User');
+        formData.append('entityId', String(resolvedUserId));
+        formData.append('category', 'Profile Photo');
+        formData.append('isPublic', 'false');
+        const uploaded = await uploadFile(formData);
+        const uploadedUrl = uploaded.url || uploaded.downloadUrl || uploaded.previewUrl || null;
+        setCurrentAvatarUrl(uploadedUrl);
+        onAvatarChange?.(uploadedUrl);
+        await refreshAvatarForCurrentUser(resolvedUserId as number);
+        setStatus({ type: 'success', message: 'Profile photo uploaded successfully.' });
+      } catch (uploadError) {
+        const message = uploadError instanceof Error && uploadError.message ? uploadError.message : 'Failed to upload profile photo.';
+        setStatus({ type: 'error', message });
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [onAvatarChange, refreshAvatarForCurrentUser, resolvedUserId],
+  );
+
   const handleAvatarChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0] ?? null;
@@ -138,12 +168,12 @@ export function ProfileAvatarUploader({
 
       const normalizedType = file.type.toLowerCase();
       const normalizedName = file.name.toLowerCase();
-      const acceptedExtension = /\.(png|jpe?g|webp)$/i.test(normalizedName);
+      const acceptedExtension = /\.(png|jpe?g)$/i.test(normalizedName);
 
       if (!ACCEPTED_AVATAR_TYPES.includes(normalizedType) && !acceptedExtension) {
         setStatus({
           type: 'error',
-          message: 'Please choose a PNG, JPG, or WebP image for your profile photo.',
+          message: 'Please choose a PNG, JPG, or JPEG image for your profile photo.',
         });
         event.target.value = '';
         return;
@@ -167,37 +197,10 @@ export function ProfileAvatarUploader({
         return;
       }
 
-      setStatus(null);
-      setIsUploading(true);
-
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('module', 'users');
-        formData.append('entityType', 'User');
-        formData.append('entityId', String(resolvedUserId));
-        formData.append('category', 'Profile Photo');
-        formData.append('isPublic', 'true');
-
-        const uploaded = await uploadFile(formData);
-        const uploadedUrl = uploaded.url || uploaded.downloadUrl || uploaded.previewUrl || null;
-
-        setCurrentAvatarUrl(uploadedUrl);
-        onAvatarChange?.(uploadedUrl);
-        await refreshAvatarForCurrentUser(resolvedUserId);
-        setStatus({ type: 'success', message: 'Profile photo uploaded successfully.' });
-      } catch (uploadError) {
-        const message =
-          uploadError instanceof Error && uploadError.message
-            ? uploadError.message
-            : 'Failed to upload profile photo.';
-        setStatus({ type: 'error', message });
-      } finally {
-        setIsUploading(false);
-        event.target.value = '';
-      }
+      setCropFile(file);
+      event.target.value = '';
     },
-    [onAvatarChange, refreshAvatarForCurrentUser, resolvedUserId],
+    [resolvedUserId],
   );
 
   return (
@@ -239,7 +242,7 @@ export function ProfileAvatarUploader({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/png,image/jpeg,image/webp"
+        accept="image/png,image/jpeg"
         className="sr-only"
         aria-label="Upload profile photo"
         onChange={handleAvatarChange}
@@ -250,6 +253,7 @@ export function ProfileAvatarUploader({
           {status.message}
         </p>
       )}
+      {cropFile ? <ImageCropDialog file={cropFile} onCancel={() => setCropFile(null)} onCropped={(file) => { setCropFile(null); void uploadAvatar(file); }} /> : null}
     </div>
   );
 }

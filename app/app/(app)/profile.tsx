@@ -1,4 +1,4 @@
-import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -37,7 +37,7 @@ export default function Profile() {
   const joinedAt = employee.data?.user?.createdAt ?? employee.data?.hireDate;
   const active = employee.data?.user?.isActive ?? true;
   const initialsValue = useMemo(() => initials(form.fullName || session?.user.name), [form.fullName, session?.user.name]);
-  const pickAvatar = async () => { if (!userId) return; const result = await DocumentPicker.getDocumentAsync({ type: ['image/png', 'image/jpeg', 'image/webp'], copyToCacheDirectory: true }); if (result.canceled || !result.assets[0]) return; const selected = result.assets[0]; if ((selected.size ?? 0) > 5 * 1024 * 1024) { setError('Profile photo must be 5 MB or smaller.'); return; } avatar.mutate({ uri: selected.uri, name: selected.name, type: selected.mimeType ?? 'image/jpeg' }); };
+  const pickAvatar = async () => { if (!userId) return; const permission = await ImagePicker.requestMediaLibraryPermissionsAsync(); if (!permission.granted) { setError('Gallery permission is required to choose a profile photo.'); return; } const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.9 }); if (result.canceled || !result.assets[0]) return; const selected = result.assets[0]; if (!['image/jpeg', 'image/png'].includes(selected.mimeType ?? 'image/jpeg')) { setError('Please choose a JPG, JPEG, or PNG image.'); return; } if ((selected.fileSize ?? 0) > 5 * 1024 * 1024) { setError('Profile photo must be 5 MB or smaller.'); return; } avatar.mutate({ uri: selected.uri, name: selected.fileName ?? 'profile-photo.jpg', type: selected.mimeType ?? 'image/jpeg' }); };
   const set = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
 
   if (account.isLoading && employee.isLoading) return <View style={styles.page}><StatePanel kind="loading" message="Loading your profile..." /></View>;

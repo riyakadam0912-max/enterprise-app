@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { getExpenses, createExpense, managerApproveExpense, hrApproveExpense, rejectExpense, type Expense } from '@/api/expensesApi';
+import { ImageCropDialog } from '@/components/common/ImageCropDialog';
 import { useAuthSession } from '@/stores/auth-store';
 import { formatDate, formatInr } from '@/utils/finance';
 
@@ -13,7 +14,6 @@ type ExpenseFormState = {
   amount: string;
   date: string;
   description: string;
-  receiptLink: string;
   receiptFile: File | null;
 };
 
@@ -117,9 +117,9 @@ export default function ExpensesPage() {
     amount: '',
     date: todayInputValue(),
     description: '',
-    receiptLink: '',
     receiptFile: null,
   });
+  const [cropFile, setCropFile] = useState<File | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -205,17 +205,14 @@ export default function ExpensesPage() {
           }
 
           const uploadedData = await uploadResponse.json();
-          if (uploadedData.success && uploadedData.data?.storagePath) {
-            receiptImageValue = uploadedData.data.storagePath;
+          if (uploadedData.success && uploadedData.data) {
+            receiptImageValue = uploadedData.data.url || uploadedData.data.downloadUrl || uploadedData.data.previewUrl;
           }
         } catch (uploadError) {
           setError(uploadError instanceof Error ? uploadError.message : 'Failed to upload receipt file');
           setActionLoadingId(null);
           return;
         }
-      } else if (form.receiptLink.trim()) {
-        // Otherwise use the text link if provided
-        receiptImageValue = form.receiptLink.trim();
       }
 
       const created = await createExpense({
@@ -233,7 +230,6 @@ export default function ExpensesPage() {
         amount: '',
         date: todayInputValue(),
         description: '',
-        receiptLink: '',
         receiptFile: null,
       });
       setShowSubmitDrawer(false);
@@ -530,7 +526,7 @@ export default function ExpensesPage() {
 
             {selectedExpense.receiptImage ? (
               <div className="mt-5">
-                <h3 className="text-sm font-semibold text-slate-900">Receipt link</h3>
+                <h3 className="text-sm font-semibold text-slate-900">Receipt image</h3>
                 <a href={selectedExpense.receiptImage} target="_blank" rel="noreferrer" className="mt-2 block break-all rounded-2xl border border-slate-200 bg-white p-4 text-sm text-blue-600 hover:underline">
                   {selectedExpense.receiptImage}
                 </a>
@@ -660,25 +656,35 @@ export default function ExpensesPage() {
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block text-sm font-medium text-slate-700">Receipt (Image or File)</span>
+                <span className="mb-1 block text-sm font-medium text-slate-700">Receipt image</span>
                 <div className="space-y-2">
                   <input
                     type="file"
-                    accept="image/*,.pdf,.doc,.docx"
-                    onChange={(event) => setForm((current) => ({ ...current, receiptFile: event.target.files?.[0] || null }))}
+                    accept="image/jpeg,image/png"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] || null;
+                      if (!file) return;
+                      if (!['image/jpeg', 'image/png'].includes(file.type)) {
+                        setError('Please choose a JPG, JPEG, or PNG image.');
+                        event.target.value = '';
+                        return;
+                      }
+                      if (file.size > 5 * 1024 * 1024) {
+                        setError('Receipt image must be 5 MB or smaller.');
+                        event.target.value = '';
+                        return;
+                      }
+                      setError(null);
+                      setCropFile(file);
+                    }}
                     className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 file:mr-2 file:rounded-lg file:border-0 file:bg-orange-100 file:px-2 file:py-1 file:text-xs file:font-semibold file:text-orange-700"
                   />
                   {form.receiptFile && <div className="text-xs text-slate-600">Selected: {form.receiptFile.name}</div>}
-                  <div className="text-xs text-slate-500">Or provide a receipt link:</div>
-                  <input
-                    value={form.receiptLink}
-                    onChange={(event) => setForm((current) => ({ ...current, receiptLink: event.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400"
-                    placeholder="Link to receipt image or doc (optional if file selected)"
-                  />
+                  <div className="text-xs text-slate-500">JPG, JPEG, or PNG only. Crop before uploading.</div>
                 </div>
               </label>
             </div>
+            {cropFile ? <ImageCropDialog file={cropFile} onCancel={() => setCropFile(null)} onCropped={(file) => { setForm((current) => ({ ...current, receiptFile: file })); setCropFile(null); }} /> : null}
           </div>
           <div className="border-t border-slate-200 px-5 py-4">
             <button

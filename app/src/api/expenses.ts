@@ -18,6 +18,7 @@ export type CreateExpensePayload = {
 	description?: string;
 	amount: number;
 	currency: string;
+	receiptImage?: string;
 };
 
 export async function expenses() { return unwrap<Expense[]>((await api.get('/expenses')).data); }

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createExpense, updateExpense } from '@/api/expensesApi';
 import { uploadFile, type ManagedFile } from '@/api/filesApi';
+import { ImageCropDialog } from '@/components/common/ImageCropDialog';
 import { FormProvider, useForm } from 'react-hook-form';
 
 const CATEGORIES = ['Office Supplies', 'Marketing', 'Utilities', 'Training', 'Travel', 'Other'];
@@ -16,6 +17,7 @@ export default function AddExpensePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const [uploadedReceipt, setUploadedReceipt] = useState<ManagedFile | null>(null);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -31,7 +33,6 @@ export default function AddExpensePage() {
         description: (formData.get('description') as string).trim() || undefined,
         amount: formData.get('amount') ? parseFloat(formData.get('amount') as string) : undefined,
         currency: (formData.get('currency') as string).trim() || undefined,
-        receiptImage: (formData.get('receiptImage') as string).trim() || undefined,
       });
 
       if (receiptFile && expense.id) {
@@ -127,10 +128,22 @@ export default function AddExpensePage() {
             <div className="flex flex-col gap-2">
               <input
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png"
                 onChange={(e) => {
                   const file = e.target.files?.[0] || null;
-                  setReceiptFile(file);
+                  if (!file) return;
+                  if (!['image/jpeg', 'image/png'].includes(file.type)) {
+                    setError('Please choose a JPG, JPEG, or PNG image.');
+                    e.target.value = '';
+                    return;
+                  }
+                  if (file.size > 5 * 1024 * 1024) {
+                    setError('Receipt image must be 5 MB or smaller.');
+                    e.target.value = '';
+                    return;
+                  }
+                  setError('');
+                  setCropFile(file);
                 }}
                 className={field}
               />
@@ -145,12 +158,6 @@ export default function AddExpensePage() {
                   </a>
                 </div>
               )}
-              <input
-                name="receiptImage"
-                type="text"
-                className={field}
-                placeholder="Or enter image URL manually"
-              />
             </div>
           </div>
 
@@ -168,6 +175,7 @@ export default function AddExpensePage() {
               onClick={() => {
                 methods.reset();
                 setReceiptFile(null);
+                setCropFile(null);
                 setUploadedReceipt(null);
               }}
               className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold px-6 py-2 rounded-lg transition-colors"
@@ -177,6 +185,7 @@ export default function AddExpensePage() {
           </div>
         </form>
       </FormProvider>
+      {cropFile ? <ImageCropDialog file={cropFile} onCancel={() => setCropFile(null)} onCropped={(file) => { setReceiptFile(file); setCropFile(null); }} /> : null}
     </div>
   );
 }
