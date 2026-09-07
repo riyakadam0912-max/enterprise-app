@@ -29,4 +29,19 @@ describe('prepareServerlessRequestBody', () => {
 
     await expect(prepareServerlessRequestBody(req)).resolves.toEqual(body);
   });
+
+  it('leaves multipart request streams untouched for Multer', async () => {
+    let streamRead = false;
+    const req = {
+      method: 'POST',
+      headers: { 'content-type': 'multipart/form-data; boundary=test' },
+      async *[Symbol.asyncIterator]() {
+        streamRead = true;
+        yield Buffer.from('file data');
+      },
+    } as any;
+
+    await expect(prepareServerlessRequestBody(req)).resolves.toBeUndefined();
+    expect(streamRead).toBe(false);
+  });
 });

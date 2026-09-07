@@ -24,11 +24,14 @@ export async function prepareServerlessRequestBody(
     return req.body;
   }
 
+  const contentType = String(req.headers?.['content-type'] ?? '').toLowerCase();
+  if (contentType.includes('multipart/form-data')) {
+    // Leave the raw request stream untouched so Multer can parse the boundary.
+    return undefined;
+  }
+
   if (req.body !== undefined && req.body !== null) {
     if (typeof req.body === 'string') {
-      const contentType = String(
-        req.headers?.['content-type'] ?? '',
-      ).toLowerCase();
       if (contentType.includes('application/json')) {
         return parseJsonBody(req.body);
       }
@@ -37,9 +40,6 @@ export async function prepareServerlessRequestBody(
 
     if (Buffer.isBuffer(req.body) || req.body instanceof Uint8Array) {
       const raw = Buffer.from(req.body).toString('utf8');
-      const contentType = String(
-        req.headers?.['content-type'] ?? '',
-      ).toLowerCase();
       if (contentType.includes('application/json')) {
         return parseJsonBody(raw);
       }
@@ -69,7 +69,6 @@ export async function prepareServerlessRequestBody(
     return undefined;
   }
 
-  const contentType = String(req.headers?.['content-type'] ?? '').toLowerCase();
   if (contentType.includes('application/json')) {
     return parseJsonBody(rawBody);
   }
