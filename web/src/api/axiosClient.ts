@@ -60,10 +60,6 @@ export const axiosClient = axios.create({
   baseURL: API_URL,
 
   withCredentials: true,
-
-  headers: {
-    'Content-Type': 'application/json',
-  },
 });
 
 
@@ -81,6 +77,16 @@ axiosClient.interceptors.request.use(
         const isAuthRequest = requestUrl.includes('/auth/');
 
         config.headers = config.headers ?? {};
+
+        const isFormDataRequest =
+          typeof FormData !== 'undefined' && config.data instanceof FormData;
+
+        if (isFormDataRequest) {
+          delete config.headers['Content-Type'];
+          delete config.headers['content-type'];
+        } else if (!config.headers['Content-Type'] && !config.headers['content-type']) {
+          config.headers['Content-Type'] = 'application/json';
+        }
 
         // Add X-Organization-Id for privileged users when explicitly selected
         if (isPrivilegedTenantContext && !isAuthRequest) {
