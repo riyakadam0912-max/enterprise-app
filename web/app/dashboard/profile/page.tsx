@@ -165,7 +165,9 @@ export default function ProfilePage() {
           const files = await listFilesByEntity('User', userId);
           if (!cancelled) {
             const preferredAvatar = files.find((file) => file.category === 'Profile Photo') ?? files[0];
-            const nextUrl = preferredAvatar?.url || preferredAvatar?.downloadUrl || preferredAvatar?.previewUrl || null;
+            const nextUrl = preferredAvatar?.signedDownloadUrl?.startsWith('http')
+              ? preferredAvatar.signedDownloadUrl
+              : `/api/v1/files/preview/${preferredAvatar?.id}`;
             setAvatarUrl(nextUrl);
           }
         }

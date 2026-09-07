@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { Camera, Loader2 } from 'lucide-react';
 import { ChangeEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { listFilesByEntity, uploadFile } from '@/api/filesApi';
+import { getManagedFileUrl, listFilesByEntity, uploadFile } from '@/api/filesApi';
 import { ImageCropDialog } from '@/components/common/ImageCropDialog';
 import { useAuthSession } from '@/stores/auth-store';
 
@@ -67,7 +67,7 @@ export function ProfileAvatarUploader({
           return;
         }
         const preferredAvatar = files.find((file) => file.category === 'Profile Photo') ?? files[0];
-        const nextUrl = preferredAvatar?.url || preferredAvatar?.downloadUrl || preferredAvatar?.previewUrl || null;
+        const nextUrl = preferredAvatar ? getManagedFileUrl(preferredAvatar) : null;
         setCurrentAvatarUrl(nextUrl);
         onAvatarChange?.(nextUrl);
       } catch {
@@ -106,7 +106,7 @@ export function ProfileAvatarUploader({
 
       const files = await listFilesByEntity('User', targetUserId);
       const preferredAvatar = files.find((file) => file.category === 'Profile Photo') ?? files[0];
-      const nextUrl = preferredAvatar?.url || preferredAvatar?.downloadUrl || preferredAvatar?.previewUrl || null;
+      const nextUrl = preferredAvatar ? getManagedFileUrl(preferredAvatar) : null;
 
       setCurrentAvatarUrl(nextUrl);
       onAvatarChange?.(nextUrl);
@@ -144,7 +144,7 @@ export function ProfileAvatarUploader({
         formData.append('category', 'Profile Photo');
         formData.append('isPublic', 'false');
         const uploaded = await uploadFile(formData);
-        const uploadedUrl = uploaded.url || uploaded.downloadUrl || uploaded.previewUrl || null;
+        const uploadedUrl = getManagedFileUrl(uploaded);
         setCurrentAvatarUrl(uploadedUrl);
         onAvatarChange?.(uploadedUrl);
         await refreshAvatarForCurrentUser(resolvedUserId as number);

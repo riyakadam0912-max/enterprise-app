@@ -35,6 +35,13 @@ export type ManagedFile = {
   signedDownloadUrl: string;
 };
 
+export function getManagedFileUrl(file: Pick<ManagedFile, 'id' | 'signedDownloadUrl' | 'previewUrl' | 'downloadUrl' | 'url'>) {
+  if (file.signedDownloadUrl?.startsWith('http')) return file.signedDownloadUrl;
+  if (file.previewUrl?.startsWith('http')) return file.previewUrl;
+  if (file.downloadUrl?.startsWith('http')) return file.downloadUrl;
+  return `/api/v1/files/preview/${file.id}`;
+}
+
 export type FileDashboard = {
   totalFiles: number;
   totalStorageBytes: number;
