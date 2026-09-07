@@ -33,9 +33,16 @@ import { S3StorageProvider } from './storage/s3-storage.provider';
         s3StorageProvider: S3StorageProvider,
         cloudinaryStorageProvider: CloudinaryStorageProvider,
       ) => {
-        const provider = (
-          configService.get<string>('FILE_STORAGE_PROVIDER') ?? 'local'
-        ).toLowerCase();
+        const configuredProvider = configService
+          .get<string>('FILE_STORAGE_PROVIDER')
+          ?.trim()
+          .toLowerCase();
+        const provider =
+          configuredProvider ||
+          (configService.get<string>('AWS_S3_BUCKET') &&
+          configService.get<string>('AWS_S3_REGION')
+            ? 's3'
+            : 'local');
         if (provider === 's3') return s3StorageProvider;
         if (provider === 'cloudinary') return cloudinaryStorageProvider;
         return localStorageProvider;
