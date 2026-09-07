@@ -1,6 +1,6 @@
 import { api, unwrap } from './client';
 
-export type ManagedFile = { id: number; originalName: string; mimeType: string; size: number; category?: string | null; createdAt: string; downloadUrl?: string; previewUrl?: string | null };
+export type ManagedFile = { id: number; originalName: string; mimeType: string; size: number; category?: string | null; createdAt: string; downloadUrl?: string; previewUrl?: string | null; signedDownloadUrl?: string };
 export type FileListResponse = { items: ManagedFile[]; total: number; page: number; limit: number };
 export async function files(): Promise<ManagedFile[]> { const payload = unwrap<unknown>((await api.get('/files', { params: { page: 1, limit: 50 } })).data); if (Array.isArray(payload)) return payload as ManagedFile[]; if (payload && typeof payload === 'object' && 'items' in payload && Array.isArray((payload as FileListResponse).items)) return (payload as FileListResponse).items; return []; }
 export async function filesByEntity(entityType: string, entityId: number): Promise<ManagedFile[]> { const payload = unwrap<unknown>((await api.get(`/files/entity/${entityType}/${entityId}`)).data); if (Array.isArray(payload)) return payload as ManagedFile[]; if (payload && typeof payload === 'object' && 'items' in payload && Array.isArray((payload as FileListResponse).items)) return (payload as FileListResponse).items; return []; }

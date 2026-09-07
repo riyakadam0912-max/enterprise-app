@@ -15,6 +15,7 @@ import { toast } from '@/providers/toast-provider';
 import { cn } from '@/lib/cn';
 import { useAuthSession, type AuthRole } from '@/stores/auth-store';
 import { useAuth } from '@/providers/AuthProvider';
+import { UserIdentity } from '@/components/common/UserIdentity';
 
 type DashboardRole = AuthRole;
 type TaskFilter = 'all' | 'mine' | 'needs-review';
@@ -454,13 +455,10 @@ function TaskDetailModal({
                   <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Assignment Info</p>
                   <div className="grid gap-3 md:grid-cols-2">
                     <div className="rounded-2xl bg-slate-50 p-4 border border-slate-200">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">
-                          {initials(task.assignedToUser?.name ?? task.assignee)}
-                        </div>
-                        <div>
+                        <div className="flex items-center gap-3">
+                        <div className="min-w-0 flex-1">
                           <p className="mb-0.5 text-xs font-medium uppercase tracking-wide text-slate-500">Assigned to</p>
-                          <p className="text-sm font-medium text-slate-900">{task.assignedToUser?.name ?? task.assignee ?? 'N/A'}</p>
+                          <UserIdentity userId={task.assignedToUser?.id} name={task.assignedToUser?.name ?? task.assignee} subtitle={task.assignedToUser?.email} />
                         </div>
                       </div>
                     </div>

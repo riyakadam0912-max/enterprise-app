@@ -23,6 +23,7 @@ import {
 import { reviewTask, submitTaskWork, updateTaskStatus } from "@/src/api/tasks";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { can } from "@/src/utils/permissions";
+import { UserIdentity } from "@/src/components/UserIdentity";
 
 type Tab = "overview" | "tasks" | "chat" | "team";
 type ProjectTask = Record<string, any>;
@@ -405,13 +406,7 @@ export default function ProjectDetail() {
                         isMine && styles.messageRowMine,
                       ]}
                     >
-                      <View
-                        style={[styles.avatar, isMine && styles.avatarMine]}
-                      >
-                        <Text style={styles.avatarText}>
-                          {(item.sender?.name ?? "T").slice(0, 1).toUpperCase()}
-                        </Text>
-                      </View>
+                      <UserIdentity userId={item.sender?.id} name={item.sender?.name ?? "Team member"} size="sm" />
                       <View
                         style={[
                           styles.bubble,

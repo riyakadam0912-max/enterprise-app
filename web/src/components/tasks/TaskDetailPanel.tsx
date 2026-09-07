@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { UserIdentity } from '@/components/common/UserIdentity';
 
 type DashboardRole = 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
 type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
@@ -62,16 +63,6 @@ function formatDate(value?: string | null) {
     month: 'short',
     year: 'numeric',
   });
-}
-
-function initials(name?: string | null) {
-  if (!name) return 'NA';
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('');
 }
 
 function normalizeTaskStatus(value?: string | null): TaskStatus {
@@ -210,14 +201,9 @@ function TaskDetailPanelBody({
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">
-                {initials(task.assignedToUser?.name ?? task.assignee)}
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Assigned To</p>
-                <p className="text-sm text-slate-600">{task.assignedToUser?.name ?? task.assignee ?? 'N/A'}</p>
-              </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+              <p className="mb-2 text-sm font-semibold text-slate-900">Assigned To</p>
+              <UserIdentity userId={task.assignedToUser?.id} name={task.assignedToUser?.name ?? task.assignee} subtitle={task.assignedToUser?.email} size="md" />
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">

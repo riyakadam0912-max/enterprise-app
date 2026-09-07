@@ -14,6 +14,7 @@ import {
   canEditUsers,
   canDeleteUsers,
 } from '@/utils/auth/permissions';
+import { UserIdentity } from '@/components/common/UserIdentity';
 
 interface UserAccount {
   id: number;
@@ -184,11 +185,8 @@ export default function UsersPage() {
                     <tr key={u.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
-                            <span className="text-orange-600 text-xs font-bold">{u.name.charAt(0).toUpperCase()}</span>
-                          </div>
+                          <UserIdentity userId={u.id} name={u.name} subtitle={u.designation} tone="orange" />
                           <div className="min-w-0">
-                            <span className="text-sm font-medium text-slate-900 block">{u.name}</span>
                             {isSelf && (
                               <span className="text-[10px] font-medium text-orange-600 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded mt-0.5 inline-block">
                                 You
