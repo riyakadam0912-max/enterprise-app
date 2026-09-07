@@ -28,7 +28,7 @@ export default function TaskDetail() {
   const { session } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const taskId = Number(id);
-  const allowed = can(session, "task.read");
+  const allowed = can(session, "task.read") || ["EMPLOYEE", "MANAGER", "HR", "ADMIN", "SUPER_ADMIN"].includes(session?.role ?? "");
   const query = useQuery({
     queryKey: ["task", taskId],
     queryFn: () => task(taskId),
@@ -56,7 +56,7 @@ export default function TaskDetail() {
     assigned &&
     ["IN_PROGRESS", "REJECTED"].includes(status);
   const reviewer =
-    ["ADMIN", "MANAGER"].includes(role) && status === "SUBMITTED";
+    ["ADMIN", "MANAGER", "SUPER_ADMIN"].includes(role) && status === "SUBMITTED";
   const mutation = useMutation({
     mutationFn: (kind: "start" | "submit" | "approve" | "reject") =>
       kind === "start"

@@ -381,7 +381,7 @@ export default function OrganizationPage() {
       <div className="min-h-full bg-slate-50 p-5 sm:p-6 lg:p-8">
         <div className="mb-6 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 to-indigo-500 text-white shadow-sm ring-1 ring-indigo-200">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-linear-to-br from-indigo-600 to-indigo-500 text-white shadow-sm ring-1 ring-indigo-200">
               {parentOrg?.logoUrl ? (
                 <img src={parentOrg.logoUrl} alt={parentOrg.name} className="h-full w-full object-cover"
                   onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
@@ -509,7 +509,7 @@ export default function OrganizationPage() {
     <div className="min-h-full bg-slate-50 p-5 sm:p-6 lg:p-8">
       <div className="mb-6 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-orange-500 to-amber-400 text-white shadow-sm ring-1 ring-orange-200">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-linear-to-br from-orange-500 to-amber-400 text-white shadow-sm ring-1 ring-orange-200">
             {parentOrg?.logoUrl ? (
               <img src={parentOrg.logoUrl} alt={parentOrg.name ?? 'Organization'} className="h-full w-full object-cover"
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
@@ -540,7 +540,7 @@ export default function OrganizationPage() {
       </div>
 
       {parentOrg ? (
-        <div className="mb-8 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_10px_28px_-24px_rgba(15,23,42,0.3)]">
+        <div className="mb-8 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_10px_28px_-24px_rgba(15,23,42,0.3)]">
           <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3.5 sm:px-5">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Overview</p>
@@ -553,7 +553,7 @@ export default function OrganizationPage() {
           </div>
 
           <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-[1.5fr_0.8fr]">
-            <div className="h-[300px] rounded-[18px] border border-slate-200 bg-slate-50/60 p-2">
+            <div className="h-75 rounded-[18px] border border-slate-200 bg-slate-50/60 p-2">
               {childProfitLossData.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-sm text-slate-500">No child organization performance data available yet.</div>
               ) : (
@@ -610,7 +610,7 @@ export default function OrganizationPage() {
 
       {/* ── Edit form ── */}
       {parentOrg ? (
-        <form onSubmit={handleSubmit} className="mb-8 max-w-4xl rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_10px_28px_-24px_rgba(15,23,42,0.3)] sm:p-5">
+        <form onSubmit={handleSubmit} className="mb-8 max-w-4xl rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_-24px_rgba(15,23,42,0.3)] sm:p-5">
           <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3.5">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Profile</p>

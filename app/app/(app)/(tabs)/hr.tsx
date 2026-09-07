@@ -11,7 +11,7 @@ export default function HR() {
 		{ title: 'Attendance', detail: 'Check in, check out, and history', href: '/(app)/attendance', icon: CalendarCheck },
 		...(canManageTeam ? [{ title: 'Team attendance', detail: 'Monitor today within your scope', href: '/(app)/team-attendance', icon: UsersRound }] : []),
 		{ title: 'Leave', detail: 'Apply and follow requests', href: '/(app)/leave', icon: FileClock },
-		...(session?.role === 'MANAGER' || session?.role === 'HR' || session?.role === 'ADMIN' ? [{ title: 'Leave approvals', detail: 'Review pending leave requests', href: '/(app)/leave-approvals', icon: FileClock }] : []),
+		...(session?.role === 'MANAGER' || session?.role === 'HR' || session?.role === 'ADMIN' || session?.role === 'SUPER_ADMIN' ? [{ title: 'Leave approvals', detail: 'Review pending leave requests', href: '/(app)/leave-approvals', icon: FileClock }] : []),
 		...(canBrowseEmployees ? [{ title: 'Employees', detail: 'Browse your organization directory', href: '/(app)/employees', icon: UsersRound }] : []),
 	];
 

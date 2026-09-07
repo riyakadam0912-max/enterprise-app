@@ -105,7 +105,7 @@ function StatusBadge({ status }: { status: string }) {
 
 function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.4)]">
+    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.4)]">
       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</p>
       <div className="mt-3 text-[27px] font-semibold tracking-[-0.04em] text-slate-900">{value}</div>
       {hint ? <p className="mt-2 text-xs text-slate-500">{hint}</p> : null}

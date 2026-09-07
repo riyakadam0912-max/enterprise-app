@@ -37,7 +37,7 @@ async function cropFile(file: File, area: Area) {
 }
 
 export function ImageCropDialog({ file, onCancel, onCropped }: ImageCropDialogProps) {
-  const [imageUrl, setImageUrl] = useState('');
+  const [imageUrl] = useState(() => URL.createObjectURL(file));
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [area, setArea] = useState<Area | null>(null);
@@ -45,14 +45,8 @@ export function ImageCropDialog({ file, onCancel, onCropped }: ImageCropDialogPr
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const nextUrl = URL.createObjectURL(file);
-    setImageUrl(nextUrl);
-    setCrop({ x: 0, y: 0 });
-    setZoom(1);
-    setArea(null);
-    setError('');
-    return () => URL.revokeObjectURL(nextUrl);
-  }, [file]);
+    return () => URL.revokeObjectURL(imageUrl);
+  }, [imageUrl]);
 
   const handleCropComplete = useCallback((_croppedArea: Area, croppedAreaPixels: Area) => {
     setArea(croppedAreaPixels);
@@ -71,7 +65,7 @@ export function ImageCropDialog({ file, onCancel, onCropped }: ImageCropDialogPr
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/70 p-4" role="dialog" aria-modal="true" aria-label="Crop image">
+    <div className="fixed inset-0 z-70 flex items-center justify-center bg-slate-950/70 p-4" role="dialog" aria-modal="true" aria-label="Crop image">
       <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
         <h2 className="text-lg font-semibold text-slate-900">Crop image</h2>
         <div className="relative mt-4 h-72 overflow-hidden rounded-xl bg-slate-950">

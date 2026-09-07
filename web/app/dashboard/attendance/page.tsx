@@ -51,7 +51,7 @@ function todayString() {
 }
 
 // Kept for backward compatibility, but uses the 12-hour format function
-function formatTimeForDisplay(value: string | null) {
+function _formatTimeForDisplay(value: string | null) {
   return formatTime(value);
 }
 
@@ -846,7 +846,7 @@ export default function AttendancePage() {
       {editingShift && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-[2px]">
           <div className="w-full max-w-2xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_80px_-24px_rgba(15,23,42,0.35)]">
-            <div className="flex items-start justify-between border-b border-slate-200 bg-gradient-to-r from-orange-50 via-white to-slate-50 px-5 py-4 sm:px-6">
+            <div className="flex items-start justify-between border-b border-slate-200 bg-linear-to-r from-orange-50 via-white to-slate-50 px-5 py-4 sm:px-6">
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-orange-100 text-lg text-orange-600 shadow-sm ring-1 ring-orange-200">⏰</div>
                 <div>

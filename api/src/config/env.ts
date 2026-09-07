@@ -33,6 +33,7 @@ type ServerEnv = {
   AWS_SES_FROM_EMAIL?: string;
   AWS_SES_FROM_NAME?: string;
   AWS_S3_BUCKET?: string;
+  AWS_S3_PREFIX?: string;
   AWS_S3_REGION?: string;
   AWS_S3_ACCESS_KEY_ID?: string;
   AWS_S3_SECRET_ACCESS_KEY?: string;
@@ -406,6 +407,7 @@ export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
     AWS_SES_FROM_EMAIL: readOptionalString(env, 'AWS_SES_FROM_EMAIL'),
     AWS_SES_FROM_NAME: readOptionalString(env, 'AWS_SES_FROM_NAME'),
     AWS_S3_BUCKET: readOptionalString(env, 'AWS_S3_BUCKET'),
+    AWS_S3_PREFIX: readOptionalString(env, 'AWS_S3_PREFIX', 'erp'),
     AWS_S3_REGION: readOptionalString(env, 'AWS_S3_REGION'),
     AWS_S3_ACCESS_KEY_ID: readOptionalString(env, 'AWS_S3_ACCESS_KEY_ID'),
     AWS_S3_SECRET_ACCESS_KEY: readOptionalString(

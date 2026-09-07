@@ -49,7 +49,7 @@ export class TasksService {
     taskId: number,
     user: AuthUser,
   ): Promise<boolean> {
-    if (user.role === Role.ADMIN) return true;
+    if (user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN) return true;
     if (user.role !== Role.MANAGER) return false;
     const organizationId = this.validateOrganization(user);
     const scope = await this.businessUnitsService.resolveScope(user as any);

@@ -253,7 +253,7 @@ export function ProfileAvatarUploader({
           {status.message}
         </p>
       )}
-      {cropFile ? <ImageCropDialog file={cropFile} onCancel={() => setCropFile(null)} onCropped={(file) => { setCropFile(null); void uploadAvatar(file); }} /> : null}
+      {cropFile ? <ImageCropDialog key={`${cropFile.name}-${cropFile.lastModified}`} file={cropFile} onCancel={() => setCropFile(null)} onCropped={(file) => { setCropFile(null); void uploadAvatar(file); }} /> : null}
     </div>
   );
 }

@@ -185,7 +185,7 @@ export default function AddExpensePage() {
           </div>
         </form>
       </FormProvider>
-      {cropFile ? <ImageCropDialog file={cropFile} onCancel={() => setCropFile(null)} onCropped={(file) => { setReceiptFile(file); setCropFile(null); }} /> : null}
+      {cropFile ? <ImageCropDialog key={`${cropFile.name}-${cropFile.lastModified}`} file={cropFile} onCancel={() => setCropFile(null)} onCropped={(file) => { setReceiptFile(file); setCropFile(null); }} /> : null}
     </div>
   );
 }

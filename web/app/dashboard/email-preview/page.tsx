@@ -122,7 +122,7 @@ export default function EmailPreviewPage() {
               <div><h2 className="font-semibold text-slate-950">Rendered message</h2><p className="text-sm text-slate-500">Review the layout and populated values.</p></div>
               <div className="flex items-center gap-2 text-xs text-slate-500"><Smartphone className="h-4 w-4" /> Responsive email canvas</div>
             </div>
-            {preview ? <iframe title="Rendered email preview" sandbox="" srcDoc={preview.html} className="h-[680px] w-full rounded-xl border border-slate-200 bg-slate-50" /> : <div className="flex h-[680px] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center text-sm text-slate-500"><div><RefreshCw className="mx-auto mb-3 h-5 w-5" /><p>Choose values, then render the preview.</p></div></div>}
+            {preview ? <iframe title="Rendered email preview" sandbox="" srcDoc={preview.html} className="h-170 w-full rounded-xl border border-slate-200 bg-slate-50" /> : <div className="flex h-170 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center text-sm text-slate-500"><div><RefreshCw className="mx-auto mb-3 h-5 w-5" /><p>Choose values, then render the preview.</p></div></div>}
           </section>
         </div>
       </div>

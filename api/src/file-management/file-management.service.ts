@@ -165,7 +165,9 @@ export class FileManagementService {
       this.canUserAccessFile(item, user),
     );
     return {
-      items: visibleItems.map((item) => this.toResponse(item)),
+      items: await Promise.all(
+        visibleItems.map((item) => this.toResponse(item)),
+      ),
       total,
       page,
       limit,
@@ -188,9 +190,11 @@ export class FileManagementService {
       orderBy: [{ version: 'desc' }, { createdAt: 'desc' }],
     });
 
-    return files
-      .filter((file) => this.canUserAccessFile(file, user))
-      .map((file) => this.toResponse(file));
+    return Promise.all(
+      files
+        .filter((file) => this.canUserAccessFile(file, user))
+        .map((file) => this.toResponse(file)),
+    );
   }
 
   async findRecordById(id: number, user: Partial<FileUserContext>) {
@@ -400,12 +404,16 @@ export class FileManagementService {
     return {
       totalFiles,
       totalStorageBytes: totalStorage._sum.size ?? 0,
-      recentFiles: recentFiles
-        .filter((file) => this.canUserAccessFile(file, user))
-        .map((file) => this.toResponse(file)),
-      mostDownloaded: mostDownloaded
-        .filter((file) => this.canUserAccessFile(file, user))
-        .map((file) => this.toResponse(file)),
+      recentFiles: await Promise.all(
+        recentFiles
+          .filter((file) => this.canUserAccessFile(file, user))
+          .map((file) => this.toResponse(file)),
+      ),
+      mostDownloaded: await Promise.all(
+        mostDownloaded
+          .filter((file) => this.canUserAccessFile(file, user))
+          .map((file) => this.toResponse(file)),
+      ),
       byCategory: byCategory.map((item) => ({
         category: item.category,
         count: item._count.category,
@@ -655,12 +663,22 @@ export class FileManagementService {
     }
   }
 
-  private toResponse(file: FileRecord) {
+  private async toResponse(file: FileRecord) {
+    const signedDownloadUrl = await this.storageProvider.generateSignedUrl({
+      storedPath: file.path,
+      expiresInSeconds: 3600,
+    });
+    const imageUrl =
+      this.storageProvider.name === 's3' ? signedDownloadUrl : file.url;
     return {
       ...file,
+      url: imageUrl,
       downloadUrl: `/files/download/${file.id}`,
-      previewUrl: `/files/preview/${file.id}`,
-      signedDownloadUrl: `/files/download/${file.id}?signature=${file.checksum ?? file.id}&expires=${Math.floor(Date.now() / 1000) + 3600}`,
+      previewUrl:
+        this.storageProvider.name === 's3'
+          ? signedDownloadUrl
+          : `/files/preview/${file.id}`,
+      signedDownloadUrl,
     };
   }
 }

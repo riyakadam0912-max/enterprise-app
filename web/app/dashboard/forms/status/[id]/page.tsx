@@ -61,7 +61,7 @@ export default function FormSubmissionDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [submissionId]);
+  }, [invalidSubmission, submissionId]);
 
   const displayError = invalidSubmission ? 'Invalid submission' : error;
   const isLoading = !invalidSubmission && loading;
@@ -133,7 +133,7 @@ export default function FormSubmissionDetailPage() {
           <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
             <h2 className="text-base font-semibold text-slate-900">Submission Details</h2>
             <div className="mt-4 rounded-lg bg-slate-50 border border-slate-200 p-4">
-              <pre className="whitespace-pre-wrap break-words text-sm text-slate-700">
+              <pre className="whitespace-pre-wrap wrap-break-word text-sm text-slate-700">
                 {submission.data?.trim() ? submission.data : 'No submission details provided.'}
               </pre>
             </div>

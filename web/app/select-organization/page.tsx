@@ -210,7 +210,7 @@ export default function SelectOrganizationPage() {
                 type="button"
                 onClick={handleContinue}
                 disabled={selectedId == null || submitting}
-                className="min-w-[160px]"
+                className="min-w-40"
               >
                 {submitting ? (
                   <>

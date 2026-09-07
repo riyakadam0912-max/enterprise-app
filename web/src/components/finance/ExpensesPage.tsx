@@ -684,7 +684,7 @@ export default function ExpensesPage() {
                 </div>
               </label>
             </div>
-            {cropFile ? <ImageCropDialog file={cropFile} onCancel={() => setCropFile(null)} onCropped={(file) => { setForm((current) => ({ ...current, receiptFile: file })); setCropFile(null); }} /> : null}
+            {cropFile ? <ImageCropDialog key={`${cropFile.name}-${cropFile.lastModified}`} file={cropFile} onCancel={() => setCropFile(null)} onCropped={(file) => { setForm((current) => ({ ...current, receiptFile: file })); setCropFile(null); }} /> : null}
           </div>
           <div className="border-t border-slate-200 px-5 py-4">
             <button
