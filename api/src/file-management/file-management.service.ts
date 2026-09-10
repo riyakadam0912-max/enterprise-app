@@ -23,6 +23,7 @@ import {
   parseBooleanLike,
   sanitizeFileName,
 } from './utils/file-management.utils';
+import { compressImage } from './utils/image-compression';
 import { StreamableFile } from '@nestjs/common';
 import { Readable } from 'stream';
 import { extname } from 'path';
@@ -528,6 +529,13 @@ export class FileManagementService {
 
     assertSupportedFile(file.originalname, file.mimetype);
 
+    const compressedBuffer = await compressImage(file.buffer, file.mimetype);
+    const uploadFile = {
+      ...file,
+      buffer: compressedBuffer,
+      size: compressedBuffer.byteLength,
+    };
+
     const category = dto.category ?? getCategoryFromMime(file.mimetype);
     const folder = buildStorageFolder(
       dto.module,
@@ -537,9 +545,9 @@ export class FileManagementService {
     );
     const storedName = createStoredFileName(file.originalname);
     const storageResult = await this.storageProvider.upload({
-      buffer: file.buffer,
-      originalName: file.originalname,
-      mimeType: file.mimetype,
+      buffer: uploadFile.buffer,
+      originalName: uploadFile.originalname,
+      mimeType: uploadFile.mimetype,
       folder,
       storedName,
     });
@@ -550,7 +558,7 @@ export class FileManagementService {
         organizationId,
         originalName: sanitizeFileName(file.originalname),
         storedName: storageResult.storedName,
-        mimeType: file.mimetype,
+        mimeType: uploadFile.mimetype,
         extension: extname(file.originalname).toLowerCase(),
         size: storageResult.size,
         path: storageResult.storedPath,
