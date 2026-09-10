@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { Camera, Loader2 } from 'lucide-react';
+import { Camera, Eye, Loader2, X } from 'lucide-react';
 import { ChangeEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { getManagedFileUrl, listFilesByEntity, uploadFile } from '@/api/filesApi';
@@ -43,6 +43,7 @@ export function ProfileAvatarUploader({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [currentAvatarUrl, setCurrentAvatarUrl] = useState<string | null>(avatarUrl ?? null);
   const [cropFile, setCropFile] = useState<File | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [status, setStatus] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
 
@@ -121,14 +122,22 @@ export function ProfileAvatarUploader({
     }
   }, [isUploading]);
 
+  const handleAvatarClick = useCallback(() => {
+    if (currentAvatarUrl) {
+      setIsPreviewOpen(true);
+      return;
+    }
+    handleOpenPicker();
+  }, [currentAvatarUrl, handleOpenPicker]);
+
   const handleAvatarKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        handleOpenPicker();
+        handleAvatarClick();
       }
     },
-    [handleOpenPicker],
+    [handleAvatarClick],
   );
 
   const uploadAvatar = useCallback(
@@ -207,12 +216,12 @@ export function ProfileAvatarUploader({
     <div className={`flex flex-col items-start gap-2 ${className}`}>
       <div
         className="relative inline-flex cursor-pointer"
-        onClick={handleOpenPicker}
+        onClick={handleAvatarClick}
         onKeyDown={handleAvatarKeyDown}
         role="button"
         tabIndex={0}
-        aria-label="Upload profile photo"
-        title="Upload profile photo"
+        aria-label={currentAvatarUrl ? 'View profile photo' : 'Upload profile photo'}
+        title={currentAvatarUrl ? 'View profile photo' : 'Upload profile photo'}
       >
         <div
           className={`group relative flex items-center justify-center overflow-hidden rounded-full bg-indigo-600 text-white shadow-md ring-2 ring-white ${sizeClasses}`}
@@ -227,7 +236,7 @@ export function ProfileAvatarUploader({
             {isUploading ? (
               <Loader2 className="h-4 w-4 animate-spin text-white" />
             ) : (
-              <Camera className="h-4 w-4 text-white" />
+              <Eye className="h-4 w-4 text-white" />
             )}
           </div>
 
@@ -236,6 +245,20 @@ export function ProfileAvatarUploader({
               <Loader2 className="h-4 w-4 animate-spin text-white" />
             </div>
           )}
+
+          <button
+            type="button"
+            aria-label="Upload new profile photo"
+            title="Upload new profile photo"
+            onClick={(event) => {
+              event.stopPropagation();
+              handleOpenPicker();
+            }}
+            disabled={isUploading}
+            className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full bg-orange-500 text-white shadow-md ring-2 ring-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Camera className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
 
@@ -253,6 +276,35 @@ export function ProfileAvatarUploader({
           {status.message}
         </p>
       )}
+      {isPreviewOpen && currentAvatarUrl ? (
+        <div
+          className="fixed inset-0 z-70 flex items-center justify-center bg-slate-950/80 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Profile photo preview"
+          onClick={() => setIsPreviewOpen(false)}
+        >
+          <div className="relative max-h-full max-w-3xl" onClick={(event) => event.stopPropagation()}>
+            <Image
+              src={currentAvatarUrl}
+              alt="Profile avatar preview"
+              width={720}
+              height={720}
+              className="max-h-[80vh] w-auto rounded-xl object-contain shadow-2xl"
+              unoptimized
+            />
+            <button
+              type="button"
+              aria-label="Close profile photo preview"
+              title="Close preview"
+              onClick={() => setIsPreviewOpen(false)}
+              className="absolute -right-3 -top-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-900 shadow-lg hover:bg-slate-100"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      ) : null}
       {cropFile ? <ImageCropDialog key={`${cropFile.name}-${cropFile.lastModified}`} file={cropFile} onCancel={() => setCropFile(null)} onCropped={(file) => { setCropFile(null); void uploadAvatar(file); }} /> : null}
     </div>
   );
