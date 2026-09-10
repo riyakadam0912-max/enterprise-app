@@ -124,7 +124,7 @@ export default function ESSDashboardPage() {
                 <div>
                   <p className="text-xs text-gray-600">Check-in Time</p>
                   <p className="text-sm font-medium text-gray-900">
-                    {new Date(attendance.checkIn).toLocaleTimeString()}
+                    {new Date(attendance.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
                   </p>
                 </div>
               )}

@@ -94,7 +94,7 @@ export default function ESSAttendancePage() {
                 <div className="border-l-4 border-green-600 pl-4">
                   <p className="text-xs text-gray-600 uppercase mb-1">Check-in Time</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    {new Date(today.checkIn).toLocaleTimeString()}
+                    {new Date(today.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
                   </p>
                 </div>
               )}
@@ -104,7 +104,7 @@ export default function ESSAttendancePage() {
                 <div className="border-l-4 border-orange-600 pl-4">
                   <p className="text-xs text-gray-600 uppercase mb-1">Check-out Time</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    {new Date(today.checkOut).toLocaleTimeString()}
+                    {new Date(today.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
                   </p>
                 </div>
               )}
@@ -220,10 +220,10 @@ export default function ESSAttendancePage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-xs">
-                        {record.checkIn ? new Date(record.checkIn).toLocaleTimeString() : '-'}
+                        {record.checkIn ? new Date(record.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}
                       </td>
                       <td className="px-4 py-3 text-xs">
-                        {record.checkOut ? new Date(record.checkOut).toLocaleTimeString() : '-'}
+                        {record.checkOut ? new Date(record.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}
                       </td>
                       <td className="px-4 py-3 font-medium">
                         {record.workingHours?.toFixed(2) || '-'} hrs
