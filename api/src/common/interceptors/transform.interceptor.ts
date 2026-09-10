@@ -3,6 +3,7 @@ import {
   ExecutionContext,
   Injectable,
   NestInterceptor,
+  StreamableFile,
 } from '@nestjs/common';
 import { map, Observable } from 'rxjs';
 import type { ApiSuccessResponse } from '../interfaces/api-response.interface';
@@ -64,14 +65,18 @@ function normalizePayload(payload: unknown): {
 @Injectable()
 export class TransformInterceptor<T> implements NestInterceptor<
   T,
-  ApiSuccessResponse<unknown>
+  ApiSuccessResponse<unknown> | T
 > {
   intercept(
     context: ExecutionContext,
     next: CallHandler<T>,
-  ): Observable<ApiSuccessResponse<unknown>> {
+  ): Observable<ApiSuccessResponse<unknown> | T> {
     return next.handle().pipe(
       map((payload) => {
+        if (payload instanceof StreamableFile) {
+          return payload;
+        }
+
         const normalized = normalizePayload(payload);
         return {
           success: true as const,
