@@ -40,6 +40,7 @@ type ShiftLite = {
   requiredHours: number;
   minPresentHours: number;
   gracePeriodMinutes: number;
+  weeklyHolidayDay: number;
 };
 
 type DailyAttendanceRow = {
@@ -68,6 +69,7 @@ type DailyAttendanceRow = {
     requiredHours: number | null;
     minPresentHours: number | null;
     gracePeriodMinutes: number | null;
+    weeklyHolidayDay: number;
   } | null;
 };
 
@@ -289,6 +291,15 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   }) {
     const { day, checkIn, checkOut, workingHours, onLeave, shift, lateMinutes = 0 } = params;
     if (onLeave) return AttendanceStatus.LEAVE;
+    
+    // Check if today is the weekly holiday
+    if (shift?.weeklyHolidayDay !== undefined && shift.weeklyHolidayDay !== null) {
+      const dayOfWeek = day.getDay();
+      if (dayOfWeek === shift.weeklyHolidayDay) {
+        return AttendanceStatus.LEAVE;
+      }
+    }
+    
     const minPresentHours = shift?.minPresentHours ?? 5;
     const halfDayThreshold = Math.max(1, minPresentHours / 2);
     
@@ -578,6 +589,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             requiredHours: shift.requiredHours,
             minPresentHours: shift.minPresentHours,
             gracePeriodMinutes: shift.gracePeriodMinutes,
+            weeklyHolidayDay: shift.weeklyHolidayDay,
           }
         : null,
     };
@@ -595,6 +607,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         requiredHours,
         minPresentHours: Math.min(minPresentHours, requiredHours),
         gracePeriodMinutes: dto.gracePeriodMinutes ?? 15,
+        weeklyHolidayDay: dto.weeklyHolidayDay ?? 0,
         rotationPattern: dto.rotationPattern,
         organizationId: user.organizationId,
       },
@@ -668,6 +681,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     }
     if (dto.gracePeriodMinutes !== undefined)
       updateData.gracePeriodMinutes = dto.gracePeriodMinutes;
+    if (dto.weeklyHolidayDay !== undefined)
+      updateData.weeklyHolidayDay = dto.weeklyHolidayDay;
     if (dto.rotationPattern !== undefined)
       updateData.rotationPattern = dto.rotationPattern;
 
@@ -738,6 +753,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       throw new ConflictException(
         'Employee is on approved leave for this date',
       );
+    }
+
+    if (employee.shift.weeklyHolidayDay === day.getDay()) {
+      throw new ConflictException('This date is the employee weekly holiday');
     }
 
     const lateMinutes = this.calculateLateMinutes(
@@ -1168,6 +1187,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             requiredHours,
             minPresentHours,
             gracePeriodMinutes,
+            weeklyHolidayDay: shift.weeklyHolidayDay,
           }
         : null;
 

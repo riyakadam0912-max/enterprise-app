@@ -309,6 +309,7 @@ export default function AttendancePage() {
     requiredHours: '8',
     minPresentHours: '5',
     gracePeriodMinutes: '15',
+    weeklyHolidayDay: '0',
   });
   const [assignEmployeeId, setAssignEmployeeId] = useState('');
   const [assignShiftId, setAssignShiftId] = useState('');
@@ -492,6 +493,7 @@ export default function AttendancePage() {
         requiredHours: Number(newShift.requiredHours) || 8,
         minPresentHours: Number(newShift.minPresentHours) || 5,
         gracePeriodMinutes: Number(newShift.gracePeriodMinutes) || 15,
+        weeklyHolidayDay: Number(newShift.weeklyHolidayDay),
       });
       const rows = await getShifts();
       setShifts(rows);
@@ -528,6 +530,7 @@ export default function AttendancePage() {
         requiredHours: editingShift.requiredHours,
         minPresentHours: editingShift.minPresentHours,
         gracePeriodMinutes: editingShift.gracePeriodMinutes,
+        weeklyHolidayDay: editingShift.weeklyHolidayDay,
       });
       const rows = await getShifts();
       setShifts(rows);
@@ -751,6 +754,22 @@ export default function AttendancePage() {
                 className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
               />
             </label>
+            <label className="space-y-1">
+              <span className="sr-only">Weekly holiday</span>
+              <select
+                value={newShift.weeklyHolidayDay}
+                onChange={(e) => setNewShift((prev) => ({ ...prev, weeklyHolidayDay: e.target.value }))}
+                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+              >
+                <option value="0">Sunday holiday</option>
+                <option value="1">Monday holiday</option>
+                <option value="2">Tuesday holiday</option>
+                <option value="3">Wednesday holiday</option>
+                <option value="4">Thursday holiday</option>
+                <option value="5">Friday holiday</option>
+                <option value="6">Saturday holiday</option>
+              </select>
+            </label>
             <button onClick={handleCreateShift} className="rounded-xl bg-orange-500 px-3 py-2.5 text-sm font-semibold text-white hover:bg-orange-600">Create Shift</button>
           </div>
 
@@ -948,6 +967,23 @@ export default function AttendancePage() {
                     onChange={(event) => setEditingShift((current) => current ? { ...current, gracePeriodMinutes: Number(event.target.value) || 0 } : current)}
                     className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-orange-400 focus:outline-none focus:ring-4 focus:ring-orange-100"
                   />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Weekly holiday</label>
+                  <select
+                    value={editingShift.weeklyHolidayDay ?? 0}
+                    onChange={(event) => setEditingShift((current) => current ? { ...current, weeklyHolidayDay: Number(event.target.value) } : current)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-orange-400 focus:outline-none focus:ring-4 focus:ring-orange-100"
+                  >
+                    <option value={0}>Sunday</option>
+                    <option value={1}>Monday</option>
+                    <option value={2}>Tuesday</option>
+                    <option value={3}>Wednesday</option>
+                    <option value={4}>Thursday</option>
+                    <option value={5}>Friday</option>
+                    <option value={6}>Saturday</option>
+                  </select>
                 </div>
               </div>
             </div>

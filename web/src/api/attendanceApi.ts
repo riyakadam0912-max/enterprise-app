@@ -28,6 +28,7 @@ export interface ShiftDetails {
   requiredHours: number | null;
   minPresentHours?: number | null;
   gracePeriodMinutes: number | null;
+  weeklyHolidayDay?: number;
 }
 
 export interface AttendanceEmployee {
@@ -127,6 +128,7 @@ export interface ShiftPayload {
   requiredHours?: number;
   minPresentHours?: number;
   gracePeriodMinutes?: number;
+  weeklyHolidayDay?: number;
   rotationPattern?: string;
 }
 

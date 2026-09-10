@@ -48,6 +48,13 @@ export class UpdateShiftDto {
   gracePeriodMinutes?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  weeklyHolidayDay?: number;
+
+  @IsOptional()
   @IsString()
   rotationPattern?: string;
 }

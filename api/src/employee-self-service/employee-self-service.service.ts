@@ -133,6 +133,7 @@ export class EmployeeSelfServiceService {
       startTime: string | null;
       endTime: string | null;
       gracePeriodMinutes: number | null;
+      weeklyHolidayDay: number;
     } | null = null;
 
     // Calculate late minutes if shift is assigned
@@ -144,8 +145,13 @@ export class EmployeeSelfServiceService {
           startTime: true,
           endTime: true,
           gracePeriodMinutes: true,
+          weeklyHolidayDay: true,
         },
       });
+
+      if (shift && shift.weeklyHolidayDay === today.getDay()) {
+        throw new BadRequestException('Today is the employee weekly holiday');
+      }
 
       if (shift && shift.startTime) {
         const [hours, minutes] = shift.startTime.split(':');
