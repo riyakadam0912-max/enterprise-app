@@ -285,11 +285,27 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     workingHours: number | null;
     onLeave: boolean;
     shift?: ShiftLite | null;
+    lateMinutes?: number;
   }) {
-    const { day, checkIn, checkOut, workingHours, onLeave, shift } = params;
+    const { day, checkIn, checkOut, workingHours, onLeave, shift, lateMinutes = 0 } = params;
     if (onLeave) return AttendanceStatus.LEAVE;
     const minPresentHours = shift?.minPresentHours ?? 5;
     const halfDayThreshold = Math.max(1, minPresentHours / 2);
+    
+    // If employee checked in late, mark as HALF_DAY
+    if (lateMinutes > 0 && checkIn) {
+      if (checkOut) {
+        // Late check-in with check-out: mark as HALF_DAY
+        return AttendanceStatus.HALF_DAY;
+      } else {
+        // Late check-in without check-out: mark as HALF_DAY for past days
+        return this.startOfDay(day).getTime() ===
+          this.startOfDay(new Date()).getTime()
+          ? AttendanceStatus.PRESENT
+          : AttendanceStatus.HALF_DAY;
+      }
+    }
+    
     if (checkIn && checkOut) {
       const worked = workingHours ?? 0;
       if (worked >= minPresentHours) return AttendanceStatus.PRESENT;
@@ -730,6 +746,17 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       employee.shift,
     );
 
+    // Calculate status based on late check-in
+    const status = this.calculateStatus({
+      day,
+      checkIn: checkInTime,
+      checkOut: null,
+      workingHours: null,
+      onLeave: false,
+      shift: employee.shift,
+      lateMinutes,
+    });
+
     if (existing) {
       const result = await this.prisma.attendance.update({
         where: { id: existing.id },
@@ -738,7 +765,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           checkIn: checkInTime,
           lateMinutes,
           requiredHours: employee.shift.requiredHours,
-          status: AttendanceStatus.PRESENT,
+          status,
           isPaidLeave: null,
         },
         include: { employee: true, shift: true },
@@ -758,7 +785,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         lateMinutes,
         overtimeHours: 0,
         requiredHours: employee.shift.requiredHours,
-        status: AttendanceStatus.PRESENT,
+        status,
       },
       include: { employee: true, shift: true },
     });
@@ -821,6 +848,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     );
     const overtimeHours = this.calculateOvertimeHours(workingHours, shift);
     const shortfallHours = this.calculateShortfallHours(workingHours, shift);
+    const lateMinutes = (record as any).lateMinutes ?? 0;
 
     const status = this.calculateStatus({
       day: this.startOfDay(new Date(record.date)),
@@ -829,6 +857,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       workingHours,
       onLeave: false,
       shift,
+      lateMinutes,
     });
 
     const result = await this.prisma.attendance.update({
@@ -1549,6 +1578,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         workingHours,
         onLeave: Boolean(leave),
         shift,
+        lateMinutes,
       });
 
     return this.prisma.attendance.update({
@@ -1639,6 +1669,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           workingHours,
           employee.shift,
         );
+        const lateMinutes = (existing as any).lateMinutes ?? 0;
 
         await this.prisma.attendance.update({
           where: { id: existing.id },
@@ -1655,6 +1686,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
               workingHours,
               onLeave: false,
               shift: employee.shift,
+              lateMinutes,
             }),
           },
         });

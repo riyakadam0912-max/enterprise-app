@@ -167,6 +167,7 @@ export class EmployeeSelfServiceService {
 
     // Upsert attendance record
     const organizationId = await this.resolveOrganizationId(user);
+    const status = lateMinutes > 0 ? 'HALF_DAY' : 'PRESENT';
     const attendance = await this.prisma.attendance.upsert({
       where: {
         employeeId_date: {
@@ -177,7 +178,7 @@ export class EmployeeSelfServiceService {
       update: {
         checkIn: now,
         lateMinutes,
-        status: 'PRESENT',
+        status,
         shiftId: employee.shiftId || undefined,
       },
       create: {
@@ -186,7 +187,7 @@ export class EmployeeSelfServiceService {
         date: today,
         checkIn: now,
         lateMinutes,
-        status: 'PRESENT',
+        status,
         shiftId: employee.shiftId || undefined,
       },
       include: {
