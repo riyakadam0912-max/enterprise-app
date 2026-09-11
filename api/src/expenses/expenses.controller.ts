@@ -91,7 +91,11 @@ export class ExpensesController {
     @Param('id', ParseIntPipe) id: number,
     @Req() req: AuthenticatedRequest,
   ): Promise<StreamableFile> {
-    return this.service.previewReceipt(id, req.user);
+    return this.service.previewReceipt(id, {
+      ...req.user,
+      businessUnitId: req.businessUnitId,
+      allBusinessUnits: req.allBusinessUnits,
+    });
   }
 
   @Roles(Role.MANAGER, Role.ADMIN)

@@ -17,6 +17,8 @@ export interface AuthUser {
   isSuperAdmin?: boolean;
   primaryBusinessUnitId?: number | null;
   employeeBusinessUnitId?: number | null;
+  businessUnitId?: number | null;
+  allBusinessUnits?: boolean;
   tokenType: string;
   jti: string | null;
 }

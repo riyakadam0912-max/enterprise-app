@@ -51,6 +51,7 @@ describe('ExpensesService', () => {
   let mockPrisma: ReturnType<typeof createMockPrismaService>;
   let mockWorkflowEngine: ReturnType<typeof createMockWorkflowEngineService>;
   let mockCacheManager: ReturnType<typeof createMockCacheManager>;
+  let mockStorageProvider: { getReadStream: jest.Mock };
 
   const mockAdminUser = createMockAuthUser(Role.ADMIN, { userId: 1 });
   const mockManagerUser = createMockAuthUser(Role.MANAGER, { userId: 2 });
@@ -65,6 +66,7 @@ describe('ExpensesService', () => {
     mockPrisma = createMockPrismaService();
     mockWorkflowEngine = createMockWorkflowEngineService();
     mockCacheManager = createMockCacheManager();
+    mockStorageProvider = { getReadStream: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -74,7 +76,7 @@ describe('ExpensesService', () => {
         { provide: CACHE_MANAGER, useValue: mockCacheManager },
         {
           provide: FILE_STORAGE_PROVIDER,
-          useValue: { getReadStream: jest.fn() },
+          useValue: mockStorageProvider,
         },
         {
           provide: BusinessUnitsService,
@@ -199,6 +201,46 @@ describe('ExpensesService', () => {
 
       const result = await service.findOne(1, mockAdminUser);
       expect(result).toEqual(mockExpense);
+    });
+  });
+
+  describe('previewReceipt', () => {
+    it('uses request business-unit context and matches receipt category case-insensitively', async () => {
+      const expenseDelegate = getPrismaDelegate(mockPrisma, 'expense');
+      const fileDelegate = getPrismaDelegate(mockPrisma, 'file');
+      const stream = {};
+      expenseDelegate.findFirst.mockResolvedValueOnce({ id: 2 });
+      fileDelegate.findFirst.mockResolvedValueOnce({
+        id: 10,
+        path: 'expenses/receipt.jpg',
+        mimeType: 'image/jpeg',
+        originalName: 'receipt.jpg',
+      });
+      mockStorageProvider.getReadStream.mockResolvedValue(stream);
+
+      const contextUser = {
+        ...mockManagerUser,
+        businessUnitId: 7,
+        allBusinessUnits: false,
+      };
+      const result = await service.previewReceipt(2, contextUser);
+
+      expect(expenseDelegate.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: 2,
+            organizationId: 1,
+          }),
+        }),
+      );
+      expect(fileDelegate.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            category: { equals: 'receipt', mode: 'insensitive' },
+          }),
+        }),
+      );
+      expect(result).toBeDefined();
     });
   });
 

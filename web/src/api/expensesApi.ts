@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient';
+import { axiosClient } from './axiosClient';
 
 export interface Expense {
   id: number;
@@ -51,6 +52,13 @@ export async function getExpenses(): Promise<Expense[]> {
 
 export async function getExpense(id: number): Promise<Expense> {
   return apiClient<Expense>(`/expenses/${id}`);
+}
+
+export async function getExpenseReceipt(id: number): Promise<Blob> {
+  const response = await axiosClient.get<Blob>(`/expenses/${id}/receipt`, {
+    responseType: 'blob',
+  });
+  return response.data;
 }
 
 export async function createExpense(payload: CreateExpensePayload): Promise<Expense> {

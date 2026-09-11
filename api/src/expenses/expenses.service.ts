@@ -220,7 +220,7 @@ export class ExpensesService {
         organizationId,
         entityType: 'Expense',
         entityId: expense.id,
-        category: 'receipt',
+        category: { equals: 'receipt', mode: 'insensitive' },
         status: 'ACTIVE',
         deletedAt: null,
       },

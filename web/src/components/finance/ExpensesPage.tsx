@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { getExpenses, createExpense, updateExpense, managerApproveExpense, hrApproveExpense, rejectExpense, type Expense } from '@/api/expensesApi';
+import { getExpenses, getExpenseReceipt, createExpense, updateExpense, managerApproveExpense, hrApproveExpense, rejectExpense, type Expense } from '@/api/expensesApi';
 import { uploadFile } from '@/api/filesApi';
 import { ImageCropDialog } from '@/components/common/ImageCropDialog';
 import { UserAvatar } from '@/components/common/UserAvatar';
@@ -109,6 +109,8 @@ export default function ExpensesPage() {
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | ExpenseUiStatus>('ALL');
   const [selectedExpenseId, setSelectedExpenseId] = useState<number | null>(null);
+  const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
+  const [receiptPreviewLoading, setReceiptPreviewLoading] = useState(false);
   const [showSubmitDrawer, setShowSubmitDrawer] = useState(false);
   const [rejectingExpenseId, setRejectingExpenseId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -152,6 +154,40 @@ export default function ExpensesPage() {
   const canSubmitExpense = sessionRole === 'EMPLOYEE' || sessionRole === 'MANAGER';
   const selectedExpense = useMemo(() => expenses.find((expense) => expense.id === selectedExpenseId) ?? null, [expenses, selectedExpenseId]);
   const selectedStatus = selectedExpense ? normalizedExpenseStatus(selectedExpense.status) : null;
+
+  useEffect(() => {
+    if (!selectedExpense?.receiptImage) {
+      setReceiptPreviewUrl(null);
+      setReceiptPreviewLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    setReceiptPreviewLoading(true);
+
+    void getExpenseReceipt(selectedExpense.id)
+      .then((blob) => {
+        const nextObjectUrl = URL.createObjectURL(blob);
+        if (cancelled) {
+          URL.revokeObjectURL(nextObjectUrl);
+          return;
+        }
+        objectUrl = nextObjectUrl;
+        setReceiptPreviewUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setReceiptPreviewUrl(null);
+      })
+      .finally(() => {
+        if (!cancelled) setReceiptPreviewLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [selectedExpense]);
   
   function canActOnSelectedExpense() {
     if (!selectedExpense) return false;
@@ -514,7 +550,8 @@ export default function ExpensesPage() {
               <div className="mt-5">
                 <h3 className="text-sm font-semibold text-slate-900">Receipt image</h3>
                 <div className="mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                  <img src={`/api/v1/expenses/${selectedExpense.id}/receipt`} alt={`Receipt for expense #${selectedExpense.id}`} className="max-h-96 w-full object-contain" />
+                  {receiptPreviewLoading ? <p className="p-4 text-sm text-slate-500">Loading receipt...</p> : null}
+                  {receiptPreviewUrl ? <img src={receiptPreviewUrl} alt={`Receipt for expense #${selectedExpense.id}`} className="max-h-96 w-full object-contain" /> : null}
                 </div>
               </div>
             ) : null}
