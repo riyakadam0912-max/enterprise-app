@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { getExpenses, createExpense, managerApproveExpense, hrApproveExpense, rejectExpense, type Expense } from '@/api/expensesApi';
 import { ImageCropDialog } from '@/components/common/ImageCropDialog';
+import { UserAvatar } from '@/components/common/UserAvatar';
 import { useAuthSession } from '@/stores/auth-store';
 import { formatDate, formatInr } from '@/utils/finance';
 
@@ -93,8 +94,8 @@ function StatusBadge({ status }: { status: ExpenseUiStatus | string }) {
   return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${expenseStatusClass(normalized)}`}>{normalized}</span>;
 }
 
-function EmployeeAvatar({ name }: { name?: string | null }) {
-  return <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">{initials(name)}</div>;
+function EmployeeAvatar({ userId, name }: { userId?: number | null; name?: string | null }) {
+  return <UserAvatar userId={userId} name={name} size="md" className="bg-slate-900" />;
 }
 
 export default function ExpensesPage() {
@@ -294,6 +295,10 @@ export default function ExpensesPage() {
     return expense.employee?.name ?? expense.submittedByUser?.name ?? 'Unassigned';
   }
 
+  function employeeUserId(expense: Expense) {
+    return expense.submittedByUser?.id ?? null;
+  }
+
   if (sessionRole === 'UNAUTHENTICATED') {
     return (
       <div className="p-6">
@@ -393,7 +398,7 @@ export default function ExpensesPage() {
                     >
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
-                          <EmployeeAvatar name={employeeName(expense)} />
+                          <EmployeeAvatar userId={employeeUserId(expense)} name={employeeName(expense)} />
                           <div>
                             <div className="font-medium text-slate-900">{employeeName(expense)}</div>
                             <div className="text-xs text-slate-500">Expense #{expense.id}</div>
@@ -504,7 +509,7 @@ export default function ExpensesPage() {
           </div>
           <div className="flex-1 overflow-y-auto px-5 py-5">
             <div className="flex items-start gap-3">
-              <EmployeeAvatar name={employeeName(selectedExpense)} />
+              <EmployeeAvatar userId={employeeUserId(selectedExpense)} name={employeeName(selectedExpense)} />
               <div className="min-w-0">
                 <p className="text-sm text-slate-500">Employee</p>
                 <p className="mt-1 text-lg font-semibold text-slate-900">{employeeName(selectedExpense)}</p>
