@@ -12,7 +12,6 @@ function runMigration() {
       env: process.env,
     });
     let output = '';
-
     child.stdout.on('data', (chunk) => {
       process.stdout.write(chunk);
       output += chunk.toString();
@@ -30,15 +29,10 @@ async function main() {
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     console.log(`[PRISMA] Migration attempt ${attempt}/${maxAttempts}`);
     const result = await runMigration();
-    if (result.code === 0) {
-      return;
-    }
-
-    const isLockContention = lockErrorPattern.test(result.output);
-    if (!isLockContention || attempt === maxAttempts) {
+    if (result.code === 0) return;
+    if (!lockErrorPattern.test(result.output) || attempt === maxAttempts) {
       process.exit(result.code);
     }
-
     const delay = retryDelayMs * attempt;
     console.warn(`[PRISMA] Migration lock is busy; retrying in ${delay / 1000}s`);
     await new Promise((resolve) => setTimeout(resolve, delay));
