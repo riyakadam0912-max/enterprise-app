@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { getExpenses, getExpenseReceipt, createExpense, updateExpense, managerApproveExpense, hrApproveExpense, rejectExpense, type Expense } from '@/api/expensesApi';
+import { Loader2, Trash2 } from 'lucide-react';
+import Image from 'next/image';
+import { getExpenses, getExpenseReceipt, createExpense, updateExpense, deleteExpense, managerApproveExpense, hrApproveExpense, rejectExpense, type Expense } from '@/api/expensesApi';
 import { uploadFile } from '@/api/filesApi';
 import { ImageCropDialog } from '@/components/common/ImageCropDialog';
 import { UserAvatar } from '@/components/common/UserAvatar';
@@ -49,16 +51,6 @@ function expenseStatusClass(status: ExpenseUiStatus) {
 function toNumber(value: number | null | undefined) {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function initials(name?: string | null) {
-  if (!name) return 'NA';
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('');
 }
 
 function approveIcon() {
@@ -296,6 +288,24 @@ export default function ExpensesPage() {
     }
   }
 
+  async function handleDelete(expense: Expense) {
+    if (!window.confirm(`Delete expense #${expense.id}? This action cannot be undone.`)) return;
+
+    try {
+      setActionLoadingId(expense.id);
+      setMessage(null);
+      setError(null);
+      await deleteExpense(expense.id);
+      setExpenses((prev) => prev.filter((row) => row.id !== expense.id));
+      setSelectedExpenseId(null);
+      setMessage(`Expense #${expense.id} deleted successfully.`);
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Failed to delete expense');
+    } finally {
+      setActionLoadingId(null);
+    }
+  }
+
   function startRejecting(expenseId: number) {
     setRejectingExpenseId(expenseId);
     setRejectReason('');
@@ -306,6 +316,10 @@ export default function ExpensesPage() {
     if (status === 'PENDING_MANAGER') return sessionRole === 'ADMIN' || sessionRole === 'MANAGER';
     if (status === 'PENDING_HR') return sessionRole === 'ADMIN';
     return false;
+  }
+
+  function canDeleteExpense() {
+    return sessionRole === 'ADMIN' || sessionRole === 'HR';
   }
 
   function employeeName(expense: Expense) {
@@ -551,7 +565,7 @@ export default function ExpensesPage() {
                 <h3 className="text-sm font-semibold text-slate-900">Receipt image</h3>
                 <div className="mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white">
                   {receiptPreviewLoading ? <p className="p-4 text-sm text-slate-500">Loading receipt...</p> : null}
-                  {receiptPreviewUrl ? <img src={receiptPreviewUrl} alt={`Receipt for expense #${selectedExpense.id}`} className="max-h-96 w-full object-contain" /> : null}
+                  {receiptPreviewUrl ? <Image src={receiptPreviewUrl} alt={`Receipt for expense #${selectedExpense.id}`} width={800} height={600} unoptimized className="max-h-96 w-full object-contain" /> : null}
                 </div>
               </div>
             ) : null}
@@ -564,6 +578,17 @@ export default function ExpensesPage() {
             ) : null}
           </div>
           <div className="border-t border-slate-200 px-5 py-4">
+            {canDeleteExpense() ? (
+              <button
+                type="button"
+                onClick={() => void handleDelete(selectedExpense)}
+                disabled={actionLoadingId === selectedExpense.id}
+                className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {actionLoadingId === selectedExpense.id ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="h-4 w-4" aria-hidden="true" />}
+                Delete expense
+              </button>
+            ) : null}
             {canActOnSelectedExpense() ? (
               <div className="space-y-3">
                 <button
