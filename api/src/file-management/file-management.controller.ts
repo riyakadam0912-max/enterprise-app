@@ -143,6 +143,18 @@ export class FileManagementController {
     );
   }
 
+  @ApiOperation({ summary: 'Check whether a user has a profile photo' })
+  @Get('avatar/:userId/info')
+  async avatarInfo(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.fileManagementService.getUserAvatarInfo(
+      userId,
+      mapAuthUserToFileContext(request.user),
+    );
+  }
+
   @ApiOperation({ summary: 'Preview a file inline' })
   @Get('preview/:id')
   @UseGuards(FileAccessGuard)

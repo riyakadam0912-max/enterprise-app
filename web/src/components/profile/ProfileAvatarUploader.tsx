@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { Camera, Eye, Loader2, X } from 'lucide-react';
 import { ChangeEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { getProfileAvatarUrl, uploadFile } from '@/api/filesApi';
+import { getProfileAvatarInfo, getProfileAvatarUrl, uploadFile } from '@/api/filesApi';
 import { ImageCropDialog } from '@/components/common/ImageCropDialog';
 import { useAuthSession } from '@/stores/auth-store';
 
@@ -42,6 +42,7 @@ export function ProfileAvatarUploader({
   const session = useAuthSession();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [currentAvatarUrl, setCurrentAvatarUrl] = useState<string | null>(avatarUrl ?? null);
+  const [hasAvatar, setHasAvatar] = useState<boolean | null>(avatarUrl ? true : null);
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -51,6 +52,7 @@ export function ProfileAvatarUploader({
 
   useEffect(() => {
     setCurrentAvatarUrl(avatarUrl ?? null);
+    setHasAvatar(avatarUrl ? true : null);
   }, [avatarUrl]);
 
   useEffect(() => {
@@ -62,12 +64,21 @@ export function ProfileAvatarUploader({
     let cancelled = false;
 
     async function loadCurrentAvatar() {
-      if (cancelled) {
-        return;
+      try {
+        const info = await getProfileAvatarInfo(targetUserId);
+        if (cancelled) {
+          return;
+        }
+        setHasAvatar(info.exists);
+        const nextUrl = info.exists ? getProfileAvatarUrl(targetUserId) : null;
+        setCurrentAvatarUrl(nextUrl);
+        onAvatarChange?.(nextUrl, info.fileId);
+      } catch {
+        if (!cancelled) {
+          setHasAvatar(false);
+          setCurrentAvatarUrl(null);
+        }
       }
-      const nextUrl = getProfileAvatarUrl(targetUserId);
-      setCurrentAvatarUrl(nextUrl);
-      onAvatarChange?.(nextUrl, null);
     }
 
     loadCurrentAvatar();
@@ -101,6 +112,7 @@ export function ProfileAvatarUploader({
 
       const nextUrl = getProfileAvatarUrl(targetUserId);
 
+      setHasAvatar(true);
       setCurrentAvatarUrl(nextUrl);
       onAvatarChange?.(nextUrl, null);
       return nextUrl;
@@ -146,6 +158,7 @@ export function ProfileAvatarUploader({
         formData.append('isPublic', 'false');
         const uploaded = await uploadFile(formData);
         const uploadedUrl = getProfileAvatarUrl(resolvedUserId as number);
+        setHasAvatar(true);
         setCurrentAvatarUrl(uploadedUrl);
         onAvatarChange?.(uploadedUrl, uploaded.id);
         await refreshAvatarForCurrentUser(resolvedUserId as number);
@@ -218,8 +231,8 @@ export function ProfileAvatarUploader({
         <div
           className={`group relative flex items-center justify-center overflow-hidden rounded-full bg-indigo-600 text-white shadow-md ring-2 ring-white ${sizeClasses}`}
         >
-          {currentAvatarUrl ? (
-            <Image src={currentAvatarUrl} alt="Profile avatar" fill className="object-cover" unoptimized onError={() => setCurrentAvatarUrl(null)} />
+          {hasAvatar && currentAvatarUrl ? (
+            <Image src={currentAvatarUrl} alt="Profile avatar" fill className="object-cover" unoptimized onError={() => { setHasAvatar(false); setCurrentAvatarUrl(null); }} />
           ) : (
             <span className="font-bold leading-none">{initials}</span>
           )}

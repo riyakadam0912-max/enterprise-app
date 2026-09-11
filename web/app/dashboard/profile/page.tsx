@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { apiClient } from '@/api/apiClient';
-import { getProfileAvatarUrl } from '@/api/filesApi';
+import { getProfileAvatarInfo, getProfileAvatarUrl } from '@/api/filesApi';
 import { ProfileAvatarUploader } from '@/components/profile/ProfileAvatarUploader';
 import { setAuthSession, useAuthSession } from '@/stores/auth-store';
 
@@ -163,7 +163,10 @@ export default function ProfilePage() {
         const userId = data?.user?.id ?? data?.id ?? account?.id;
         if (userId) {
           if (!cancelled) {
-            setAvatarUrl(getProfileAvatarUrl(userId));
+            const avatarInfo = await getProfileAvatarInfo(userId);
+            if (!cancelled) {
+              setAvatarUrl(avatarInfo.exists ? getProfileAvatarUrl(userId) : null);
+            }
           }
         }
       } catch {

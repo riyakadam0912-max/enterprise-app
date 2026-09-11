@@ -407,6 +407,29 @@ export class FileManagementService {
     });
   }
 
+  async getUserAvatarInfo(
+    userId: number,
+    user?: Partial<FileUserContext>,
+  ): Promise<{ exists: boolean; fileId: number | null }> {
+    if (!user?.userId) {
+      throw new ForbiddenException('Authentication is required');
+    }
+
+    const record = await this.prismaCompat.file.findFirst({
+      where: {
+        entityType: 'User',
+        entityId: userId,
+        category: 'Profile Photo',
+        status: 'ACTIVE',
+        deletedAt: null,
+      },
+      orderBy: [{ version: 'desc' }, { createdAt: 'desc' }],
+      select: { id: true },
+    });
+
+    return { exists: Boolean(record), fileId: record?.id ?? null };
+  }
+
   async dashboard(user?: Partial<FileUserContext>) {
     const organizationId = await this.validateOrganization(user);
     const baseWhere: Record<string, any> = {

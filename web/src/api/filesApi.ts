@@ -43,6 +43,12 @@ export function getProfileAvatarUrl(userId: number) {
   return `/api/v1/files/avatar/${userId}`;
 }
 
+export function getProfileAvatarInfo(userId: number) {
+  return apiClient<{ exists: boolean; fileId: number | null }>(
+    `/files/avatar/${userId}/info`,
+  );
+}
+
 export type FileDashboard = {
   totalFiles: number;
   totalStorageBytes: number;

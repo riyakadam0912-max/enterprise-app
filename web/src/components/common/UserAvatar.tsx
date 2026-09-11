@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
-import { getProfileAvatarUrl, listFilesByEntity } from '@/api/filesApi';
+import { getProfileAvatarInfo, getProfileAvatarUrl } from '@/api/filesApi';
 import { getAuthSessionSnapshot, setAuthSession, useAuthSession } from '@/stores/auth-store';
 
 type UserAvatarProps = {
@@ -33,8 +33,9 @@ export function UserAvatar({
   const session = useAuthSession();
   const attemptedUserIdRef = useRef<number | null>(null);
   const [resolvedFileId, setResolvedFileId] = useState<number | null>(fileId ?? null);
+  const [hasAvatar, setHasAvatar] = useState<boolean | null>(fileId ? true : null);
   const sizeClass = size === 'lg' ? 'h-24 w-24 text-2xl' : size === 'md' ? 'h-11 w-11 text-sm' : 'h-8 w-8 text-xs';
-  const imageUrl = userId
+  const imageUrl = userId && hasAvatar
     ? getProfileAvatarUrl(userId)
     : resolvedFileId
       ? `/api/v1/files/preview/${resolvedFileId}`
@@ -42,29 +43,35 @@ export function UserAvatar({
 
   useEffect(() => {
     setResolvedFileId(fileId ?? null);
-  }, [fileId]);
+    setHasAvatar(fileId ? true : userId ? null : false);
+  }, [fileId, userId]);
 
   useEffect(() => {
-    if (fileId || !userId || attemptedUserIdRef.current === userId) {
+    if (!userId || attemptedUserIdRef.current === userId) {
       return;
     }
 
     attemptedUserIdRef.current = userId;
     let cancelled = false;
-    void listFilesByEntity('User', userId)
-      .then((files) => {
+    void getProfileAvatarInfo(userId)
+      .then((info) => {
         if (cancelled) {
           return;
         }
-        const avatar = files.find((file) => file.category === 'Profile Photo');
-        const nextFileId = avatar?.id ?? null;
+        const nextFileId = info.fileId;
+        setHasAvatar(info.exists);
         setResolvedFileId(nextFileId);
         const currentSession = getAuthSessionSnapshot();
         if (userId === currentSession.user?.id && currentSession.avatarFileId !== nextFileId) {
           setAuthSession({ ...currentSession, avatarFileId: nextFileId });
         }
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) {
+          setHasAvatar(false);
+          setResolvedFileId(null);
+        }
+      });
 
     return () => {
       cancelled = true;
@@ -80,7 +87,10 @@ export function UserAvatar({
           fill
           className="object-cover"
           unoptimized
-          onError={() => setResolvedFileId(null)}
+          onError={() => {
+            setHasAvatar(false);
+            setResolvedFileId(null);
+          }}
         />
       ) : (
         initials(name)
