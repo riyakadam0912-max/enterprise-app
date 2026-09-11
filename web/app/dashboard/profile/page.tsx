@@ -283,7 +283,12 @@ export default function ProfilePage() {
                 userId={profileUserId}
                 avatarUrl={avatarUrl}
                 size="lg"
-                onAvatarChange={setAvatarUrl}
+                onAvatarChange={(nextUrl, fileId) => {
+                  setAvatarUrl(nextUrl);
+                  if (session.user) {
+                    setAuthSession({ ...session, avatarFileId: fileId ?? null });
+                  }
+                }}
               />
 
               <div className="min-w-0 flex-1">

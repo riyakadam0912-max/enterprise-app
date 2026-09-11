@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useMyProfile, useUpdateProfile } from '@/hooks/useEss';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 import { ProfileAvatarUploader } from '@/components/profile/ProfileAvatarUploader';
-import { useAuthSession } from '@/stores/auth-store';
+import { setAuthSession, useAuthSession } from '@/stores/auth-store';
 import { apiClient } from '@/api/apiClient';
 
 export default function ESSProfilePage() {
@@ -123,6 +123,9 @@ export default function ESSProfilePage() {
                 userEmail={profile?.email ?? session.user?.email}
                 userId={session.user?.id ?? profile?.id ?? null}
                 size="lg"
+                onAvatarChange={(_nextUrl, fileId) => {
+                  setAuthSession({ ...session, avatarFileId: fileId ?? null });
+                }}
               />
               <div>
                 <h2 className="text-2xl font-bold text-gray-900">{profile?.name}</h2>

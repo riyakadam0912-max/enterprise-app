@@ -11,6 +11,7 @@ import {
 } from '@/stores/auth-store';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import { BusinessUnitSelector } from '@/components/business-units/BusinessUnitSelector';
+import { UserAvatar } from '@/components/common/UserAvatar';
 import { getMyOrganization, getOrganizationById } from '@/api/organizationsApi';
 
 const segmentLabels: Record<string, string> = {
@@ -200,9 +201,12 @@ export default function Topbar() {
 
         {/* User avatar */}
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center shadow-sm shadow-orange-500/20">
-            <span className="text-white text-xs font-bold">{sessionUser.name.charAt(0).toUpperCase()}</span>
-          </div>
+          <UserAvatar
+            userId={session.user?.id}
+            fileId={session.avatarFileId}
+            name={sessionUser.name}
+            className="bg-gradient-to-br from-orange-500 to-amber-400 shadow-sm shadow-orange-500/20"
+          />
           <div className="hidden sm:block">
             <p className="text-xs font-semibold text-slate-800 leading-tight">{sessionUser.name}</p>
             <p className="text-[10px] text-slate-400 leading-tight">{sessionUser.role}</p>

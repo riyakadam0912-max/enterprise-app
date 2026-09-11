@@ -7,7 +7,7 @@ import { Caption } from '@/components/typography/Caption';
 import { Text } from '@/components/typography/Text';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/typography/Label';
-import { useAuthSession } from '@/stores/auth-store';
+import { setAuthSession, useAuthSession } from '@/stores/auth-store';
 import { ProfileAvatarUploader } from '@/components/profile/ProfileAvatarUploader';
 import { apiClient } from '@/api/apiClient';
 import { useEffect, useState } from 'react';
@@ -66,6 +66,9 @@ export default function SuperAdminProfile() {
             userEmail={session.user?.email}
             userId={session.user?.id ?? null}
             size="lg"
+            onAvatarChange={(_nextUrl, fileId) => {
+              setAuthSession({ ...session, avatarFileId: fileId ?? null });
+            }}
           />
           <div>
             <Text className="font-bold text-slate-900">

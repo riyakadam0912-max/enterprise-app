@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Menu } from 'lucide-react';
 import { logout } from '@/utils/logout';
 import { useAuthSession } from '@/stores/auth-store';
+import { UserAvatar } from '@/components/common/UserAvatar';
 
 // ── SVG icon components ──────────────────────────────────────────────────────
 const stroke = { fill: 'none' as const, stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
@@ -627,8 +628,12 @@ export default function Sidebar({ currentPath }: SidebarProps) {
           }`}
           title={isCollapsed ? currentUser?.name ?? 'User' : undefined}
         >
-          <div className="sidebar-user-avatar relative w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center shrink-0">
-            <span className="text-white text-xs font-bold">{(currentUser?.name?.charAt(0) ?? 'U').toUpperCase()}</span>
+          <div className="sidebar-user-avatar relative shrink-0">
+            <UserAvatar
+              userId={currentUser?.id}
+              fileId={session.avatarFileId}
+              name={currentUser?.name}
+            />
             <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-[#111827]" />
           </div>
           <div className={`flex-1 text-left min-w-0 leading-tight transition-all duration-300 ${isCollapsed ? 'hidden' : 'block'}`}>

@@ -18,7 +18,7 @@ export type ProfileAvatarUploaderProps = {
   avatarUrl?: string | null;
   size?: 'sm' | 'md' | 'lg';
   className?: string;
-  onAvatarChange?: (nextUrl: string | null) => void;
+  onAvatarChange?: (nextUrl: string | null, fileId?: number | null) => void;
 };
 
 function getInitials(name?: string | null) {
@@ -70,7 +70,7 @@ export function ProfileAvatarUploader({
         const preferredAvatar = files.find((file) => file.category === 'Profile Photo') ?? files[0];
         const nextUrl = preferredAvatar ? getManagedFileUrl(preferredAvatar) : null;
         setCurrentAvatarUrl(nextUrl);
-        onAvatarChange?.(nextUrl);
+        onAvatarChange?.(nextUrl, preferredAvatar?.id ?? null);
       } catch {
         // ignore missing avatar state; initials fallback is the expected UX
       }
@@ -110,7 +110,7 @@ export function ProfileAvatarUploader({
       const nextUrl = preferredAvatar ? getManagedFileUrl(preferredAvatar) : null;
 
       setCurrentAvatarUrl(nextUrl);
-      onAvatarChange?.(nextUrl);
+      onAvatarChange?.(nextUrl, preferredAvatar?.id ?? null);
       return nextUrl;
     },
     [onAvatarChange],
@@ -155,7 +155,7 @@ export function ProfileAvatarUploader({
         const uploaded = await uploadFile(formData);
         const uploadedUrl = getManagedFileUrl(uploaded);
         setCurrentAvatarUrl(uploadedUrl);
-        onAvatarChange?.(uploadedUrl);
+        onAvatarChange?.(uploadedUrl, uploaded.id);
         await refreshAvatarForCurrentUser(resolvedUserId as number);
         setStatus({ type: 'success', message: 'Profile photo uploaded successfully.' });
       } catch (uploadError) {

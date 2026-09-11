@@ -34,6 +34,7 @@ export type AuthSession = {
   organizationSlug: string | null;
   organizationName: string | null;
   organizationLogo: string | null;
+  avatarFileId: number | null;
   isSuperAdmin: boolean;
   isPlatformAdmin: boolean;
   availableBusinessUnits: BusinessUnit[];
@@ -51,6 +52,7 @@ type AuthSessionInput = {
   organizationSlug?: string | null;
   organizationName?: string | null;
   organizationLogo?: string | null;
+  avatarFileId?: number | null;
   isSuperAdmin?: boolean;
   isPlatformAdmin?: boolean;
   availableBusinessUnits?: BusinessUnit[];
@@ -72,6 +74,7 @@ const SERVER_AUTH_SESSION: AuthSession = Object.freeze({
   organizationSlug: null,
   organizationName: null,
   organizationLogo: null,
+  avatarFileId: null,
   isSuperAdmin: false,
   isPlatformAdmin: false,
   availableBusinessUnits: [],
@@ -234,6 +237,7 @@ function loadSessionFromStorage(): AuthSession {
       organizationSlug: parsed.organizationSlug ?? null,
       organizationName: parsed.organizationName ?? null,
       organizationLogo: parsed.organizationLogo ?? null,
+      avatarFileId: typeof parsed.avatarFileId === 'number' ? parsed.avatarFileId : null,
       availableBusinessUnits: parseBusinessUnits(parsed.availableBusinessUnits),
       activeBusinessUnitId: parseBusinessUnitId(parsed.activeBusinessUnitId == null ? null : String(parsed.activeBusinessUnitId)),
       canSelectAllBusinessUnits: parsed.canSelectAllBusinessUnits === true,
@@ -295,6 +299,12 @@ export function setAuthSession(session: AuthSessionInput): void {
   }
 
   const resolved = resolveAccessFlags(session);
+  const avatarFileId =
+    session.avatarFileId !== undefined
+      ? session.avatarFileId
+      : session.user?.id != null && session.user.id === cachedSession.user?.id
+        ? cachedSession.avatarFileId
+        : null;
 
   cachedSession = {
     role: resolved.role,
@@ -306,6 +316,7 @@ export function setAuthSession(session: AuthSessionInput): void {
     organizationSlug: session.organizationSlug ?? null,
     organizationName: session.organizationName ?? null,
     organizationLogo: session.organizationLogo ?? null,
+    avatarFileId: avatarFileId ?? null,
     isSuperAdmin: resolved.isSuperAdmin,
     isPlatformAdmin: resolved.isPlatformAdmin,
     availableBusinessUnits: parseBusinessUnits(session.availableBusinessUnits),
