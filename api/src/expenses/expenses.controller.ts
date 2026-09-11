@@ -171,7 +171,7 @@ export class ExpensesController {
     return this.service.update(id, dto, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.HR)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR)
   @ApiOperation({ summary: 'DELETE :id' })
   @ApiResponse({ status: 200, description: 'DELETE request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })

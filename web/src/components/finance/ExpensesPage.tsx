@@ -319,7 +319,7 @@ export default function ExpensesPage() {
   }
 
   function canDeleteExpense() {
-    return sessionRole === 'ADMIN' || sessionRole === 'HR';
+    return sessionRole === 'SUPER_ADMIN' || sessionRole === 'ADMIN' || sessionRole === 'HR';
   }
 
   function employeeName(expense: Expense) {
@@ -455,6 +455,21 @@ export default function ExpensesPage() {
                           >
                             {eyeIcon()}
                           </button>
+                          {canDeleteExpense() ? (
+                            <button
+                              type="button"
+                              title="Delete expense"
+                              aria-label="Delete expense"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void handleDelete(expense);
+                              }}
+                              disabled={actionLoadingId === expense.id}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
+                            >
+                              {actionLoadingId === expense.id ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="h-4 w-4" aria-hidden="true" />}
+                            </button>
+                          ) : null}
                           {canAct && !isRejecting ? (
                             <>
                               <button
