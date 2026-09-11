@@ -37,7 +37,7 @@ export class S3StorageProvider implements StorageProvider {
 
   private get prefix(): string {
     const prefix = (
-      this.configService.get<string>('AWS_S3_PREFIX') ?? 'assets/riya_erp'
+      this.configService.get<string>('AWS_S3_PREFIX') ?? 'erp'
     )
       .trim()
       .replace(/^\/+|\/+$/g, '');
@@ -81,6 +81,25 @@ export class S3StorageProvider implements StorageProvider {
     return key;
   }
 
+  private logS3Error(operation: string, key: string, error: unknown): void {
+    const details = error as {
+      name?: string;
+      Code?: string;
+      message?: string;
+      $metadata?: { httpStatusCode?: number; requestId?: string };
+    };
+    console.error('[S3 STORAGE ERROR]', {
+      operation,
+      bucket: this.bucket,
+      key,
+      name: details.name,
+      code: details.Code,
+      message: details.message,
+      statusCode: details.$metadata?.httpStatusCode,
+      requestId: details.$metadata?.requestId,
+    });
+  }
+
   async upload(input: {
     buffer: Buffer;
     originalName: string;
@@ -98,15 +117,20 @@ export class S3StorageProvider implements StorageProvider {
       '',
     );
     const key = this.keyForPath(storedPath);
-    await this.s3.send(
-      new PutObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-        Body: input.buffer,
-        ContentType: input.mimeType,
-        ContentDisposition: `inline; filename="${input.storedName}"`,
-      }),
-    );
+    try {
+      await this.s3.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: input.buffer,
+          ContentType: input.mimeType,
+          ContentDisposition: `inline; filename="${input.storedName}"`,
+        }),
+      );
+    } catch (error) {
+      this.logS3Error('upload', key, error);
+      throw error;
+    }
     return {
       storedPath: key,
       storedName: input.storedName,
@@ -159,12 +183,19 @@ export class S3StorageProvider implements StorageProvider {
   async getReadStream(input: {
     storedPath: string;
   }): Promise<NodeJS.ReadableStream> {
-    const response = await this.s3.send(
-      new GetObjectCommand({
-        Bucket: this.bucket,
-        Key: this.keyForPath(input.storedPath),
-      }),
-    );
+    const key = this.keyForPath(input.storedPath);
+    let response;
+    try {
+      response = await this.s3.send(
+        new GetObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+        }),
+      );
+    } catch (error) {
+      this.logS3Error('read', key, error);
+      throw error;
+    }
     if (!response.Body) {
       throw new InternalServerErrorException('S3 returned an empty file body');
     }

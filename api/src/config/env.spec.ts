@@ -53,6 +53,39 @@ describe('validateServerEnv', () => {
     expect(validateServerEnv(vercelProd).COOKIE_SAME_SITE).toBe('none');
   });
 
+  it('preserves explicit S3 storage configuration', () => {
+    const configured = validateServerEnv({
+      ...validProductionEnv,
+      FILE_STORAGE_PROVIDER: 's3',
+      AWS_S3_BUCKET: 'enterprise-assets',
+      AWS_S3_REGION: 'eu-north-1',
+    });
+
+    expect(configured.FILE_STORAGE_PROVIDER).toBe('s3');
+  });
+
+  it('defaults the S3 prefix to erp', () => {
+    expect(validateServerEnv(validProductionEnv).AWS_S3_PREFIX).toBe('erp');
+  });
+
+  it('rejects incomplete explicit S3 storage configuration', () => {
+    expect(() =>
+      validateServerEnv({
+        ...validProductionEnv,
+        FILE_STORAGE_PROVIDER: 's3',
+      }),
+    ).toThrow(/AWS_S3_BUCKET and AWS_S3_REGION/);
+  });
+
+  it('rejects unknown storage providers', () => {
+    expect(() =>
+      validateServerEnv({
+        ...validProductionEnv,
+        FILE_STORAGE_PROVIDER: 's3-compatible',
+      }),
+    ).toThrow(/expected local, s3, or cloudinary/);
+  });
+
   it('rejects placeholder JWT secrets and localhost frontend origins in production', () => {
     const invalid = {
       ...validProductionEnv,

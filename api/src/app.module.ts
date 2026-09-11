@@ -44,7 +44,9 @@ const queueImports = redisConnection
       isGlobal: true,
       envFilePath:
         process.env.NODE_ENV === 'production'
-          ? []
+          ? process.env.VERCEL === '1'
+            ? []
+            : [join(process.cwd(), '.env.production')]
           : [join(process.cwd(), '.env'), join(process.cwd(), '..', '.env')],
       validate: validateServerEnv,
     }),

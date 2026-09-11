@@ -1,5 +1,6 @@
 type ServerEnv = {
   DATABASE_URL: string;
+  FILE_STORAGE_PROVIDER?: 'local' | 's3' | 'cloudinary';
   PORT?: number;
   REDIS_ENABLED: boolean;
   WEBSOCKET_ENABLED: boolean;
@@ -334,6 +335,28 @@ export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
     );
   }
 
+  const configuredStorageProvider = readOptionalString(
+    env,
+    'FILE_STORAGE_PROVIDER',
+  ).toLowerCase();
+  if (
+    configuredStorageProvider &&
+    !['local', 's3', 'cloudinary'].includes(configuredStorageProvider)
+  ) {
+    throw new Error(
+      'Invalid FILE_STORAGE_PROVIDER: expected local, s3, or cloudinary',
+    );
+  }
+  if (
+    configuredStorageProvider === 's3' &&
+    (!readOptionalString(env, 'AWS_S3_BUCKET') ||
+      !readOptionalString(env, 'AWS_S3_REGION'))
+  ) {
+    throw new Error(
+      'FILE_STORAGE_PROVIDER=s3 requires AWS_S3_BUCKET and AWS_S3_REGION',
+    );
+  }
+
   const redisEnabledRaw = readOptionalBoolean(env, 'REDIS_ENABLED', false);
   const redisEnabled = isVercel ? false : redisEnabledRaw;
 
@@ -358,6 +381,11 @@ export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
 
   return {
     DATABASE_URL: readRequiredString(env, 'DATABASE_URL'),
+    FILE_STORAGE_PROVIDER: configuredStorageProvider as
+      | 'local'
+      | 's3'
+      | 'cloudinary'
+      | undefined,
     PORT: readOptionalNumber(env, 'PORT', 3000),
     REDIS_ENABLED: redisEnabled,
     WEBSOCKET_ENABLED: websocketEnabled,
@@ -407,7 +435,7 @@ export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
     AWS_SES_FROM_EMAIL: readOptionalString(env, 'AWS_SES_FROM_EMAIL'),
     AWS_SES_FROM_NAME: readOptionalString(env, 'AWS_SES_FROM_NAME'),
     AWS_S3_BUCKET: readOptionalString(env, 'AWS_S3_BUCKET'),
-    AWS_S3_PREFIX: readOptionalString(env, 'AWS_S3_PREFIX', 'assets/riya_erp'),
+    AWS_S3_PREFIX: readOptionalString(env, 'AWS_S3_PREFIX', 'erp'),
     AWS_S3_REGION: readOptionalString(env, 'AWS_S3_REGION'),
     AWS_S3_ACCESS_KEY_ID: readOptionalString(env, 'AWS_S3_ACCESS_KEY_ID'),
     AWS_S3_SECRET_ACCESS_KEY: readOptionalString(
