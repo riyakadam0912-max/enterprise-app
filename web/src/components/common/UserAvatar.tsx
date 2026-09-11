@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
-import { listFilesByEntity } from '@/api/filesApi';
+import { getProfileAvatarUrl, listFilesByEntity } from '@/api/filesApi';
 import { getAuthSessionSnapshot, setAuthSession, useAuthSession } from '@/stores/auth-store';
 
 type UserAvatarProps = {
@@ -34,7 +34,11 @@ export function UserAvatar({
   const attemptedUserIdRef = useRef<number | null>(null);
   const [resolvedFileId, setResolvedFileId] = useState<number | null>(fileId ?? null);
   const sizeClass = size === 'lg' ? 'h-24 w-24 text-2xl' : size === 'md' ? 'h-11 w-11 text-sm' : 'h-8 w-8 text-xs';
-  const imageUrl = resolvedFileId ? `/api/v1/files/preview/${resolvedFileId}` : null;
+  const imageUrl = userId
+    ? getProfileAvatarUrl(userId)
+    : resolvedFileId
+      ? `/api/v1/files/preview/${resolvedFileId}`
+      : null;
 
   useEffect(() => {
     setResolvedFileId(fileId ?? null);

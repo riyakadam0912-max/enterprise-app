@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { apiClient } from '@/api/apiClient';
-import { listFilesByEntity } from '@/api/filesApi';
+import { getProfileAvatarUrl } from '@/api/filesApi';
 import { ProfileAvatarUploader } from '@/components/profile/ProfileAvatarUploader';
 import { setAuthSession, useAuthSession } from '@/stores/auth-store';
 
@@ -162,13 +162,8 @@ export default function ProfilePage() {
 
         const userId = data?.user?.id ?? data?.id ?? account?.id;
         if (userId) {
-          const files = await listFilesByEntity('User', userId);
           if (!cancelled) {
-            const preferredAvatar = files.find((file) => file.category === 'Profile Photo') ?? files[0];
-            const nextUrl = preferredAvatar
-              ? `/api/v1/files/preview/${preferredAvatar.id}`
-              : null;
-            setAvatarUrl(nextUrl);
+            setAvatarUrl(getProfileAvatarUrl(userId));
           }
         }
       } catch {

@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { Camera, Eye, Loader2, X } from 'lucide-react';
 import { ChangeEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { getManagedFileUrl, listFilesByEntity, uploadFile } from '@/api/filesApi';
+import { getProfileAvatarUrl, uploadFile } from '@/api/filesApi';
 import { ImageCropDialog } from '@/components/common/ImageCropDialog';
 import { useAuthSession } from '@/stores/auth-store';
 
@@ -62,18 +62,12 @@ export function ProfileAvatarUploader({
     let cancelled = false;
 
     async function loadCurrentAvatar() {
-      try {
-        const files = await listFilesByEntity('User', targetUserId);
-        if (cancelled) {
-          return;
-        }
-        const preferredAvatar = files.find((file) => file.category === 'Profile Photo') ?? files[0];
-        const nextUrl = preferredAvatar ? getManagedFileUrl(preferredAvatar) : null;
-        setCurrentAvatarUrl(nextUrl);
-        onAvatarChange?.(nextUrl, preferredAvatar?.id ?? null);
-      } catch {
-        // ignore missing avatar state; initials fallback is the expected UX
+      if (cancelled) {
+        return;
       }
+      const nextUrl = getProfileAvatarUrl(targetUserId);
+      setCurrentAvatarUrl(nextUrl);
+      onAvatarChange?.(nextUrl, null);
     }
 
     loadCurrentAvatar();
@@ -105,12 +99,10 @@ export function ProfileAvatarUploader({
         return null;
       }
 
-      const files = await listFilesByEntity('User', targetUserId);
-      const preferredAvatar = files.find((file) => file.category === 'Profile Photo') ?? files[0];
-      const nextUrl = preferredAvatar ? getManagedFileUrl(preferredAvatar) : null;
+      const nextUrl = getProfileAvatarUrl(targetUserId);
 
       setCurrentAvatarUrl(nextUrl);
-      onAvatarChange?.(nextUrl, preferredAvatar?.id ?? null);
+      onAvatarChange?.(nextUrl, null);
       return nextUrl;
     },
     [onAvatarChange],
@@ -153,7 +145,7 @@ export function ProfileAvatarUploader({
         formData.append('category', 'Profile Photo');
         formData.append('isPublic', 'false');
         const uploaded = await uploadFile(formData);
-        const uploadedUrl = getManagedFileUrl(uploaded);
+        const uploadedUrl = getProfileAvatarUrl(resolvedUserId as number);
         setCurrentAvatarUrl(uploadedUrl);
         onAvatarChange?.(uploadedUrl, uploaded.id);
         await refreshAvatarForCurrentUser(resolvedUserId as number);
@@ -227,7 +219,7 @@ export function ProfileAvatarUploader({
           className={`group relative flex items-center justify-center overflow-hidden rounded-full bg-indigo-600 text-white shadow-md ring-2 ring-white ${sizeClasses}`}
         >
           {currentAvatarUrl ? (
-            <Image src={currentAvatarUrl} alt="Profile avatar" fill className="object-cover" unoptimized />
+            <Image src={currentAvatarUrl} alt="Profile avatar" fill className="object-cover" unoptimized onError={() => setCurrentAvatarUrl(null)} />
           ) : (
             <span className="font-bold leading-none">{initials}</span>
           )}

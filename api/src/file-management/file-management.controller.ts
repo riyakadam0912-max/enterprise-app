@@ -131,6 +131,18 @@ export class FileManagementController {
     );
   }
 
+  @ApiOperation({ summary: 'Preview a user profile photo' })
+  @Get('avatar/:userId')
+  async avatar(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<StreamableFile> {
+    return this.fileManagementService.previewUserAvatar(
+      userId,
+      mapAuthUserToFileContext(request.user),
+    );
+  }
+
   @ApiOperation({ summary: 'Preview a file inline' })
   @Get('preview/:id')
   @UseGuards(FileAccessGuard)

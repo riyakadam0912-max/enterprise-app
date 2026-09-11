@@ -371,6 +371,42 @@ export class FileManagementService {
     });
   }
 
+  async previewUserAvatar(
+    userId: number,
+    user?: Partial<FileUserContext>,
+  ): Promise<StreamableFile> {
+    if (!user?.userId) {
+      throw new ForbiddenException('Authentication is required');
+    }
+
+    const record = await this.prismaCompat.file.findFirst({
+      where: {
+        entityType: 'User',
+        entityId: userId,
+        category: 'Profile Photo',
+        status: 'ACTIVE',
+        deletedAt: null,
+      },
+      orderBy: [{ version: 'desc' }, { createdAt: 'desc' }],
+    });
+    if (!record) throw new NotFoundException('Profile photo not found');
+
+    const stream = await this.storageProvider.getReadStream({
+      storedPath: record.path,
+    });
+    await this.bumpAccessCounters(
+      record.id,
+      'PREVIEW',
+      user.userId,
+      record.organizationId,
+    );
+
+    return new StreamableFile(stream as Readable, {
+      type: record.mimeType,
+      disposition: `inline; filename="${encodeURIComponent(sanitizeFileName(record.originalName))}"`,
+    });
+  }
+
   async dashboard(user?: Partial<FileUserContext>) {
     const organizationId = await this.validateOrganization(user);
     const baseWhere: Record<string, any> = {

@@ -39,6 +39,10 @@ export function getManagedFileUrl(file: Pick<ManagedFile, 'id' | 'signedDownload
   return `/api/v1/files/preview/${file.id}`;
 }
 
+export function getProfileAvatarUrl(userId: number) {
+  return `/api/v1/files/avatar/${userId}`;
+}
+
 export type FileDashboard = {
   totalFiles: number;
   totalStorageBytes: number;
