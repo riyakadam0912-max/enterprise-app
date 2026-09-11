@@ -85,7 +85,6 @@ export class ExpensesController {
     return this.service.getByCategory(req.user);
   }
 
-  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
   @ApiOperation({ summary: 'Preview an expense receipt image' })
   @Get(':id/receipt')
   receipt(
