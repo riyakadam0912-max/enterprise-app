@@ -21,6 +21,11 @@ import {
 } from '../common/workflows/approval-workflow';
 import { DASHBOARD_CACHE_KEY } from '../common/utils/cache-keys';
 import { BusinessUnitsService } from '../business-units/business-units.service';
+import { FILE_STORAGE_PROVIDER } from '../file-management/file-management.constants';
+import type { StorageProvider } from '../file-management/storage/storage-provider.interface';
+import { StreamableFile } from '@nestjs/common';
+import { Readable } from 'stream';
+import { sanitizeFileName } from '../file-management/utils/file-management.utils';
 
 const expenseInclude: Prisma.ExpenseInclude = {
   employee: true,
@@ -41,6 +46,8 @@ export class ExpensesService {
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly workflowEngine: WorkflowEngineService,
     private readonly businessUnitsService: BusinessUnitsService,
+    @Inject(FILE_STORAGE_PROVIDER)
+    private readonly storageProvider: StorageProvider,
   ) {}
 
   private async invalidateDashboardCache() {
@@ -203,6 +210,31 @@ export class ExpensesService {
     });
     if (!expense) throw new NotFoundException(`Expense #${id} not found`);
     return expense;
+  }
+
+  async previewReceipt(id: number, user: AuthUser): Promise<StreamableFile> {
+    const expense = await this.findOne(id, user);
+    const organizationId = this.validateOrganization(user);
+    const file = await this.prisma.file.findFirst({
+      where: {
+        organizationId,
+        entityType: 'Expense',
+        entityId: expense.id,
+        category: 'receipt',
+        status: 'ACTIVE',
+        deletedAt: null,
+      },
+      orderBy: [{ version: 'desc' }, { createdAt: 'desc' }],
+    });
+    if (!file) throw new NotFoundException('Receipt image not found');
+
+    const stream = await this.storageProvider.getReadStream({
+      storedPath: file.path,
+    });
+    return new StreamableFile(stream as Readable, {
+      type: file.mimeType,
+      disposition: `inline; filename="${encodeURIComponent(sanitizeFileName(file.originalName))}"`,
+    });
   }
 
   async update(id: number, dto: UpdateExpenseDto, user: AuthUser) {

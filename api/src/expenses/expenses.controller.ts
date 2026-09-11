@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   Req,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import type { AuthenticatedRequest } from '../common/types/request';
@@ -82,6 +83,16 @@ export class ExpensesController {
   @Get('by-category')
   getByCategory(@Req() req: AuthenticatedRequest) {
     return this.service.getByCategory(req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
+  @ApiOperation({ summary: 'Preview an expense receipt image' })
+  @Get(':id/receipt')
+  receipt(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<StreamableFile> {
+    return this.service.previewReceipt(id, req.user);
   }
 
   @Roles(Role.MANAGER, Role.ADMIN)

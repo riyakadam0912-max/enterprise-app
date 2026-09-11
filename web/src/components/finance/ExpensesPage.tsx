@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { getExpenses, createExpense, managerApproveExpense, hrApproveExpense, rejectExpense, type Expense } from '@/api/expensesApi';
+import { getExpenses, createExpense, updateExpense, managerApproveExpense, hrApproveExpense, rejectExpense, type Expense } from '@/api/expensesApi';
+import { uploadFile } from '@/api/filesApi';
 import { ImageCropDialog } from '@/components/common/ImageCropDialog';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { useAuthSession } from '@/stores/auth-store';
@@ -182,50 +183,30 @@ export default function ExpensesPage() {
       setMessage(null);
       setError(null);
 
-      let receiptImageValue: string | undefined = undefined;
-
-      // If a file is selected, upload it first
-      if (form.receiptFile) {
-        const formData = new FormData();
-        formData.append('file', form.receiptFile);
-        formData.append('module', 'expenses');
-        formData.append('entityType', 'Expense');
-        formData.append('category', 'receipt');
-
-        try {
-          const uploadResponse = await fetch('/api/v1/files/upload', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${JSON.parse(localStorage.getItem('enterprise-auth-session') || '{}').token || ''}`,
-            },
-            body: formData,
-          });
-
-          if (!uploadResponse.ok) {
-            throw new Error(`File upload failed: ${uploadResponse.statusText}`);
-          }
-
-          const uploadedData = await uploadResponse.json();
-          if (uploadedData.success && uploadedData.data) {
-            receiptImageValue = uploadedData.data.url || uploadedData.data.downloadUrl || uploadedData.data.previewUrl;
-          }
-        } catch (uploadError) {
-          setError(uploadError instanceof Error ? uploadError.message : 'Failed to upload receipt file');
-          setActionLoadingId(null);
-          return;
-        }
-      }
-
       const created = await createExpense({
         expenseDate: form.date,
         category: form.category,
         description: form.description.trim(),
         amount: Number(form.amount),
         currency: 'INR',
-        receiptImage: receiptImageValue,
       });
 
-      setExpenses((prev) => [created, ...prev]);
+      let finalExpense = created;
+      if (form.receiptFile) {
+        const formData = new FormData();
+        formData.append('file', form.receiptFile);
+        formData.append('module', 'expenses');
+        formData.append('entityType', 'Expense');
+        formData.append('entityId', String(created.id));
+        formData.append('category', 'receipt');
+        formData.append('isPublic', 'false');
+        await uploadFile(formData);
+        finalExpense = await updateExpense(created.id, {
+          receiptImage: `/api/v1/expenses/${created.id}/receipt`,
+        });
+      }
+
+      setExpenses((prev) => [finalExpense, ...prev]);
       setForm({
         category: CATEGORY_OPTIONS[0],
         amount: '',
@@ -532,9 +513,9 @@ export default function ExpensesPage() {
             {selectedExpense.receiptImage ? (
               <div className="mt-5">
                 <h3 className="text-sm font-semibold text-slate-900">Receipt image</h3>
-                <a href={selectedExpense.receiptImage} target="_blank" rel="noreferrer" className="mt-2 block break-all rounded-2xl border border-slate-200 bg-white p-4 text-sm text-blue-600 hover:underline">
-                  {selectedExpense.receiptImage}
-                </a>
+                <div className="mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                  <img src={`/api/v1/expenses/${selectedExpense.id}/receipt`} alt={`Receipt for expense #${selectedExpense.id}`} className="max-h-96 w-full object-contain" />
+                </div>
               </div>
             ) : null}
 

@@ -15,6 +15,7 @@ import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { BusinessUnitsService } from '../business-units/business-units.service';
+import { FILE_STORAGE_PROVIDER } from '../file-management/file-management.constants';
 
 // Helper to create valid mock AuthUser
 function createMockAuthUser(
@@ -71,6 +72,10 @@ describe('ExpensesService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: WorkflowEngineService, useValue: mockWorkflowEngine },
         { provide: CACHE_MANAGER, useValue: mockCacheManager },
+        {
+          provide: FILE_STORAGE_PROVIDER,
+          useValue: { getReadStream: jest.fn() },
+        },
         {
           provide: BusinessUnitsService,
           useValue: {
