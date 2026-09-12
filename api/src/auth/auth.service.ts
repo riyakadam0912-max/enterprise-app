@@ -1,7 +1,6 @@
 import {
   Injectable,
   Logger,
-  BadRequestException,
   UnauthorizedException,
   ConflictException,
   NotFoundException,
@@ -264,13 +263,26 @@ export class AuthService {
   }
 
   async changePassword(
-    userId: number,
-    currentPassword: string,
-    newPassword: string,
+    _userId: number,
+    _currentPassword: string,
+    _newPassword: string,
   ) {
     throw new ForbiddenException(
       'Self-service password changes are disabled. Use the authorized reset flow.',
     );
+  }
+
+  async logout(userId: number) {
+    if (!userId) {
+      return { message: 'Logout successful' };
+    }
+
+    await this.prisma.user.updateMany({
+      where: { id: userId },
+      data: { refreshToken: null },
+    });
+
+    return { message: 'Logout successful' };
   }
 
   private async resolveOrganizationMeta(organizationId: number | null) {
@@ -720,44 +732,21 @@ export class AuthService {
     };
   }
 
-  async logout(userId: number) {
-    const user = await this.prisma.user.update({
-      where: { id: userId },
-      data: { refreshToken: null },
+  async requestPasswordReset(email: string) {
+    const normalizedEmail = email?.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      return {
+        message:
+          'If that email exists, password reset instructions have been sent.',
+      };
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
     });
 
-    await this.auditLogsService.logLogout(
-      {
-        userId: user.id,
-        userName: user.name,
-        userRole: user.role,
-        module: 'Auth',
-        entityType: 'User',
-        entityId: user.id,
-        action: 'LOGOUT',
-        description: `User ${user.email} logged out`,
-      },
-      {
-        id: user.id,
-        userId: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        roles: [],
-        permissions: [],
-        employeeId: user.employeeId,
-        organizationId: user.organizationId,
-        tokenType: 'access',
-        jti: null,
-      },
-    );
-
-    return { message: 'Logout successful' };
-  }
-
-  async requestPasswordReset(email: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user || !user.isActive) {
+    if (!user) {
       return {
         message:
           'If that email exists, password reset instructions have been sent.',
