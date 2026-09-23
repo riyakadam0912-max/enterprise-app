@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { AlertCircle, CheckCircle2, Info, TriangleAlert } from 'lucide-react';
 import type { ToastRequest, ToastVariant } from '@/types/design-system';
 import { cn } from '@/lib/cn';
 
@@ -36,16 +37,16 @@ function variantStyles(variant: ToastVariant) {
   }
 }
 
-function badgeColor(variant: ToastVariant) {
+function variantIcon(variant: ToastVariant) {
   switch (variant) {
     case 'success':
-      return 'bg-emerald-500';
+      return CheckCircle2;
     case 'error':
-      return 'bg-rose-500';
+      return AlertCircle;
     case 'warning':
-      return 'bg-amber-500';
+      return TriangleAlert;
     default:
-      return 'bg-sky-500';
+      return Info;
   }
 }
 
@@ -117,7 +118,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               className={cn('overflow-hidden rounded-2xl border p-4 shadow-xl backdrop-blur', variantStyles(toast.variant))}
             >
               <div className="flex items-start gap-3">
-                <span className={cn('mt-1 h-2.5 w-2.5 shrink-0 rounded-full', badgeColor(toast.variant))} />
+                {(() => {
+                  const Icon = variantIcon(toast.variant);
+                  return <Icon aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />;
+                })()}
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold">{toast.title}</p>
                   {toast.description ? <p className="mt-1 text-sm opacity-80">{toast.description}</p> : null}

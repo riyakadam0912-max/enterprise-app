@@ -19,6 +19,7 @@ import { cn } from '@/lib/cn';
 import { useAuthSession, type AuthRole } from '@/stores/auth-store';
 import { useAuth } from '@/providers/AuthProvider';
 import { UserIdentity } from '@/components/common/UserIdentity';
+import { SuccessFeedback } from '@/components/feedback/SuccessFeedback';
 
 type DashboardRole = AuthRole;
 type TaskFilter = 'all' | 'mine' | 'needs-review';
@@ -699,9 +700,10 @@ function TaskDetailModal({
                     )}
 
                     {showApproved && (
-                      <div className="rounded-2xl bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800 border border-emerald-200">
-                        Approved ✓
-                      </div>
+                      <SuccessFeedback
+                        title="Task approved successfully"
+                        description="This task has passed review."
+                      />
                     )}
 
                     {canReview && (

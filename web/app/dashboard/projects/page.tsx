@@ -23,6 +23,7 @@ import {
 import { createTask, getTaskMessages, reviewTask, sendTaskMessage, submitTaskWork, updateTask, updateTaskStatus } from '@/api/tasksApi';
 import { apiClient } from '@/api/apiClient';
 import { TaskDetailPanel } from '@/components/tasks/TaskDetailPanel';
+import { SuccessFeedback } from '@/components/feedback/SuccessFeedback';
 import { canAccessUsers } from '@/utils/auth/permissions';
 import { useStableNow } from '@/hooks/useStableNow';
 import { useAuthSession } from '@/stores/auth-store';
@@ -124,7 +125,7 @@ export default function ProjectsWorkflowPage() {
   const [messages, setMessages] = useState<ProjectMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [actionMessage, setActionMessage] = useState('');
+  const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [showProjectEdit, setShowProjectEdit] = useState(false);
   const [projectNameDraft, setProjectNameDraft] = useState('');
   const [projectStartDateDraft, setProjectStartDateDraft] = useState('');
@@ -372,17 +373,17 @@ export default function ProjectsWorkflowPage() {
   async function onAssignManager() {
     if (!selectedProjectId || !managerSelection) return;
     if (Number(managerSelection) === projectDetails?.managerId) {
-      setActionMessage('Selected manager is already assigned to this project.');
+      setActionFeedback({ type: 'error', message: 'Selected manager is already assigned to this project.' });
       return;
     }
     setBusy(true);
-    setActionMessage('');
+    setActionFeedback(null);
     try {
       await assignProjectManager(selectedProjectId, Number(managerSelection));
       await refreshProjects(selectedProjectId);
-      setActionMessage('Project manager updated successfully.');
+      setActionFeedback({ type: 'success', message: 'Project manager updated successfully.' });
     } catch (err) {
-      setActionMessage(err instanceof Error ? err.message : 'Failed to assign manager');
+      setActionFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to assign manager' });
     } finally {
       setBusy(false);
     }
@@ -391,13 +392,13 @@ export default function ProjectsWorkflowPage() {
   async function onUpdateProjectStatus(status: string) {
     if (!selectedProjectId) return;
     setBusy(true);
-    setActionMessage('');
+    setActionFeedback(null);
     try {
       await updateProjectStatus(selectedProjectId, status);
       await refreshProjects(selectedProjectId);
-      setActionMessage(`Project status updated to ${status}.`);
+      setActionFeedback({ type: 'success', message: `Project status updated to ${status}.` });
     } catch (err) {
-      setActionMessage(err instanceof Error ? err.message : 'Failed to update project status');
+      setActionFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to update project status' });
     } finally {
       setBusy(false);
     }
@@ -425,9 +426,9 @@ export default function ProjectsWorkflowPage() {
       });
       await refreshProjects(selectedProjectId);
       setShowProjectEdit(false);
-      setActionMessage('Project details updated successfully.');
+      setActionFeedback({ type: 'success', message: 'Project details updated successfully.' });
     } catch (err) {
-      setActionMessage(err instanceof Error ? err.message : 'Failed to update project');
+      setActionFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to update project' });
     } finally {
       setBusy(false);
     }
@@ -474,16 +475,16 @@ export default function ProjectsWorkflowPage() {
   async function onMarkAsComplete() {
     if (!selectedProjectId) return;
     setBusy(true);
-    setActionMessage('');
+    setActionFeedback(null);
     try {
       await updateProjectStatus(selectedProjectId, 'COMPLETED');
       await refreshProjects(selectedProjectId);
-      setActionMessage('Project marked as complete.');
+      setActionFeedback({ type: 'success', message: 'Project marked as complete.' });
       if (typeof window !== 'undefined') {
         window.alert('Project marked as complete.');
       }
     } catch (err) {
-      setActionMessage(err instanceof Error ? err.message : 'Failed to update project status');
+      setActionFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to update project status' });
     } finally {
       setBusy(false);
     }
@@ -572,15 +573,15 @@ export default function ProjectsWorkflowPage() {
   async function onAddCoManager() {
     if (!selectedProjectId || !coManagerSelection) return;
     setBusy(true);
-    setActionMessage('');
+    setActionFeedback(null);
     try {
       await addCoManager(selectedProjectId, Number(coManagerSelection));
       await refreshProjects(selectedProjectId);
       setShowCoManagerPicker(false);
       setCoManagerSelection('');
-      setActionMessage('Co-manager added successfully.');
+      setActionFeedback({ type: 'success', message: 'Co-manager added successfully.' });
     } catch (err) {
-      setActionMessage(err instanceof Error ? err.message : 'Failed to add co-manager');
+      setActionFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to add co-manager' });
     } finally {
       setBusy(false);
     }
@@ -589,13 +590,13 @@ export default function ProjectsWorkflowPage() {
   async function onRemoveCoManager(userIdToRemove: number) {
     if (!selectedProjectId) return;
     setBusy(true);
-    setActionMessage('');
+    setActionFeedback(null);
     try {
       await removeCoManager(selectedProjectId, userIdToRemove);
       await refreshProjects(selectedProjectId);
-      setActionMessage('Co-manager removed successfully.');
+      setActionFeedback({ type: 'success', message: 'Co-manager removed successfully.' });
     } catch (err) {
-      setActionMessage(err instanceof Error ? err.message : 'Failed to remove co-manager');
+      setActionFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to remove co-manager' });
     } finally {
       setBusy(false);
     }
@@ -604,7 +605,7 @@ export default function ProjectsWorkflowPage() {
   async function onAddEmployee() {
     if (!selectedProjectId || !selectedEmployeeId) return;
     setBusy(true);
-    setActionMessage('');
+    setActionFeedback(null);
     try {
       await assignEmployee(
         selectedProjectId,
@@ -616,9 +617,9 @@ export default function ProjectsWorkflowPage() {
       setEmployeeSearch('');
       setSelectedEmployeeId('');
       setProjectDriveLink('');
-      setActionMessage('Team member added successfully.');
+      setActionFeedback({ type: 'success', message: 'Team member added successfully.' });
     } catch (err) {
-      setActionMessage(err instanceof Error ? err.message : 'Failed to add employee');
+      setActionFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to add employee' });
     } finally {
       setBusy(false);
     }
@@ -627,13 +628,13 @@ export default function ProjectsWorkflowPage() {
   async function onRemoveEmployee(employeeIdToRemove: number) {
     if (!selectedProjectId) return;
     setBusy(true);
-    setActionMessage('');
+    setActionFeedback(null);
     try {
       await removeEmployee(selectedProjectId, employeeIdToRemove);
       await refreshProjects(selectedProjectId);
-      setActionMessage('Team member removed successfully.');
+      setActionFeedback({ type: 'success', message: 'Team member removed successfully.' });
     } catch (err) {
-      setActionMessage(err instanceof Error ? err.message : 'Failed to remove employee');
+      setActionFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to remove employee' });
     } finally {
       setBusy(false);
     }
@@ -647,7 +648,7 @@ export default function ProjectsWorkflowPage() {
       setMessages((prev) => [...prev, sent]);
       setChatDraft('');
     } catch (err) {
-      setActionMessage(err instanceof Error ? err.message : 'Failed to send message');
+      setActionFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to send message' });
     } finally {
       setChatLoading(false);
     }
@@ -735,9 +736,10 @@ export default function ProjectsWorkflowPage() {
         ))}
       </div>
 
-      {actionMessage && (
-        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
-          {actionMessage}
+      {actionFeedback?.type === 'success' && <SuccessFeedback title={actionFeedback.message} />}
+      {actionFeedback?.type === 'error' && (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+          {actionFeedback.message}
         </div>
       )}
 
@@ -808,6 +810,14 @@ export default function ProjectsWorkflowPage() {
               )}
             </div>
           </div>
+
+          {projectDetails.status === 'COMPLETED' && (
+            <SuccessFeedback
+              className="mb-4"
+              title="Project completed successfully"
+              description="All project work has been marked complete."
+            />
+          )}
 
           <div className="mb-5 flex flex-wrap gap-2 border-b border-slate-100 pb-3">
             {tabs
