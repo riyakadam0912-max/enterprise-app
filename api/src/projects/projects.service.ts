@@ -201,6 +201,21 @@ export class ProjectsService {
       };
     }
 
+    if (user.role === Role.MANAGER) {
+      return {
+        AND: [
+          baseWhere,
+          {
+            OR: [
+              { managerId: user.userId },
+              { coManagers: { some: { id: user.userId } } },
+              buWhere,
+            ],
+          },
+        ],
+      };
+    }
+
     return { AND: [roleWhere, buWhere] };
   }
 

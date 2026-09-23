@@ -347,6 +347,36 @@ describe('ProjectsService', () => {
         }),
       );
     });
+
+    it('should include directly assigned manager projects outside the active BU scope', async () => {
+      const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
+      projectDelegate.findMany.mockResolvedValueOnce([]);
+      jest
+        .spyOn((service as any).businessUnitsService, 'buildDirectBUWhere')
+        .mockReturnValue({
+          organizationId: 1,
+          businessUnitId: -1,
+        });
+
+      await service.findAll(mockManagerUser);
+
+      expect(projectDelegate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            AND: [
+              { organizationId: 1 },
+              {
+                OR: [
+                  { managerId: mockManagerUser.userId },
+                  { coManagers: { some: { id: mockManagerUser.userId } } },
+                  { organizationId: 1, businessUnitId: -1 },
+                ],
+              },
+            ],
+          },
+        }),
+      );
+    });
   });
 
   describe('findOne', () => {

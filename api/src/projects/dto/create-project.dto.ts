@@ -74,6 +74,11 @@ export class CreateProjectDto {
   ownerId?: number | null;
 
   @IsOptional()
+  @IsInt()
+  @ApiPropertyOptional({ description: 'Optional Business Unit ID.' })
+  businessUnitId?: number;
+
+  @IsOptional()
   @IsString()
   clientName?: string;
 
