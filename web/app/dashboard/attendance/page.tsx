@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { Pencil, Plus, Trash2, UserRound, X } from 'lucide-react';
 import { assignShift, AttendanceRecord, AttendanceStatus, createShift, deleteShift, getMonthlyAttendanceReport, getShifts, ShiftRecord, updateShift } from '@/api/attendanceApi';
 import { useAttendance, useCheckIn, useCheckOut, useTodayAttendance, useUpdateAttendance } from '@/hooks/useAttendance';
 import { useEmployees } from '@/hooks/useEmployees';
@@ -66,6 +67,10 @@ function formatShiftRangeForDisplay(row: AttendanceRecord) {
 
 function isShiftFormComplete(shift: { name: string; startTime: string; endTime: string }) {
   return Boolean(shift.name.trim() && shift.startTime && shift.endTime);
+}
+
+function weeklyHolidayLabel(day: number | null | undefined) {
+  return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day ?? 0] ?? 'Sunday';
 }
 
 function formatDateInput(value: string) {
@@ -304,6 +309,7 @@ export default function AttendancePage() {
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
   const [shifts, setShifts] = useState<ShiftRecord[]>([]);
   const [editingShift, setEditingShift] = useState<ShiftRecord | null>(null);
+  const [showCreateShift, setShowCreateShift] = useState(false);
   const [newShift, setNewShift] = useState({
     name: '',
     type: 'FIXED' as 'FIXED' | 'FLEXIBLE' | 'ROTATIONAL',
@@ -502,6 +508,7 @@ export default function AttendancePage() {
       setShifts(rows);
       setShiftSuccess('Shift created successfully.');
       setNewShift((prev) => ({ ...prev, name: '' }));
+      setShowCreateShift(false);
     } catch (err) {
       setShiftError(err instanceof Error ? err.message : 'Unable to create shift.');
     }
@@ -696,173 +703,95 @@ export default function AttendancePage() {
       )}
 
       {canManageShifts && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-4">
-          <h3 className="text-base font-semibold text-slate-900">Shift Management</h3>
-          <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
-            <label className="space-y-1">
-              <span className="sr-only">Shift name</span>
-              <input
-                id="new-shift-name"
-                name="new-shift-name"
-                value={newShift.name}
-                onChange={(e) => setNewShift((prev) => ({ ...prev, name: e.target.value }))}
-                placeholder="Shift name"
-                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="sr-only">Shift type</span>
-              <select
-                id="new-shift-type"
-                name="new-shift-type"
-                value={newShift.type}
-                onChange={(e) => setNewShift((prev) => ({ ...prev, type: e.target.value as 'FIXED' | 'FLEXIBLE' | 'ROTATIONAL' }))}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
-              >
-                <option value="FIXED">Fixed</option>
-                <option value="FLEXIBLE">Flexible</option>
-                <option value="ROTATIONAL">Rotational</option>
-              </select>
-            </label>
-            <label className="space-y-1">
-              <span className="sr-only">Start time</span>
-              <input
-                id="new-shift-start"
-                name="new-shift-start"
-                type="time"
-                value={newShift.startTime}
-                onChange={(e) => setNewShift((prev) => ({ ...prev, startTime: e.target.value }))}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="sr-only">End time</span>
-              <input
-                id="new-shift-end"
-                name="new-shift-end"
-                type="time"
-                value={newShift.endTime}
-                onChange={(e) => setNewShift((prev) => ({ ...prev, endTime: e.target.value }))}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="sr-only">Required hours</span>
-              <input
-                id="new-shift-hours"
-                name="new-shift-hours"
-                type="number"
-                value={newShift.requiredHours}
-                onChange={(e) => setNewShift((prev) => ({ ...prev, requiredHours: e.target.value }))}
-                placeholder="Hours"
-                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="sr-only">Weekly holiday</span>
-              <select
-                value={newShift.weeklyHolidayDay}
-                onChange={(e) => setNewShift((prev) => ({ ...prev, weeklyHolidayDay: e.target.value }))}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
-              >
-                <option value="0">Sunday holiday</option>
-                <option value="1">Monday holiday</option>
-                <option value="2">Tuesday holiday</option>
-                <option value="3">Wednesday holiday</option>
-                <option value="4">Thursday holiday</option>
-                <option value="5">Friday holiday</option>
-                <option value="6">Saturday holiday</option>
-              </select>
-            </label>
-            <button onClick={handleCreateShift} className="rounded-xl bg-orange-500 px-3 py-2.5 text-sm font-semibold text-white hover:bg-orange-600">Create Shift</button>
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">Shifts</h3>
+                <p className="text-xs text-slate-500">{shifts.length} configured {shifts.length === 1 ? 'shift' : 'shifts'}</p>
+              </div>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">Schedule setup</span>
+            </div>
+            <button onClick={() => setShowCreateShift(true)} className="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600">
+              <Plus aria-hidden="true" className="h-4 w-4" /> New shift
+            </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <label className="space-y-1">
-              <span className="sr-only">Select employee</span>
-              <select
-                id="assign-shift-employee"
-                name="assign-shift-employee"
-                value={assignEmployeeId}
-                onChange={(e) => setAssignEmployeeId(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
-              >
+          <div className="mt-3 flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 sm:flex-row">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <UserRound aria-hidden="true" className="ml-2 h-4 w-4 shrink-0 text-slate-400" />
+              <select value={assignEmployeeId} onChange={(e) => setAssignEmployeeId(e.target.value)} aria-label="Select employee" className="min-w-0 flex-1 bg-transparent px-1 py-2 text-sm text-slate-700 outline-none">
                 <option value="">Select employee</option>
                 {employeeOptions.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
               </select>
-            </label>
-            <label className="space-y-1">
-              <span className="sr-only">Select shift</span>
-              <select
-                id="assign-shift-shift"
-                name="assign-shift-shift"
-                value={assignShiftId}
-                onChange={(e) => setAssignShiftId(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
-              >
-                <option value="">Select shift</option>
-                {shifts.map((shift) => <option key={shift.id} value={shift.id}>{shift.name} ({shift.type})</option>)}
-              </select>
-            </label>
-            <button onClick={handleAssignShift} disabled={!assignEmployeeId || !assignShiftId} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Assign Shift</button>
+            </div>
+            <select value={assignShiftId} onChange={(e) => setAssignShiftId(e.target.value)} aria-label="Select shift" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+              <option value="">Select shift</option>
+              {shifts.map((shift) => <option key={shift.id} value={shift.id}>{shift.name}</option>)}
+            </select>
+            <button onClick={handleAssignShift} disabled={!assignEmployeeId || !assignShiftId} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-white disabled:opacity-50">Assign</button>
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-slate-200">
+          <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
-                <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
-                    <th className="px-4 py-3">Shift</th>
-                    <th className="px-4 py-3">Type</th>
-                    <th className="px-4 py-3">Time</th>
-                    <th className="px-4 py-3">Hours</th>
-                    <th className="px-4 py-3">Actions</th>
+                    <th className="px-3 py-2">Shift</th>
+                    <th className="px-3 py-2">Schedule</th>
+                    <th className="px-3 py-2">Weekly off</th>
+                    <th className="px-3 py-2 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
                   {shifts.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-4 py-10 text-center text-slate-500">No shifts created yet.</td>
+                    <tr><td colSpan={4} className="px-3 py-8 text-center text-sm text-slate-500">No shifts created yet.</td></tr>
+                  ) : shifts.map((shift) => (
+                    <tr key={shift.id} className="hover:bg-slate-50">
+                      <td className="px-3 py-2.5">
+                        <div className="font-medium text-slate-900">{shift.name}</div>
+                        <span className="text-xs text-slate-500">{shift.type} · {shift.requiredHours ?? '—'} hrs</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-slate-600">{shift.startTime && shift.endTime ? `${formatShiftTime(shift.startTime)}–${formatShiftTime(shift.endTime)}` : 'Flexible'}</td>
+                      <td className="px-3 py-2.5"><span className="inline-flex rounded-full bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">{weeklyHolidayLabel(shift.weeklyHolidayDay)}</span></td>
+                      <td className="px-3 py-2.5"><div className="flex justify-end gap-1">
+                        <button type="button" onClick={() => setEditingShift(shift)} aria-label={`Edit ${shift.name}`} title="Edit shift" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"><Pencil aria-hidden="true" className="h-4 w-4" /></button>
+                        <button type="button" onClick={() => handleDeleteShift(shift.id)} aria-label={`Delete ${shift.name}`} title="Delete shift" className="rounded-lg p-2 text-rose-500 hover:bg-rose-50 hover:text-rose-700"><Trash2 aria-hidden="true" className="h-4 w-4" /></button>
+                      </div></td>
                     </tr>
-                  ) : (
-                    shifts.map((shift) => (
-                      <tr key={shift.id} className="hover:bg-slate-50">
-                        <td className="px-4 py-3">
-                          <div className="font-medium text-slate-900">{shift.name}</div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{shift.type}</span>
-                        </td>
-                        <td className="px-4 py-3 text-slate-600">
-                          {shift.startTime && shift.endTime ? `${formatShiftTime(shift.startTime)} - ${formatShiftTime(shift.endTime)}` : 'Flexible'}
-                        </td>
-                        <td className="px-4 py-3 text-slate-600">{shift.requiredHours ?? '—'} hrs</td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => setEditingShift(shift)}
-                              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => handleDeleteShift(shift.id)}
-                              className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
+                  ))}
                 </tbody>
               </table>
             </div>
           </div>
 
-          {shiftError && <p id="shift-error" className="text-sm text-red-600">{shiftError}</p>}
-          {shiftSuccess && <p className="text-sm text-emerald-600">{shiftSuccess}</p>}
+          {shiftError && <p id="shift-error" className="mt-2 text-sm text-red-600">{shiftError}</p>}
+          {shiftSuccess && <p className="mt-2 text-sm text-emerald-600">{shiftSuccess}</p>}
+        </div>
+      )}
+
+      {showCreateShift && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-[2px]">
+          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div><h3 className="text-lg font-semibold text-slate-900">New shift</h3><p className="mt-1 text-xs text-slate-500">Set the working hours and weekly holiday.</p></div>
+              <button type="button" onClick={() => setShowCreateShift(false)} aria-label="Close new shift modal" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X aria-hidden="true" className="h-5 w-5" /></button>
+            </div>
+            <div className="grid gap-3 p-5 sm:grid-cols-2">
+              <input value={newShift.name} onChange={(e) => setNewShift((prev) => ({ ...prev, name: e.target.value }))} placeholder="Shift name" className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm sm:col-span-2" />
+              <select value={newShift.type} onChange={(e) => setNewShift((prev) => ({ ...prev, type: e.target.value as 'FIXED' | 'FLEXIBLE' | 'ROTATIONAL' }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm"><option value="FIXED">Fixed</option><option value="FLEXIBLE">Flexible</option><option value="ROTATIONAL">Rotational</option></select>
+              <input type="number" value={newShift.requiredHours} onChange={(e) => setNewShift((prev) => ({ ...prev, requiredHours: e.target.value }))} placeholder="Required hours" className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
+              <input type="time" value={newShift.startTime} onChange={(e) => setNewShift((prev) => ({ ...prev, startTime: e.target.value }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
+              <input type="time" value={newShift.endTime} onChange={(e) => setNewShift((prev) => ({ ...prev, endTime: e.target.value }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
+              <input type="number" value={newShift.minPresentHours} onChange={(e) => setNewShift((prev) => ({ ...prev, minPresentHours: e.target.value }))} placeholder="Minimum present hours" className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
+              <input type="number" value={newShift.gracePeriodMinutes} onChange={(e) => setNewShift((prev) => ({ ...prev, gracePeriodMinutes: e.target.value }))} placeholder="Grace period (min)" className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
+              <select value={newShift.weeklyHolidayDay} onChange={(e) => setNewShift((prev) => ({ ...prev, weeklyHolidayDay: e.target.value }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm sm:col-span-2"><option value="0">Sunday holiday</option><option value="1">Monday holiday</option><option value="2">Tuesday holiday</option><option value="3">Wednesday holiday</option><option value="4">Thursday holiday</option><option value="5">Friday holiday</option><option value="6">Saturday holiday</option></select>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
+              <button type="button" onClick={() => setShowCreateShift(false)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Cancel</button>
+              <button type="button" onClick={handleCreateShift} disabled={!newShift.name.trim()} className="rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">Create shift</button>
+            </div>
+          </div>
         </div>
       )}
 
