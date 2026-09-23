@@ -16,6 +16,7 @@ const STATUS_STYLES: Record<AttendanceStatus, string> = {
   ABSENT: 'bg-red-50 text-red-700 border-red-200',
   LEAVE: 'bg-sky-50 text-sky-700 border-sky-200',
   HALF_DAY: 'bg-amber-50 text-amber-700 border-amber-200',
+  WEEKLY_OFF: 'bg-violet-50 text-violet-700 border-violet-200',
 };
 
 type MonthlyReportStatus = AttendanceStatus | 'LATE' | '';
@@ -30,6 +31,7 @@ interface MonthlyAttendanceReportRow {
   lateCount: number;
   halfDayCount: number;
   leaveCount: number;
+  weeklyOffCount: number;
   workingDays: number;
   attendancePercent: number;
   overtimeHours?: number;
@@ -96,7 +98,7 @@ function StatCard({ label, value, tone, icon }: { label: string; value: number; 
 function StatusBadge({ status }: { status: AttendanceStatus }) {
   return (
     <span className={`inline-flex items-center px-2.5 py-1 rounded-full border text-xs font-semibold ${STATUS_STYLES[status]}`}>
-      {status === 'HALF_DAY' ? 'Half Day' : status.replace('_', ' ')}
+      {status === 'HALF_DAY' ? 'Half Day' : status === 'WEEKLY_OFF' ? 'Weekly Holiday' : status.replace('_', ' ')}
     </span>
   );
 }
@@ -255,6 +257,7 @@ function EditAttendanceModal(props: {
               <option value="ABSENT">Absent</option>
               <option value="HALF_DAY">Half Day</option>
               <option value="LEAVE">Leave</option>
+              <option value="WEEKLY_OFF">Weekly Holiday</option>
             </select>
           </div>
           <div>
@@ -638,6 +641,7 @@ export default function AttendancePage() {
                 <option value="LATE">Late</option>
                 <option value="HALF_DAY">Half Day</option>
                 <option value="LEAVE">Leave</option>
+                <option value="WEEKLY_OFF">Weekly Holiday</option>
               </select>
             </div>
           </div>

@@ -437,4 +437,61 @@ describe('AttendanceService', () => {
     expect(result.summary.present).toBeGreaterThanOrEqual(1);
     expect(result.summary.leave).toBeGreaterThanOrEqual(1);
   });
+
+  it('marks configured weekly holidays in the monthly calendar', async () => {
+    const mockEmployee = {
+      id: 4,
+      name: 'Dina',
+      department: 'Finance',
+      designation: 'Lead',
+      shift: {
+        id: 2,
+        name: 'Day',
+        type: 'FIXED',
+        startTime: '09:00',
+        endTime: '17:00',
+        requiredHours: 8,
+        minPresentHours: 5,
+        gracePeriodMinutes: 15,
+        weeklyHolidayDay: 0,
+      },
+    };
+    prisma.employee.findUnique.mockResolvedValue(mockEmployee);
+    prisma.employee.findFirst.mockResolvedValue(mockEmployee);
+    prisma.attendance.findMany.mockResolvedValue([]);
+    prisma.leaveRequest.findMany.mockResolvedValue([]);
+
+    const result = await service.getEmployeeAttendance(4, mockUser, '2026-03');
+
+    expect(result.days[0].status).toBe(AttendanceStatus.WEEKLY_OFF);
+    expect(result.summary.totalWorkingDays).toBe(26);
+  });
+
+  it('creates weekly-off rows during daily automation', async () => {
+    jest.setSystemTime(new Date('2026-03-02T12:00:00.000Z'));
+    const shift = {
+      id: 2,
+      name: 'Day',
+      type: 'FIXED',
+      startTime: '09:00',
+      endTime: '17:00',
+      requiredHours: 8,
+      minPresentHours: 5,
+      gracePeriodMinutes: 15,
+      weeklyHolidayDay: 0,
+    };
+    prisma.employee.findMany.mockResolvedValue([
+      { id: 4, organizationId: 1, shift },
+    ]);
+    prisma.attendance.findUnique.mockResolvedValue(null);
+    prisma.attendance.create.mockResolvedValue({ id: 301 });
+
+    await service.runDailyAutomation();
+
+    expect(prisma.attendance.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        status: AttendanceStatus.WEEKLY_OFF,
+      }),
+    });
+  });
 });

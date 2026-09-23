@@ -6,7 +6,7 @@ import { useMemo, useState } from 'react';
 import { AttendanceStatus } from '@/api/attendanceApi';
 import { useEmployeeAttendance } from '@/hooks/useAttendance';
 import { useAuthSession } from '@/stores/auth-store';
-import { formatShiftTime, formatShiftRange } from '@/lib/time-format';
+import { formatShiftRange } from '@/lib/time-format';
 
 const DAY_HEADERS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -15,7 +15,14 @@ const STATUS_CELL: Record<AttendanceStatus, string> = {
   ABSENT: 'bg-red-100 text-red-800 border-red-200',
   HALF_DAY: 'bg-amber-100 text-amber-800 border-amber-200',
   LEAVE: 'bg-sky-100 text-sky-800 border-sky-200',
+  WEEKLY_OFF: 'bg-violet-100 text-violet-800 border-violet-200',
 };
+
+function statusLabel(status: AttendanceStatus) {
+  if (status === 'HALF_DAY') return 'Half Day';
+  if (status === 'WEEKLY_OFF') return 'Weekly Holiday';
+  return status.charAt(0) + status.slice(1).toLowerCase();
+}
 
 function shiftMonth(month: string, delta: number) {
   const base = new Date(`${month}-01T00:00:00`);
@@ -123,7 +130,7 @@ export default function EmployeeAttendancePage() {
                     <div key={day.date} className={`min-h-28 rounded-2xl border p-3 ${STATUS_CELL[day.status]}`}>
                       <div className="flex items-start justify-between gap-2">
                         <span className="text-lg font-semibold">{day.day}</span>
-                        <span className="text-[10px] font-semibold uppercase tracking-wide">{day.status === 'HALF_DAY' ? 'Half Day' : day.status.toLowerCase()}</span>
+                        <span className="text-[10px] font-semibold uppercase tracking-wide">{statusLabel(day.status)}</span>
                       </div>
                       <div className="mt-4 space-y-1 text-xs">
                         <p>{day.checkIn ? `In ${new Date(day.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}` : 'No check-in'}</p>
@@ -137,10 +144,10 @@ export default function EmployeeAttendancePage() {
                   ))}
                 </div>
                 <div className="flex flex-wrap gap-3 pt-2">
-                  {(['PRESENT', 'ABSENT', 'HALF_DAY', 'LEAVE'] as AttendanceStatus[]).map((status) => (
+                  {(['PRESENT', 'ABSENT', 'HALF_DAY', 'LEAVE', 'WEEKLY_OFF'] as AttendanceStatus[]).map((status) => (
                     <div key={status} className="flex items-center gap-2 text-xs text-slate-600">
                       <span className={`w-3 h-3 rounded-full border ${STATUS_CELL[status]}`} />
-                      <span>{status === 'HALF_DAY' ? 'Half Day' : status.charAt(0) + status.slice(1).toLowerCase()}</span>
+                      <span>{statusLabel(status)}</span>
                     </div>
                   ))}
                 </div>

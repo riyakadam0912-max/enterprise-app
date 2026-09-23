@@ -230,6 +230,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     return Number(Math.max(0, requiredHours - workingHours).toFixed(2));
   }
 
+  private isWeeklyHoliday(day: Date, shift: ShiftLite | null | undefined) {
+    return shift?.weeklyHolidayDay === day.getDay();
+  }
+
   private buildSummary(rows: DailyAttendanceRow[]) {
     const summary = rows.reduce(
       (acc, row) => {
@@ -272,7 +276,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       absentDays: summary.absent,
       leaveDays: summary.leave,
       halfDays: summary.halfDay,
-      totalWorkingDays: rows.length,
+      totalWorkingDays: rows.filter(
+        (row) => row.status !== AttendanceStatus.WEEKLY_OFF,
+      ).length,
       overtimeHours: Number(summary.overtimeHours.toFixed(2)),
       shortfallHours: Number(summary.shortfallHours.toFixed(2)),
       totalWorkedHours: Number(summary.totalWorkedHours.toFixed(2)),
@@ -289,20 +295,23 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     shift?: ShiftLite | null;
     lateMinutes?: number;
   }) {
-    const { day, checkIn, checkOut, workingHours, onLeave, shift, lateMinutes = 0 } = params;
+    const {
+      day,
+      checkIn,
+      checkOut,
+      workingHours,
+      onLeave,
+      shift,
+      lateMinutes = 0,
+    } = params;
     if (onLeave) return AttendanceStatus.LEAVE;
-    
+
     // Check if today is the weekly holiday
-    if (shift?.weeklyHolidayDay !== undefined && shift.weeklyHolidayDay !== null) {
-      const dayOfWeek = day.getDay();
-      if (dayOfWeek === shift.weeklyHolidayDay) {
-        return AttendanceStatus.LEAVE;
-      }
-    }
-    
+    if (this.isWeeklyHoliday(day, shift)) return AttendanceStatus.WEEKLY_OFF;
+
     const minPresentHours = shift?.minPresentHours ?? 5;
     const halfDayThreshold = Math.max(1, minPresentHours / 2);
-    
+
     // If employee checked in late, mark as HALF_DAY
     if (lateMinutes > 0 && checkIn) {
       if (checkOut) {
@@ -316,7 +325,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           : AttendanceStatus.HALF_DAY;
       }
     }
-    
+
     if (checkIn && checkOut) {
       const worked = workingHours ?? 0;
       if (worked >= minPresentHours) return AttendanceStatus.PRESENT;
@@ -1325,7 +1334,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         .toFixed(2),
     );
 
-    const totalWorkingDays = attendanceRows.length;
+    const totalWorkingDays = attendanceRows.filter(
+      (row) => row.status !== AttendanceStatus.WEEKLY_OFF,
+    ).length;
 
     return {
       presentDays,
@@ -1410,6 +1421,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         lateCount: number;
         halfDayCount: number;
         leaveCount: number;
+        weeklyOffCount: number;
         workingDays: number;
         attendancePercent: number;
         totalWorkedHours: number;
@@ -1434,6 +1446,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         lateCount: 0,
         halfDayCount: 0,
         leaveCount: 0,
+        weeklyOffCount: 0,
         workingDays: 0,
         attendancePercent: 0,
         totalWorkedHours: 0,
@@ -1455,6 +1468,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             : true;
 
       if (!matchesStatus) continue;
+
+      if (row.status === AttendanceStatus.WEEKLY_OFF) {
+        entry.weeklyOffCount += 1;
+        continue;
+      }
 
       entry.workingDays += 1;
 
@@ -1655,7 +1673,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             employeeId: employee.id,
             shiftId: employee.shift.id,
             date: target,
-            status: leave ? AttendanceStatus.LEAVE : AttendanceStatus.ABSENT,
+            status: leave
+              ? AttendanceStatus.LEAVE
+              : this.isWeeklyHoliday(target, employee.shift)
+                ? AttendanceStatus.WEEKLY_OFF
+                : AttendanceStatus.ABSENT,
             requiredHours: employee.shift.requiredHours,
             isPaidLeave: leave ? Boolean(leave.isPaid ?? true) : null,
           },
@@ -1664,6 +1686,17 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       }
 
       if (existing.status === AttendanceStatus.LEAVE || leave) {
+        continue;
+      }
+
+      if (
+        this.isWeeklyHoliday(target, employee.shift) &&
+        existing.status !== AttendanceStatus.WEEKLY_OFF
+      ) {
+        await this.prisma.attendance.update({
+          where: { id: existing.id },
+          data: { status: AttendanceStatus.WEEKLY_OFF },
+        });
         continue;
       }
 

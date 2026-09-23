@@ -8,7 +8,7 @@ import {
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
-const STATUSES = ['PRESENT', 'ABSENT', 'HALF_DAY', 'LEAVE', 'LATE'] as const;
+const STATUSES = ['PRESENT', 'ABSENT', 'HALF_DAY', 'LEAVE', 'WEEKLY_OFF', 'LATE'] as const;
 
 export class QueryAttendanceDto {
   @IsOptional()
