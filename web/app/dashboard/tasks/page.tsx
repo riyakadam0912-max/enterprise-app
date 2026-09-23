@@ -9,6 +9,7 @@ import {
   sendTaskMessage,
   submitTaskWork,
   Task,
+  updateTask,
   updateTaskStatus,
 } from '@/api/tasksApi';
 import { useStableNow } from '@/hooks/useStableNow';
@@ -234,6 +235,7 @@ function TaskDetailModal({
   onStartTask,
   onSubmitTask,
   onReviewTask,
+  onEditTask,
   onUpdateStatus,
   onLoadMessages,
   onSendMessage,
@@ -248,6 +250,15 @@ function TaskDetailModal({
   onStartTask: (taskId: number) => Promise<void>;
   onSubmitTask: (taskId: number, payload: { submissionLink: string; note: string }) => Promise<void>;
   onReviewTask: (taskId: number, payload: { status: 'APPROVED' | 'REJECTED'; remarks: string }) => Promise<void>;
+  onEditTask: (taskId: number, payload: {
+    taskName: string;
+    category: string;
+    description: string;
+    links: string;
+    driveLink: string;
+    priority: string;
+    dueDate: string | null;
+  }) => Promise<void>;
   onUpdateStatus: (taskId: number, status: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED') => Promise<void>;
   onLoadMessages: (taskId: number) => Promise<ChatMessage[]>;
   onSendMessage: (taskId: number, content: string) => Promise<ChatMessage>;
@@ -258,6 +269,14 @@ function TaskDetailModal({
   const [submissionLink, setSubmissionLink] = useState('');
   const [reviewRemarks, setReviewRemarks] = useState('');
   const [statusDraft, setStatusDraft] = useState<TaskStatus>(normalizeTaskStatus(task?.status));
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editTaskName, setEditTaskName] = useState(task?.taskName ?? '');
+  const [editCategory, setEditCategory] = useState(task?.category ?? '');
+  const [editDescription, setEditDescription] = useState(task?.description ?? '');
+  const [editLinks, setEditLinks] = useState(task?.links ?? '');
+  const [editDriveLink, setEditDriveLink] = useState(task?.driveLink ?? '');
+  const [editPriority, setEditPriority] = useState(task?.priority ?? 'MEDIUM');
+  const [editDueDate, setEditDueDate] = useState(task?.dueDate?.slice(0, 10) ?? '');
   const [chatDraft, setChatDraft] = useState('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
@@ -353,6 +372,7 @@ function TaskDetailModal({
   const showEmployeeSubmit = isAssignee && ['IN_PROGRESS', 'REJECTED'].includes(taskStatus);
   const showAwaitingReview = taskStatus === 'SUBMITTED' && !isAssignee;
   const showApproved = taskStatus === 'APPROVED';
+  const isManagerOrAdmin = role === 'ADMIN' || role === 'MANAGER';
   const canReview = role === 'ADMIN' || role === 'MANAGER';
   const canChangeStatus = role === 'ADMIN' || role === 'MANAGER';
   const submissionDate = activeTask.updatedAt ?? activeTask.createdAt;
@@ -375,6 +395,20 @@ function TaskDetailModal({
 
   async function handleStatusChange() {
     await onUpdateStatus(activeTask.id, statusDraft);
+  }
+
+  async function handleEditSave() {
+    if (!editTaskName.trim()) return;
+    await onEditTask(activeTask.id, {
+      taskName: editTaskName.trim(),
+      category: editCategory.trim(),
+      description: editDescription,
+      links: editLinks,
+      driveLink: editDriveLink.trim(),
+      priority: editPriority,
+      dueDate: editDueDate || null,
+    });
+    setShowEditForm(false);
   }
 
   async function handleSendChat() {
@@ -503,6 +537,37 @@ function TaskDetailModal({
                     {task.description?.trim() ? task.description : 'No instructions provided.'}
                   </div>
                 </div>
+
+                {isManagerOrAdmin && !showEditForm && (
+                  <Button variant="outline" onClick={() => setShowEditForm(true)}>
+                    Edit task
+                  </Button>
+                )}
+
+                {isManagerOrAdmin && showEditForm && (
+                  <div className="space-y-3 rounded-2xl border border-blue-200 bg-blue-50/40 p-5">
+                    <p className="text-sm font-semibold text-slate-900">Edit task details</p>
+                    <input value={editTaskName} onChange={(e) => setEditTaskName(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="Task title" />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <input value={editCategory} onChange={(e) => setEditCategory(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="Category" />
+                      <select value={editPriority} onChange={(e) => setEditPriority(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
+                        <option value="LOW">LOW</option>
+                        <option value="MEDIUM">MEDIUM</option>
+                        <option value="HIGH">HIGH</option>
+                      </select>
+                    </div>
+                    <textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={4} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="Description and instructions" />
+                    <input value={editLinks} onChange={(e) => setEditLinks(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="Reference links, comma separated" />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <input type="url" value={editDriveLink} onChange={(e) => setEditDriveLink(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="Google Drive link" />
+                      <input type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button onClick={() => void handleEditSave()} disabled={busy || !editTaskName.trim()}>Save changes</Button>
+                      <Button variant="outline" onClick={() => setShowEditForm(false)}>Cancel</Button>
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Reference Links</p>
@@ -988,6 +1053,31 @@ export default function AllTasksPage() {
     }
   }
 
+  async function handleEditTask(taskId: number, payload: {
+    taskName: string;
+    category: string;
+    description: string;
+    links: string;
+    driveLink: string;
+    priority: string;
+    dueDate: string | null;
+  }) {
+    setBusy(true);
+    try {
+      const updated = await updateTask(taskId, {
+        ...payload,
+        driveLink: payload.driveLink || undefined,
+      });
+      updateTaskInState(taskId, (task) => ({ ...task, ...updated }));
+      toast.success('Task updated', 'Task details saved successfully');
+      void loadTasks();
+    } catch (error) {
+      if (!handleTaskActionError(error)) throw error;
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const loadTaskMessages = useCallback(async (taskId: number): Promise<ChatMessage[]> => {
     const messages = await getTaskMessages(taskId);
     return messages.map((message) => ({
@@ -1120,6 +1210,7 @@ export default function AllTasksPage() {
           onStartTask={handleStart}
           onSubmitTask={handleSubmit}
           onReviewTask={handleReview}
+          onEditTask={handleEditTask}
           onUpdateStatus={handleStatusUpdate}
           onLoadMessages={loadTaskMessages}
           onSendMessage={sendTaskChatMessage}

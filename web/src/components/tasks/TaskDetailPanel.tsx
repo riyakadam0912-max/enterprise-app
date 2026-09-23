@@ -39,7 +39,15 @@ type TaskDetailPanelProps = {
   onStartTask: (taskId: number) => Promise<void> | void;
   onSubmitTask: (taskId: number, payload: { submissionLink: string; note: string }) => Promise<void> | void;
   onReviewTask: (taskId: number, payload: { status: 'APPROVED' | 'REJECTED'; remarks: string }) => Promise<void> | void;
-  onEditTask?: (taskId: number, payload: { description: string; links: string }) => Promise<void> | void;
+  onEditTask?: (taskId: number, payload: {
+    taskName: string;
+    category: string;
+    description: string;
+    links: string;
+    driveLink: string;
+    priority: string;
+    dueDate: string | null;
+  }) => Promise<void> | void;
   onUpdateStatus?: (taskId: number, status: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED') => Promise<void> | void;
   busy?: boolean;
 };
@@ -120,7 +128,15 @@ type TaskDetailPanelBodyProps = {
   onStartTask: (taskId: number) => Promise<void> | void;
   onSubmitTask: (taskId: number, payload: { submissionLink: string; note: string }) => Promise<void> | void;
   onReviewTask: (taskId: number, payload: { status: 'APPROVED' | 'REJECTED'; remarks: string }) => Promise<void> | void;
-  onEditTask?: (taskId: number, payload: { description: string; links: string }) => Promise<void> | void;
+  onEditTask?: (taskId: number, payload: {
+    taskName: string;
+    category: string;
+    description: string;
+    links: string;
+    driveLink: string;
+    priority: string;
+    dueDate: string | null;
+  }) => Promise<void> | void;
   onUpdateStatus?: (taskId: number, status: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED') => Promise<void> | void;
   busy?: boolean;
 };
@@ -142,8 +158,13 @@ function TaskDetailPanelBody({
   const [showSubmitForm, setShowSubmitForm] = useState(false);
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
+  const [editTaskName, setEditTaskName] = useState(task.taskName);
+  const [editCategory, setEditCategory] = useState(task.category ?? '');
   const [editDescription, setEditDescription] = useState(task.description ?? '');
   const [editLinks, setEditLinks] = useState(task.links ?? '');
+  const [editDriveLink, setEditDriveLink] = useState(task.driveLink ?? '');
+  const [editPriority, setEditPriority] = useState(task.priority ?? 'MEDIUM');
+  const [editDueDate, setEditDueDate] = useState(task.dueDate?.slice(0, 10) ?? '');
   const [submissionNote, setSubmissionNote] = useState('');
   const [submissionLink, setSubmissionLink] = useState('');
   const [reviewRemarks, setReviewRemarks] = useState('');
@@ -248,6 +269,25 @@ function TaskDetailPanelBody({
             )}
             {showEditForm && (
               <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+                <input
+                  value={editTaskName}
+                  onChange={(event) => setEditTaskName(event.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  placeholder="Task title"
+                />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input
+                    value={editCategory}
+                    onChange={(event) => setEditCategory(event.target.value)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    placeholder="Category"
+                  />
+                  <select value={editPriority} onChange={(event) => setEditPriority(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                    <option value="LOW">LOW</option>
+                    <option value="MEDIUM">MEDIUM</option>
+                    <option value="HIGH">HIGH</option>
+                  </select>
+                </div>
                 <textarea
                   value={editDescription}
                   onChange={(event) => setEditDescription(event.target.value)}
@@ -261,14 +301,23 @@ function TaskDetailPanelBody({
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                   placeholder="Reference links separated by commas"
                 />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input type="url" value={editDriveLink} onChange={(event) => setEditDriveLink(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Google Drive link" />
+                  <input type="date" value={editDueDate} onChange={(event) => setEditDueDate(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                </div>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     disabled={busy}
                     onClick={async () => {
                       await onEditTask?.(task.id, {
+                        taskName: editTaskName.trim(),
+                        category: editCategory.trim(),
                         description: editDescription,
                         links: editLinks,
+                        driveLink: editDriveLink.trim(),
+                        priority: editPriority,
+                        dueDate: editDueDate || null,
                       });
                       setShowEditForm(false);
                     }}

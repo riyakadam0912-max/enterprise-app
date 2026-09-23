@@ -38,6 +38,7 @@ type TaskPanelData = {
   category?: string | null;
   description?: string | null;
   links?: string | null;
+  driveLink?: string | null;
   assignee?: string | null;
   assignedToUserId?: number | null;
   assignedToUser?: { id: number; name: string; email: string } | null;
@@ -125,6 +126,18 @@ export default function ProjectsWorkflowPage() {
   const [error, setError] = useState('');
   const [actionMessage, setActionMessage] = useState('');
   const [showProjectEdit, setShowProjectEdit] = useState(false);
+  const [projectNameDraft, setProjectNameDraft] = useState('');
+  const [projectStartDateDraft, setProjectStartDateDraft] = useState('');
+  const [projectEndDateDraft, setProjectEndDateDraft] = useState('');
+  const [projectClientNameDraft, setProjectClientNameDraft] = useState('');
+  const [projectCategoryDraft, setProjectCategoryDraft] = useState('');
+  const [projectTypeDraft, setProjectTypeDraft] = useState('');
+  const [projectSpecificTaskDraft, setProjectSpecificTaskDraft] = useState('');
+  const [projectPriorityDraft, setProjectPriorityDraft] = useState('');
+  const [projectBudgetDraft, setProjectBudgetDraft] = useState('');
+  const [projectRemarksDraft, setProjectRemarksDraft] = useState('');
+  const [projectFinalDeliverablesDraft, setProjectFinalDeliverablesDraft] = useState('');
+  const [projectClientDraft, setProjectClientDraft] = useState('');
   const [projectDescriptionDraft, setProjectDescriptionDraft] = useState('');
   const [projectDriveLinkDraft, setProjectDriveLinkDraft] = useState('');
 
@@ -157,7 +170,6 @@ export default function ProjectsWorkflowPage() {
   const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN';
   const isManager = role === 'MANAGER';
   const isEmployee = role === 'EMPLOYEE';
-  const canManageProject = isAdmin || isManager;
   const canLoadDirectoryData = canAccessUsers(role);
   const primaryManagerId = projectDetails?.managerId ?? null;
   const coManagers = useMemo(() => projectDetails?.coManagers ?? [], [projectDetails?.coManagers]);
@@ -166,6 +178,7 @@ export default function ProjectsWorkflowPage() {
   const coManagerIds = new Set((projectDetails?.coManagers ?? []).map((manager) => manager.id));
   const isPrimaryManager = isManager && projectDetails?.managerId === userId;
   const isCoManager = isManager && userId != null && coManagerIds.has(userId);
+  const canManageProject = isAdmin || isPrimaryManager || isCoManager;
   const canEditTeam = isAdmin || isPrimaryManager || isCoManager;
   const canEditCoManagers = isAdmin || isPrimaryManager;
   const isAssignedEmployee = employeeId != null && (projectDetails?.assignedEmployees ?? []).some((employee) => employee.id === employeeId);
@@ -179,6 +192,18 @@ export default function ProjectsWorkflowPage() {
     setMessages([]);
     const details = await getProject(projectId);
     setProjectDetails(details);
+    setProjectNameDraft(details.projectName ?? '');
+    setProjectStartDateDraft(details.startDate?.slice(0, 10) ?? '');
+    setProjectEndDateDraft((details.endDate ?? details.deadline)?.slice(0, 10) ?? '');
+    setProjectClientNameDraft(details.clientName ?? '');
+    setProjectCategoryDraft(details.category ?? '');
+    setProjectTypeDraft(details.projectType ?? '');
+    setProjectSpecificTaskDraft(details.specificTask ?? '');
+    setProjectPriorityDraft(details.priority ?? '');
+    setProjectBudgetDraft(details.budget == null ? '' : String(details.budget));
+    setProjectRemarksDraft(details.remarks ?? '');
+    setProjectFinalDeliverablesDraft(details.finalDeliverablesLink ?? '');
+    setProjectClientDraft(details.client ?? '');
     setProjectDescriptionDraft(details.description ?? '');
     setProjectDriveLinkDraft(details.driveLink ?? '');
     setManagerSelection(details.managerId ? String(details.managerId) : '');
@@ -383,6 +408,18 @@ export default function ProjectsWorkflowPage() {
     setBusy(true);
     try {
       await updateProject(selectedProjectId, {
+        projectName: projectNameDraft.trim(),
+        startDate: projectStartDateDraft || undefined,
+        endDate: projectEndDateDraft || undefined,
+        clientName: projectClientNameDraft.trim() || undefined,
+        category: projectCategoryDraft.trim() || undefined,
+        projectType: projectTypeDraft || undefined,
+        specificTask: projectSpecificTaskDraft.trim() || undefined,
+        priority: projectPriorityDraft.trim() || undefined,
+        budget: projectBudgetDraft === '' ? undefined : Number(projectBudgetDraft),
+        remarks: projectRemarksDraft.trim() || undefined,
+        finalDeliverablesLink: projectFinalDeliverablesDraft.trim() || undefined,
+        client: projectClientDraft.trim() || undefined,
         description: projectDescriptionDraft,
         driveLink: projectDriveLinkDraft || undefined,
       });
@@ -396,8 +433,19 @@ export default function ProjectsWorkflowPage() {
     }
   }
 
-  async function onEditTask(taskId: number, payload: { description: string; links: string }) {
-    await updateTask(taskId, payload);
+  async function onEditTask(taskId: number, payload: {
+    taskName: string;
+    category: string;
+    description: string;
+    links: string;
+    driveLink: string;
+    priority: string;
+    dueDate: string | null;
+  }) {
+    await updateTask(taskId, {
+      ...payload,
+      driveLink: payload.driveLink || undefined,
+    });
     if (selectedProjectId) await loadProjectDetails(selectedProjectId);
   }
 
@@ -679,6 +727,15 @@ export default function ProjectsWorkflowPage() {
               <p className="text-sm text-slate-500">Project details and execution controls</p>
             </div>
             <div className="flex flex-wrap gap-2">
+              {canManageProject && (
+                <button
+                  type="button"
+                  onClick={() => setShowProjectEdit(true)}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Edit project
+                </button>
+              )}
               {isAdmin && (
                 <>
                   <select
@@ -782,8 +839,41 @@ export default function ProjectsWorkflowPage() {
                   </div>
                   {showProjectEdit ? (
                     <div className="space-y-3">
+                      <input value={projectNameDraft} onChange={(event) => setProjectNameDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Project name" />
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <input type="date" value={projectStartDateDraft} onChange={(event) => setProjectStartDateDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                        <input type="date" value={projectEndDateDraft} onChange={(event) => setProjectEndDateDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <input value={projectClientNameDraft} onChange={(event) => setProjectClientNameDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Client name" />
+                        <input value={projectCategoryDraft} onChange={(event) => setProjectCategoryDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Category" />
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <input value={projectSpecificTaskDraft} onChange={(event) => setProjectSpecificTaskDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Primary project task" />
+                        <input value={projectClientDraft} onChange={(event) => setProjectClientDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Client reference" />
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <select value={projectTypeDraft} onChange={(event) => setProjectTypeDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                          <option value="">Project type</option>
+                          <option value="EVENT_MANAGEMENT">EVENT MANAGEMENT</option>
+                          <option value="PRODUCTION_EM">PRODUCTION EM</option>
+                          <option value="DIGITAL_MARKETING">DIGITAL MARKETING</option>
+                          <option value="PRODUCTION_DM">PRODUCTION DM</option>
+                          <option value="PRODUCTION_OTHER">PRODUCTION OTHER</option>
+                          <option value="TECH_PROJECTS">TECH PROJECTS</option>
+                        </select>
+                        <select value={projectPriorityDraft} onChange={(event) => setProjectPriorityDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                          <option value="">Priority</option>
+                          <option value="LOW">LOW</option>
+                          <option value="MEDIUM">MEDIUM</option>
+                          <option value="HIGH">HIGH</option>
+                        </select>
+                      </div>
+                      <input type="number" min="0" value={projectBudgetDraft} onChange={(event) => setProjectBudgetDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Budget" />
                       <textarea value={projectDescriptionDraft} onChange={(event) => setProjectDescriptionDraft(event.target.value)} rows={5} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Project summary and description" />
-                      <input value={projectDriveLinkDraft} onChange={(event) => setProjectDriveLinkDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Drive link" />
+                      <textarea value={projectRemarksDraft} onChange={(event) => setProjectRemarksDraft(event.target.value)} rows={3} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Remarks" />
+                      <input value={projectDriveLinkDraft} onChange={(event) => setProjectDriveLinkDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Google Drive link" />
+                      <input value={projectFinalDeliverablesDraft} onChange={(event) => setProjectFinalDeliverablesDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Final deliverables link" />
                       <div className="flex gap-2">
                         <button type="button" disabled={busy} onClick={onSaveProjectEdit} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Save changes</button>
                         <button type="button" onClick={() => setShowProjectEdit(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>
