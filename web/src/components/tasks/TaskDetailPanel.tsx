@@ -1,10 +1,17 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { UserIdentity } from '@/components/common/UserIdentity';
 
 type DashboardRole = 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
 type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+type TaskChatMessage = {
+  id: string;
+  senderId: number;
+  senderName: string;
+  content: string;
+  createdAt: string;
+};
 
 type TaskLike = {
   id: number;
@@ -48,6 +55,8 @@ type TaskDetailPanelProps = {
     priority: string;
     dueDate: string | null;
   }) => Promise<void> | void;
+  onLoadMessages?: (taskId: number) => Promise<TaskChatMessage[]>;
+  onSendMessage?: (taskId: number, content: string) => Promise<TaskChatMessage>;
   onUpdateStatus?: (taskId: number, status: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED') => Promise<void> | void;
   busy?: boolean;
 };
@@ -98,6 +107,8 @@ export function TaskDetailPanel({
   onSubmitTask,
   onReviewTask,
   onEditTask,
+  onLoadMessages,
+  onSendMessage,
   onUpdateStatus,
   busy = false,
 }: TaskDetailPanelProps) {
@@ -137,6 +148,8 @@ type TaskDetailPanelBodyProps = {
     priority: string;
     dueDate: string | null;
   }) => Promise<void> | void;
+  onLoadMessages?: (taskId: number) => Promise<TaskChatMessage[]>;
+  onSendMessage?: (taskId: number, content: string) => Promise<TaskChatMessage>;
   onUpdateStatus?: (taskId: number, status: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED') => Promise<void> | void;
   busy?: boolean;
 };
@@ -150,6 +163,8 @@ function TaskDetailPanelBody({
   onSubmitTask,
   onReviewTask,
   onEditTask,
+  onLoadMessages,
+  onSendMessage,
   onUpdateStatus,
   busy = false,
 }: TaskDetailPanelBodyProps) {
@@ -169,6 +184,11 @@ function TaskDetailPanelBody({
   const [submissionLink, setSubmissionLink] = useState('');
   const [reviewRemarks, setReviewRemarks] = useState('');
   const [statusDraft, setStatusDraft] = useState<TaskStatus>(() => normalizeTaskStatus(task.status));
+  const [chatMessages, setChatMessages] = useState<TaskChatMessage[]>([]);
+  const [chatDraft, setChatDraft] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState('');
+  const [chatTab, setChatTab] = useState(false);
 
   const isEmployee = role === 'EMPLOYEE';
   const isManagerOrAdmin = role === 'ADMIN' || role === 'MANAGER';
@@ -182,6 +202,58 @@ function TaskDetailPanelBody({
   const showAwaitingReview = taskStatus === 'SUBMITTED';
   const showApproved = taskStatus === 'APPROVED';
   const showRejectResubmit = canEmployeeAct && taskStatus === 'REJECTED';
+
+  useEffect(() => {
+    setChatMessages([]);
+    setChatDraft('');
+    setChatError('');
+    setChatTab(false);
+  }, [task.id]);
+
+  useEffect(() => {
+    if (!chatTab || !onLoadMessages) return;
+    let cancelled = false;
+    let timer: number | null = null;
+
+    const loadMessages = async (showLoading: boolean) => {
+      if (showLoading) setChatLoading(true);
+      try {
+        const messages = await onLoadMessages(task.id);
+        if (!cancelled) {
+          setChatMessages(messages);
+          setChatError('');
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setChatError(error instanceof Error ? error.message : 'Unable to load task messages.');
+        }
+      } finally {
+        if (!cancelled) {
+          setChatLoading(false);
+          timer = window.setTimeout(() => void loadMessages(false), 5000);
+        }
+      }
+    };
+
+    void loadMessages(true);
+    return () => {
+      cancelled = true;
+      if (timer != null) window.clearTimeout(timer);
+    };
+  }, [chatTab, onLoadMessages, task.id]);
+
+  async function handleSendChat() {
+    const content = chatDraft.trim();
+    if (!content || !onSendMessage) return;
+    try {
+      const message = await onSendMessage(task.id, content);
+      setChatMessages((previous) => [...previous, message]);
+      setChatDraft('');
+      setChatError('');
+    } catch (error) {
+      setChatError(error instanceof Error ? error.message : 'Unable to send task message.');
+    }
+  }
 
   const links = task.links;
   const referenceLinks = useMemo(() => {
@@ -217,6 +289,58 @@ function TaskDetailPanelBody({
             X
           </button>
         </div>
+
+        <div className="border-b border-slate-200 px-5 sm:px-6">
+          <button
+            type="button"
+            onClick={() => setChatTab((current) => !current)}
+            disabled={!onLoadMessages || !onSendMessage}
+            className={`border-b-2 px-1 py-3 text-sm font-semibold ${chatTab ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-900'} disabled:cursor-not-allowed disabled:opacity-50`}
+          >
+            Task chat
+          </button>
+        </div>
+
+        {chatTab && (
+          <div className="space-y-3 border-b border-slate-200 px-5 py-4 sm:px-6">
+            <div className="h-64 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              {chatLoading ? (
+                <div className="flex h-full items-center justify-center text-sm text-slate-500">Loading messages...</div>
+              ) : chatMessages.length === 0 ? (
+                <div className="flex h-full items-center justify-center text-sm text-slate-500">No messages yet. Start the conversation.</div>
+              ) : (
+                <div className="space-y-3">
+                  {chatMessages.map((message) => (
+                    <div key={message.id} className={`flex ${message.senderId === currentUserId ? 'justify-end' : 'justify-start'}`}>
+                      <div className="max-w-[80%]">
+                        <p className="mb-1 text-[11px] text-slate-500">{message.senderId === currentUserId ? 'You' : message.senderName}</p>
+                        <p className={`rounded-2xl px-3 py-2 text-sm ${message.senderId === currentUserId ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-800'}`}>{message.content}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {chatError && <p className="text-sm text-rose-600">{chatError}</p>}
+            <div className="flex gap-2">
+              <input
+                value={chatDraft}
+                onChange={(event) => setChatDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    void handleSendChat();
+                  }
+                }}
+                className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                placeholder="Write a message..."
+              />
+              <button type="button" onClick={() => void handleSendChat()} disabled={!chatDraft.trim() || chatLoading} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                Send
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="max-h-[calc(100vh-10rem)] overflow-y-auto space-y-4 px-5 py-5 sm:px-6">
           <div className="flex flex-wrap gap-2">

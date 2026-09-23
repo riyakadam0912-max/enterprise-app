@@ -20,7 +20,7 @@ import {
   updateProjectStatus,
   updateProject,
 } from '@/api/projectsApi';
-import { createTask, reviewTask, submitTaskWork, updateTask, updateTaskStatus } from '@/api/tasksApi';
+import { createTask, getTaskMessages, reviewTask, sendTaskMessage, submitTaskWork, updateTask, updateTaskStatus } from '@/api/tasksApi';
 import { apiClient } from '@/api/apiClient';
 import { TaskDetailPanel } from '@/components/tasks/TaskDetailPanel';
 import { canAccessUsers } from '@/utils/auth/permissions';
@@ -447,6 +447,28 @@ export default function ProjectsWorkflowPage() {
       driveLink: payload.driveLink || undefined,
     });
     if (selectedProjectId) await loadProjectDetails(selectedProjectId);
+  }
+
+  async function onLoadTaskMessages(taskId: number) {
+    const messages = await getTaskMessages(taskId);
+    return messages.map((message) => ({
+      id: message.id,
+      senderId: message.senderId,
+      senderName: message.sender.name,
+      content: message.content,
+      createdAt: message.createdAt,
+    }));
+  }
+
+  async function onSendTaskMessage(taskId: number, content: string) {
+    const message = await sendTaskMessage(taskId, content);
+    return {
+      id: message.id,
+      senderId: message.senderId,
+      senderName: message.sender.name,
+      content: message.content,
+      createdAt: message.createdAt,
+    };
   }
 
   async function onMarkAsComplete() {
@@ -1090,6 +1112,8 @@ export default function ProjectsWorkflowPage() {
                 }}
                 onReviewTask={(taskId, payload) => onReviewTask(taskId, payload)}
                 onEditTask={onEditTask}
+                onLoadMessages={onLoadTaskMessages}
+                onSendMessage={onSendTaskMessage}
                 onUpdateStatus={onTaskStatusChange}
                 busy={busy}
               />

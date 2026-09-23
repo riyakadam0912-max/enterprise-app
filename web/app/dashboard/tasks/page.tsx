@@ -280,6 +280,7 @@ function TaskDetailModal({
   const [chatDraft, setChatDraft] = useState('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState('');
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const chatIntervalRef = useRef<number | null>(null);
   const currentTime = useStableNow();
@@ -295,6 +296,8 @@ function TaskDetailModal({
       setSubmissionLink('');
       setReviewRemarks('');
       setStatusDraft(normalizeTaskStatus(task?.status));
+      setChatMessages([]);
+      setChatError('');
     }, 0);
 
     return () => window.clearTimeout(timeout);
@@ -306,18 +309,30 @@ function TaskDetailModal({
   useEffect(() => {
     if (activeTab !== 'chat' || activeTaskId == null) return;
     let cancelled = false;
-    queueMicrotask(() => {
-      if (!cancelled) setChatLoading(true);
-    });
-    void onLoadMessages(activeTaskId)
-      .then((messages) => {
-        if (!cancelled) setChatMessages(messages);
-      })
-      .finally(() => {
-        if (!cancelled) setChatLoading(false);
-      });
+    const loadMessages = async (showLoading: boolean) => {
+      if (showLoading) setChatLoading(true);
+      try {
+        const messages = await onLoadMessages(activeTaskId);
+        if (!cancelled) {
+          setChatMessages(messages);
+          setChatError('');
+        }
+      } catch (error) {
+        if (!cancelled) setChatError(error instanceof Error ? error.message : 'Unable to load task messages.');
+      } finally {
+        if (!cancelled) {
+          setChatLoading(false);
+          chatIntervalRef.current = window.setTimeout(() => void loadMessages(false), 5000);
+        }
+      }
+    };
+    void loadMessages(true);
     return () => {
       cancelled = true;
+      if (chatIntervalRef.current) {
+        window.clearTimeout(chatIntervalRef.current);
+        chatIntervalRef.current = null;
+      }
     };
   }, [activeTab, activeTaskId, onLoadMessages]);
 
@@ -413,9 +428,14 @@ function TaskDetailModal({
 
   async function handleSendChat() {
     if (!chatDraft.trim()) return;
-    const message = await onSendMessage(activeTask.id, chatDraft.trim());
-    setChatMessages((previous) => [...previous, message]);
-    setChatDraft('');
+    try {
+      const message = await onSendMessage(activeTask.id, chatDraft.trim());
+      setChatMessages((previous) => [...previous, message]);
+      setChatDraft('');
+      setChatError('');
+    } catch (error) {
+      setChatError(error instanceof Error ? error.message : 'Unable to send task message.');
+    }
   }
 
   return createPortal(
@@ -825,6 +845,8 @@ function TaskDetailModal({
                     </div>
                   )}
                 </div>
+
+                {chatError && <p className="mb-3 text-sm text-rose-600">{chatError}</p>}
 
                 <div className="border-t border-slate-200 pt-4">
                   <div className="flex gap-2">
