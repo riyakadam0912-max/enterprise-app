@@ -902,9 +902,9 @@ export default function ProjectsWorkflowPage() {
                       </p>
                     )}
                     {projectDetails.driveLink && (
-                      <p>
+                      <p className="text-blue-600">
                         Drive:{' '}
-                        <a href={projectDetails.driveLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                        <a href={projectDetails.driveLink} target="_blank" rel="noopener noreferrer" className="font-medium text-blue-600 hover:text-blue-700 hover:underline">
                           Open
                         </a>
                       </p>
