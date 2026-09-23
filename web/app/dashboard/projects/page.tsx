@@ -18,8 +18,9 @@ import {
   removeEmployee,
   sendMessage,
   updateProjectStatus,
+  updateProject,
 } from '@/api/projectsApi';
-import { createTask, reviewTask, submitTaskWork, updateTaskStatus } from '@/api/tasksApi';
+import { createTask, reviewTask, submitTaskWork, updateTask, updateTaskStatus } from '@/api/tasksApi';
 import { apiClient } from '@/api/apiClient';
 import { TaskDetailPanel } from '@/components/tasks/TaskDetailPanel';
 import { canAccessUsers } from '@/utils/auth/permissions';
@@ -123,6 +124,9 @@ export default function ProjectsWorkflowPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionMessage, setActionMessage] = useState('');
+  const [showProjectEdit, setShowProjectEdit] = useState(false);
+  const [projectDescriptionDraft, setProjectDescriptionDraft] = useState('');
+  const [projectDriveLinkDraft, setProjectDriveLinkDraft] = useState('');
 
   const [managers, setManagers] = useState<Array<{ id: number; name: string; role: string }>>([]);
   const [employees, setEmployees] = useState<Array<{ id: number; userId: number | null; name: string; email: string | null; department: string | null; designation: string | null }>>([]);
@@ -175,6 +179,8 @@ export default function ProjectsWorkflowPage() {
     setMessages([]);
     const details = await getProject(projectId);
     setProjectDetails(details);
+    setProjectDescriptionDraft(details.description ?? '');
+    setProjectDriveLinkDraft(details.driveLink ?? '');
     setManagerSelection(details.managerId ? String(details.managerId) : '');
     if (canManageProject) {
       try {
@@ -370,6 +376,29 @@ export default function ProjectsWorkflowPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function onSaveProjectEdit() {
+    if (!selectedProjectId) return;
+    setBusy(true);
+    try {
+      await updateProject(selectedProjectId, {
+        description: projectDescriptionDraft,
+        driveLink: projectDriveLinkDraft || undefined,
+      });
+      await refreshProjects(selectedProjectId);
+      setShowProjectEdit(false);
+      setActionMessage('Project details updated successfully.');
+    } catch (err) {
+      setActionMessage(err instanceof Error ? err.message : 'Failed to update project');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onEditTask(taskId: number, payload: { description: string; links: string }) {
+    await updateTask(taskId, payload);
+    if (selectedProjectId) await loadProjectDetails(selectedProjectId);
   }
 
   async function onMarkAsComplete() {
@@ -745,8 +774,23 @@ export default function ProjectsWorkflowPage() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <article className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Project Summary</p>
-                  <p className="text-sm text-slate-700">{projectDetails.description ?? 'No description available.'}</p>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Project Summary</p>
+                    {canManageProject && !showProjectEdit && (
+                      <button type="button" onClick={() => setShowProjectEdit(true)} className="text-sm font-semibold text-blue-600 hover:underline">Edit</button>
+                    )}
+                  </div>
+                  {showProjectEdit ? (
+                    <div className="space-y-3">
+                      <textarea value={projectDescriptionDraft} onChange={(event) => setProjectDescriptionDraft(event.target.value)} rows={5} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Project summary and description" />
+                      <input value={projectDriveLinkDraft} onChange={(event) => setProjectDriveLinkDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Drive link" />
+                      <div className="flex gap-2">
+                        <button type="button" disabled={busy} onClick={onSaveProjectEdit} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Save changes</button>
+                        <button type="button" onClick={() => setShowProjectEdit(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>
+                      </div>
+                    </div>
+                  ) : null}
+                  <p className="whitespace-pre-wrap wrap-break-word text-sm text-slate-700">{projectDetails.description ?? 'No description available.'}</p>
                   <div className="mt-4 space-y-1 text-sm text-slate-600">
                     <p>Start: {formatDate(projectDetails.startDate)}</p>
                     <p>Deadline: {formatDate(projectDetails.deadline ?? projectDetails.endDate)}</p>
@@ -774,6 +818,22 @@ export default function ProjectsWorkflowPage() {
                           Open
                         </a>
                       </p>
+                    )}
+                    {projectDetails.links && projectDetails.links.length > 0 && (
+                      <div className="space-y-1 pt-2">
+                        <p className="font-medium text-slate-700">Reference links:</p>
+                        {projectDetails.links.map((link) => (
+                          <a
+                            key={link.id}
+                            href={link.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block break-all text-blue-600 hover:underline"
+                          >
+                            {link.title || link.url}
+                          </a>
+                        ))}
+                      </div>
                     )}
                   </div>
                 </article>
@@ -939,6 +999,7 @@ export default function ProjectsWorkflowPage() {
                   return onSubmitTask(taskId, payload);
                 }}
                 onReviewTask={(taskId, payload) => onReviewTask(taskId, payload)}
+                onEditTask={onEditTask}
                 onUpdateStatus={onTaskStatusChange}
                 busy={busy}
               />

@@ -531,7 +531,7 @@ export class ProjectsService {
             designation: true,
           },
         },
-        links: { where: organizationFilter },
+        links: { where: { ...organizationFilter, deletedAt: null } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -577,7 +577,12 @@ export class ProjectsService {
             designation: true,
           },
         },
-        links: { where: organizationId == null ? {} : { organizationId } },
+        links: {
+          where:
+            organizationId == null
+              ? { deletedAt: null }
+              : { organizationId, deletedAt: null },
+        },
       },
     });
     if (!project) throw new NotFoundException(`Project #${id} not found`);
@@ -1165,7 +1170,7 @@ export class ProjectsService {
     }
 
     return this.db.projectLink.findMany({
-      where: { projectId, project: { organizationId } },
+      where: { projectId, project: { organizationId }, deletedAt: null },
       include: { createdBy: { select: { id: true, name: true, email: true } } },
       orderBy: { createdAt: 'desc' },
     });

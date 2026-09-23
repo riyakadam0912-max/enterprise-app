@@ -38,6 +38,7 @@ type TaskDetailPanelProps = {
   onStartTask: (taskId: number) => Promise<void> | void;
   onSubmitTask: (taskId: number, payload: { submissionLink: string; note: string }) => Promise<void> | void;
   onReviewTask: (taskId: number, payload: { status: 'APPROVED' | 'REJECTED'; remarks: string }) => Promise<void> | void;
+  onEditTask?: (taskId: number, payload: { description: string; links: string }) => Promise<void> | void;
   onUpdateStatus?: (taskId: number, status: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED') => Promise<void> | void;
   busy?: boolean;
 };
@@ -87,6 +88,7 @@ export function TaskDetailPanel({
   onStartTask,
   onSubmitTask,
   onReviewTask,
+  onEditTask,
   onUpdateStatus,
   busy = false,
 }: TaskDetailPanelProps) {
@@ -102,6 +104,7 @@ export function TaskDetailPanel({
       onStartTask={onStartTask}
       onSubmitTask={onSubmitTask}
       onReviewTask={onReviewTask}
+      onEditTask={onEditTask}
       onUpdateStatus={onUpdateStatus}
       busy={busy}
     />
@@ -116,6 +119,7 @@ type TaskDetailPanelBodyProps = {
   onStartTask: (taskId: number) => Promise<void> | void;
   onSubmitTask: (taskId: number, payload: { submissionLink: string; note: string }) => Promise<void> | void;
   onReviewTask: (taskId: number, payload: { status: 'APPROVED' | 'REJECTED'; remarks: string }) => Promise<void> | void;
+  onEditTask?: (taskId: number, payload: { description: string; links: string }) => Promise<void> | void;
   onUpdateStatus?: (taskId: number, status: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED') => Promise<void> | void;
   busy?: boolean;
 };
@@ -128,6 +132,7 @@ function TaskDetailPanelBody({
   onStartTask,
   onSubmitTask,
   onReviewTask,
+  onEditTask,
   onUpdateStatus,
   busy = false,
 }: TaskDetailPanelBodyProps) {
@@ -135,6 +140,9 @@ function TaskDetailPanelBody({
   const [currentTime] = useState(() => Date.now());
   const [showSubmitForm, setShowSubmitForm] = useState(false);
   const [showReviewForm, setShowReviewForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editDescription, setEditDescription] = useState(task.description ?? '');
+  const [editLinks, setEditLinks] = useState(task.links ?? '');
   const [submissionNote, setSubmissionNote] = useState('');
   const [submissionLink, setSubmissionLink] = useState('');
   const [reviewRemarks, setReviewRemarks] = useState('');
@@ -145,6 +153,7 @@ function TaskDetailPanelBody({
   const isAssignee = Boolean(currentUserId != null && task.assignedToUserId === currentUserId);
   const canEmployeeAct = isEmployee && isAssignee;
   const canReview = isManagerOrAdmin && taskStatus === 'SUBMITTED';
+  const canEdit = Boolean(onEditTask) && isManagerOrAdmin;
   const canChangeStatus = isManagerOrAdmin && taskStatus !== 'SUBMITTED';
   const showSubmissionSection = canEmployeeAct && (taskStatus === 'IN_PROGRESS' || taskStatus === 'REJECTED');
   const showStartButton = canEmployeeAct && taskStatus === 'PENDING';
@@ -224,9 +233,58 @@ function TaskDetailPanelBody({
 
           <div className="space-y-2 border-t border-slate-200 pt-4">
             <h3 className="text-sm font-semibold text-slate-900">Description / Instructions</h3>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700 shadow-sm">
+            <div className="whitespace-pre-wrap wrap-break-word rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700 shadow-sm">
               {task.description?.trim() ? task.description : 'No instructions provided.'}
             </div>
+            {canEdit && !showEditForm && (
+              <button
+                type="button"
+                onClick={() => setShowEditForm(true)}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                Edit task
+              </button>
+            )}
+            {showEditForm && (
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+                <textarea
+                  value={editDescription}
+                  onChange={(event) => setEditDescription(event.target.value)}
+                  rows={5}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  placeholder="Task description and instructions"
+                />
+                <input
+                  value={editLinks}
+                  onChange={(event) => setEditLinks(event.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  placeholder="Reference links separated by commas"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={async () => {
+                      await onEditTask?.(task.id, {
+                        description: editDescription,
+                        links: editLinks,
+                      });
+                      setShowEditForm(false);
+                    }}
+                    className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    Save changes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowEditForm(false)}
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

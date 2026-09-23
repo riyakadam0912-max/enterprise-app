@@ -346,6 +346,37 @@ describe('TasksService', () => {
       );
       expect(result).toEqual({ id: 1, taskName: 'Updated Task' });
     });
+
+    it('should persist task description and reference links independently', async () => {
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      taskDelegate.findFirst.mockResolvedValueOnce({
+        id: 1,
+        status: 'PENDING',
+      });
+      taskDelegate.update.mockResolvedValueOnce({
+        id: 1,
+        description: 'Step one\nStep two',
+        links: 'https://example.com/spec',
+      });
+
+      await service.update(
+        1,
+        {
+          description: 'Step one\nStep two',
+          links: 'https://example.com/spec',
+        } as UpdateTaskDto,
+        mockAdminUser,
+      );
+
+      expect(taskDelegate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            description: 'Step one\nStep two',
+            links: 'https://example.com/spec',
+          }),
+        }),
+      );
+    });
   });
 
   describe('remove', () => {
@@ -379,7 +410,7 @@ describe('TasksService', () => {
   });
 
   describe('getByPriority', () => {
-    it('should return only employee-scoped tasks for an EMPLOYEE', async () => {
+    it('should return tasks assigned to or created by an EMPLOYEE', async () => {
       const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
       taskDelegate.findMany.mockResolvedValueOnce([]);
 
@@ -389,7 +420,11 @@ describe('TasksService', () => {
         expect.objectContaining({
           where: expect.objectContaining({
             organizationId: mockEmployeeUser.organizationId,
-            AND: expect.any(Array),
+            OR: [
+              { assignedToUserId: mockEmployeeUser.userId },
+              { assignedByUserId: mockEmployeeUser.userId },
+              { assignedToId: mockEmployeeUser.employeeId },
+            ],
           }),
         }),
       );

@@ -52,15 +52,16 @@ export class TasksService {
     if (user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN) return true;
     if (user.role !== Role.MANAGER) return false;
     const organizationId = this.validateOrganization(user);
-    const scope = await this.businessUnitsService.resolveScope(user as any);
-    const buWhere = this.businessUnitsService.buildDirectBUWhere(scope);
 
     const task = await this.db.task.findFirst({
       where: {
         id: taskId,
-        ...buWhere,
         organizationId,
-        projectRef: { managerId: user.userId },
+        OR: [
+          { assignedByUserId: user.userId },
+          { projectRef: { managerId: user.userId } },
+          { projectRef: { coManagers: { some: { id: user.userId } } } },
+        ],
       },
       select: { id: true },
     });
@@ -103,19 +104,26 @@ export class TasksService {
       roleWhere = {
         OR: [
           { assignedToUserId: user.userId },
+          { assignedByUserId: user.userId },
           { projectRef: { managerId: user.userId } },
+          { projectRef: { coManagers: { some: { id: user.userId } } } },
         ],
       };
     } else {
       roleWhere = {
         OR: [
           { assignedToUserId: user.userId },
+          { assignedByUserId: user.userId },
           ...(user.employeeId ? [{ assignedToId: user.employeeId }] : []),
         ],
       } as Prisma.TaskWhereInput;
     }
 
-    return { AND: [roleWhere, buWhere] };
+    if (user.role === Role.MANAGER || user.role === Role.EMPLOYEE) {
+      return { organizationId: scope.organizationId, ...roleWhere };
+    }
+
+      return { AND: [roleWhere, buWhere] };
   }
 
   private async resolveAssignee(
@@ -353,13 +361,11 @@ export class TasksService {
     const callerScope = await this.businessUnitsService.resolveScope(
       user as any,
     );
-    const directBUWhere =
-      this.businessUnitsService.buildDirectBUWhere(callerScope);
     const employeeBUWhere =
       this.businessUnitsService.buildEmployeeBUWhere(callerScope);
 
     const existingTask = await this.db.task.findFirst({
-      where: { id, ...directBUWhere },
+      where: { id, organizationId },
     });
     if (!existingTask) throw new NotFoundException(`Task #${id} not found`);
 
@@ -481,6 +487,10 @@ export class TasksService {
         ...((dto.notes !== undefined || dto.description !== undefined) && {
           notes: dto.description ?? dto.notes,
         }),
+        ...(dto.description !== undefined && {
+          description: dto.description,
+        }),
+        ...(dto.links !== undefined && { links: dto.links }),
         ...(dto.submissionLink !== undefined && {
           submissionLink: dto.submissionLink,
         }),
