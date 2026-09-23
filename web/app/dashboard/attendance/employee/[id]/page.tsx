@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { AttendanceStatus } from '@/api/attendanceApi';
@@ -76,11 +77,6 @@ export default function EmployeeAttendancePage() {
           <h1 className="text-2xl font-semibold text-slate-900 mt-2">{data?.employee.name ?? 'Employee Attendance'}</h1>
           <p className="text-sm text-slate-500 mt-1">Monthly attendance calendar with daily status and working-hour detail.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setMonth((current) => shiftMonth(current, -1))} className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 hover:bg-slate-50">Previous</button>
-          <div className="px-4 py-2 rounded-lg bg-white border border-slate-200 text-sm font-medium text-slate-700 shadow-sm">{monthLabel}</div>
-          <button onClick={() => setMonth((current) => shiftMonth(current, 1))} className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 hover:bg-slate-50">Next</button>
-        </div>
       </div>
 
       {isForbiddenEmployeeView ? (
@@ -111,6 +107,40 @@ export default function EmployeeAttendancePage() {
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+            <div className="mb-5 flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <CalendarDays aria-hidden="true" className="h-5 w-5 text-orange-500" />
+                <div>
+                  <h2 className="text-base font-semibold text-slate-900">Attendance calendar</h2>
+                  <p className="text-xs text-slate-500">Daily status and working-hour detail</p>
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-2 sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setMonth((current) => shiftMonth(current, -1))}
+                  aria-label="Previous month"
+                  title="Previous month"
+                  className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-200"
+                >
+                  <ChevronLeft aria-hidden="true" className="h-4 w-4" />
+                  <span className="hidden sm:inline">Previous</span>
+                </button>
+                <div className="min-w-36 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-center text-sm font-semibold text-slate-800">
+                  {monthLabel}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMonth((current) => shiftMonth(current, 1))}
+                  aria-label="Next month"
+                  title="Next month"
+                  className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-200"
+                >
+                  <span className="hidden sm:inline">Next</span>
+                  <ChevronRight aria-hidden="true" className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
             {loading ? (
               <div className="py-16 text-center text-slate-400">Loading attendance calendar…</div>
             ) : error ? (
