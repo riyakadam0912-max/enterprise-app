@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import {
   Alert,
+  Linking,
   Pressable,
   ScrollView,
   Text,
@@ -10,13 +11,15 @@ import {
   View,
 } from "react-native";
 import { apiError } from "@/src/api/client";
-import { projectMessages, sendProjectMessage } from "@/src/api/modules";
 import {
   reviewTask,
   submitTaskWork,
   task,
+  taskMessages,
+  sendTaskMessage,
   updateTaskStatus,
 } from "@/src/api/tasks";
+import { UserIdentity } from "@/src/components/UserIdentity";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { can } from "@/src/utils/permissions";
 
@@ -35,16 +38,15 @@ export default function TaskDetail() {
     enabled: allowed && taskId > 0,
   });
   const data = query.data as TaskData | undefined;
-  const projectId = Number(data?.projectRef?.id ?? data?.projectId);
   const [tab, setTab] = useState<Tab>("overview");
   const [link, setLink] = useState("");
   const [note, setNote] = useState("");
   const [remarks, setRemarks] = useState("");
   const [message, setMessage] = useState("");
   const chat = useQuery({
-    queryKey: ["task-chat", taskId, projectId],
-    queryFn: () => projectMessages(projectId),
-    enabled: tab === "chat" && projectId > 0,
+    queryKey: ["task-chat", taskId],
+    queryFn: () => taskMessages(taskId),
+    enabled: tab === "chat" && taskId > 0,
   });
   const role = session?.role ?? "EMPLOYEE";
   const status = String(data?.status ?? "PENDING").toUpperCase();
@@ -81,10 +83,10 @@ export default function TaskDetail() {
     onError: (error) => Alert.alert("Unable to update task", apiError(error)),
   });
   const send = useMutation({
-    mutationFn: () => sendProjectMessage(projectId, message.trim()),
+    mutationFn: () => sendTaskMessage(taskId, message.trim()),
     onSuccess: () => {
       void client.invalidateQueries({
-        queryKey: ["task-chat", taskId, projectId],
+        queryKey: ["task-chat", taskId],
       });
       setMessage("");
     },
@@ -207,6 +209,32 @@ function Overview({
         <Text style={styles.heroText}>
           {String(data.description ?? "No instructions provided.")}
         </Text>
+        {data.links ? (
+          <View style={{ marginTop: 12 }}>
+            <Text style={styles.cardTitle}>Reference links</Text>
+            {String(data.links)
+              .split(",")
+              .map((link) => link.trim())
+              .filter(Boolean)
+              .map((link) => (
+                <Text
+                  key={link}
+                  style={styles.linkText}
+                  onPress={() => void Linking.openURL(link)}
+                >
+                  {link}
+                </Text>
+              ))}
+          </View>
+        ) : null}
+        {data.driveLink ? (
+          <Text
+            style={styles.linkText}
+            onPress={() => void Linking.openURL(String(data.driveLink))}
+          >
+            Google Drive
+          </Text>
+        ) : null}
         <View style={styles.stats}>
           <Stat label="Status" value={status.replaceAll("_", " ")} />
           <Stat label="Priority" value={String(data.priority ?? "Not set")} />
@@ -218,10 +246,17 @@ function Overview({
       </View>
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Assignment</Text>
-        <Text style={styles.detail}>
-          Assignee:{" "}
-          {String(data.assignee ?? data.assignedToUser?.name ?? "Unassigned")}
-        </Text>
+        <UserIdentity
+          userId={Number(
+            data.assignedToUser?.id ??
+            data.assignedToUserId ??
+            data.assignee?.id ??
+            0,
+          ) || undefined}
+          name={String(data.assignee ?? data.assignedToUser?.name ?? "Unassigned")}
+          subtitle={String(data.assignedToUser?.role ?? "Assigned worker")}
+          size="md"
+        />
         <Text style={styles.detail}>
           Created by: {String(data.assignedByUser?.name ?? "Not set")}
         </Text>
@@ -384,6 +419,14 @@ function Chat({
                   key={item.id}
                   style={[styles.messageRow, mine && styles.mine]}
                 >
+                  {!mine ? (
+                    <UserIdentity
+                      userId={Number(item.sender?.id ?? 0) || undefined}
+                      name={item.sender?.name ?? "Team member"}
+                      size="sm"
+                      showLabel={false}
+                    />
+                  ) : null}
                   <View
                     style={[
                       styles.bubble,
@@ -488,6 +531,7 @@ const styles = {
   } as const,
   heroTitle: { color: "#fff", fontSize: 20, fontWeight: "800" } as const,
   heroText: { color: "#cbd5e1", lineHeight: 21, marginTop: 8 } as const,
+  linkText: { color: "#2563eb", marginTop: 6, textDecorationLine: "underline" } as const,
   stats: { flexDirection: "row", gap: 8, marginTop: 18 } as const,
   stat: {
     flex: 1,

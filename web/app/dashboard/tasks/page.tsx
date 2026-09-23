@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   getTasks,
+  getTaskMessages,
   reviewTask,
+  sendTaskMessage,
   submitTaskWork,
   Task,
   updateTaskStatus,
@@ -226,7 +228,6 @@ function TaskDetailModal({
   task,
   role,
   currentUserId,
-  currentUserName,
   activeTab,
   onTabChange,
   onClose,
@@ -234,12 +235,13 @@ function TaskDetailModal({
   onSubmitTask,
   onReviewTask,
   onUpdateStatus,
+  onLoadMessages,
+  onSendMessage,
   busy,
 }: {
   task: Task | null;
   role: DashboardRole;
   currentUserId: number | null;
-  currentUserName: string;
   activeTab: DetailTab;
   onTabChange: (tab: DetailTab) => void;
   onClose: () => void;
@@ -247,6 +249,8 @@ function TaskDetailModal({
   onSubmitTask: (taskId: number, payload: { submissionLink: string; note: string }) => Promise<void>;
   onReviewTask: (taskId: number, payload: { status: 'APPROVED' | 'REJECTED'; remarks: string }) => Promise<void>;
   onUpdateStatus: (taskId: number, status: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED') => Promise<void>;
+  onLoadMessages: (taskId: number) => Promise<ChatMessage[]>;
+  onSendMessage: (taskId: number, content: string) => Promise<ChatMessage>;
   busy: boolean;
 }) {
   const [showSubmitForm, setShowSubmitForm] = useState(false);
@@ -255,7 +259,8 @@ function TaskDetailModal({
   const [reviewRemarks, setReviewRemarks] = useState('');
   const [statusDraft, setStatusDraft] = useState<TaskStatus>(normalizeTaskStatus(task?.status));
   const [chatDraft, setChatDraft] = useState('');
-  const [chatMessagesByTask, setChatMessagesByTask] = useState<Record<number, ChatMessage[]>>({});
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const chatIntervalRef = useRef<number | null>(null);
   const currentTime = useStableNow();
@@ -277,7 +282,25 @@ function TaskDetailModal({
   }, [task?.id, task?.status]);
 
   const taskStatus = normalizeTaskStatus(task?.status);
-  const chatMessages = useMemo(() => (task ? (chatMessagesByTask[task.id] ?? []) : []), [task, chatMessagesByTask]);
+  const activeTaskId = task?.id;
+
+  useEffect(() => {
+    if (activeTab !== 'chat' || activeTaskId == null) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) setChatLoading(true);
+    });
+    void onLoadMessages(activeTaskId)
+      .then((messages) => {
+        if (!cancelled) setChatMessages(messages);
+      })
+      .finally(() => {
+        if (!cancelled) setChatLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, activeTaskId, onLoadMessages]);
 
   useEffect(() => {
     return () => {
@@ -334,13 +357,6 @@ function TaskDetailModal({
   const canChangeStatus = role === 'ADMIN' || role === 'MANAGER';
   const submissionDate = activeTask.updatedAt ?? activeTask.createdAt;
 
-  function upsertChatMessage(message: ChatMessage) {
-    setChatMessagesByTask((prev) => ({
-      ...prev,
-      [activeTask.id]: [...(prev[activeTask.id] ?? []), message],
-    }));
-  }
-
   async function handleSubmitForm() {
     if (!submissionNote.trim()) return;
     await onSubmitTask(activeTask.id, {
@@ -350,15 +366,6 @@ function TaskDetailModal({
     setShowSubmitForm(false);
     setSubmissionNote('');
     setSubmissionLink('');
-    if (chatMessages.length === 0) {
-      upsertChatMessage({
-        id: `${activeTask.id}-submission-${Date.now()}`,
-        senderId: currentUserId ?? 'system',
-        senderName: currentUserName || 'You',
-        content: `Submission added: ${submissionNote.trim()}`,
-        createdAt: new Date().toISOString(),
-      });
-    }
   }
 
   async function handleReviewAction(status: 'APPROVED' | 'REJECTED') {
@@ -372,13 +379,8 @@ function TaskDetailModal({
 
   async function handleSendChat() {
     if (!chatDraft.trim()) return;
-    upsertChatMessage({
-      id: `${activeTask.id}-chat-${Date.now()}`,
-      senderId: currentUserId ?? 'system',
-      senderName: currentUserName || 'You',
-      content: chatDraft.trim(),
-      createdAt: new Date().toISOString(),
-    });
+    const message = await onSendMessage(activeTask.id, chatDraft.trim());
+    setChatMessages((previous) => [...previous, message]);
     setChatDraft('');
   }
 
@@ -497,7 +499,7 @@ function TaskDetailModal({
 
                 <div>
                   <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Instructions</p>
-                  <div className="rounded-2xl bg-slate-50 p-5 text-sm leading-relaxed text-slate-700 border border-slate-200">
+                  <div className="whitespace-pre-wrap wrap-break-word rounded-2xl bg-slate-50 p-5 text-sm leading-relaxed text-slate-700 border border-slate-200">
                     {task.description?.trim() ? task.description : 'No instructions provided.'}
                   </div>
                 </div>
@@ -517,10 +519,21 @@ function TaskDetailModal({
                           className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-blue-700 transition hover:border-blue-200 hover:bg-blue-50"
                         >
                           <IconExternalLink />
-                          <span className="max-w-64 truncate">{link}</span>
+                          <span className="max-w-64 truncate">Reference URL: {link}</span>
                         </a>
                       ))}
                     </div>
+                  )}
+                  {task.driveLink && (
+                    <a
+                      href={task.driveLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-blue-700 transition hover:border-blue-200 hover:bg-blue-50"
+                    >
+                      <IconExternalLink />
+                      Google Drive
+                    </a>
                   )}
                 </div>
 
@@ -717,7 +730,9 @@ function TaskDetailModal({
             {activeTab === 'chat' && (
               <div className="flex h-125 flex-col">
                 <div className="mb-4 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-5">
-                  {chatMessages.length === 0 ? (
+                  {chatLoading ? (
+                    <div className="flex h-full items-center justify-center text-sm text-slate-500">Loading messages...</div>
+                  ) : chatMessages.length === 0 ? (
                     <div className="flex h-full items-center justify-center text-sm text-slate-500">
                       No messages yet. Start the conversation!
                     </div>
@@ -784,7 +799,6 @@ export default function AllTasksPage() {
   
   const role = authSession.role;
   const currentUserId = authSession.user?.id ?? null;
-  const currentUserName = authSession.user?.name ?? '';
   
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -974,6 +988,28 @@ export default function AllTasksPage() {
     }
   }
 
+  const loadTaskMessages = useCallback(async (taskId: number): Promise<ChatMessage[]> => {
+    const messages = await getTaskMessages(taskId);
+    return messages.map((message) => ({
+      id: message.id,
+      senderId: message.senderId,
+      senderName: message.sender.name,
+      content: message.content,
+      createdAt: message.createdAt,
+    }));
+  }, []);
+
+  const sendTaskChatMessage = useCallback(async (taskId: number, content: string): Promise<ChatMessage> => {
+    const message = await sendTaskMessage(taskId, content);
+    return {
+      id: message.id,
+      senderId: message.senderId,
+      senderName: message.sender.name,
+      content: message.content,
+      createdAt: message.createdAt,
+    };
+  }, []);
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center text-sm text-slate-500">
@@ -1075,7 +1111,6 @@ export default function AllTasksPage() {
           task={selectedTask}
           role={role}
           currentUserId={currentUserId}
-          currentUserName={currentUserName}
           activeTab={activeTab}
           onTabChange={setActiveTab}
           onClose={() => {
@@ -1086,6 +1121,8 @@ export default function AllTasksPage() {
           onSubmitTask={handleSubmit}
           onReviewTask={handleReview}
           onUpdateStatus={handleStatusUpdate}
+          onLoadMessages={loadTaskMessages}
+          onSendMessage={sendTaskChatMessage}
           busy={busy}
         />
       </div>

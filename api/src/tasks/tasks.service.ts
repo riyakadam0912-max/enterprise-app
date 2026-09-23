@@ -16,6 +16,7 @@ import { WorkflowEngineService } from '../workflows/workflow-engine.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuthUser } from '../common/types/auth';
 import { BusinessUnitsService } from '../business-units/business-units.service';
+import { CreateTaskMessageDto } from './dto/create-task-message.dto';
 
 const PRIORITIES = ['High', 'Low', 'Medium', 'Critical'] as const;
 const TASK_STATUSES = [
@@ -347,6 +348,41 @@ export class TasksService {
 
     if (!task) throw new NotFoundException(`Task #${id} not found`);
     return task;
+  }
+
+  private async assertTaskMessageAccess(taskId: number, user: AuthUser) {
+    const organizationId = this.validateOrganization(user);
+    const accessWhere = await this.getTaskAccessWhere(user);
+    const task = await this.db.task.findFirst({
+      where: { id: taskId, organizationId, ...accessWhere },
+      select: { id: true },
+    });
+    if (!task) {
+      throw new ForbiddenException('You can only access messages for allowed tasks');
+    }
+    return organizationId;
+  }
+
+  async getMessages(taskId: number, user: AuthUser) {
+    const organizationId = await this.assertTaskMessageAccess(taskId, user);
+    return this.db.taskMessage.findMany({
+      where: { taskId, organizationId },
+      include: { sender: { select: { id: true, name: true, email: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async sendMessage(taskId: number, dto: CreateTaskMessageDto, user: AuthUser) {
+    const organizationId = await this.assertTaskMessageAccess(taskId, user);
+    return this.db.taskMessage.create({
+      data: {
+        taskId,
+        organizationId,
+        senderId: user.userId,
+        content: dto.content.trim(),
+      },
+      include: { sender: { select: { id: true, name: true, email: true } } },
+    });
   }
 
   async update(id: number, dto: UpdateTaskDto, user: AuthUser) {

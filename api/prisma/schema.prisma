@@ -39,6 +39,7 @@ model User {
   ownedProjects              Project[]              @relation("ProjectOwner")
   projectLinksCreated        ProjectLink[]
   sentMessages               ProjectMessage[]       @relation("ProjectMessageSender")
+  sentTaskMessages           TaskMessage[]          @relation("TaskMessageSender")
   createdTasks               Task[]                 @relation("TaskAssignedBy")
   assignedTasks              Task[]                 @relation("TaskAssignedTo")
   reviewedTasks              Task[]                 @relation("TaskReviewedBy")
@@ -161,6 +162,7 @@ model Organization {
   salaryStructures         SalaryStructure[]
   shifts                   Shift[]
   tasks                    Task[]
+  taskMessages             TaskMessage[]
   taxDeclarations          TaxDeclaration[]
   tickets                  Ticket[]
   timesheets               Timesheet[]
@@ -520,9 +522,25 @@ model Task {
   organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   projectRef       Project?      @relation("ProjectTasks", fields: [projectId], references: [id])
   reviewedByUser   User?         @relation("TaskReviewedBy", fields: [reviewedBy], references: [id])
+  messages         TaskMessage[]
 
   @@index([organizationId])
   @@index([businessUnitId])
+}
+
+model TaskMessage {
+  id             String       @id @default(cuid())
+  taskId         Int
+  senderId       Int
+  content        String
+  createdAt      DateTime     @default(now())
+  organizationId Int
+  task           Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  sender         User         @relation("TaskMessageSender", fields: [senderId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+  @@index([organizationId])
 }
 
 model LeaveRequest {

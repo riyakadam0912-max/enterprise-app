@@ -14,6 +14,7 @@ type TaskLike = {
   category?: string | null;
   description?: string | null;
   links?: string | null;
+  driveLink?: string | null;
   assignee?: string | null;
   assignedToUserId?: number | null;
   assignedToUser?: { id: number; name: string; email: string } | null;
@@ -285,6 +286,16 @@ function TaskDetailPanelBody({
                 </div>
               </div>
             )}
+            {task.driveLink && (
+              <a
+                href={task.driveLink}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:underline"
+              >
+                Google Drive
+              </a>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -301,7 +312,7 @@ function TaskDetailPanelBody({
                     rel="noreferrer"
                     className="block break-all text-sm text-blue-600 hover:underline"
                   >
-                    {link}
+                    Reference URL: {link}
                   </a>
                 ))}
               </div>

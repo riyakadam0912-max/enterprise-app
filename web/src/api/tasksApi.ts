@@ -78,12 +78,32 @@ export interface TaskPayload {
   dealId?: number | null;
 }
 
+export interface TaskMessage {
+  id: string;
+  taskId: number;
+  senderId: number;
+  content: string;
+  createdAt: string;
+  sender: { id: number; name: string; email: string };
+}
+
 export async function getTasks(): Promise<Task[]> {
   return request<Task[]>('/tasks');
 }
 
 export async function getTask(id: number): Promise<Task> {
   return request<Task>(`/tasks/${id}`);
+}
+
+export async function getTaskMessages(id: number): Promise<TaskMessage[]> {
+  return request<TaskMessage[]>(`/tasks/${id}/messages`);
+}
+
+export async function sendTaskMessage(id: number, content: string): Promise<TaskMessage> {
+  return request<TaskMessage>(`/tasks/${id}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+  });
 }
 
 export async function createTask(data: TaskPayload): Promise<Task> {

@@ -379,6 +379,48 @@ describe('TasksService', () => {
     });
   });
 
+  describe('task messages', () => {
+    it('allows an assigning manager to read and send task messages', async () => {
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      const messageDelegate = getPrismaDelegate(mockPrisma, 'taskMessage');
+      taskDelegate.findFirst.mockResolvedValue({ id: 1 });
+      messageDelegate.findMany.mockResolvedValueOnce([]);
+      messageDelegate.create.mockResolvedValueOnce({
+        id: 'message-1',
+        taskId: 1,
+        senderId: mockManagerUser.userId,
+        content: 'Please review the submission.',
+      });
+
+      await expect(service.getMessages(1, mockManagerUser)).resolves.toEqual([]);
+      await expect(
+        service.sendMessage(
+          1,
+          { content: 'Please review the submission.' },
+          mockManagerUser,
+        ),
+      ).resolves.toEqual(expect.objectContaining({ id: 'message-1' }));
+      expect(messageDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            taskId: 1,
+            senderId: mockManagerUser.userId,
+            content: 'Please review the submission.',
+          }),
+        }),
+      );
+    });
+
+    it('denies task messages when the user cannot access the task', async () => {
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      taskDelegate.findFirst.mockResolvedValueOnce(null);
+
+      await expect(service.getMessages(1, mockEmployeeUser)).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+  });
+
   describe('remove', () => {
     it('should throw ForbiddenException if manager cannot manage task', async () => {
       const taskDelegate = getPrismaDelegate(mockPrisma, 'task');

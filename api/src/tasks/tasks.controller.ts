@@ -23,6 +23,7 @@ import { Role } from '../common/enums/role.enum';
 import { SubmitTaskWorkDto } from './dto/submit-task-work.dto';
 import { ReviewTaskDto } from './dto/review-task.dto';
 import { UpdateTaskStatusDto } from './dto/update-task-status.dto';
+import { CreateTaskMessageDto } from './dto/create-task-message.dto';
 import { CompletionNotificationInterceptor } from '../common/interceptors/completion-notification.interceptor';
 import {
   ApiBearerAuth,
@@ -140,6 +141,25 @@ export class TasksController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.tasksService.findOne(id, req.user);
+  }
+
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
+  @Get(':id/messages')
+  getMessages(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.tasksService.getMessages(id, req.user);
+  }
+
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
+  @Post(':id/messages')
+  sendMessage(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateTaskMessageDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.tasksService.sendMessage(id, dto, req.user);
   }
 
   @Roles(Role.ADMIN, Role.MANAGER)
