@@ -312,20 +312,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const minPresentHours = shift?.minPresentHours ?? 5;
     const halfDayThreshold = Math.max(1, minPresentHours / 2);
 
-    // If employee checked in late, mark as HALF_DAY
-    if (lateMinutes > 0 && checkIn) {
-      if (checkOut) {
-        // Late check-in with check-out: mark as HALF_DAY
-        return AttendanceStatus.HALF_DAY;
-      } else {
-        // Late check-in without check-out: mark as HALF_DAY for past days
-        return this.startOfDay(day).getTime() ===
-          this.startOfDay(new Date()).getTime()
-          ? AttendanceStatus.PRESENT
-          : AttendanceStatus.HALF_DAY;
-      }
-    }
-
     if (checkIn && checkOut) {
       const worked = workingHours ?? 0;
       if (worked >= minPresentHours) return AttendanceStatus.PRESENT;
@@ -333,11 +319,25 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       return AttendanceStatus.ABSENT;
     }
     if (checkIn) {
-      return this.startOfDay(day).getTime() ===
-        this.startOfDay(new Date()).getTime()
-        ? AttendanceStatus.PRESENT
-        : AttendanceStatus.HALF_DAY;
+      return AttendanceStatus.PRESENT;
     }
+
+    if (!shift) {
+      return AttendanceStatus.NOT_SCHEDULED;
+    }
+
+    const today = this.startOfDay(new Date());
+    const targetDay = this.startOfDay(day);
+    if (targetDay.getTime() > today.getTime()) {
+      return AttendanceStatus.UPCOMING;
+    }
+    if (targetDay.getTime() === today.getTime()) {
+      const { shiftEnd } = this.getShiftWindow(day, shift);
+      if (!shiftEnd || new Date() < shiftEnd) {
+        return AttendanceStatus.NOT_STARTED;
+      }
+    }
+
     return AttendanceStatus.ABSENT;
   }
 
@@ -557,16 +557,17 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     onLeave: boolean,
   ): DailyAttendanceRow {
     const shift = attendance?.shift ?? employee.shift ?? null;
-    const computedStatus =
-      attendance?.status ??
-      this.calculateStatus({
-        day,
-        checkIn: null,
-        checkOut: null,
-        workingHours: null,
-        onLeave,
-        shift,
-      });
+    const computedStatus = onLeave
+      ? AttendanceStatus.LEAVE
+      : attendance?.status ??
+        this.calculateStatus({
+          day,
+          checkIn: null,
+          checkOut: null,
+          workingHours: null,
+          onLeave,
+          shift,
+        });
     const shortfallHours =
       (attendance as { shortfallHours?: number })?.shortfallHours ??
       this.calculateShortfallHours(attendance?.workingHours ?? null, shift);
@@ -1170,16 +1171,17 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           row.endDate >= this.startOfDay(day),
       );
       const shift = attendance?.shift ?? employee.shift ?? null;
-      const status =
-        attendance?.status ??
-        this.calculateStatus({
-          day,
-          checkIn: null,
-          checkOut: null,
-          workingHours: null,
-          onLeave,
-          shift,
-        });
+      const status = onLeave
+        ? AttendanceStatus.LEAVE
+        : attendance?.status ??
+          this.calculateStatus({
+            day,
+            checkIn: null,
+            checkOut: null,
+            workingHours: null,
+            onLeave,
+            shift,
+          });
       const requiredHours = shift?.requiredHours ?? 8;
       const minPresentHours = shift?.minPresentHours ?? 5;
       const gracePeriodMinutes = shift?.gracePeriodMinutes ?? 15;
@@ -1408,6 +1410,35 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       include: { shift: true },
       orderBy: [{ employeeId: 'asc' }, { date: 'asc' }],
     });
+    const leaveRows = await this.prisma.leaveRequest.findMany({
+      where: {
+        employeeId: { in: employeeIds },
+        deletedAt: null,
+        status: 'APPROVED',
+        startDate: { lte: monthEnd },
+        endDate: { gte: monthStart },
+      },
+    });
+    const leaveDateKeys = new Set(
+      leaveRows.flatMap((leave) => {
+        const dates: string[] = [];
+        const start = this.startOfDay(
+          new Date(Math.max(leave.startDate.getTime(), monthStart.getTime())),
+        );
+        const end = this.startOfDay(
+          new Date(Math.min(leave.endDate.getTime(), monthEnd.getTime())),
+        );
+        for (const date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
+          dates.push(`${leave.employeeId}:${date.toISOString().slice(0, 10)}`);
+        }
+        return dates;
+      }),
+    );
+    const attendanceDateKeys = new Set(
+      attendanceRows.map(
+        (row) => `${row.employeeId}:${this.startOfDay(row.date).toISOString().slice(0, 10)}`,
+      ),
+    );
 
     const grouped = new Map<
       number,
@@ -1469,7 +1500,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
       if (!matchesStatus) continue;
 
-      if (row.status === AttendanceStatus.WEEKLY_OFF) {
+      const rowDateKey = `${row.employeeId}:${this.startOfDay(row.date).toISOString().slice(0, 10)}`;
+      const effectiveStatus = leaveDateKeys.has(rowDateKey)
+        ? AttendanceStatus.LEAVE
+        : row.status;
+
+      if (effectiveStatus === AttendanceStatus.WEEKLY_OFF) {
         entry.weeklyOffCount += 1;
         continue;
       }
@@ -1490,20 +1526,36 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       }
 
       if (
-        row.status === AttendanceStatus.PRESENT ||
-        row.status === AttendanceStatus.HALF_DAY
+        effectiveStatus === AttendanceStatus.PRESENT ||
+        effectiveStatus === AttendanceStatus.HALF_DAY
       ) {
         entry.totalExpectedHours +=
-          row.status === AttendanceStatus.HALF_DAY
+          effectiveStatus === AttendanceStatus.HALF_DAY
             ? requiredHours / 2
             : requiredHours;
       }
 
-      if (row.status === AttendanceStatus.PRESENT) entry.presentCount += 1;
-      if (row.status === AttendanceStatus.ABSENT) entry.absentCount += 1;
-      if (row.status === AttendanceStatus.HALF_DAY) entry.halfDayCount += 1;
-      if (row.status === AttendanceStatus.LEAVE) entry.leaveCount += 1;
+      if (effectiveStatus === AttendanceStatus.PRESENT) entry.presentCount += 1;
+      if (effectiveStatus === AttendanceStatus.ABSENT) entry.absentCount += 1;
+      if (effectiveStatus === AttendanceStatus.HALF_DAY) entry.halfDayCount += 1;
+      if (effectiveStatus === AttendanceStatus.LEAVE) entry.leaveCount += 1;
       if ((row.lateMinutes ?? 0) > 0) entry.lateCount += 1;
+    }
+
+    for (const leave of leaveRows) {
+      if (leave.employeeId == null) continue;
+      const employee = grouped.get(leave.employeeId);
+      if (!employee) continue;
+      const start = this.startOfDay(
+        new Date(Math.max(leave.startDate.getTime(), monthStart.getTime())),
+      );
+      const end = this.startOfDay(
+        new Date(Math.min(leave.endDate.getTime(), monthEnd.getTime())),
+      );
+      for (const date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
+        const key = `${leave.employeeId}:${date.toISOString().slice(0, 10)}`;
+        if (!attendanceDateKeys.has(key)) employee.leaveCount += 1;
+      }
     }
 
     const rows = Array.from(grouped.values()).map((entry) => ({

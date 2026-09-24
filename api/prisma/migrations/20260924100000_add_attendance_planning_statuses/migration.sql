@@ -1,0 +1,4 @@
+-- AlterEnum
+ALTER TYPE "AttendanceStatus" ADD VALUE 'UPCOMING';
+ALTER TYPE "AttendanceStatus" ADD VALUE 'NOT_STARTED';
+ALTER TYPE "AttendanceStatus" ADD VALUE 'NOT_SCHEDULED';

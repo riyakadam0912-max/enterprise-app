@@ -1,6 +1,6 @@
 import { apiClient } from './apiClient';
 
-export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'HALF_DAY' | 'LEAVE' | 'WEEKLY_OFF';
+export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'HALF_DAY' | 'LEAVE' | 'WEEKLY_OFF' | 'UPCOMING' | 'NOT_STARTED' | 'NOT_SCHEDULED';
 
 export interface AttendanceSummary {
   present: number;
@@ -177,7 +177,7 @@ export interface MonthlyAttendanceReportFilters {
   year?: string;
   employeeId?: number;
   department?: string;
-  status?: 'PRESENT' | 'ABSENT' | 'LATE' | 'HALF_DAY' | 'LEAVE' | 'WEEKLY_OFF' | '';
+  status?: AttendanceStatus | 'LATE' | '';
 }
 
 export interface AttendanceActionPayload {

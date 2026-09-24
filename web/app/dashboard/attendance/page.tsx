@@ -18,6 +18,9 @@ const STATUS_STYLES: Record<AttendanceStatus, string> = {
   LEAVE: 'bg-sky-50 text-sky-700 border-sky-200',
   HALF_DAY: 'bg-amber-50 text-amber-700 border-amber-200',
   WEEKLY_OFF: 'bg-violet-50 text-violet-700 border-violet-200',
+  UPCOMING: 'bg-slate-50 text-slate-600 border-slate-200',
+  NOT_STARTED: 'bg-slate-50 text-slate-600 border-slate-200',
+  NOT_SCHEDULED: 'bg-slate-50 text-slate-600 border-slate-200',
 };
 
 type MonthlyReportStatus = AttendanceStatus | 'LATE' | '';

@@ -1867,6 +1867,9 @@ enum AttendanceStatus {
   HALF_DAY
   LEAVE
   WEEKLY_OFF
+  UPCOMING
+  NOT_STARTED
+  NOT_SCHEDULED
 }
 
 enum ActivityType {

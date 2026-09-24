@@ -17,11 +17,17 @@ const STATUS_CELL: Record<AttendanceStatus, string> = {
   HALF_DAY: 'bg-amber-100 text-amber-800 border-amber-200',
   LEAVE: 'bg-sky-100 text-sky-800 border-sky-200',
   WEEKLY_OFF: 'bg-violet-100 text-violet-800 border-violet-200',
+  UPCOMING: 'bg-slate-100 text-slate-600 border-slate-200',
+  NOT_STARTED: 'bg-slate-100 text-slate-600 border-slate-200',
+  NOT_SCHEDULED: 'bg-slate-100 text-slate-600 border-slate-200',
 };
 
 function statusLabel(status: AttendanceStatus) {
   if (status === 'HALF_DAY') return 'Half Day';
   if (status === 'WEEKLY_OFF') return 'Weekly Holiday';
+  if (status === 'NOT_STARTED') return 'Not Started';
+  if (status === 'NOT_SCHEDULED') return 'Not Scheduled';
+  if (status === 'UPCOMING') return 'Upcoming';
   return status.charAt(0) + status.slice(1).toLowerCase();
 }
 
@@ -163,18 +169,19 @@ export default function EmployeeAttendancePage() {
                         <span className="text-[10px] font-semibold uppercase tracking-wide">{statusLabel(day.status)}</span>
                       </div>
                       <div className="mt-4 space-y-1 text-xs">
-                        <p>{day.checkIn ? `In ${new Date(day.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}` : 'No check-in'}</p>
-                        <p>{day.checkOut ? `Out ${new Date(day.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}` : 'No check-out'}</p>
-                        <p>{day.workingHours != null ? `${day.workingHours.toFixed(2)} hrs` : '—'}</p>
-                        <p>{day.lateMinutes > 0 ? `Late by ${day.lateMinutes} mins` : 'On time'}</p>
-                        <p>{day.overtimeHours > 0 ? `Overtime +${day.overtimeHours.toFixed(2)} hrs` : 'No overtime'}</p>
-                        <p>{day.shiftDetails?.name ? `Shift: ${day.shiftDetails.name}` : 'Shift: Unassigned'}</p>
+                        {day.checkIn && (
+                          <p>{new Date(day.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })} - {day.checkOut ? new Date(day.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : 'In progress'}</p>
+                        )}
+                        {day.workingHours != null && <p>{day.workingHours.toFixed(2)} hrs</p>}
+                        {day.lateMinutes > 0 && <p className="font-semibold">Late by {day.lateMinutes} mins</p>}
+                        {!day.checkIn && day.status === 'ABSENT' && <p>No attendance</p>}
+                        {day.status === 'LEAVE' && <p>Approved leave</p>}
                       </div>
                     </div>
                   ))}
                 </div>
                 <div className="flex flex-wrap gap-3 pt-2">
-                  {(['PRESENT', 'ABSENT', 'HALF_DAY', 'LEAVE', 'WEEKLY_OFF'] as AttendanceStatus[]).map((status) => (
+                  {(['PRESENT', 'ABSENT', 'HALF_DAY', 'LEAVE', 'WEEKLY_OFF', 'UPCOMING', 'NOT_STARTED', 'NOT_SCHEDULED'] as AttendanceStatus[]).map((status) => (
                     <div key={status} className="flex items-center gap-2 text-xs text-slate-600">
                       <span className={`w-3 h-3 rounded-full border ${STATUS_CELL[status]}`} />
                       <span>{statusLabel(status)}</span>

@@ -215,7 +215,7 @@ describe('AttendanceService', () => {
     });
   });
 
-  it('builds the daily attendance table with absent and leave statuses', async () => {
+  it('builds the daily attendance table with unscheduled and leave statuses', async () => {
     prisma.employee.findMany.mockResolvedValue([
       {
         id: 1,
@@ -254,13 +254,72 @@ describe('AttendanceService', () => {
     const result = await service.getToday(mockUser, '2026-03-13');
 
     expect(result.summary).toEqual(
-      expect.objectContaining({ present: 1, absent: 1, leave: 1, halfDay: 0 }),
+      expect.objectContaining({ present: 1, absent: 0, leave: 1, halfDay: 0 }),
     );
     expect(result.rows.map((row) => [row.employee.name, row.status])).toEqual([
       ['Ava', AttendanceStatus.PRESENT],
       ['Ben', AttendanceStatus.LEAVE],
-      ['Cara', AttendanceStatus.ABSENT],
+      ['Cara', AttendanceStatus.NOT_SCHEDULED],
     ]);
+  });
+
+  it('keeps a late full-shift employee present', () => {
+    jest.setSystemTime(new Date('2026-03-13T18:00:00.000Z'));
+    const shift = {
+      id: 1,
+      name: 'Day',
+      type: 'FIXED' as const,
+      startTime: '09:00',
+      endTime: '17:00',
+      requiredHours: 8,
+      minPresentHours: 5,
+      gracePeriodMinutes: 15,
+      weeklyHolidayDay: 0,
+    };
+
+    expect(
+      (service as any).calculateStatus({
+        day: new Date('2026-03-13T00:00:00.000Z'),
+        checkIn: new Date('2026-03-13T09:45:00.000Z'),
+        checkOut: new Date('2026-03-13T18:00:00.000Z'),
+        workingHours: 8.25,
+        onLeave: false,
+        shift,
+        lateMinutes: 30,
+      }),
+    ).toBe(AttendanceStatus.PRESENT);
+  });
+
+  it('uses planning statuses for future and before-shift days', () => {
+    jest.setSystemTime(new Date('2026-03-13T08:00:00.000Z'));
+    const shift = {
+      id: 1,
+      name: 'Day',
+      type: 'FIXED' as const,
+      startTime: '09:00',
+      endTime: '17:00',
+      requiredHours: 8,
+      minPresentHours: 5,
+      gracePeriodMinutes: 15,
+      weeklyHolidayDay: 0,
+    };
+
+    expect((service as any).calculateStatus({
+      day: new Date('2026-03-13T00:00:00.000Z'),
+      checkIn: null,
+      checkOut: null,
+      workingHours: null,
+      onLeave: false,
+      shift,
+    })).toBe(AttendanceStatus.NOT_STARTED);
+    expect((service as any).calculateStatus({
+      day: new Date('2026-03-14T00:00:00.000Z'),
+      checkIn: null,
+      checkOut: null,
+      workingHours: null,
+      onLeave: false,
+      shift,
+    })).toBe(AttendanceStatus.UPCOMING);
   });
 
   it('allows a manager to view their own attendance using the me endpoint', async () => {
