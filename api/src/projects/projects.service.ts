@@ -151,6 +151,7 @@ export class ProjectsService {
 
     let roleWhere: Prisma.ProjectWhereInput;
     let assignedEmployeeWhere: Prisma.ProjectWhereInput | null = null;
+    let managerProjectWhere: Prisma.ProjectWhereInput | null = null;
 
     if (user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN) {
       roleWhere = baseWhere;
@@ -170,6 +171,16 @@ export class ProjectsService {
       } else {
         assignedEmployeeWhere = {
           assignedEmployees: { some: { id: employeeId } },
+        };
+        managerProjectWhere = {
+          OR: [
+            { managerUser: { teamMembers: { some: { id: user.userId } } } },
+            {
+              managerUser: {
+                reportingEmployees: { some: { employeeId: user.userId } },
+              },
+            },
+          ],
         };
         roleWhere = {
           ...baseWhere,
@@ -201,7 +212,11 @@ export class ProjectsService {
         AND: [
           roleWhere,
           {
-            OR: [assignedEmployeeWhere, buWhere],
+            OR: [
+              assignedEmployeeWhere,
+              ...(managerProjectWhere ? [managerProjectWhere] : []),
+              buWhere,
+            ],
           },
         ],
       };

@@ -358,6 +358,12 @@ describe('ProjectsService', () => {
         employeeId: mockEmployeeUser.employeeId,
       });
       projectDelegate.findMany.mockResolvedValueOnce([]);
+      jest
+        .spyOn((service as any).businessUnitsService, 'buildDirectBUWhere')
+        .mockReturnValue({
+          organizationId: 1,
+          businessUnitId: { in: [10] },
+        });
 
       await service.findAll(mockEmployeeUser);
 
@@ -378,6 +384,32 @@ describe('ProjectsService', () => {
                         some: { employeeId: mockEmployeeUser.userId },
                       },
                     },
+                  },
+                ]),
+              }),
+              expect.objectContaining({
+                OR: expect.arrayContaining([
+                  {
+                    OR: [
+                      {
+                        managerUser: {
+                          teamMembers: {
+                            some: { id: mockEmployeeUser.userId },
+                          },
+                        },
+                      },
+                      {
+                        managerUser: {
+                          reportingEmployees: {
+                            some: { employeeId: mockEmployeeUser.userId },
+                          },
+                        },
+                      },
+                    ],
+                  },
+                  {
+                    organizationId: 1,
+                    businessUnitId: { in: [10] },
                   },
                 ]),
               }),
