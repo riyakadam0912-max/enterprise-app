@@ -30,6 +30,13 @@ export interface Project {
   description: string | null;
   client: string | null;
   projectLead: string | null;
+  customerId?: number | null;
+  customer?: { id: number; customerName: string; customerType?: string } | null;
+  tags?: string[];
+  tasksCount?: number;
+  phasesCount?: number;
+  issuesCount?: number;
+  _count?: { tasks: number; clientAccess?: number };
   links?: ProjectLink[];
   coManagers?: Array<{
     id: number;
@@ -121,6 +128,8 @@ export interface CreateProjectPayload {
   finalDeliverablesLink?: string;
   driveLink?: string;
   projectLead?: string;
+  customerId?: number | null;
+  tags?: string[];
 }
 
 export interface CreateProjectLinkPayload {

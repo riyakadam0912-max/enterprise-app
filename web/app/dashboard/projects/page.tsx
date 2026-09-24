@@ -27,9 +27,10 @@ import { SuccessFeedback } from '@/components/feedback/SuccessFeedback';
 import { canAccessUsers } from '@/utils/auth/permissions';
 import { useStableNow } from '@/hooks/useStableNow';
 import { useAuthSession } from '@/stores/auth-store';
+import { ProjectGrid } from '@/components/projects/ProjectGrid';
 
 type DashboardRole = 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
-type ProjectTab = 'overview' | 'tasks' | 'chat' | 'team';
+type ProjectTab = 'overview' | 'tasks' | 'users' | 'reports' | 'issues' | 'timeLogs' | 'chat';
 
 type TaskPanelData = {
   id: number;
@@ -59,7 +60,10 @@ const tabs: Array<{ id: ProjectTab; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'tasks', label: 'Tasks' },
   { id: 'chat', label: 'Chat' },
-  { id: 'team', label: 'Team' },
+  { id: 'users', label: 'Users' },
+  { id: 'reports', label: 'Reports' },
+  { id: 'issues', label: 'Issues' },
+  { id: 'timeLogs', label: 'Time Logs' },
 ];
 
 const taskStatusClass: Record<string, string> = {
@@ -695,46 +699,7 @@ export default function ProjectsWorkflowPage() {
         )}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {projects.map((project) => (
-          <button
-            key={project.id}
-            onClick={() => onProjectSelect(project.id)}
-            className={`group rounded-xl border p-4 text-left shadow-sm transition ${
-              selectedProjectId === project.id
-                ? 'border-orange-400 bg-orange-50/60'
-                : 'border-slate-200 bg-white hover:border-orange-200'
-            }`}
-          >
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <div>
-                <p className="font-semibold text-slate-900">{project.projectName}</p>
-                {project.projectCode && <p className="text-xs text-slate-400">Code: {project.projectCode}</p>}
-              </div>
-              <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadgeClass(project.status)}`}>
-                {project.status}
-              </span>
-            </div>
-            <p className="text-xs text-slate-500">Manager: {project.managerUser?.name ?? project.manager ?? 'Unassigned'}</p>
-            <p className="text-xs text-slate-500">Deadline: {formatDate(project.deadline ?? project.endDate)}</p>
-            <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
-              <div
-                className={`h-full rounded-full ${
-                  selectedProjectId === project.id && progress
-                    ? progressColorClass(progress.progressPercent)
-                    : 'bg-gray-300'
-                }`}
-                style={{
-                  width:
-                    selectedProjectId === project.id && progress
-                      ? `${Math.max(4, Math.min(100, progress.progressPercent))}%`
-                      : '100%',
-                }}
-              />
-            </div>
-          </button>
-        ))}
-      </div>
+      <ProjectGrid projects={projects} selectedProjectId={selectedProjectId} onSelect={onProjectSelect} />
 
       {actionFeedback?.type === 'success' && <SuccessFeedback title={actionFeedback.message} />}
       {actionFeedback?.type === 'error' && (
@@ -1180,7 +1145,23 @@ export default function ProjectsWorkflowPage() {
             </div>
           )}
 
-          {activeTab === 'team' && (
+          {activeTab === 'reports' && (
+            <section className="grid gap-4 md:grid-cols-3">
+              <article className="rounded-xl border border-slate-200 bg-white p-5"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Task completion</p><p className="mt-2 text-3xl font-semibold text-slate-900">{progress?.progressPercent ?? 0}%</p></article>
+              <article className="rounded-xl border border-slate-200 bg-white p-5"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total tasks</p><p className="mt-2 text-3xl font-semibold text-slate-900">{progress?.totalTasks ?? projectDetails.tasks?.length ?? 0}</p></article>
+              <article className="rounded-xl border border-slate-200 bg-white p-5"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Completed</p><p className="mt-2 text-3xl font-semibold text-emerald-600">{progress?.completedTasks ?? 0}</p></article>
+            </section>
+          )}
+
+          {activeTab === 'issues' && (
+            <section className="rounded-xl border border-slate-200 bg-white p-6"><h3 className="text-base font-semibold text-slate-900">Issues</h3><p className="mt-2 text-sm text-slate-500">Issue tracking is ready for the project workspace. No issue records are linked to this project yet.</p></section>
+          )}
+
+          {activeTab === 'timeLogs' && (
+            <section className="rounded-xl border border-slate-200 bg-white p-6"><h3 className="text-base font-semibold text-slate-900">Time Logs</h3><p className="mt-2 text-sm text-slate-500">Time entries will be grouped here by user and task. Use Timesheets for existing time records.</p></section>
+          )}
+
+          {activeTab === 'users' && (
             <div className="space-y-6">
               <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-4">
                 <div className="flex items-center justify-between gap-3">

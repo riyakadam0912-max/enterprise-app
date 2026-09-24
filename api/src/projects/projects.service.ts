@@ -416,12 +416,19 @@ export class ProjectsService {
       : null;
     const managerName = dto.manager ?? manager?.name ?? null;
 
+    if (dto.customerId != null) {
+      const customer = await this.db.customer.findFirst({ where: { id: dto.customerId, organizationId, deletedAt: null }, select: { id: true } });
+      if (!customer) throw new NotFoundException('Customer not found');
+    }
+
     const project = await this.db.project.create({
       data: {
         organizationId,
         projectName: resolvedName,
         projectCode: dto.projectCode,
         clientName: dto.clientName ?? dto.client,
+        customerId: dto.customerId ?? null,
+        tags: dto.tags ?? [],
         category: dto.category,
         projectType: dto.projectType,
         startDate: dto.startDate ? new Date(dto.startDate) : undefined,
@@ -447,6 +454,7 @@ export class ProjectsService {
         }),
       },
       include: {
+        _count: { select: { tasks: true, clientAccess: true } },
         managerUser: { select: { id: true, name: true, email: true } },
         owner: { select: { id: true, name: true, email: true, role: true } },
         coManagers: {
@@ -464,6 +472,7 @@ export class ProjectsService {
           },
         },
         links: { where: { organizationId } },
+        customer: { select: { id: true, customerName: true, customerType: true } },
       },
     });
     try {
@@ -536,6 +545,7 @@ export class ProjectsService {
     return this.db.project.findMany({
       where,
       include: {
+        _count: { select: { tasks: true, clientAccess: true } },
         managerUser: { select: { id: true, name: true, email: true } },
         owner: { select: { id: true, name: true, email: true, role: true } },
         coManagers: {
@@ -553,6 +563,7 @@ export class ProjectsService {
           },
         },
         links: { where: { ...organizationFilter, deletedAt: null } },
+        customer: { select: { id: true, customerName: true, customerType: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -926,6 +937,14 @@ export class ProjectsService {
       );
     }
 
+    if (dto.customerId != null) {
+      const customer = await this.db.customer.findFirst({
+        where: { id: dto.customerId, organizationId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!customer) throw new NotFoundException('Customer not found');
+    }
+
     let managerName = dto.manager;
     if (dto.managerId) {
       const manager = await this.assertManager(dto.managerId, organizationId);
@@ -944,6 +963,8 @@ export class ProjectsService {
           projectName: dto.projectName ?? dto.name,
         }),
         ...(dto.clientName !== undefined && { clientName: dto.clientName }),
+        ...(dto.customerId !== undefined && { customerId: dto.customerId }),
+        ...(dto.tags !== undefined && { tags: dto.tags }),
         ...(dto.category !== undefined && { category: dto.category }),
         ...(dto.projectType !== undefined && { projectType: dto.projectType }),
         ...(dto.specificTask !== undefined && {

@@ -6,6 +6,7 @@ import {
   IsInt,
   IsIn,
   IsUrl,
+  IsArray,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -81,6 +82,15 @@ export class CreateProjectDto {
   @IsOptional()
   @IsString()
   clientName?: string;
+
+  @IsOptional()
+  @IsInt()
+  customerId?: number | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
 
   @IsOptional()
   @IsString()

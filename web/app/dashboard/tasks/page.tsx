@@ -135,15 +135,6 @@ function IconClose() {
   );
 }
 
-function IconUser() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-      <circle cx="12" cy="7" r="4" />
-    </svg>
-  );
-}
-
 function IconProject() {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
@@ -160,69 +151,6 @@ function isForbiddenTaskError(error: unknown) {
     && typeof error === 'object'
     && 'status' in error
     && (error as { status?: number }).status === 403,
-  );
-}
-
-function TaskRow({
-  task,
-  onSelect,
-}: {
-  task: Task;
-  onSelect: () => void;
-}) {
-  const currentTime = useStableNow();
-  const status = task.status?.toUpperCase() ?? 'PENDING';
-  const priority = (task.priority?.toUpperCase() ?? 'LOW') as keyof typeof PRIORITY_BADGE;
-  const pastDue = isOverdue(task, currentTime);
-
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className="group flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-all duration-200 hover:border-blue-300 hover:shadow-md hover:shadow-blue-100/50"
-    >
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-3 mb-1.5">
-          <h3 className="truncate text-base font-semibold text-slate-900 group-hover:text-blue-700">
-            {task.taskName}
-          </h3>
-          {pastDue && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-700 border border-rose-200">
-              <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
-              Overdue
-            </span>
-          )}
-        </div>
-        
-        <div className="flex flex-wrap items-center gap-2.5 text-sm text-slate-600">
-          {task.project && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 border border-slate-200">
-              <IconProject />
-              <span className="truncate max-w-30">{task.project}</span>
-            </span>
-          )}
-          
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 border border-slate-200">
-            <IconUser />
-            <span className="truncate max-w-30">{task.assignedToUser?.name ?? task.assignee ?? 'Unassigned'}</span>
-          </span>
-          
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 border border-slate-200">
-            <IconCalendar />
-            <span>{formatDate(task.dueDate)}</span>
-          </span>
-        </div>
-      </div>
-      
-      <div className="flex items-center gap-2.5 shrink-0">
-        <span className={cn('inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold', PRIORITY_BADGE[priority] ?? PRIORITY_BADGE.LOW)}>
-          {priority}
-        </span>
-        <span className={cn('inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold', STATUS_BADGE[status] ?? STATUS_BADGE.PENDING)}>
-          {status.replace('_', ' ')}
-        </span>
-      </div>
-    </button>
   );
 }
 
@@ -1206,17 +1134,11 @@ export default function AllTasksPage() {
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
-            {filteredTasks.map((task) => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                onSelect={() => {
-                  setSelectedTaskId(task.id);
-                  setActiveTab('overview');
-                }}
-              />
-            ))}
+          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+            <table className="min-w-full border-collapse text-sm">
+              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"><tr>{['ID', 'Task', 'Project', 'Assignee', 'Status', 'Priority', 'Due Date', 'Estimated Hours', 'Actual Hours'].map((heading) => <th key={heading} className="whitespace-nowrap border-b border-slate-200 px-4 py-3">{heading}</th>)}</tr></thead>
+              <tbody className="divide-y divide-slate-100">{filteredTasks.map((task) => <tr key={task.id} tabIndex={0} onClick={() => { setSelectedTaskId(task.id); setActiveTab('overview'); }} onKeyDown={(event) => { if (event.key === 'Enter') { setSelectedTaskId(task.id); setActiveTab('overview'); } }} className="cursor-pointer transition hover:bg-orange-50/50"><td className="px-4 py-3 text-slate-500">#{task.id}</td><td className="px-4 py-3 font-semibold text-slate-900">{task.taskName}</td><td className="px-4 py-3 text-slate-600">{task.project ?? '—'}</td><td className="px-4 py-3 text-slate-600">{task.assignedToUser?.name ?? task.assignee ?? 'Unassigned'}</td><td className="px-4 py-3"><span className={cn('rounded-full px-2 py-1 text-xs font-semibold', STATUS_BADGE[task.status?.toUpperCase()] ?? STATUS_BADGE.PENDING)}>{task.status?.replace('_', ' ')}</span></td><td className="px-4 py-3 text-slate-600">{task.priority ?? '—'}</td><td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatDate(task.dueDate)}</td><td className="px-4 py-3 text-slate-600">{task.estimatedHours ?? '—'}</td><td className="px-4 py-3 text-slate-600">{task.actualHours ?? '—'}</td></tr>)}</tbody>
+            </table>
           </div>
         )}
 

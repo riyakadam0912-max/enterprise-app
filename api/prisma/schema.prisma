@@ -696,6 +696,7 @@ model Project {
   ownerId               Int?
   organizationId        Int
   businessUnitId        Int?
+  tags                  String[]         @default([])
   managerUser           User?            @relation("ProjectManager", fields: [managerId], references: [id])
   owner                 User?            @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   businessUnit          BusinessUnit?    @relation("ProjectBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)

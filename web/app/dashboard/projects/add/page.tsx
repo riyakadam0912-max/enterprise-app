@@ -7,6 +7,7 @@ import { apiClient } from '@/api/apiClient';
 import { canAccessUsers } from '@/utils/auth/permissions';
 import { reportError } from '@/lib/error-handling';
 import { getAuthSessionSnapshot } from '@/stores/auth-store';
+import { getCustomers, type Customer } from '@/api/customersApi';
 
 const STATUSES = ['NOT_STARTED', 'IN_PROGRESS', 'IN_APPROVAL', 'BLOCKED_CANCELLED', 'POSTPONED', 'COMPLETED'];
 const PROJECT_TYPES = ['EVENT_MANAGEMENT', 'PRODUCTION_EM', 'DIGITAL_MARKETING', 'PRODUCTION_DM', 'PRODUCTION_OTHER', 'TECH_PROJECTS'];
@@ -33,6 +34,7 @@ export default function AddProjectPage() {
   const [session] = useState(parseSession);
   const [managers, setManagers] = useState<Array<{ id: number; name: string; role: string }>>([]);
   const [managerOptions, setManagerOptions] = useState<Array<{ id: number; name: string; role: string }>>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
 
   const [form, setForm] = useState({
     projectName: '',
@@ -52,6 +54,8 @@ export default function AddProjectPage() {
     remarks:     '',
     finalDeliverablesLink: '',
     driveLink:                '',
+    customerId: '',
+    tags: '',
   });
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState('');
@@ -72,6 +76,10 @@ export default function AddProjectPage() {
         setManagers([]);
       });
   }, [session.name, session.role, session.userId]);
+
+  useEffect(() => {
+    getCustomers().then(setCustomers).catch(() => setCustomers([]));
+  }, []);
 
   useEffect(() => {
     const fallbackManager = session.role === 'MANAGER' && session.userId
@@ -128,6 +136,8 @@ export default function AddProjectPage() {
         remarks:     form.remarks.trim()     || undefined,
         finalDeliverablesLink: form.finalDeliverablesLink.trim() || undefined,
         driveLink: form.driveLink.trim() || undefined,
+        customerId: form.customerId ? Number(form.customerId) : null,
+        tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
       });
       router.push('/dashboard/projects');
     } catch {
@@ -163,6 +173,19 @@ export default function AddProjectPage() {
               onChange={(e) => set('projectName', e.target.value)}
               placeholder="Enter project name"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
+            <select className={field} value={form.customerId} onChange={(e) => set('customerId', e.target.value)}>
+              <option value="">-No customer linked-</option>
+              {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.customerName}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tags</label>
+            <input className={field} value={form.tags} onChange={(e) => set('tags', e.target.value)} placeholder="design, priority, launch" />
           </div>
 
           {/* Project Owner */}
@@ -302,6 +325,8 @@ export default function AddProjectPage() {
                 remarks: '',
                 finalDeliverablesLink: '',
                 driveLink: '',
+                customerId: '',
+                tags: '',
               })}
               className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold px-6 py-2 rounded-lg transition-colors"
             >
