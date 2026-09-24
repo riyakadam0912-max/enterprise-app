@@ -348,6 +348,45 @@ describe('ProjectsService', () => {
       );
     });
 
+    it('should include projects owned by the employee\'s reporting manager', async () => {
+      const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      userDelegate.findUnique.mockResolvedValueOnce({
+        id: mockEmployeeUser.userId,
+        role: Role.EMPLOYEE,
+        managerId: 2,
+        employeeId: mockEmployeeUser.employeeId,
+      });
+      projectDelegate.findMany.mockResolvedValueOnce([]);
+
+      await service.findAll(mockEmployeeUser);
+
+      expect(projectDelegate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            AND: expect.arrayContaining([
+              expect.objectContaining({
+                OR: expect.arrayContaining([
+                  {
+                    managerUser: {
+                      teamMembers: { some: { id: mockEmployeeUser.userId } },
+                    },
+                  },
+                  {
+                    managerUser: {
+                      reportingEmployees: {
+                        some: { employeeId: mockEmployeeUser.userId },
+                      },
+                    },
+                  },
+                ]),
+              }),
+            ]),
+          }),
+        }),
+      );
+    });
+
     it('should include directly assigned manager projects outside the active BU scope', async () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
       projectDelegate.findMany.mockResolvedValueOnce([]);

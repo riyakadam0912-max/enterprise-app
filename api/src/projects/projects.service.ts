@@ -175,6 +175,12 @@ export class ProjectsService {
           ...baseWhere,
           OR: [
             { assignedEmployees: { some: { id: employeeId } } },
+            { managerUser: { teamMembers: { some: { id: user.userId } } } },
+            {
+              managerUser: {
+                reportingEmployees: { some: { employeeId: user.userId } },
+              },
+            },
             {
               tasks: {
                 some: {
