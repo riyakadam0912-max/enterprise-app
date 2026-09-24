@@ -62,6 +62,48 @@ export enum Permission {
   CONTACT_CREATE = 'contact.create',
   CONTACT_UPDATE = 'contact.update',
   CONTACT_DELETE = 'contact.delete',
+  CONTACT_IMPORT = 'contact.import',
+
+  // Client portal permissions
+  CLIENT_READ = 'client.read',
+  CLIENT_CREATE = 'client.create',
+  CLIENT_UPDATE = 'client.update',
+  CLIENT_DELETE = 'client.delete',
+  CLIENT_INVITE = 'client.invite',
+  CLIENT_PROJECT_ACCESS_MANAGE = 'client.project_access.manage',
+  CLIENT_PORTAL_READ = 'client.portal.read',
+  CLIENT_PORTAL_MESSAGE = 'client.portal.message',
+  CLIENT_PORTAL_FILE_READ = 'client.portal.file.read',
+  CLIENT_PORTAL_INVOICE_READ = 'client.portal.invoice.read',
+
+  // Accounting permissions
+  LEDGER_READ = 'ledger.read',
+  LEDGER_CREATE = 'ledger.create',
+  LEDGER_UPDATE = 'ledger.update',
+  LEDGER_DELETE = 'ledger.delete',
+  LEDGER_IMPORT = 'ledger.import',
+
+  // Catalog permissions
+  PRODUCT_READ = 'product.read',
+  PRODUCT_CREATE = 'product.create',
+  PRODUCT_UPDATE = 'product.update',
+  PRODUCT_DELETE = 'product.delete',
+  PRODUCT_CATEGORY_MANAGE = 'product.category.manage',
+
+  // Marketing permissions
+  MARKETING_READ = 'marketing.read',
+  MARKETING_CREATE = 'marketing.create',
+  MARKETING_UPDATE = 'marketing.update',
+  MARKETING_DELETE = 'marketing.delete',
+  MARKETING_IMPORT = 'marketing.import',
+
+  // Support permissions
+  TICKET_READ = 'ticket.read',
+  TICKET_CREATE = 'ticket.create',
+  TICKET_UPDATE = 'ticket.update',
+  TICKET_DELETE = 'ticket.delete',
+  TICKET_IMPORT = 'ticket.import',
+  TICKET_TYPE_MANAGE = 'ticket-type.manage',
 
   // Task permissions
   TASK_READ = 'task.read',

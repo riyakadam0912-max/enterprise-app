@@ -7,6 +7,9 @@ export type EmailTemplateContext = Record<string, unknown> & {
   employeeId?: string;
   department?: string;
   projectName?: string;
+  projectNames?: string;
+  customerName?: string;
+  invitationExpiry?: string;
   taskName?: string;
   invoiceNumber?: string;
   invoiceAmount?: string;

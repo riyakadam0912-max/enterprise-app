@@ -52,6 +52,7 @@ model User {
   primaryBusinessUnit        BusinessUnit?          @relation("UserPrimaryBusinessUnit", fields: [primaryBusinessUnitId], references: [id], onDelete: SetNull)
   userRoles                  UserRole[]
   coManagedProjects          Project[]              @relation("ProjectCoManagers")
+  clientProfile              ClientProfile?
 
   @@index([organizationId])
   @@index([primaryBusinessUnitId])
@@ -175,6 +176,8 @@ model Organization {
   workflowNotifications    WorkflowNotification[]
   workflowSteps            WorkflowStep[]
   businessUnits            BusinessUnit[]
+  clientProfiles            ClientProfile[]
+  clientInvitations         ClientInvitation[]
 
   @@index([status])
   @@index([createdAt])
@@ -699,6 +702,7 @@ model Project {
   links                 ProjectLink[]
   members               ProjectMember[]
   messages              ProjectMessage[]
+  clientAccess          ClientProjectAccess[]
   tasks                 Task[]           @relation("ProjectTasks")
   assignedEmployees     Employee[]       @relation("ProjectAssignedEmployees")
   coManagers            User[]           @relation("ProjectCoManagers")
@@ -775,8 +779,68 @@ model Contact {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   deals          Deal[]       @relation("ContactToDeals")
   quotes         Quote[]
+  clientProfiles ClientProfile[]
 
   @@index([organizationId])
+}
+
+model ClientProfile {
+  id             Int                  @id @default(autoincrement())
+  organizationId Int
+  userId         Int                  @unique
+  contactId      Int
+  status         ClientProfileStatus  @default(INVITED)
+  invitedAt      DateTime             @default(now())
+  acceptedAt     DateTime?
+  lastLoginAt    DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contact        Contact              @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  projectAccess  ClientProjectAccess[]
+  invitations    ClientInvitation[]
+
+  @@index([organizationId])
+  @@index([contactId])
+  @@index([status])
+}
+
+model ClientProjectAccess {
+  clientProfileId Int
+  projectId       Int
+  accessStatus    ClientAccessStatus @default(ACTIVE)
+  canViewOverview Boolean            @default(true)
+  canViewTasks    Boolean            @default(false)
+  canViewFiles    Boolean            @default(true)
+  canViewMessages Boolean            @default(true)
+  canViewInvoices  Boolean            @default(false)
+  createdAt       DateTime           @default(now())
+  revokedAt       DateTime?
+  clientProfile   ClientProfile      @relation(fields: [clientProfileId], references: [id], onDelete: Cascade)
+  project         Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([clientProfileId, projectId])
+  @@index([projectId])
+  @@index([accessStatus])
+}
+
+model ClientInvitation {
+  id              Int           @id @default(autoincrement())
+  clientProfileId Int
+  organizationId  Int
+  tokenHash       String        @unique
+  template        String        @default("client-invitation")
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime      @default(now())
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientProfile   ClientProfile @relation(fields: [clientProfileId], references: [id], onDelete: Cascade)
+
+  @@index([clientProfileId])
+  @@index([organizationId])
+  @@index([expiresAt])
 }
 
 model Activity {
@@ -1853,6 +1917,19 @@ enum Role {
   SUPER_ADMIN
   COMPLIANCE_MANAGER
   MANAGER
+  CLIENT
+}
+
+enum ClientProfileStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  REVOKED
+}
+
+enum ClientAccessStatus {
+  ACTIVE
+  REVOKED
 }
 
 enum ShiftType {

@@ -27,6 +27,7 @@ import { AuditContextMiddleware } from './audit-logs/audit-context.middleware';
 import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware';
 import { resolveRedisConnection } from './config/redis';
 import { EmailModule } from './email/email.module';
+import { ClientPortalModule } from './client-portal/client-portal.module';
 
 const redisConnection = resolveRedisConnection(process.env);
 
@@ -79,6 +80,7 @@ const queueImports = redisConnection
     OrganizationsModule,
     BusinessUnitsModule,
     EmailModule,
+    ClientPortalModule,
   ],
   controllers: [AppController],
   providers: [AppService, TenantContextMiddleware],
