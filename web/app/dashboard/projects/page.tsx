@@ -114,7 +114,7 @@ function formatBudget(value?: number | null) {
   }).format(value)}`;
 }
 
-export default function ProjectsWorkflowPage() {
+export default function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { initialProjectId?: number; dedicated?: boolean } = {}) {
   const router = useRouter();
   const session = useAuthSession();
   const role = session.role;
@@ -369,6 +369,10 @@ export default function ProjectsWorkflowPage() {
   }, [availableEmployeeOptions, employeeSearch]);
 
   async function onProjectSelect(projectId: number) {
+    if (!dedicated) {
+      router.push(`/dashboard/projects/${projectId}`);
+      return;
+    }
     setSelectedProjectId(projectId);
     setSelectedTaskId(null);
     await loadProjectDetails(projectId);
@@ -682,7 +686,7 @@ export default function ProjectsWorkflowPage() {
     <div className="p-6 space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Projects Workflow</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{dedicated ? projectDetails?.projectName ?? 'Project' : 'Projects Workflow'}</h1>
           <p className="text-sm text-slate-500">
             {isAdmin && 'Create Project -> Assign Manager -> Assign Tasks -> Review -> Monitor All Progress'}
             {isManager && 'My Projects -> Resources -> Assign Tasks -> Review Work -> Update Status'}
@@ -699,7 +703,7 @@ export default function ProjectsWorkflowPage() {
         )}
       </div>
 
-      <ProjectGrid projects={projects} selectedProjectId={selectedProjectId} onSelect={onProjectSelect} />
+      {!dedicated && <ProjectGrid projects={projects} selectedProjectId={selectedProjectId} onSelect={onProjectSelect} onDeleted={(ids) => setProjects((current) => current.filter((project) => !ids.includes(project.id)))} />}
 
       {actionFeedback?.type === 'success' && <SuccessFeedback title={actionFeedback.message} />}
       {actionFeedback?.type === 'error' && (

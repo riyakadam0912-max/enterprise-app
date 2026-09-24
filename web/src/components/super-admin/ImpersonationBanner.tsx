@@ -34,45 +34,20 @@ export default function ImpersonationBanner() {
   };
 
   return (
-    <div className="border-b border-indigo-200 bg-indigo-50/80 px-4 py-3 sm:px-6">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+    <details className="relative">
+      <summary className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full border border-indigo-200 bg-indigo-50 text-indigo-700 shadow-sm hover:bg-indigo-100" title={`Impersonating ${displayName}`}>
+        <ShieldCheck className="h-4 w-4" />
+      </summary>
+      <div className="absolute right-0 z-50 mt-2 w-72 rounded-xl border border-indigo-200 bg-white p-4 shadow-xl">
         <div className="flex items-start gap-3">
-          <div className="mt-0.5 rounded-2xl bg-indigo-600 p-2 text-white shadow-sm">
-            <ShieldCheck className="h-4 w-4" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-indigo-700" />
-              <p className="text-sm font-semibold text-indigo-900">
-                Organisation impersonation mode
-              </p>
-            </div>
-            <p className="mt-1 text-sm text-indigo-700">
-              You are operating as the Organisation Admin for{' '}
-              <span className="font-semibold">{displayName}</span>. All
-              tenant-scoped tools and APIs use this organisation context.
-            </p>
-          </div>
+          <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-indigo-700" />
+          <div><p className="text-sm font-semibold text-slate-900">Organisation context</p><p className="mt-1 text-xs leading-5 text-slate-500">Operating as Organisation Admin for <span className="font-semibold text-indigo-700">{displayName}</span>.</p></div>
         </div>
-
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={handleSwitchOrganization}
-            className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-white px-3 py-2 text-sm font-medium text-indigo-700 transition hover:bg-indigo-100"
-          >
-            <ArrowRightLeft className="h-4 w-4" />
-            Switch Organisation
-          </button>
-          <button
-            type="button"
-            onClick={handleReturnToConsole}
-            className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
-          >
-            Return to Console
-          </button>
+        <div className="mt-3 flex gap-2 border-t border-slate-100 pt-3">
+          <button type="button" onClick={handleSwitchOrganization} className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-indigo-200 px-2 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"><ArrowRightLeft className="h-3.5 w-3.5" />Switch</button>
+          <button type="button" onClick={handleReturnToConsole} className="flex-1 rounded-lg bg-indigo-600 px-2 py-2 text-xs font-semibold text-white hover:bg-indigo-700">Console</button>
         </div>
       </div>
-    </div>
+    </details>
   );
 }

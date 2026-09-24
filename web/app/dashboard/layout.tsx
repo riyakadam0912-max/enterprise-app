@@ -4,7 +4,6 @@ import { useEffect, useState, useTransition } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import Topbar from '@/components/Topbar';
-import ImpersonationBanner from '@/components/super-admin/ImpersonationBanner';
 import { useAuth } from '@/providers/AuthProvider';
 import { getActiveOrganizationId, isSuperAdminSession } from '@/stores/auth-store';
 
@@ -111,7 +110,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="flex flex-col flex-1 overflow-hidden">
         <Topbar />
         <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-5">
-          <ImpersonationBanner />
           {children}
         </main>
       </div>
