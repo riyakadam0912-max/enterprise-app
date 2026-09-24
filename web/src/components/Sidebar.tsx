@@ -197,6 +197,13 @@ const navConfig: NavItem[] = [
     ],
   },
   {
+    type: 'dropdown', id: 'customers', label: 'Customers', icon: <ContactsIcon />,
+    children: [
+      { label: '+ Customers', href: '/dashboard/customers/add', icon: <PlusCircleIcon /> },
+      { label: 'All Customers', href: '/dashboard/customers', icon: <ReportIcon /> },
+    ],
+  },
+  {
     type: 'dropdown', id: 'clients', label: 'Clients', icon: <ContactsIcon />,
     children: [
       { label: '+ Client User', href: '/dashboard/clients/add', icon: <PlusCircleIcon /> },

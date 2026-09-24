@@ -4,6 +4,8 @@ import * as React from 'react';
 import {
   type ColumnDef,
   type ColumnFiltersState,
+  type ColumnOrderState,
+  type ColumnSizingState,
   type OnChangeFn,
   type PaginationState,
   type SortingState,
@@ -48,6 +50,7 @@ export type DataTableProps<TData, TValue> = {
   emptyTitle?: string;
   emptyDescription?: string;
   exportFileName?: string;
+  moduleKey?: string;
   className?: string;
 };
 
@@ -68,14 +71,40 @@ export function DataTable<TData, TValue>({
   emptyTitle = 'No records found',
   emptyDescription = 'Try adjusting your filters or create a new record.',
   exportFileName = 'export',
+  moduleKey,
   className,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
+  const [columnOrder, setColumnOrder] = React.useState<ColumnOrderState>([]);
+  const [columnSizing, setColumnSizing] = React.useState<ColumnSizingState>({});
   const [rowSelection, setRowSelection] = React.useState({});
   const [internalPagination, setInternalPagination] = React.useState<PaginationState>({ pageIndex: 0, pageSize: 10 });
   const [internalSearch, setInternalSearch] = React.useState('');
+
+  const preferenceKey = moduleKey ? `erp-table-preferences:${moduleKey}` : null;
+
+  React.useEffect(() => {
+    if (!preferenceKey) return;
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(preferenceKey) ?? '{}') as {
+        visibility?: VisibilityState;
+        order?: ColumnOrderState;
+        sizing?: ColumnSizingState;
+      };
+      if (saved.visibility) setColumnVisibility(saved.visibility);
+      if (saved.order) setColumnOrder(saved.order);
+      if (saved.sizing) setColumnSizing(saved.sizing);
+    } catch {
+      window.localStorage.removeItem(preferenceKey);
+    }
+  }, [preferenceKey]);
+
+  React.useEffect(() => {
+    if (!preferenceKey) return;
+    window.localStorage.setItem(preferenceKey, JSON.stringify({ visibility: columnVisibility, order: columnOrder, sizing: columnSizing }));
+  }, [columnOrder, columnSizing, columnVisibility, preferenceKey]);
 
   const controlledPagination = pagination ?? internalPagination;
   const globalFilter = searchValue ?? internalSearch;
@@ -145,6 +174,8 @@ export function DataTable<TData, TValue>({
       sorting,
       columnFilters,
       columnVisibility,
+      columnOrder,
+      columnSizing,
       rowSelection,
       globalFilter,
       pagination: controlledPagination,
@@ -155,6 +186,8 @@ export function DataTable<TData, TValue>({
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
+    onColumnOrderChange: setColumnOrder,
+    onColumnSizingChange: setColumnSizing,
     onRowSelectionChange: setRowSelection,
     onGlobalFilterChange: setGlobalFilter,
     onPaginationChange: handlePaginationChange,
@@ -162,7 +195,16 @@ export function DataTable<TData, TValue>({
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: manualPagination ? undefined : getPaginationRowModel(),
+    enableColumnResizing: true,
+    columnResizeMode: 'onChange',
   });
+
+  function resetColumnPreferences() {
+    setColumnVisibility({});
+    setColumnOrder([]);
+    setColumnSizing({});
+    if (preferenceKey) window.localStorage.removeItem(preferenceKey);
+  }
 
   const selectedRows = table.getSelectedRowModel().rows.map((row) => row.original);
   const visibleRows = table.getRowModel().rows;
@@ -239,6 +281,8 @@ export function DataTable<TData, TValue>({
                     {String(column.columnDef.header ?? column.id)}
                   </DropdownMenu.CheckboxItem>
                 ))}
+                <DropdownMenu.Separator className="my-1 h-px bg-slate-200" />
+                <DropdownMenu.Item onSelect={resetColumnPreferences} className="cursor-pointer rounded-xl px-3 py-2 text-sm text-slate-600 outline-none hover:bg-slate-50">Reset columns</DropdownMenu.Item>
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
@@ -277,8 +321,9 @@ export function DataTable<TData, TValue>({
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id} className="border-b border-slate-200">
                   {headerGroup.headers.map((header) => (
-                    <th key={header.id} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th key={header.id} style={{ width: header.getSize() }} className="relative px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                      {header.column.getCanResize() ? <button type="button" aria-label={`Resize ${header.column.id} column`} onMouseDown={header.getResizeHandler()} onTouchStart={header.getResizeHandler()} className="absolute right-0 top-0 h-full w-1 cursor-col-resize touch-none bg-transparent hover:bg-orange-400" /> : null}
                     </th>
                   ))}
                 </tr>

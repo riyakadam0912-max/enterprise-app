@@ -28,6 +28,7 @@ import { TenantContextMiddleware } from './common/middleware/tenant-context.midd
 import { resolveRedisConnection } from './config/redis';
 import { EmailModule } from './email/email.module';
 import { ClientPortalModule } from './client-portal/client-portal.module';
+import { CustomersModule } from './customers/customers.module';
 
 const redisConnection = resolveRedisConnection(process.env);
 
@@ -81,6 +82,7 @@ const queueImports = redisConnection
     BusinessUnitsModule,
     EmailModule,
     ClientPortalModule,
+    CustomersModule,
   ],
   controllers: [AppController],
   providers: [AppService, TenantContextMiddleware],

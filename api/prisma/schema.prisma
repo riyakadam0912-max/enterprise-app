@@ -178,6 +178,7 @@ model Organization {
   businessUnits            BusinessUnit[]
   clientProfiles            ClientProfile[]
   clientInvitations         ClientInvitation[]
+  customers                 Customer[]
 
   @@index([status])
   @@index([createdAt])
@@ -703,6 +704,8 @@ model Project {
   members               ProjectMember[]
   messages              ProjectMessage[]
   clientAccess          ClientProjectAccess[]
+  customerId            Int?
+  customer              Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
   tasks                 Task[]           @relation("ProjectTasks")
   assignedEmployees     Employee[]       @relation("ProjectAssignedEmployees")
   coManagers            User[]           @relation("ProjectCoManagers")
@@ -784,11 +787,39 @@ model Contact {
   @@index([organizationId])
 }
 
+model Customer {
+  id             Int              @id @default(autoincrement())
+  organizationId Int
+  customerName   String
+  customerType   CustomerType     @default(BUSINESS)
+  addressLine1   String
+  addressLine2   String?
+  city           String
+  state          String
+  country        String
+  zipCode        String
+  webAddress     String?
+  email          String?
+  phoneNumber    String?
+  status         String           @default("ACTIVE")
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  deletedAt      DateTime?
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projects       Project[]
+  clientProfiles ClientProfile[]
+
+  @@index([organizationId])
+  @@index([customerName])
+  @@index([status])
+}
+
 model ClientProfile {
   id             Int                  @id @default(autoincrement())
   organizationId Int
   userId         Int                  @unique
-  contactId      Int
+  customerId     Int?
+  contactId      Int?
   status         ClientProfileStatus  @default(INVITED)
   invitedAt      DateTime             @default(now())
   acceptedAt     DateTime?
@@ -797,12 +828,14 @@ model ClientProfile {
   updatedAt      DateTime             @updatedAt
   organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  contact        Contact              @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  customer       Customer?            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  contact        Contact?             @relation(fields: [contactId], references: [id], onDelete: Restrict)
   projectAccess  ClientProjectAccess[]
   invitations    ClientInvitation[]
 
   @@index([organizationId])
   @@index([contactId])
+  @@index([customerId])
   @@index([status])
 }
 
@@ -1930,6 +1963,11 @@ enum ClientProfileStatus {
 enum ClientAccessStatus {
   ACTIVE
   REVOKED
+}
+
+enum CustomerType {
+  BUSINESS
+  INDIVIDUAL
 }
 
 enum ShiftType {

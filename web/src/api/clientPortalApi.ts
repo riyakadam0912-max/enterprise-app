@@ -9,7 +9,7 @@ export interface ClientUser {
 }
 
 export interface CreateClientUserRequest {
-  contactId: number;
+  customerId: number;
   email: string;
   invitationTemplate?: string;
   projectIds: number[];

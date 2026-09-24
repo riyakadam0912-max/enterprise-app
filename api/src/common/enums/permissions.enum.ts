@@ -64,6 +64,12 @@ export enum Permission {
   CONTACT_DELETE = 'contact.delete',
   CONTACT_IMPORT = 'contact.import',
 
+  // Customer permissions
+  CUSTOMER_READ = 'customer.read',
+  CUSTOMER_CREATE = 'customer.create',
+  CUSTOMER_UPDATE = 'customer.update',
+  CUSTOMER_DELETE = 'customer.delete',
+
   // Client portal permissions
   CLIENT_READ = 'client.read',
   CLIENT_CREATE = 'client.create',

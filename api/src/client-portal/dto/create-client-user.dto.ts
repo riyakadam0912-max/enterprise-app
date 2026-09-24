@@ -5,7 +5,7 @@ export class CreateClientUserDto {
   @IsInt()
   @Min(1)
   @ApiProperty({ example: 42 })
-  contactId!: number;
+  customerId!: number;
 
   @IsEmail()
   @ApiProperty({ example: 'client@example.com' })

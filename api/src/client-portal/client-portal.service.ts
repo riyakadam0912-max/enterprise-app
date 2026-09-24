@@ -50,7 +50,7 @@ export class ClientPortalService {
       where: { organizationId },
       orderBy: { createdAt: 'desc' },
       include: {
-        contact: { select: { id: true, contactName: true, company: true, email: true } },
+        customer: { select: { id: true, customerName: true, customerType: true, email: true } },
         user: { select: { id: true, name: true, email: true, isActive: true } },
         projectAccess: {
           where: { accessStatus: ClientAccessStatus.ACTIVE },
@@ -68,7 +68,7 @@ export class ClientPortalService {
     if (projectIds.length === 0) throw new ConflictException('At least one project is required');
 
     const [contact, projects, existingUser] = await Promise.all([
-      this.prisma.contact.findFirst({ where: { id: dto.contactId, organizationId, deletedAt: null } }),
+      this.prisma.customer.findFirst({ where: { id: dto.customerId, organizationId, deletedAt: null } }),
       this.prisma.project.findMany({ where: { id: { in: projectIds }, organizationId, deletedAt: null }, select: { id: true, projectName: true, status: true, managerId: true } }),
       this.prisma.user.findUnique({ where: { email }, select: { id: true, role: true, clientProfile: { select: { id: true } } } }),
     ]);
@@ -84,7 +84,7 @@ export class ClientPortalService {
     const tokenHash = createHash('sha256').update(rawToken).digest('hex');
     const temporaryPassword = await hashPassword(randomBytes(24).toString('base64'));
     const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
-    const name = contact.contactName || email.split('@')[0];
+    const name = contact.customerName || email.split('@')[0];
     const template = dto.invitationTemplate?.trim() || 'client-invitation';
 
     const clientProfile = await this.prisma.$transaction(async (tx) => {
@@ -102,7 +102,7 @@ export class ClientPortalService {
         data: {
           organizationId,
           userId: createdUser.id,
-          contactId: contact.id,
+          customerId: contact.id,
           projectAccess: {
             create: projectIds.map((projectId) => ({ projectId })),
           },
@@ -130,7 +130,7 @@ export class ClientPortalService {
       context: {
         firstName: name,
         organization: user.organizationName ?? 'your organization',
-        customerName: contact.company ?? contact.contactName,
+        customerName: contact.customerName,
         projectNames: projects.map((project) => project.projectName).join(', '),
         ctaUrl: portalUrl,
         ctaText: 'Accept invitation',

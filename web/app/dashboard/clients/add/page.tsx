@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getContacts, type Contact } from '@/api/contactsApi';
+import { getCustomers, type Customer } from '@/api/customersApi';
 import { createClientUser } from '@/api/clientPortalApi';
 import { getProjects, type Project } from '@/api/projectsApi';
 
@@ -10,9 +10,9 @@ const field = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-
 
 export default function AddClientPage() {
   const router = useRouter();
-  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [contactId, setContactId] = useState('');
+  const [customerId, setCustomerId] = useState('');
   const [email, setEmail] = useState('');
   const [template, setTemplate] = useState('client-invitation');
   const [projectIds, setProjectIds] = useState<number[]>([]);
@@ -22,9 +22,9 @@ export default function AddClientPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    Promise.all([getContacts(), getProjects()])
-      .then(([loadedContacts, loadedProjects]) => {
-        setContacts(loadedContacts);
+    Promise.all([getCustomers(), getProjects()])
+      .then(([loadedCustomers, loadedProjects]) => {
+        setCustomers(loadedCustomers);
         setProjects(loadedProjects);
       })
       .catch(() => setError('Unable to load customers and projects.'))
@@ -42,14 +42,14 @@ export default function AddClientPage() {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!contactId || !email.trim() || projectIds.length === 0) {
+    if (!customerId || !email.trim() || projectIds.length === 0) {
       setError('Customer, email, and at least one project are required.');
       return;
     }
     setSaving(true);
     setError('');
     try {
-      await createClientUser({ contactId: Number(contactId), email: email.trim(), invitationTemplate: template, projectIds });
+      await createClientUser({ customerId: Number(customerId), email: email.trim(), invitationTemplate: template, projectIds });
       router.push('/dashboard/clients');
     } catch {
       setError('Unable to send the client invitation.');
@@ -66,16 +66,17 @@ export default function AddClientPage() {
           <h1 className="mt-1 text-2xl font-semibold text-slate-950">Add client user</h1>
           <p className="mt-1 text-sm text-slate-500">Invite a customer to selected projects.</p>
         </div>
-        <button type="button" onClick={() => router.push('/dashboard/contacts/add')} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">+ Add Customer</button>
+        <button type="button" onClick={() => router.push('/dashboard/customers/add')} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">+ Add Customer</button>
       </div>
 
       {error && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
       {loading ? <p className="text-sm text-slate-500">Loading onboarding options...</p> : (
         <form onSubmit={submit} className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <label className="block text-sm font-medium text-slate-700">Customer
-            <select className={`${field} mt-1`} value={contactId} onChange={(event) => setContactId(event.target.value)}>
+            <select className={`${field} mt-1`} value={customerId} onChange={(event) => setCustomerId(event.target.value)}>
               <option value="">Select customer</option>
-              {contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.contactName}{contact.company ? ` - ${contact.company}` : ''}</option>)}
+                          {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.customerName} - {customer.customerType === 'BUSINESS' ? 'Business' : 'Individual'}</option>)}
+              <button type="button" onClick={() => router.push('/dashboard/customers/add')} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">+ Add Customer</button>
             </select>
           </label>
           <label className="block text-sm font-medium text-slate-700">Email ID
