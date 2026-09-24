@@ -28,6 +28,7 @@ type MonthlyReportStatus = AttendanceStatus | 'LATE' | '';
 interface MonthlyAttendanceReportRow {
   employeeId: number;
   employeeName: string;
+  hireDate: string | null;
   department: string | null;
   role: string;
   presentCount: number;
@@ -54,6 +55,11 @@ interface MonthlyAttendanceReportResponse {
 function todayString() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function formatHireDate(value: string | null) {
+  if (!value) return 'Hire date missing';
+  return `Eligible from ${new Date(value).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}`;
 }
 
 // Kept for backward compatibility, but uses the 12-hour format function
@@ -626,11 +632,11 @@ export default function AttendancePage() {
       </div>
 
       {canViewAdminAttendance && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <h3 className="text-base font-semibold text-slate-900">Monthly Attendance Report</h3>
-              <p className="text-sm text-slate-500">Filter and export attendance trends for the selected month.</p>
+              <h3 className="text-base font-semibold text-slate-900">Monthly Attendance</h3>
+              <p className="text-sm text-slate-500">Attendance starts on each employee&apos;s hire date.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <select value={reportMonth} onChange={(event) => setReportMonth(event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm">
@@ -661,8 +667,8 @@ export default function AttendancePage() {
           ) : monthlyReportError ? (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{monthlyReportError}</div>
           ) : (
-            <div className="overflow-auto rounded-2xl border border-slate-200">
-              <table className="min-w-240 w-full text-sm">
+            <div className="overflow-auto rounded-xl border border-slate-200">
+              <table className="min-w-220 w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="px-4 py-3">Employee Name</th>
@@ -681,7 +687,12 @@ export default function AttendancePage() {
                 <tbody className="divide-y divide-slate-100 bg-white">
                   {monthlyReport?.rows.length ? monthlyReport.rows.map((row) => (
                     <tr key={row.employeeId} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 font-medium text-slate-900">{row.employeeName}</td>
+                      <td className="px-4 py-3 font-medium text-slate-900">
+                        <div>{row.employeeName}</div>
+                        <div className={`mt-1 text-xs font-normal ${row.hireDate ? 'text-slate-400' : 'text-amber-600'}`}>
+                          {formatHireDate(row.hireDate)}
+                        </div>
+                      </td>
                       <td className="px-4 py-3 text-slate-600">{row.employeeId}</td>
                       <td className="px-4 py-3 text-slate-600">{row.department ?? '—'}</td>
                       <td className="px-4 py-3 text-slate-600">{row.role}</td>
@@ -691,7 +702,14 @@ export default function AttendancePage() {
                       <td className="px-4 py-3 text-slate-600">{row.halfDayCount}</td>
                       <td className="px-4 py-3 text-slate-600">{row.leaveCount}</td>
                       <td className="px-4 py-3 text-slate-600">{row.workingDays}</td>
-                      <td className="px-4 py-3 text-slate-600">{row.attendancePercent}%</td>
+                      <td className="px-4 py-3 text-slate-600">
+                        <div className="flex min-w-28 items-center gap-2">
+                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                            <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(100, Math.max(0, row.attendancePercent))}%` }} />
+                          </div>
+                          <span className="w-12 text-right font-medium text-slate-700">{row.attendancePercent}%</span>
+                        </div>
+                      </td>
                     </tr>
                   )) : (
                     <tr>

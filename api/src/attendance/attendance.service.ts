@@ -152,6 +152,19 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     return day;
   }
 
+  private isAttendanceEligible(day: Date, hireDate?: Date | null) {
+    if (!hireDate) return true;
+    return this.startOfDay(day).getTime() >= this.startOfDay(hireDate).getTime();
+  }
+
+  private assertAttendanceEligible(day: Date, hireDate?: Date | null) {
+    if (!this.isAttendanceEligible(day, hireDate)) {
+      throw new BadRequestException(
+        'Attendance cannot be recorded before the employee hire date',
+      );
+    }
+  }
+
   private parseTargetDay(date?: string, fallback?: Date) {
     return this.startOfDay(date ? new Date(date) : (fallback ?? new Date()));
   }
@@ -748,6 +761,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     const checkInTime = dto.timestamp ? new Date(dto.timestamp) : new Date();
     const day = this.parseTargetDay(dto.date, checkInTime);
+    this.assertAttendanceEligible(day, employee.hireDate);
 
     const existing = await this.prisma.attendance.findUnique({
       where: { employeeId_date: { employeeId, date: day } },
@@ -921,8 +935,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       orderBy: { name: 'asc' },
       include: { shift: true },
     });
+    const eligibleEmployees = employees.filter((employee) =>
+      this.isAttendanceEligible(day, employee.hireDate),
+    );
 
-    if (employees.length === 0) {
+    if (eligibleEmployees.length === 0) {
       const emptySummary = {
         present: 0,
         absent: 0,
@@ -939,7 +956,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       return { rows: [] as DailyAttendanceRow[], summary: emptySummary };
     }
 
-    const ids = employees.map((employee) => employee.id);
+    const ids = eligibleEmployees.map((employee) => employee.id);
 
     const [attendanceRows, leaveRows] = await Promise.all([
       this.prisma.attendance.findMany({
@@ -962,7 +979,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     );
     const leaveSet = new Set(leaveRows.map((row) => row.employeeId));
 
-    const rows = employees.map((employee) =>
+    const rows = eligibleEmployees.map((employee) =>
       this.toDailyRow(
         employee,
         this.startOfDay(day),
@@ -1054,7 +1071,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         checkOut: null,
         lateMinutes: 0,
         overtimeHours: 0,
-        status: AttendanceStatus.ABSENT,
+        status: AttendanceStatus.NOT_SCHEDULED,
         shiftDetails: null,
       };
     }
@@ -1163,6 +1180,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     for (let dayNumber = 1; dayNumber <= daysInMonth; dayNumber++) {
       const day = new Date(base.getFullYear(), base.getMonth(), dayNumber);
+      if (!this.isAttendanceEligible(day, employee.hireDate)) {
+        continue;
+      }
       const attendance =
         attendanceMap.get(this.startOfDay(day).getTime()) ?? null;
       const onLeave = leaveRows.some(
@@ -1286,31 +1306,34 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     const attendanceRows = await this.prisma.attendance.findMany({
       where: whereWithEmployee,
-      include: { shift: true },
+      include: { shift: true, employee: { select: { hireDate: true } } },
     });
 
-    const presentDays = attendanceRows.filter(
+    const eligibleAttendanceRows = attendanceRows.filter((row) =>
+      this.isAttendanceEligible(row.date, row.employee.hireDate),
+    );
+    const presentDays = eligibleAttendanceRows.filter(
       (row) => row.status === 'PRESENT',
     ).length;
-    const absentDays = attendanceRows.filter(
+    const absentDays = eligibleAttendanceRows.filter(
       (row) => row.status === 'ABSENT',
     ).length;
-    const leaveDays = attendanceRows.filter(
+    const leaveDays = eligibleAttendanceRows.filter(
       (row) => row.status === 'LEAVE',
     ).length;
-    const halfDays = attendanceRows.filter(
+    const halfDays = eligibleAttendanceRows.filter(
       (row) => row.status === 'HALF_DAY',
     ).length;
-    const lateCount = attendanceRows.filter(
+    const lateCount = eligibleAttendanceRows.filter(
       (row) => (row.lateMinutes ?? 0) > 0,
     ).length;
     const overtimeHours = Number(
-      attendanceRows
+      eligibleAttendanceRows
         .reduce((sum: number, row) => sum + (row.overtimeHours ?? 0), 0)
         .toFixed(2),
     );
     const shortfallHours = Number(
-      attendanceRows
+      eligibleAttendanceRows
         .reduce((sum: number, row) => {
           const sf = (row as { shortfallHours?: number }).shortfallHours;
           if (typeof sf === 'number') return sum + sf;
@@ -1320,12 +1343,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         .toFixed(2),
     );
     const totalWorkedHours = Number(
-      attendanceRows
+      eligibleAttendanceRows
         .reduce((sum: number, row) => sum + (row.workingHours ?? 0), 0)
         .toFixed(2),
     );
     const totalExpectedHours = Number(
-      attendanceRows
+      eligibleAttendanceRows
         .reduce((sum: number, row) => {
           const required = row.requiredHours ?? row.shift?.requiredHours ?? 8;
           if (row.status === 'PRESENT' || row.status === 'HALF_DAY') {
@@ -1336,7 +1359,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         .toFixed(2),
     );
 
-    const totalWorkingDays = attendanceRows.filter(
+    const totalWorkingDays = eligibleAttendanceRows.filter(
       (row) => row.status !== AttendanceStatus.WEEKLY_OFF,
     ).length;
 
@@ -1383,6 +1406,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       select: {
         id: true,
         name: true,
+        hireDate: true,
         department: true,
         designation: true,
         position: true,
@@ -1445,6 +1469,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       {
         employeeId: number;
         employeeName: string;
+        hireDate: string | null;
         department: string | null;
         role: string;
         presentCount: number;
@@ -1466,6 +1491,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       grouped.set(employee.id, {
         employeeId: employee.id,
         employeeName: employee.name,
+        hireDate: employee.hireDate?.toISOString() ?? null,
         department: employee.department ?? null,
         role:
           employee.user?.role ??
@@ -1490,20 +1516,23 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     for (const row of attendanceRows) {
       const entry = grouped.get(row.employeeId);
       if (!entry) continue;
-
-      const matchesStatus =
-        query.status === 'LATE'
-          ? (row.lateMinutes ?? 0) > 0
-          : query.status
-            ? row.status === query.status
-            : true;
-
-      if (!matchesStatus) continue;
+      const employee = employees.find((item) => item.id === row.employeeId);
+      if (!employee || !this.isAttendanceEligible(row.date, employee.hireDate)) {
+        continue;
+      }
 
       const rowDateKey = `${row.employeeId}:${this.startOfDay(row.date).toISOString().slice(0, 10)}`;
       const effectiveStatus = leaveDateKeys.has(rowDateKey)
         ? AttendanceStatus.LEAVE
         : row.status;
+      const matchesStatus =
+        query.status === 'LATE'
+          ? (row.lateMinutes ?? 0) > 0
+          : query.status
+            ? effectiveStatus === query.status
+            : true;
+
+      if (!matchesStatus) continue;
 
       if (effectiveStatus === AttendanceStatus.WEEKLY_OFF) {
         entry.weeklyOffCount += 1;
@@ -1546,8 +1575,15 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       if (leave.employeeId == null) continue;
       const employee = grouped.get(leave.employeeId);
       if (!employee) continue;
+      const employeeRecord = employees.find((item) => item.id === leave.employeeId);
       const start = this.startOfDay(
-        new Date(Math.max(leave.startDate.getTime(), monthStart.getTime())),
+        new Date(
+          Math.max(
+            leave.startDate.getTime(),
+            monthStart.getTime(),
+            employeeRecord?.hireDate?.getTime() ?? monthStart.getTime(),
+          ),
+        ),
       );
       const end = this.startOfDay(
         new Date(Math.min(leave.endDate.getTime(), monthEnd.getTime())),
@@ -1597,6 +1633,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const nextDate = dto.date
       ? this.parseTargetDay(dto.date)
       : new Date(record.date);
+    this.assertAttendanceEligible(nextDate, record.employee.hireDate);
 
     if (nextDate.getTime() !== new Date(record.date).getTime()) {
       const duplicate = await this.prisma.attendance.findUnique({
@@ -1702,6 +1739,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     });
 
     for (const employee of employees) {
+      if (!this.isAttendanceEligible(target, employee.hireDate)) {
+        continue;
+      }
       if (!employee.shift) {
         continue;
       }

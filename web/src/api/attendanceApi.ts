@@ -149,6 +149,7 @@ export interface AttendanceFilters {
 export interface MonthlyAttendanceReportRow {
   employeeId: number;
   employeeName: string;
+  hireDate: string | null;
   department: string | null;
   role: string;
   presentCount: number;

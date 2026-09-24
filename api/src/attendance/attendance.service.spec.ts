@@ -1,4 +1,8 @@
-import { ConflictException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 import type { Cache } from 'cache-manager';
 import { AttendanceStatus } from '@prisma/client';
 import { AttendanceService } from './attendance.service';
@@ -263,6 +267,52 @@ describe('AttendanceService', () => {
     ]);
   });
 
+  it('excludes employees before their hire date from daily attendance', async () => {
+    prisma.employee.findMany.mockResolvedValue([
+      {
+        id: 8,
+        name: 'New Hire',
+        department: 'Sales',
+        designation: 'Executive',
+        hireDate: new Date('2026-03-14T00:00:00.000Z'),
+        shift: null,
+      },
+    ]);
+    prisma.attendance.findMany.mockResolvedValue([]);
+    prisma.leaveRequest.findMany.mockResolvedValue([]);
+
+    const result = await service.getToday(mockUser, '2026-03-13');
+
+    expect(result.rows).toHaveLength(0);
+    expect(result.summary.totalWorkingDays).toBe(0);
+  });
+
+  it('rejects check-in before the employee hire date', async () => {
+    prisma.employee.findFirst.mockResolvedValue({
+      id: 7,
+      hireDate: new Date('2026-03-14T00:00:00.000Z'),
+      shift: {
+        id: 1,
+        name: 'Day',
+        type: 'FIXED',
+        startTime: '09:00',
+        endTime: '17:00',
+        requiredHours: 8,
+        minPresentHours: 5,
+        gracePeriodMinutes: 15,
+        weeklyHolidayDay: 0,
+      },
+    });
+
+    await expect(
+      service.checkIn(
+        { employeeId: 7, date: '2026-03-13' },
+        mockUser,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.attendance.findUnique).not.toHaveBeenCalled();
+  });
+
   it('keeps a late full-shift employee present', () => {
     jest.setSystemTime(new Date('2026-03-13T18:00:00.000Z'));
     const shift = {
@@ -497,6 +547,27 @@ describe('AttendanceService', () => {
     expect(result.summary.leave).toBeGreaterThanOrEqual(1);
   });
 
+  it('omits pre-hire dates from the monthly calendar', async () => {
+    const mockEmployee = {
+      id: 4,
+      name: 'Dina',
+      department: 'Finance',
+      designation: 'Lead',
+      hireDate: new Date('2026-03-03T00:00:00.000Z'),
+      shift: null,
+    };
+    prisma.employee.findUnique.mockResolvedValue(mockEmployee);
+    prisma.employee.findFirst.mockResolvedValue(mockEmployee);
+    prisma.attendance.findMany.mockResolvedValue([]);
+    prisma.leaveRequest.findMany.mockResolvedValue([]);
+
+    const result = await service.getEmployeeAttendance(4, mockUser, '2026-03');
+
+    expect(result.days[0].day).toBe(3);
+    expect(result.days).toHaveLength(29);
+    expect(result.summary.absent).toBe(0);
+  });
+
   it('marks configured weekly holidays in the monthly calendar', async () => {
     const mockEmployee = {
       id: 4,
@@ -552,5 +623,32 @@ describe('AttendanceService', () => {
         status: AttendanceStatus.WEEKLY_OFF,
       }),
     });
+  });
+
+  it('does not create automated attendance before the hire date', async () => {
+    jest.setSystemTime(new Date('2026-03-14T12:00:00.000Z'));
+    prisma.employee.findMany.mockResolvedValue([
+      {
+        id: 8,
+        organizationId: 1,
+        hireDate: new Date('2026-03-14T00:00:00.000Z'),
+        shift: {
+          id: 2,
+          name: 'Day',
+          type: 'FIXED',
+          startTime: '09:00',
+          endTime: '17:00',
+          requiredHours: 8,
+          minPresentHours: 5,
+          gracePeriodMinutes: 15,
+          weeklyHolidayDay: 0,
+        },
+      },
+    ]);
+
+    await service.runDailyAutomation();
+
+    expect(prisma.attendance.create).not.toHaveBeenCalled();
+    expect(prisma.attendance.findUnique).not.toHaveBeenCalled();
   });
 });
