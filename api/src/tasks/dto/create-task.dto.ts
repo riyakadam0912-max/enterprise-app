@@ -6,6 +6,8 @@ import {
   IsInt,
   IsIn,
   IsUrl,
+  Min,
+  Max,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -75,6 +77,18 @@ export class CreateTaskDto {
   @IsDateString()
   @ApiPropertyOptional({ example: '2026-04-14' })
   dueDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  @ApiPropertyOptional({ example: '2026-04-01' })
+  startDate?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  @ApiPropertyOptional({ example: 40, minimum: 0, maximum: 100 })
+  completionPercent?: number;
 
   @IsOptional()
   @IsString()

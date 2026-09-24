@@ -62,6 +62,10 @@ export interface Project {
     description?: string | null;
     links?: string | null;
     dueDate: string | null;
+    startDate?: string | null;
+    completionPercent?: number;
+    estimatedHours?: number | null;
+    actualHours?: number | null;
     priority: string | null;
     createdAt?: string;
     updatedAt?: string;
