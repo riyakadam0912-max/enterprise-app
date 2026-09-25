@@ -693,24 +693,26 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">{dedicated ? projectDetails?.projectName ?? 'Project' : 'Projects Workflow'}</h1>
-          <p className="text-sm text-slate-500">
-            {isAdmin && 'Create Project -> Assign Manager -> Assign Tasks -> Review -> Monitor All Progress'}
-            {isManager && 'My Projects -> Resources -> Assign Tasks -> Review Work -> Update Status'}
-            {isEmployee && "Manager's Projects -> Resources -> My Tasks -> Submit Work"}
-          </p>
+      {!dedicated && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Projects Workflow</h1>
+            <p className="text-sm text-slate-500">
+              {isAdmin && 'Create Project -> Assign Manager -> Assign Tasks -> Review -> Monitor All Progress'}
+              {isManager && 'My Projects -> Resources -> Assign Tasks -> Review Work -> Update Status'}
+              {isEmployee && "Manager's Projects -> Resources -> My Tasks -> Submit Work"}
+            </p>
+          </div>
+          {(isAdmin || isManager) && (
+            <button
+              onClick={() => router.push('/dashboard/projects/add')}
+              className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600"
+            >
+              + Create Project
+            </button>
+          )}
         </div>
-        {(isAdmin || isManager) && (
-          <button
-            onClick={() => router.push('/dashboard/projects/add')}
-            className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600"
-          >
-            + Create Project
-          </button>
-        )}
-      </div>
+      )}
 
       {!dedicated && (
         <ProjectGrid
@@ -734,12 +736,27 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
       )}
 
       {dedicated && projectDetails && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">{projectDetails.projectName}</h2>
-              <p className="text-sm text-slate-500">Project details and execution controls</p>
-            </div>
+        <section className="-mx-6 -mt-6 min-h-screen bg-white px-6 pb-10 pt-5">
+          <div className="mb-6 flex items-center justify-between">
+            <button type="button" onClick={() => router.push('/dashboard/projects')} className="text-sm font-semibold text-slate-500 hover:text-slate-900">
+              ← Back to Projects
+            </button>
+            <span className="text-xs font-medium uppercase tracking-[0.16em] text-slate-400">Project workspace</span>
+          </div>
+
+          <div className="border-b border-slate-200 pb-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{projectDetails.projectName}</h1>
+                <p className="mt-2 text-sm text-slate-500">
+                  Project ID {projectDetails.id} · {projectDetails.clientName ?? projectDetails.client ?? 'No client'} · {projectDetails.owner?.name ?? projectDetails.manager ?? 'Unassigned'}
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold">
+                  <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">{projectDetails.status.replaceAll('_', ' ')}</span>
+                  {projectDetails.priority && <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">{projectDetails.priority} priority</span>}
+                  <span className="text-slate-400">Due {formatDate(projectDetails.deadline ?? projectDetails.endDate)}</span>
+                </div>
+              </div>
             <div className="flex flex-wrap gap-2">
               {canManageProject && (
                 <button
@@ -809,17 +826,19 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
             />
           )}
 
-          <div className="mb-5 flex flex-wrap gap-2 border-b border-slate-100 pb-3">
+          </div>
+
+          <div className="mb-6 flex flex-wrap gap-1 border-b border-slate-200 py-3">
             {tabs
               .filter((tab) => !(tab.id === 'chat' && !canViewChat))
               .map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`rounded-lg px-3 py-2 text-sm font-medium ${
+                className={`border-b-2 px-3 py-2 text-sm font-medium ${
                   activeTab === tab.id
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    ? 'border-orange-500 text-slate-950'
+                    : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-900'
                 }`}
               >
                 {tab.label}
@@ -829,30 +848,35 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
 
           {activeTab === 'overview' && (
             <div className="space-y-4">
-              <article className="rounded-xl border border-slate-200 bg-white p-4">
-                <div className="mb-2 flex items-center justify-between gap-3 text-sm">
-                  <span className="font-medium text-slate-600">Overall completion</span>
-                  <span className="font-semibold text-slate-900">{progress ? `${progress.progressPercent}%` : 'N/A'}</span>
-                </div>
-                <div className="h-2 rounded-full bg-gray-200">
-                  <div
-                    className="h-2 rounded-full bg-blue-600"
-                    style={{ width: `${progress ? Math.max(0, Math.min(100, progress.progressPercent)) : 0}%` }}
-                  />
-                </div>
-                {progress && (
-                  <div className="mt-4 grid grid-cols-2 gap-2 text-sm text-slate-600">
-                    <p>PENDING: {progress.byStatus.PENDING ?? 0}</p>
-                    <p>IN_PROGRESS: {progress.byStatus.IN_PROGRESS ?? 0}</p>
-                    <p>SUBMITTED: {progress.byStatus.SUBMITTED ?? 0}</p>
-                    <p>APPROVED: {progress.byStatus.APPROVED ?? 0}</p>
-                    <p>REJECTED: {progress.byStatus.REJECTED ?? 0}</p>
+              <div className="grid gap-8 border-b border-slate-200 pb-6 md:grid-cols-[1fr_0.8fr]">
+                <div>
+                  <div className="mb-4 flex items-center justify-between gap-3 text-sm">
+                    <span className="font-semibold text-slate-700">Project summary</span>
+                    {canManageProject && !showProjectEdit && (
+                      <button type="button" onClick={() => setShowProjectEdit(true)} className="text-sm font-semibold text-blue-600 hover:underline">Edit</button>
+                    )}
                   </div>
-                )}
-              </article>
+                  <div className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
+                    <p><span className="text-slate-400">Client</span><br /><span className="font-medium text-slate-800">{projectDetails.clientName ?? projectDetails.client ?? 'Not set'}</span></p>
+                    <p><span className="text-slate-400">Project type</span><br /><span className="font-medium text-slate-800">{projectDetails.projectType?.replaceAll('_', ' ') ?? 'Not set'}</span></p>
+                    <p><span className="text-slate-400">Start date</span><br /><span className="font-medium text-slate-800">{formatDate(projectDetails.startDate)}</span></p>
+                    <p><span className="text-slate-400">Deadline</span><br /><span className="font-medium text-slate-800">{formatDate(projectDetails.deadline ?? projectDetails.endDate)}</span></p>
+                  </div>
+                </div>
+                <div>
+                  <div className="mb-4 flex items-center justify-between text-sm">
+                    <span className="font-semibold text-slate-700">Progress</span>
+                    <span className="font-semibold text-slate-900">{progress ? `${progress.progressPercent}%` : 'N/A'}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-slate-100">
+                    <div className="h-2 rounded-full bg-orange-500" style={{ width: `${progress ? Math.max(0, Math.min(100, progress.progressPercent)) : 0}%` }} />
+                  </div>
+                  {progress && <p className="mt-3 text-sm text-slate-500">{progress.totalTasks} task{progress.totalTasks === 1 ? '' : 's'} · {progress.completedTasks} completed</p>}
+                </div>
+              </div>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <article className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="border-b border-slate-200 pb-5">
                   <div className="mb-2 flex items-center justify-between gap-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Project Summary</p>
                     {canManageProject && !showProjectEdit && (
@@ -948,9 +972,9 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                       </div>
                     )}
                   </div>
-                </article>
+                </div>
 
-                <article className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="border-b border-slate-200 pb-5">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Progress Summary</p>
                   {progress ? (
                     <div className="space-y-1 text-sm text-slate-600">
@@ -961,7 +985,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                   ) : (
                     <p className="text-sm text-slate-500">Progress is available to manager and admin only.</p>
                   )}
-                </article>
+                </div>
               </div>
             </div>
           )}
