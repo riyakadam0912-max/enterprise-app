@@ -730,7 +730,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
         </div>
       )}
 
-      {projectDetails && (
+      {dedicated && projectDetails && (
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
