@@ -736,6 +736,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
       )}
 
       {dedicated && projectDetails && (
+        <>
         <section className="-mx-6 -mt-6 min-h-screen bg-white px-6 pb-10 pt-5">
           <div className="mb-6 flex items-center justify-between">
             <button type="button" onClick={() => router.push('/dashboard/projects')} className="text-sm font-semibold text-slate-500 hover:text-slate-900">
@@ -883,49 +884,6 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                       <button type="button" onClick={() => setShowProjectEdit(true)} className="text-sm font-semibold text-blue-600 hover:underline">Edit</button>
                     )}
                   </div>
-                  {showProjectEdit ? (
-                    <div className="space-y-3">
-                      <input value={projectNameDraft} onChange={(event) => setProjectNameDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Project name" />
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <input type="date" value={projectStartDateDraft} onChange={(event) => setProjectStartDateDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-                        <input type="date" value={projectEndDateDraft} onChange={(event) => setProjectEndDateDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <input value={projectClientNameDraft} onChange={(event) => setProjectClientNameDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Client name" />
-                        <input value={projectCategoryDraft} onChange={(event) => setProjectCategoryDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Category" />
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <input value={projectSpecificTaskDraft} onChange={(event) => setProjectSpecificTaskDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Primary project task" />
-                        <input value={projectClientDraft} onChange={(event) => setProjectClientDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Client reference" />
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <select value={projectTypeDraft} onChange={(event) => setProjectTypeDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                          <option value="">Project type</option>
-                          <option value="EVENT_MANAGEMENT">EVENT MANAGEMENT</option>
-                          <option value="PRODUCTION_EM">PRODUCTION EM</option>
-                          <option value="DIGITAL_MARKETING">DIGITAL MARKETING</option>
-                          <option value="PRODUCTION_DM">PRODUCTION DM</option>
-                          <option value="PRODUCTION_OTHER">PRODUCTION OTHER</option>
-                          <option value="TECH_PROJECTS">TECH PROJECTS</option>
-                        </select>
-                        <select value={projectPriorityDraft} onChange={(event) => setProjectPriorityDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                          <option value="">Priority</option>
-                          <option value="LOW">LOW</option>
-                          <option value="MEDIUM">MEDIUM</option>
-                          <option value="HIGH">HIGH</option>
-                        </select>
-                      </div>
-                      <input type="number" min="0" value={projectBudgetDraft} onChange={(event) => setProjectBudgetDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Budget" />
-                      <textarea value={projectDescriptionDraft} onChange={(event) => setProjectDescriptionDraft(event.target.value)} rows={5} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Project summary and description" />
-                      <textarea value={projectRemarksDraft} onChange={(event) => setProjectRemarksDraft(event.target.value)} rows={3} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Remarks" />
-                      <input value={projectDriveLinkDraft} onChange={(event) => setProjectDriveLinkDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Google Drive link" />
-                      <input value={projectFinalDeliverablesDraft} onChange={(event) => setProjectFinalDeliverablesDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Final deliverables link" />
-                      <div className="flex gap-2">
-                        <button type="button" disabled={busy} onClick={onSaveProjectEdit} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Save changes</button>
-                        <button type="button" onClick={() => setShowProjectEdit(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>
-                      </div>
-                    </div>
-                  ) : null}
                   <p className="whitespace-pre-wrap wrap-break-word text-sm text-slate-700">{projectDetails.description ?? 'No description available.'}</p>
                   <div className="mt-4 space-y-1 text-sm text-slate-600">
                     <p>Start: {formatDate(projectDetails.startDate)}</p>
@@ -1408,6 +1366,91 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
             </div>
           )}
         </section>
+
+        {showProjectEdit && (
+          <>
+            <button
+              type="button"
+              aria-label="Close project editor"
+              onClick={() => setShowProjectEdit(false)}
+              className="fixed inset-0 z-40 cursor-default bg-slate-950/20"
+            />
+            <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col bg-white shadow-2xl">
+              <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Project settings</p>
+                  <h2 className="mt-1 text-xl font-semibold text-slate-950">Edit project</h2>
+                </div>
+                <button type="button" onClick={() => setShowProjectEdit(false)} className="text-2xl leading-none text-slate-400 hover:text-slate-900" aria-label="Close project editor">×</button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-6 py-6">
+                <div className="space-y-7">
+                  <div>
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Identity</p>
+                    <div className="space-y-3">
+                      <input value={projectNameDraft} onChange={(event) => setProjectNameDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Project name" />
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <input value={projectClientNameDraft} onChange={(event) => setProjectClientNameDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Client name" />
+                        <input value={projectCategoryDraft} onChange={(event) => setProjectCategoryDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Category" />
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <select value={projectTypeDraft} onChange={(event) => setProjectTypeDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
+                          <option value="">Project type</option>
+                          <option value="EVENT_MANAGEMENT">Event management</option>
+                          <option value="PRODUCTION_EM">Production EM</option>
+                          <option value="DIGITAL_MARKETING">Digital marketing</option>
+                          <option value="PRODUCTION_DM">Production DM</option>
+                          <option value="PRODUCTION_OTHER">Production other</option>
+                          <option value="TECH_PROJECTS">Tech projects</option>
+                        </select>
+                        <input value={projectClientDraft} onChange={(event) => setProjectClientDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Client reference" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Schedule and priority</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <input type="date" value={projectStartDateDraft} onChange={(event) => setProjectStartDateDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                      <input type="date" value={projectEndDateDraft} onChange={(event) => setProjectEndDateDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                      <select value={projectPriorityDraft} onChange={(event) => setProjectPriorityDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
+                        <option value="">Priority</option>
+                        <option value="LOW">Low</option>
+                        <option value="MEDIUM">Medium</option>
+                        <option value="HIGH">High</option>
+                      </select>
+                      <input type="number" min="0" value={projectBudgetDraft} onChange={(event) => setProjectBudgetDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Budget" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Details</p>
+                    <div className="space-y-3">
+                      <input value={projectSpecificTaskDraft} onChange={(event) => setProjectSpecificTaskDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Primary project task" />
+                      <textarea value={projectDescriptionDraft} onChange={(event) => setProjectDescriptionDraft(event.target.value)} rows={5} className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Project description" />
+                      <textarea value={projectRemarksDraft} onChange={(event) => setProjectRemarksDraft(event.target.value)} rows={3} className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Remarks" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Links</p>
+                    <div className="space-y-3">
+                      <input value={projectDriveLinkDraft} onChange={(event) => setProjectDriveLinkDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Google Drive link" />
+                      <input value={projectFinalDeliverablesDraft} onChange={(event) => setProjectFinalDeliverablesDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Final deliverables link" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-6 py-4">
+                <button type="button" onClick={() => setShowProjectEdit(false)} className="rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+                <button type="button" disabled={busy} onClick={onSaveProjectEdit} className="rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">{busy ? 'Saving...' : 'Save changes'}</button>
+              </div>
+            </aside>
+          </>
+        )}
+        </>
       )}
     </div>
   );
