@@ -171,6 +171,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
   const [chatLoading, setChatLoading] = useState(false);
   const [taskSubmitting, setTaskSubmitting] = useState(false);
   const [busy, setBusy] = useState(false);
+  const projectRequestId = useRef(0);
 
   const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN';
   const isManager = role === 'MANAGER';
@@ -193,9 +194,11 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
 
 
   async function loadProjectDetails(projectId: number) {
+    const requestId = ++projectRequestId.current;
     setProgress(null);
     setMessages([]);
     const details = await getProject(projectId);
+    if (requestId !== projectRequestId.current) return;
     setProjectDetails(details);
     setProjectNameDraft(details.projectName ?? '');
     setProjectStartDateDraft(details.startDate?.slice(0, 10) ?? '');
@@ -215,9 +218,10 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     if (canManageProject) {
       try {
         const pg = await getProjectProgress(projectId);
+        if (requestId !== projectRequestId.current) return;
         setProgress(pg);
       } catch {
-        setProgress(null);
+        if (requestId === projectRequestId.current) setProgress(null);
       }
     } else {
       setProgress(null);
@@ -238,11 +242,13 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     }
   }
 
-  async function refreshProjects(initialProjectId?: number) {
+  async function refreshProjects(initialProjectId?: number | null) {
     const list = await getProjects();
     setProjects(list);
 
-    const targetId = initialProjectId ?? selectedProjectId ?? list[0]?.id ?? null;
+    const targetId = initialProjectId !== undefined
+      ? initialProjectId
+      : selectedProjectId ?? list[0]?.id ?? null;
     setSelectedProjectId(targetId);
     if (targetId) {
       await loadProjectDetails(targetId);
@@ -703,7 +709,19 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
         )}
       </div>
 
-      {!dedicated && <ProjectGrid projects={projects} selectedProjectId={selectedProjectId} onSelect={onProjectSelect} onDeleted={(ids) => setProjects((current) => current.filter((project) => !ids.includes(project.id)))} />}
+      {!dedicated && (
+        <ProjectGrid
+          projects={projects}
+          selectedProjectId={selectedProjectId}
+          onSelect={onProjectSelect}
+          onDeleted={async (ids) => {
+            const nextProjectId = projects.find((project) => !ids.includes(project.id))?.id ?? null;
+            setProjects((current) => current.filter((project) => !ids.includes(project.id)));
+            await refreshProjects(nextProjectId);
+          }}
+          onDeleteError={(message) => setActionFeedback({ type: 'error', message })}
+        />
+      )}
 
       {actionFeedback?.type === 'success' && <SuccessFeedback title={actionFeedback.message} />}
       {actionFeedback?.type === 'error' && (

@@ -27,7 +27,7 @@ const statusClass: Record<string, string> = {
   IN_APPROVAL: 'bg-amber-50 text-amber-700',
 };
 
-export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted }: { projects: Project[]; selectedProjectId: number | null; onSelect: (id: number) => void; onDeleted?: (ids: number[]) => void }) {
+export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted, onDeleteError }: { projects: Project[]; selectedProjectId: number | null; onSelect: (id: number) => void; onDeleted?: (ids: number[]) => void | Promise<void>; onDeleteError?: (message: string) => void }) {
   const [visible, setVisible] = useState<Record<string, boolean>>({});
   const [widths, setWidths] = useState<Record<string, number>>({});
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -72,9 +72,13 @@ export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted }
 
   async function deleteSelected() {
     if (selectedIds.length === 0 || !window.confirm(`Delete ${selectedIds.length} selected project(s)?`)) return;
-    await Promise.all(selectedIds.map((id) => deleteProject(id)));
-    onDeleted?.(selectedIds);
-    setSelectedIds([]);
+    try {
+      await Promise.all(selectedIds.map((id) => deleteProject(id)));
+      await onDeleted?.(selectedIds);
+      setSelectedIds([]);
+    } catch (error) {
+      onDeleteError?.(error instanceof Error ? error.message : 'Failed to delete selected projects');
+    }
   }
 
   return (
