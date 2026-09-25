@@ -36,9 +36,7 @@ export class S3StorageProvider implements StorageProvider {
   }
 
   private get prefix(): string {
-    const prefix = (
-      this.configService.get<string>('AWS_S3_PREFIX') ?? 'erp'
-    )
+    const prefix = (this.configService.get<string>('AWS_S3_PREFIX') ?? 'erp')
       .trim()
       .replace(/^\/+|\/+$/g, '');
     if (!prefix) {

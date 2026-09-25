@@ -2,11 +2,7 @@ import Constants from 'expo-constants';
 
 const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, string | undefined>;
 const configuredApiUrl = process.env.EXPO_PUBLIC_API_URL ?? extra.apiUrl;
-const apiUrl = configuredApiUrl ?? (__DEV__ ? 'http://10.0.2.2:3000/api/v1' : '');
-
-if (!apiUrl) {
-  throw new Error('EXPO_PUBLIC_API_URL is required in production. Set it to the API /api/v1 endpoint.');
-}
+const apiUrl = configuredApiUrl ?? (__DEV__ ? 'http://10.0.2.2:3000/api/v1' : 'https://enterprise-app-1phv.vercel.app/api/v1');
 
 const productionApiAllowedInDev = process.env.EXPO_PUBLIC_ALLOW_PRODUCTION_API_IN_DEV === 'true';
 

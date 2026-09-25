@@ -1,8 +1,5 @@
 import sharp from 'sharp';
-import {
-  MAX_COMPRESSED_IMAGE_BYTES,
-  compressImage,
-} from './image-compression';
+import { MAX_COMPRESSED_IMAGE_BYTES, compressImage } from './image-compression';
 
 describe('image compression', () => {
   it('compresses raster images to the configured maximum size', async () => {
@@ -29,6 +26,8 @@ describe('image compression', () => {
   it('does not modify non-compressible files', async () => {
     const source = Buffer.from('not an image');
 
-    await expect(compressImage(source, 'application/pdf')).resolves.toBe(source);
+    await expect(compressImage(source, 'application/pdf')).resolves.toBe(
+      source,
+    );
   });
 });

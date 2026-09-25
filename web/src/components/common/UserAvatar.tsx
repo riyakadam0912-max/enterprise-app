@@ -42,6 +42,8 @@ export function UserAvatar({
       : null;
 
   useEffect(() => {
+    // This effect resets local async avatar state when the identity props change.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setResolvedFileId(fileId ?? null);
     setHasAvatar(fileId ? true : userId ? null : false);
   }, [fileId, userId]);

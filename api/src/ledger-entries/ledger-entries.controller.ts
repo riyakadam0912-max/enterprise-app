@@ -13,6 +13,9 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
+import { Permission } from '../common/enums/permissions.enum';
 import type { AuthenticatedRequest } from '../common/types/request';
 import { LedgerEntriesService } from './ledger-entries.service';
 import { CreateLedgerEntryDto } from './dto/create-ledger-entry.dto';
@@ -24,7 +27,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiTags('Finance - Ledger Entries')
 @ApiBearerAuth()
 @Controller('ledger-entries')
@@ -37,6 +40,7 @@ export class LedgerEntriesController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @ApiBody({ type: CreateLedgerEntryDto })
+  @RequirePermissions(Permission.LEDGER_CREATE)
   @Post()
   create(@Body() dto: CreateLedgerEntryDto, @Req() req: AuthenticatedRequest) {
     return this.ledgerEntriesService.create(dto, req.user.userId, req.user);
@@ -48,6 +52,7 @@ export class LedgerEntriesController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Post('import')
+  @RequirePermissions(Permission.LEDGER_IMPORT)
   @HttpCode(HttpStatus.OK)
   importRecords(
     @Req() req: AuthenticatedRequest,
@@ -89,6 +94,7 @@ export class LedgerEntriesController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @ApiBody({ type: UpdateLedgerEntryDto })
+  @RequirePermissions(Permission.LEDGER_UPDATE)
   @Patch(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
@@ -104,6 +110,7 @@ export class LedgerEntriesController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Delete(':id')
+  @RequirePermissions(Permission.LEDGER_DELETE)
   remove(
     @Param('id', ParseIntPipe) id: number,
     @Req() req: AuthenticatedRequest,

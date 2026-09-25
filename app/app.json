@@ -12,7 +12,6 @@
     },
     "android": {
       "package": "com.enterprise.erp.mobile",
-      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -37,6 +36,14 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "apiUrl": "https://enterprise-app-1phv.vercel.app/api/v1",
+      "notificationApiUrl": "https://enterprise-app-1phv.vercel.app/api/v1",
+      "router": {},
+      "eas": {
+        "projectId": "de52b4c5-270b-4222-8b33-9b2628a170ba"
+      }
     }
   }
 }

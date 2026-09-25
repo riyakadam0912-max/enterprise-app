@@ -2,7 +2,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { accountProfile, employeeProfile, updateAccountProfile, updateEmployeeProfile } from '@/src/api/auth';
 import { apiError } from '@/src/api/client';
 import { filesByEntity, uploadProfilePhoto } from '@/src/api/files';
@@ -10,10 +10,11 @@ import { AppButton } from '@/src/components/AppButton';
 import { StatePanel } from '@/src/components/StatePanel';
 import { useAuth } from '@/src/providers/AuthProvider';
 import { tokens } from '@/src/theme/tokens';
+import { validatePickedImage } from '@/src/utils/image-upload';
 
 function formatDate(value?: string | null) { if (!value) return 'Not available'; const date = new Date(value); return Number.isNaN(date.getTime()) ? 'Not available' : date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }); }
-function formatDateTime(value?: string | null) { if (!value) return 'Not available'; const date = new Date(value); return Number.isNaN(date.getTime()) ? 'Not available' : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); }
 function initials(name?: string | null) { return name?.trim().charAt(0).toUpperCase() || 'U'; }
+function normalizeCategory(raw?: string | null) { return String(raw ?? '').trim().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').toLowerCase(); }
 
 export default function Profile() {
   const router = useRouter();
@@ -32,12 +33,19 @@ export default function Profile() {
   const avatar = useMutation({ mutationFn: (file: { uri: string; name: string; type: string }) => uploadProfilePhoto(file, userId as number), onSuccess: (file) => { setAvatarUrl(file.previewUrl ?? file.downloadUrl ?? null); void client.invalidateQueries({ queryKey: ['profile', 'avatar', userId] }); setMessage('Profile photo updated.'); }, onError: (value) => setError(apiError(value)) });
 
   useEffect(() => { const accountData = account.data; const employeeData = employee.data; if (accountData || employeeData) setForm((current) => ({ ...current, fullName: accountData?.name ?? employeeData?.name ?? session?.user.name ?? current.fullName, email: accountData?.email ?? employeeData?.email ?? session?.user.email ?? current.email, phone: accountData?.phone ?? employeeData?.phoneNumber ?? employeeData?.phone ?? current.phone, designation: accountData?.designation ?? employeeData?.designation ?? employeeData?.position ?? current.designation, department: employeeData?.department ?? current.department, role: employeeData?.user?.role ?? session?.role ?? current.role, location: accountData?.address ?? employeeData?.address ?? current.location })); }, [account.data, employee.data, session]);
-  useEffect(() => { const preferred = avatarQuery.data?.find((file) => file.category === 'Profile Photo') ?? avatarQuery.data?.[0]; if (preferred) setAvatarUrl(preferred.previewUrl ?? preferred.downloadUrl ?? null); }, [avatarQuery.data]);
+  useEffect(() => {
+    const preferred =
+      avatarQuery.data?.find((file) => {
+        const category = normalizeCategory(file.category);
+        return category === 'profile photo' || category === 'profilephoto';
+      }) ?? avatarQuery.data?.[0];
+    if (preferred) setAvatarUrl(preferred.previewUrl ?? preferred.downloadUrl ?? null);
+  }, [avatarQuery.data]);
 
   const joinedAt = employee.data?.user?.createdAt ?? employee.data?.hireDate;
   const active = employee.data?.user?.isActive ?? true;
   const initialsValue = useMemo(() => initials(form.fullName || session?.user.name), [form.fullName, session?.user.name]);
-  const pickAvatar = async () => { if (!userId) return; const permission = await ImagePicker.requestMediaLibraryPermissionsAsync(); if (!permission.granted) { setError('Gallery permission is required to choose a profile photo.'); return; } const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.9 }); if (result.canceled || !result.assets[0]) return; const selected = result.assets[0]; if (!['image/jpeg', 'image/png'].includes(selected.mimeType ?? 'image/jpeg')) { setError('Please choose a JPG, JPEG, or PNG image.'); return; } if ((selected.fileSize ?? 0) > 5 * 1024 * 1024) { setError('Profile photo must be 5 MB or smaller.'); return; } avatar.mutate({ uri: selected.uri, name: selected.fileName ?? 'profile-photo.jpg', type: selected.mimeType ?? 'image/jpeg' }); };
+  const pickAvatar = async () => { if (!userId) return; const permission = await ImagePicker.requestMediaLibraryPermissionsAsync(); if (!permission.granted) { setError('Gallery permission is required to choose a profile photo.'); return; } const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.9 }); if (result.canceled || !result.assets[0]) return; try { avatar.mutate(validatePickedImage(result.assets[0], 'Profile photo')); } catch (value) { setError(value instanceof Error ? value.message : 'Invalid profile image.'); } };
   const set = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
 
   if (account.isLoading && employee.isLoading) return <View style={styles.page}><StatePanel kind="loading" message="Loading your profile..." /></View>;

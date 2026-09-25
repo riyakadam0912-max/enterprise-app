@@ -7,7 +7,12 @@ import { BusinessUnitsModule } from '../business-units/business-units.module';
 import { FileManagementModule } from '../file-management/file-management.module';
 
 @Module({
-  imports: [PrismaModule, WorkflowModule, BusinessUnitsModule, FileManagementModule],
+  imports: [
+    PrismaModule,
+    WorkflowModule,
+    BusinessUnitsModule,
+    FileManagementModule,
+  ],
   controllers: [ExpensesController],
   providers: [ExpensesService],
 })

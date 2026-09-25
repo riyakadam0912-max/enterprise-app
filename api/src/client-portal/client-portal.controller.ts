@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -42,7 +52,11 @@ export class ClientPortalController {
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.COMPLIANCE_MANAGER, Role.MANAGER)
   @ApiBearerAuth()
   @Patch('users/:id/projects')
-  updateProjects(@Param('id', ParseIntPipe) id: number, @Body() body: { projectIds: number[] }, @Req() req: AuthenticatedRequest) {
+  updateProjects(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { projectIds: number[] },
+    @Req() req: AuthenticatedRequest,
+  ) {
     return this.service.updateProjects(id, body.projectIds, req.user);
   }
 

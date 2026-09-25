@@ -8,6 +8,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateLedgerEntryDto } from './dto/create-ledger-entry.dto';
 import { UpdateLedgerEntryDto } from './dto/update-ledger-entry.dto';
 import { AuthUser } from '../common/types/auth';
+import { Permission } from '../common/enums/permissions.enum';
+import { Role } from '../common/enums/role.enum';
 
 const includeRelations: Prisma.LedgerEntryInclude = {
   user: { select: { id: true, name: true, email: true } },
@@ -24,7 +26,20 @@ export class LedgerEntriesService {
     return user.organizationId;
   }
 
+  private assertPermission(user: AuthUser, permission: Permission) {
+    if (
+      user.role === Role.ADMIN ||
+      user.role === Role.SUPER_ADMIN ||
+      user.isPlatformAdmin ||
+      user.isSuperAdmin ||
+      user.permissions?.includes(permission)
+    )
+      return;
+    throw new ForbiddenException('Missing required ledger permission');
+  }
+
   async create(dto: CreateLedgerEntryDto, userId: number, user: AuthUser) {
+    this.assertPermission(user, Permission.LEDGER_CREATE);
     const organizationId = this.validateOrganization(user);
     return this.prisma.ledgerEntry.create({
       data: {
@@ -64,6 +79,7 @@ export class LedgerEntriesService {
   }
 
   async update(id: number, dto: UpdateLedgerEntryDto, user: AuthUser) {
+    this.assertPermission(user, Permission.LEDGER_UPDATE);
     const organizationId = this.validateOrganization(user);
     await this.findOne(id, user);
     return this.prisma.ledgerEntry.update({
@@ -86,6 +102,7 @@ export class LedgerEntriesService {
   }
 
   async remove(id: number, user: AuthUser) {
+    this.assertPermission(user, Permission.LEDGER_DELETE);
     const organizationId = this.validateOrganization(user);
     await this.findOne(id, user);
     return this.prisma.ledgerEntry.update({
@@ -99,6 +116,7 @@ export class LedgerEntriesService {
     userId: number,
     user: AuthUser,
   ): Promise<{ imported: number; errors: string[] }> {
+    this.assertPermission(user, Permission.LEDGER_IMPORT);
     let imported = 0;
     const errors: string[] = [];
     const organizationId = this.validateOrganization(user);

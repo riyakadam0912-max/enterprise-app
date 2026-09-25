@@ -305,10 +305,7 @@ describe('AttendanceService', () => {
     });
 
     await expect(
-      service.checkIn(
-        { employeeId: 7, date: '2026-03-13' },
-        mockUser,
-      ),
+      service.checkIn({ employeeId: 7, date: '2026-03-13' }, mockUser),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.attendance.findUnique).not.toHaveBeenCalled();
   });
@@ -354,22 +351,26 @@ describe('AttendanceService', () => {
       weeklyHolidayDay: 0,
     };
 
-    expect((service as any).calculateStatus({
-      day: new Date('2026-03-13T00:00:00.000Z'),
-      checkIn: null,
-      checkOut: null,
-      workingHours: null,
-      onLeave: false,
-      shift,
-    })).toBe(AttendanceStatus.NOT_STARTED);
-    expect((service as any).calculateStatus({
-      day: new Date('2026-03-14T00:00:00.000Z'),
-      checkIn: null,
-      checkOut: null,
-      workingHours: null,
-      onLeave: false,
-      shift,
-    })).toBe(AttendanceStatus.UPCOMING);
+    expect(
+      (service as any).calculateStatus({
+        day: new Date('2026-03-13T00:00:00.000Z'),
+        checkIn: null,
+        checkOut: null,
+        workingHours: null,
+        onLeave: false,
+        shift,
+      }),
+    ).toBe(AttendanceStatus.NOT_STARTED);
+    expect(
+      (service as any).calculateStatus({
+        day: new Date('2026-03-14T00:00:00.000Z'),
+        checkIn: null,
+        checkOut: null,
+        workingHours: null,
+        onLeave: false,
+        shift,
+      }),
+    ).toBe(AttendanceStatus.UPCOMING);
   });
 
   it('allows a manager to view their own attendance using the me endpoint', async () => {

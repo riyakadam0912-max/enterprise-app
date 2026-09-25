@@ -19,7 +19,6 @@ export default function ProjectStatusesPage() {
 
   useEffect(() => {
     if (!canViewReport) {
-      setLoading(false);
       return;
     }
 

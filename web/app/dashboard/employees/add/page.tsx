@@ -8,7 +8,7 @@ import { apiClient } from '@/api/apiClient';
 import { canAccessUsers } from '@/utils/auth/permissions';
 import { reportError } from '@/lib/error-handling';
 import { PasswordInput } from '@/components/ui/password-input';
-import { MultiSelect, type MultiSelectOption } from '@/components/ui/multi-select';
+import { MultiSelect } from '@/components/ui/multi-select';
 import { useAuthSession } from '@/stores/auth-store';
 import { getShifts, type ShiftRecord } from '@/api/attendanceApi';
 

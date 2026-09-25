@@ -78,7 +78,7 @@ export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted }
   }
 
   return (
-    <div className="overflow-hidden border-y border-slate-200 bg-white">
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
         <div className="flex items-center gap-3"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Spreadsheet view</p>{selectedIds.length > 0 && <span className="text-xs font-semibold text-orange-600">{selectedIds.length} selected</span>}</div>
         <details className="relative">

@@ -7,6 +7,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import type { AuthUser } from '../common/types/auth';
+import { Permission } from '../common/enums/permissions.enum';
+import { Role } from '../common/enums/role.enum';
 
 @Injectable()
 export class ProductsService {
@@ -19,7 +21,20 @@ export class ProductsService {
     return user.organizationId;
   }
 
+  private assertPermission(user: AuthUser, permission: Permission) {
+    if (
+      user.role === Role.ADMIN ||
+      user.role === Role.SUPER_ADMIN ||
+      user.isPlatformAdmin ||
+      user.isSuperAdmin ||
+      user.permissions?.includes(permission)
+    )
+      return;
+    throw new ForbiddenException('Missing required product permission');
+  }
+
   async create(dto: CreateProductDto, user: AuthUser) {
+    this.assertPermission(user, Permission.PRODUCT_CREATE);
     const organizationId = this.validateOrganization(user);
     return this.prisma.product.create({
       data: { organizationId, ...dto },
@@ -47,6 +62,7 @@ export class ProductsService {
   }
 
   async update(id: number, dto: UpdateProductDto, user: AuthUser) {
+    this.assertPermission(user, Permission.PRODUCT_UPDATE);
     const organizationId = this.validateOrganization(user);
     await this.findOne(id, user);
     return this.prisma.product.update({
@@ -57,6 +73,7 @@ export class ProductsService {
   }
 
   async remove(id: number, user: AuthUser) {
+    this.assertPermission(user, Permission.PRODUCT_DELETE);
     const organizationId = this.validateOrganization(user);
     await this.findOne(id, user);
     await this.prisma.product.update({
@@ -74,6 +91,7 @@ export class ProductsService {
   }
 
   async createCategory(name: string, user: AuthUser) {
+    this.assertPermission(user, Permission.PRODUCT_CATEGORY_MANAGE);
     const organizationId = this.validateOrganization(user);
     return this.prisma.productCategory.create({
       data: { organizationId, name },

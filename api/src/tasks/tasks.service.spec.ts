@@ -392,7 +392,9 @@ describe('TasksService', () => {
         content: 'Please review the submission.',
       });
 
-      await expect(service.getMessages(1, mockManagerUser)).resolves.toEqual([]);
+      await expect(service.getMessages(1, mockManagerUser)).resolves.toEqual(
+        [],
+      );
       await expect(
         service.sendMessage(
           1,

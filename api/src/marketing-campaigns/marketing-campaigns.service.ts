@@ -7,6 +7,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateMarketingCampaignDto } from './dto/create-marketing-campaign.dto';
 import { UpdateMarketingCampaignDto } from './dto/update-marketing-campaign.dto';
 import type { AuthUser } from '../common/types/auth';
+import { Permission } from '../common/enums/permissions.enum';
+import { Role } from '../common/enums/role.enum';
 
 const CHANNELS = [
   'Email',
@@ -27,7 +29,20 @@ export class MarketingCampaignsService {
     return user.organizationId;
   }
 
+  private assertPermission(user: AuthUser, permission: Permission) {
+    if (
+      user.role === Role.ADMIN ||
+      user.role === Role.SUPER_ADMIN ||
+      user.isPlatformAdmin ||
+      user.isSuperAdmin ||
+      user.permissions?.includes(permission)
+    )
+      return;
+    throw new ForbiddenException('Missing required marketing permission');
+  }
+
   async create(dto: CreateMarketingCampaignDto, user: AuthUser) {
+    this.assertPermission(user, Permission.MARKETING_CREATE);
     const organizationId = this.validateOrganization(user);
     return this.prisma.marketingCampaign.create({
       data: {
@@ -65,6 +80,7 @@ export class MarketingCampaignsService {
   }
 
   async update(id: number, dto: UpdateMarketingCampaignDto, user: AuthUser) {
+    this.assertPermission(user, Permission.MARKETING_UPDATE);
     const organizationId = this.validateOrganization(user);
     await this.findOne(id, user);
     return this.prisma.marketingCampaign.update({
@@ -95,6 +111,7 @@ export class MarketingCampaignsService {
   }
 
   async remove(id: number, user: AuthUser) {
+    this.assertPermission(user, Permission.MARKETING_DELETE);
     const organizationId = this.validateOrganization(user);
     await this.findOne(id, user);
     return this.prisma.marketingCampaign.update({
@@ -106,6 +123,7 @@ export class MarketingCampaignsService {
     records: Record<string, unknown>[],
     user: AuthUser,
   ): Promise<{ imported: number; errors: string[] }> {
+    this.assertPermission(user, Permission.MARKETING_IMPORT);
     let imported = 0;
     const errors: string[] = [];
     const organizationId = this.validateOrganization(user);

@@ -771,8 +771,14 @@ export class PayrollService {
       lossOfPay: dto.lossOfPay ?? current.lossOfPay,
       otherDeductions: dto.otherDeductions ?? current.otherDeductions,
     };
-    const grossEarnings = Object.values(earnings).reduce((sum, value) => sum + value, 0);
-    const totalDeductions = Object.values(deductions).reduce((sum, value) => sum + value, 0);
+    const grossEarnings = Object.values(earnings).reduce(
+      (sum, value) => sum + value,
+      0,
+    );
+    const totalDeductions = Object.values(deductions).reduce(
+      (sum, value) => sum + value,
+      0,
+    );
     return this.prisma.payslip.update({
       where: { id: payslipId },
       data: {

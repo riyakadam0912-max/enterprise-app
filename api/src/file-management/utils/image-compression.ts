@@ -28,11 +28,13 @@ async function encodeImage(
 
   switch (mimeType.toLowerCase()) {
     case 'image/png':
-      return image.png({
-        compressionLevel: 9,
-        palette: true,
-        quality,
-      }).toBuffer();
+      return image
+        .png({
+          compressionLevel: 9,
+          palette: true,
+          quality,
+        })
+        .toBuffer();
     case 'image/webp':
       return image.webp({ quality }).toBuffer();
     default:

@@ -3,6 +3,7 @@ import {
   ExecutionContext,
   ForbiddenException,
   Injectable,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../decorators/roles.decorator';
@@ -47,7 +48,7 @@ export class RolesGuard implements CanActivate {
     }
 
     if (!user) {
-      return true;
+      throw new UnauthorizedException('Authentication is required');
     }
 
     // Check both user.role and user.roles array

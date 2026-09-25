@@ -23,12 +23,14 @@ const EMPLOYEE_ALLOWED_PATH_PREFIXES = [
   '/dashboard/organization',
   '/dashboard/projects',
   '/dashboard/requests',
+  '/dashboard/tasks',
   '/dashboard/timesheets',
 ];
 
 const MANAGER_ALLOWED_EXACT_PATHS = ['/dashboard', '/dashboard/employees'];
 const MANAGER_ALLOWED_PATH_PREFIXES = [
   '/dashboard/projects',
+  '/dashboard/tasks',
   '/dashboard/invoices',
   '/dashboard/expenses',
   '/dashboard/attendance',

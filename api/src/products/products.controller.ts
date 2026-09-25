@@ -17,6 +17,9 @@ import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
+import { Permission } from '../common/enums/permissions.enum';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -24,7 +27,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiTags('Catalog - Products')
 @ApiBearerAuth()
 @Controller('products')
@@ -37,6 +40,7 @@ export class ProductsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @ApiBody({ type: CreateProductDto })
+  @RequirePermissions(Permission.PRODUCT_CREATE)
   @Post()
   create(@Body() dto: CreateProductDto, @Req() req: AuthenticatedRequest) {
     return this.productsService.create(dto, req.user);
@@ -76,6 +80,7 @@ export class ProductsController {
       },
     },
   })
+  @RequirePermissions(Permission.PRODUCT_CATEGORY_MANAGE)
   @Post('categories')
   createCategory(@Body('name') name: string, @Req() req: AuthenticatedRequest) {
     return this.productsService.createCategory(name, req.user);
@@ -100,6 +105,7 @@ export class ProductsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @ApiBody({ type: UpdateProductDto })
+  @RequirePermissions(Permission.PRODUCT_UPDATE)
   @Patch(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
@@ -115,6 +121,7 @@ export class ProductsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Delete(':id')
+  @RequirePermissions(Permission.PRODUCT_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(
     @Param('id', ParseIntPipe) id: number,

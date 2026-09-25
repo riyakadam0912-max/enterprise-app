@@ -1,7 +1,31 @@
 {
   "build": {
-    "development": { "developmentClient": true, "distribution": "internal" },
-    "preview": { "distribution": "internal" },
-    "production": {}
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://enterprise-app-1phv.vercel.app/api/v1",
+        "EXPO_PUBLIC_ALLOW_PRODUCTION_API_IN_DEV": "true"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://enterprise-app-1phv.vercel.app/api/v1",
+        "EXPO_PUBLIC_ALLOW_PRODUCTION_API_IN_DEV": "true"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://enterprise-app-1phv.vercel.app/api/v1",
+        "EXPO_PUBLIC_ALLOW_PRODUCTION_API_IN_DEV": "true"
+      }
+    }
   }
 }

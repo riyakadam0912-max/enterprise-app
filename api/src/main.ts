@@ -3,7 +3,9 @@ import { createNestApp } from './create-nest-app';
 
 async function bootstrap() {
   const PORT = Number(process.env.PORT ?? 3000);
-  const HOST = process.env.HOST ?? (process.env.NODE_ENV === 'production' ? '127.0.0.1' : '0.0.0.0');
+  const HOST =
+    process.env.HOST ??
+    (process.env.NODE_ENV === 'production' ? '127.0.0.1' : '0.0.0.0');
 
   const app = await createNestApp();
 

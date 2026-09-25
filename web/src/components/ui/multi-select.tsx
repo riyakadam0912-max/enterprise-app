@@ -83,6 +83,7 @@ export function MultiSelect({
   useEffect(() => {
     if (open) {
       inputRef.current?.focus();
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFocusedIndex(-1);
     }
   }, [open]);

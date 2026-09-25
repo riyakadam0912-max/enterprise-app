@@ -154,7 +154,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
   private isAttendanceEligible(day: Date, hireDate?: Date | null) {
     if (!hireDate) return true;
-    return this.startOfDay(day).getTime() >= this.startOfDay(hireDate).getTime();
+    return (
+      this.startOfDay(day).getTime() >= this.startOfDay(hireDate).getTime()
+    );
   }
 
   private assertAttendanceEligible(day: Date, hireDate?: Date | null) {
@@ -315,7 +317,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       workingHours,
       onLeave,
       shift,
-      lateMinutes = 0,
+      lateMinutes: _lateMinutes = 0,
     } = params;
     if (onLeave) return AttendanceStatus.LEAVE;
 
@@ -572,7 +574,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const shift = attendance?.shift ?? employee.shift ?? null;
     const computedStatus = onLeave
       ? AttendanceStatus.LEAVE
-      : attendance?.status ??
+      : (attendance?.status ??
         this.calculateStatus({
           day,
           checkIn: null,
@@ -580,7 +582,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           workingHours: null,
           onLeave,
           shift,
-        });
+        }));
     const shortfallHours =
       (attendance as { shortfallHours?: number })?.shortfallHours ??
       this.calculateShortfallHours(attendance?.workingHours ?? null, shift);
@@ -1193,7 +1195,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       const shift = attendance?.shift ?? employee.shift ?? null;
       const status = onLeave
         ? AttendanceStatus.LEAVE
-        : attendance?.status ??
+        : (attendance?.status ??
           this.calculateStatus({
             day,
             checkIn: null,
@@ -1201,7 +1203,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             workingHours: null,
             onLeave,
             shift,
-          });
+          }));
       const requiredHours = shift?.requiredHours ?? 8;
       const minPresentHours = shift?.minPresentHours ?? 5;
       const gracePeriodMinutes = shift?.gracePeriodMinutes ?? 15;
@@ -1452,7 +1454,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         const end = this.startOfDay(
           new Date(Math.min(leave.endDate.getTime(), monthEnd.getTime())),
         );
-        for (const date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
+        for (
+          const date = new Date(start);
+          date <= end;
+          date.setDate(date.getDate() + 1)
+        ) {
           dates.push(`${leave.employeeId}:${date.toISOString().slice(0, 10)}`);
         }
         return dates;
@@ -1460,7 +1466,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     );
     const attendanceDateKeys = new Set(
       attendanceRows.map(
-        (row) => `${row.employeeId}:${this.startOfDay(row.date).toISOString().slice(0, 10)}`,
+        (row) =>
+          `${row.employeeId}:${this.startOfDay(row.date).toISOString().slice(0, 10)}`,
       ),
     );
 
@@ -1517,7 +1524,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       const entry = grouped.get(row.employeeId);
       if (!entry) continue;
       const employee = employees.find((item) => item.id === row.employeeId);
-      if (!employee || !this.isAttendanceEligible(row.date, employee.hireDate)) {
+      if (
+        !employee ||
+        !this.isAttendanceEligible(row.date, employee.hireDate)
+      ) {
         continue;
       }
 
@@ -1566,7 +1576,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
       if (effectiveStatus === AttendanceStatus.PRESENT) entry.presentCount += 1;
       if (effectiveStatus === AttendanceStatus.ABSENT) entry.absentCount += 1;
-      if (effectiveStatus === AttendanceStatus.HALF_DAY) entry.halfDayCount += 1;
+      if (effectiveStatus === AttendanceStatus.HALF_DAY)
+        entry.halfDayCount += 1;
       if (effectiveStatus === AttendanceStatus.LEAVE) entry.leaveCount += 1;
       if ((row.lateMinutes ?? 0) > 0) entry.lateCount += 1;
     }
@@ -1575,7 +1586,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       if (leave.employeeId == null) continue;
       const employee = grouped.get(leave.employeeId);
       if (!employee) continue;
-      const employeeRecord = employees.find((item) => item.id === leave.employeeId);
+      const employeeRecord = employees.find(
+        (item) => item.id === leave.employeeId,
+      );
       const start = this.startOfDay(
         new Date(
           Math.max(
@@ -1588,7 +1601,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       const end = this.startOfDay(
         new Date(Math.min(leave.endDate.getTime(), monthEnd.getTime())),
       );
-      for (const date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
+      for (
+        const date = new Date(start);
+        date <= end;
+        date.setDate(date.getDate() + 1)
+      ) {
         const key = `${leave.employeeId}:${date.toISOString().slice(0, 10)}`;
         if (!attendanceDateKeys.has(key)) employee.leaveCount += 1;
       }

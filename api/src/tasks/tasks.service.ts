@@ -124,7 +124,7 @@ export class TasksService {
       return { organizationId: scope.organizationId, ...roleWhere };
     }
 
-      return { AND: [roleWhere, buWhere] };
+    return { AND: [roleWhere, buWhere] };
   }
 
   private async resolveAssignee(
@@ -298,8 +298,6 @@ export class TasksService {
         assignedToUserId: assignee.id,
         assignedByUserId: user.userId,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
-        startDate: dto.startDate ? new Date(dto.startDate) : undefined,
-        completionPercent: dto.completionPercent ?? 0,
         priority: dto.priority,
         status: this.normalizeTaskStatus(dto.status),
         estimatedHours: dto.estimatedHours,
@@ -360,7 +358,9 @@ export class TasksService {
       select: { id: true },
     });
     if (!task) {
-      throw new ForbiddenException('You can only access messages for allowed tasks');
+      throw new ForbiddenException(
+        'You can only access messages for allowed tasks',
+      );
     }
     return organizationId;
   }
@@ -539,12 +539,6 @@ export class TasksService {
         ...(dto.dealId !== undefined && { dealId: dto.dealId }),
         ...(dto.dueDate !== undefined && {
           dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
-        }),
-        ...(dto.startDate !== undefined && {
-          startDate: dto.startDate ? new Date(dto.startDate) : null,
-        }),
-        ...(dto.completionPercent !== undefined && {
-          completionPercent: Math.max(0, Math.min(100, dto.completionPercent)),
         }),
       },
       include: {

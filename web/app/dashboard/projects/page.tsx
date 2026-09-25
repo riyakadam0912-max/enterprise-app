@@ -46,10 +46,6 @@ type TaskPanelData = {
   assignedToUser?: { id: number; name: string; email: string } | null;
   assignedByUser?: { id: number; name: string; email: string } | null;
   dueDate?: string | null;
-  startDate?: string | null;
-  completionPercent?: number;
-  estimatedHours?: number | null;
-  actualHours?: number | null;
   createdAt?: string;
   updatedAt?: string;
   notes?: string | null;
@@ -297,7 +293,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
         }
       }
 
-      await refreshProjects();
+      await refreshProjects(initialProjectId);
       if (!cancelled) {
         setLoading(false);
       }
@@ -315,7 +311,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canLoadDirectoryData]);
+  }, [canLoadDirectoryData, initialProjectId]);
 
   useEffect(() => {
     if (activeTab === 'chat' && selectedProjectId && canViewChat) {
@@ -1046,7 +1042,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                 </form>
               )}
 
-              <div className="overflow-x-auto border-y border-slate-200 bg-white">
+              <div className="space-y-3">
                 {visibleTasks.length === 0 && (
                   <div className="flex min-h-40 items-center justify-center px-4 py-10 text-center">
                     <div>
@@ -1055,7 +1051,31 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                     </div>
                   </div>
                 )}
-                {visibleTasks.length > 0 && <table className="min-w-max border-collapse text-sm"><thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500"><tr>{['ID', 'Task Name', 'Owner', 'Start Date', 'Due Date', 'Duration', 'Priority', 'Completion', 'Time Logs', 'Status'].map((heading, index) => <th key={heading} className={`whitespace-nowrap border-b border-slate-200 px-4 py-3 ${index < 2 ? 'sticky z-10 bg-slate-50' : ''}`}>{heading}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{visibleTasks.map((task) => { const status = task.status?.toUpperCase() ?? 'PENDING'; const priority = (task.priority?.toUpperCase() ?? 'LOW') as keyof typeof taskPriorityClass; const due = task.dueDate ? new Date(task.dueDate) : null; const start = task.startDate ? new Date(task.startDate) : null; const days = due ? Math.ceil((due.getTime() - currentTime) / 86400000) : null; const completion = task.completionPercent ?? (status === 'APPROVED' ? 100 : status === 'SUBMITTED' ? 80 : status === 'IN_PROGRESS' ? 55 : 0); return <tr key={task.id} onClick={() => setSelectedTaskId(task.id)} className="cursor-pointer transition hover:bg-orange-50/50"><td className="sticky left-0 z-10 bg-white px-4 py-3 text-slate-500">#{task.id}</td><td className="sticky left-14 z-10 bg-white px-4 py-3 font-semibold text-slate-900">{task.taskName}</td><td className="px-4 py-3 text-slate-600">{task.assignedToUser?.name ?? 'Unassigned'}</td><td className="whitespace-nowrap px-4 py-3 text-slate-600">{start ? formatDate(task.startDate) : '—'}</td><td className={`whitespace-nowrap px-4 py-3 ${days != null && days < 0 && status !== 'APPROVED' ? 'font-semibold text-rose-600' : 'text-slate-600'}`}>{due ? <>{formatDate(task.dueDate)} <span className="text-xs">({days === 0 ? 'today' : days! > 0 ? `${days} days left` : `${Math.abs(days!)} days overdue`})</span></> : '—'}</td><td className="px-4 py-3 text-slate-600">{start && due ? `${Math.max(1, Math.ceil((due.getTime() - start.getTime()) / 86400000) + 1)} days` : '—'}</td><td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${taskPriorityClass[priority] ?? taskPriorityClass.LOW}`}>{priority}</span></td><td className="min-w-32 px-4 py-3"><div className="flex items-center gap-2"><div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-orange-500" style={{ width: `${completion}%` }} /></div><span className="text-xs text-slate-600">{completion}%</span></div></td><td className="px-4 py-3 text-slate-600">{task.actualHours == null ? '—' : `${task.actualHours}h`}</td><td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${taskStatusClass[status] ?? 'bg-slate-200 text-slate-700'}`}>{status.replace('_', ' ')}</span></td></tr>; })}</tbody></table>}
+                {visibleTasks.map((task) => {
+                  const status = task.status?.toUpperCase() ?? 'PENDING';
+                  const priority = (task.priority?.toUpperCase() ?? 'LOW') as keyof typeof taskPriorityClass;
+                  const taskDue = task.dueDate ? new Date(task.dueDate) : null;
+                  const isPastDue = Boolean(taskDue && taskDue.getTime() < currentTime && status !== 'APPROVED');
+                  return (
+                    <article key={task.id} onClick={() => setSelectedTaskId(task.id)} className="cursor-pointer rounded-xl border border-slate-200 bg-slate-50 p-4 transition hover:border-orange-200">
+                      <div className="mb-2 flex items-start justify-between gap-3">
+                        <p className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">{task.taskName}</p>
+                        <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${taskStatusClass[status] ?? 'bg-slate-200 text-slate-700'}`}>
+                          {status}
+                        </span>
+                      </div>
+                      <p className={`text-xs ${isPastDue ? 'font-semibold text-rose-600' : 'text-slate-500'}`}>
+                        {priority} · {task.dueDate ? formatDate(task.dueDate) : 'No due date'}
+                      </p>
+                      <div className="mt-3 h-0.75 w-full overflow-hidden rounded-full bg-slate-200">
+                        <div
+                          className={`h-full rounded-full ${taskPriorityClass[priority] ?? taskPriorityClass.LOW}`}
+                          style={{ width: `${status === 'APPROVED' ? 100 : status === 'SUBMITTED' ? 80 : status === 'IN_PROGRESS' ? 55 : 20}%` }}
+                        />
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
 
               <TaskDetailPanel

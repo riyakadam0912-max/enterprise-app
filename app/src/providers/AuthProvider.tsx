@@ -6,14 +6,58 @@ import type { Session } from '@/src/types/auth';
 type AuthContextValue = { session: Session | null; loading: boolean; login: (email: string, password: string) => Promise<Session>; logout: () => Promise<void>; };
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+export async function initializeAuthSession(): Promise<Session | null> {
+  const accessToken = await tokenStore.getAccess();
+
+  if (!accessToken) {
+    await contextStore.setOrg(null);
+    await contextStore.setBU(null);
+    return null;
+  }
+
+  try {
+    const session = await currentUser();
+    return session;
+  } catch (error) {
+    console.warn('Auth bootstrap failed. Clearing persisted session.', error);
+    await tokenStore.clear();
+    await contextStore.setOrg(null);
+    await contextStore.setBU(null);
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    setSessionExpiredHandler(() => { setSession(null); void contextStore.setOrg(null); void contextStore.setBU(null); });
-    tokenStore.getAccess().then((token) => token ? currentUser().then(setSession).catch(async () => { await tokenStore.clear(); await contextStore.setOrg(null); await contextStore.setBU(null); }) : undefined).finally(() => setLoading(false));
-    return () => setSessionExpiredHandler(null);
+    let active = true;
+
+    setSessionExpiredHandler(() => {
+      setSession(null);
+      void contextStore.setOrg(null);
+      void contextStore.setBU(null);
+    });
+
+    void initializeAuthSession()
+      .then((nextSession) => {
+        if (active) setSession(nextSession);
+      })
+      .catch((error) => {
+        console.warn('Auth session initialization failed.', error);
+        if (active) setSession(null);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+      setSessionExpiredHandler(null);
+    };
   }, []);
+
   const value = {
     session, loading,
     login: async (email: string, password: string) => { const next = await loginRequest(email, password); await contextStore.setOrg(next.organizationId); await contextStore.setBU(null); setSession(next); return next; },

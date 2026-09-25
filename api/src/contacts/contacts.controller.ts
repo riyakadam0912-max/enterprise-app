@@ -17,6 +17,9 @@ import { ContactsService } from './contacts.service';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
+import { Permission } from '../common/enums/permissions.enum';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -24,7 +27,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiTags('CRM - Contacts')
 @ApiBearerAuth()
 @Controller('contacts')
@@ -37,6 +40,7 @@ export class ContactsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @ApiBody({ type: CreateContactDto })
+  @RequirePermissions(Permission.CONTACT_CREATE)
   @Post()
   create(@Body() dto: CreateContactDto, @Req() req: AuthenticatedRequest) {
     return this.contactsService.create(dto, req.user);
@@ -48,6 +52,7 @@ export class ContactsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Post('import')
+  @RequirePermissions(Permission.CONTACT_IMPORT)
   @HttpCode(HttpStatus.OK)
   importRecords(
     @Body() body: { records: Record<string, any>[] },
@@ -95,6 +100,7 @@ export class ContactsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @ApiBody({ type: UpdateContactDto })
+  @RequirePermissions(Permission.CONTACT_UPDATE)
   @Patch(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
@@ -110,6 +116,7 @@ export class ContactsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Delete(':id')
+  @RequirePermissions(Permission.CONTACT_DELETE)
   remove(
     @Param('id', ParseIntPipe) id: number,
     @Req() req: AuthenticatedRequest,

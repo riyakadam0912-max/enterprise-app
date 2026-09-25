@@ -54,7 +54,10 @@ export class TimesheetsController {
   @ApiResponse({ status: 200, description: 'Timesheet fetched successfully.' })
   @ApiResponse({ status: 404, description: 'Timesheet not found.' })
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number, @Req() req: AuthenticatedRequest) {
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
     return this.timesheetsService.findOne(id, req.user);
   }
 
@@ -63,7 +66,11 @@ export class TimesheetsController {
   @ApiResponse({ status: 404, description: 'Timesheet not found.' })
   @ApiBody({ type: UpdateTimesheetDto })
   @Patch(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateTimesheetDto, @Req() req: AuthenticatedRequest) {
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateTimesheetDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
     return this.timesheetsService.update(id, dto, req.user);
   }
 

@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useEmployee, editEmployee } from '@/hooks/useEmployees';
 import { apiClient } from '@/api/apiClient';
 import { requestPasswordResetCode, resetUserPassword } from '@/api/usersApi';
-import { MultiSelect, type MultiSelectOption } from '@/components/ui/multi-select';
+import { MultiSelect } from '@/components/ui/multi-select';
 import { useAuthSession } from '@/stores/auth-store';
 import { getShifts, type ShiftRecord } from '@/api/attendanceApi';
 

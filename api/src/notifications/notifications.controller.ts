@@ -16,6 +16,9 @@ import { CreateNotificationDto } from './dto/create-notification.dto';
 import { QueryNotificationsDto } from './dto/query-notifications.dto';
 import { UpdateNotificationPreferencesDto } from './dto/update-notification-preferences.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { Role } from '../common/enums/role.enum';
+import { RolesGuard } from '../auth/roles.guard';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -26,7 +29,7 @@ import {
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthUser } from '../common/types/auth';
 import type { AuthenticatedRequest } from '../common/types/request';
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @ApiTags('System - Notifications')
 @ApiBearerAuth()
 @Controller('notifications')
@@ -39,6 +42,7 @@ export class NotificationsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @ApiBody({ type: CreateNotificationDto })
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER)
   @Post()
   create(@Body() dto: CreateNotificationDto, @CurrentUser() user: AuthUser) {
     return this.notificationsService.create(

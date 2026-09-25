@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import {
   Alert,
+  Linking,
   Pressable,
   ScrollView,
   Text,
@@ -10,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { apiError } from "@/src/api/client";
+import { employees as employeeDirectory } from "@/src/api/employees";
 import {
   assignProjectEmployee,
   assignProjectManager,
@@ -57,6 +59,8 @@ export default function ProjectDetail() {
   const [tab, setTab] = useState<Tab>("overview");
   const [employeeId, setEmployeeId] = useState("");
   const [managerId, setManagerId] = useState("");
+  const [employeeSearch, setEmployeeSearch] = useState("");
+  const [managerSearch, setManagerSearch] = useState("");
   const [message, setMessage] = useState("");
   const [submissionTask, setSubmissionTask] = useState<ProjectTask | null>(
     null,
@@ -75,6 +79,11 @@ export default function ProjectDetail() {
     onError: (error) =>
       Alert.alert("Unable to update project", apiError(error)),
   });
+  const employeeQuery = useQuery({
+    queryKey: ["employees", "project-team"],
+    queryFn: employeeDirectory,
+    enabled: managerRole,
+  });
   const teamMutation = useMutation({
     mutationFn: ({
       action,
@@ -92,6 +101,7 @@ export default function ProjectDetail() {
       void client.invalidateQueries({ queryKey: ["project", projectId] });
       setEmployeeId("");
       setManagerId("");
+      setEmployeeSearch("");
     },
     onError: (error) =>
       Alert.alert("Unable to update project team", apiError(error)),
@@ -175,9 +185,48 @@ export default function ProjectDetail() {
   const teamMembers = Array.isArray(current.teamMembers)
     ? (current.teamMembers as ProjectTask[])
     : [];
+  const employeeOptions = ((employeeQuery.data ?? []) as Array<{
+    id: number;
+    name: string;
+    email?: string | null;
+    department?: string | null;
+    designation?: string | null;
+  }>).filter((employee) => {
+    const term = employeeSearch.trim().toLowerCase();
+    if (!term) return true;
+    return (
+      (employee.name ?? "").toLowerCase().includes(term) ||
+      (employee.department ?? "").toLowerCase().includes(term) ||
+      (employee.designation ?? "").toLowerCase().includes(term) ||
+      (employee.email ?? "").toLowerCase().includes(term)
+    );
+  });
+  const managerOptions = ((employeeQuery.data ?? []) as Array<{
+    id: number;
+    name: string;
+    email?: string | null;
+    department?: string | null;
+    designation?: string | null;
+    userId?: number | null;
+    user?: { id?: number | null } | null;
+  }>).filter((employee) => {
+    const term = managerSearch.trim().toLowerCase();
+    if (!term) return true;
+    return (
+      (employee.name ?? "").toLowerCase().includes(term) ||
+      (employee.department ?? "").toLowerCase().includes(term) ||
+      (employee.designation ?? "").toLowerCase().includes(term) ||
+      (employee.email ?? "").toLowerCase().includes(term)
+    );
+  });
   const isAssignee = (task: ProjectTask) =>
     task.assignedToUserId === session?.user.id ||
     (session?.employeeId != null && task.assignedToId === session.employeeId);
+  const resolveManagerValue = (employee: {
+    userId?: number | null;
+    user?: { id?: number | null } | null;
+    id: number;
+  }) => Number(employee.userId ?? employee.user?.id ?? employee.id ?? 0) || 0;
   const renderTask = (task: ProjectTask, index: number) => {
     const status = String(task.status ?? "PENDING").toUpperCase();
     const employeeCanSubmit =
@@ -185,6 +234,12 @@ export default function ProjectDetail() {
       isAssignee(task) &&
       ["IN_PROGRESS", "REJECTED"].includes(status);
     const managerCanComplete = managerRole && status !== "APPROVED";
+    const assigneeUserId = Number(
+      task.assignedToUser?.id ??
+      task.assignedToUserId ??
+      task.assignee?.id ??
+      0,
+    ) || undefined;
     return (
       <View key={String(task.id ?? index)} style={styles.card}>
         <Text style={styles.cardTitle}>{String(task.taskName ?? "Task")}</Text>
@@ -196,6 +251,14 @@ export default function ProjectDetail() {
             Due: {String(task.dueDate).slice(0, 10)}
           </Text>
         ) : null}
+        <View style={{ marginTop: 10 }}>
+          <UserIdentity
+            userId={assigneeUserId}
+            name={String(task.assignedToUser?.name ?? task.assignee ?? "Unassigned")}
+            subtitle={String(task.assignedToUser?.role ?? task.assigneeRole ?? "Unassigned")}
+            size="md"
+          />
+        </View>
         <Text style={styles.taskDescription}>
           {String(task.description ?? "No description provided.")}
         </Text>
@@ -260,6 +323,20 @@ export default function ProjectDetail() {
                 current.description ?? "No project description provided.",
               )}
             </Text>
+            {Array.isArray(current.links) && current.links.length > 0 ? (
+              <View style={{ marginTop: 12 }}>
+                <Text style={styles.cardTitle}>Reference links</Text>
+                {current.links.map((link: { id: number; title: string; url: string }) => (
+                  <Text
+                    key={String(link.id)}
+                    style={styles.linkText}
+                    onPress={() => void Linking.openURL(link.url)}
+                  >
+                    {String(link.title || link.url)}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
             <View style={styles.stats}>
               <Stat
                 label="Status"
@@ -406,7 +483,14 @@ export default function ProjectDetail() {
                         isMine && styles.messageRowMine,
                       ]}
                     >
-                      <UserIdentity userId={item.sender?.id} name={item.sender?.name ?? "Team member"} size="sm" />
+                      {!isMine ? (
+                        <UserIdentity
+                          userId={Number(item.sender?.id ?? 0) || undefined}
+                          name={item.sender?.name ?? "Team member"}
+                          size="sm"
+                          showLabel={false}
+                        />
+                      ) : null}
                       <View
                         style={[
                           styles.bubble,
@@ -494,52 +578,101 @@ export default function ProjectDetail() {
       {tab === "team" ? (
         <>
           <Text style={styles.sectionTitle}>Project team</Text>
-          {employees.map((member, index) => (
-            <View key={`employee-${member.id}-${index}`} style={styles.member}>
-              <View>
-                <Text style={styles.cardTitle}>
-                  {String(member.name ?? "Team member")}
-                </Text>
-                <Text style={styles.muted}>
-                  {String(member.designation ?? member.email ?? "")}
-                </Text>
+          {employees.map((member, index) => {
+            const memberUserId = Number(
+              member.userId ??
+              member.user?.id ??
+              member.id ??
+              0,
+            ) || undefined;
+            return (
+              <View key={`employee-${member.id}-${index}`} style={styles.member}>
+                <View style={styles.memberIdentity}>
+                  <UserIdentity
+                    userId={memberUserId}
+                    name={String(member.name ?? "Team member")}
+                    subtitle={String(member.designation ?? member.email ?? "")}
+                    size="md"
+                  />
+                </View>
+                {managerRole ? (
+                  <Pressable
+                    onPress={() =>
+                      teamMutation.mutate({
+                        action: "remove",
+                        value: Number(member.id),
+                      })
+                    }
+                  >
+                    <Text style={styles.remove}>Remove</Text>
+                  </Pressable>
+                ) : null}
               </View>
-              {managerRole ? (
-                <Pressable
-                  onPress={() =>
-                    teamMutation.mutate({
-                      action: "remove",
-                      value: Number(member.id),
-                    })
-                  }
-                >
-                  <Text style={styles.remove}>Remove</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          ))}
-          {teamMembers.map((member, index) => (
-            <View key={`member-${member.id}-${index}`} style={styles.member}>
-              <View>
-                <Text style={styles.cardTitle}>
-                  {String(member.name ?? "Team member")}
-                </Text>
-                <Text style={styles.muted}>
-                  {String(member.role ?? member.email ?? "")}
-                </Text>
+            );
+          })}
+          {teamMembers.map((member, index) => {
+            const memberUserId = Number(
+              member.userId ??
+              member.user?.id ??
+              member.id ??
+              0,
+            ) || undefined;
+            return (
+              <View key={`member-${member.id}-${index}`} style={styles.member}>
+                <UserIdentity
+                  userId={memberUserId}
+                  name={String(member.name ?? "Team member")}
+                  subtitle={String(member.role ?? member.email ?? "")}
+                  size="md"
+                />
               </View>
-            </View>
-          ))}
+            );
+          })}
           {managerRole ? (
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Add to team</Text>
               <TextInput
-                value={employeeId}
-                onChangeText={setEmployeeId}
-                placeholder="Employee ID"
-                keyboardType="number-pad"
+                value={employeeSearch}
+                onChangeText={setEmployeeSearch}
+                placeholder="Search employee name or department"
                 style={styles.input}
               />
+              {employeeOptions.length ? (
+                <View style={styles.selectList}>
+                  {employeeOptions.slice(0, 6).map((employee) => {
+                    const selected = String(employee.id) === employeeId;
+                    return (
+                      <Pressable
+                        key={employee.id}
+                        onPress={() => setEmployeeId(String(employee.id))}
+                        style={[
+                          styles.selectOption,
+                          selected && styles.selectOptionActive,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.selectOptionText,
+                            selected && styles.selectOptionTextActive,
+                          ]}
+                        >
+                          {employee.name}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.selectOptionMeta,
+                            selected && styles.selectOptionMetaActive,
+                          ]}
+                        >
+                          {[employee.department, employee.designation]
+                            .filter(Boolean)
+                            .join(" · ") || employee.email || "Employee"}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
               <Pressable
                 disabled={teamMutation.isPending || !employeeId}
                 onPress={() =>
@@ -548,7 +681,7 @@ export default function ProjectDetail() {
                     value: Number(employeeId),
                   })
                 }
-                style={styles.action}
+                style={[styles.action, (!employeeId || teamMutation.isPending) && styles.disabled]}
               >
                 <Text style={styles.actionText}>Assign employee</Text>
               </Pressable>
@@ -559,6 +692,48 @@ export default function ProjectDetail() {
                 keyboardType="number-pad"
                 style={styles.input}
               />
+              <TextInput
+                value={managerSearch}
+                onChangeText={setManagerSearch}
+                placeholder="Search manager name or department"
+                style={styles.input}
+              />
+              {managerOptions.length ? (
+                <View style={styles.selectList}>
+                  {managerOptions.slice(0, 6).map((employee) => {
+                    const selected = resolveManagerValue(employee) === Number(managerId || 0);
+                    return (
+                      <Pressable
+                        key={`manager-${employee.id}`}
+                        onPress={() => setManagerId(String(resolveManagerValue(employee)))}
+                        style={[
+                          styles.selectOption,
+                          selected && styles.selectOptionActive,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.selectOptionText,
+                            selected && styles.selectOptionTextActive,
+                          ]}
+                        >
+                          {employee.name}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.selectOptionMeta,
+                            selected && styles.selectOptionMetaActive,
+                          ]}
+                        >
+                          {[employee.department, employee.designation]
+                            .filter(Boolean)
+                            .join(" · ") || employee.email || "Manager"}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
               <Pressable
                 disabled={teamMutation.isPending || !managerId}
                 onPress={() =>
@@ -567,7 +742,10 @@ export default function ProjectDetail() {
                     value: Number(managerId),
                   })
                 }
-                style={styles.action}
+                style={[
+                  styles.action,
+                  (!managerId || teamMutation.isPending) && styles.disabled,
+                ]}
               >
                 <Text style={styles.actionText}>Assign manager</Text>
               </Pressable>
@@ -604,6 +782,7 @@ const styles = {
   } as const,
   heroTitle: { color: "#fff", fontSize: 20, fontWeight: "800" } as const,
   heroText: { color: "#cbd5e1", lineHeight: 21, marginTop: 8 } as const,
+  linkText: { color: "#93c5fd", marginTop: 6, textDecorationLine: "underline" } as const,
   stats: { flexDirection: "row", gap: 8, marginTop: 18 } as const,
   stat: {
     flex: 1,
@@ -650,6 +829,33 @@ const styles = {
   } as const,
   cardTitle: { color: "#172033", fontWeight: "800", fontSize: 16 } as const,
   muted: { color: "#64748b", marginTop: 5 } as const,
+  selectList: {
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 12,
+    marginTop: 12,
+    overflow: "hidden",
+  } as const,
+  selectOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+    backgroundColor: "#fff",
+  } as const,
+  selectOptionActive: {
+    backgroundColor: "#1d4ed8",
+    borderBottomColor: "#1d4ed8",
+  } as const,
+  selectOptionText: {
+    color: "#172033",
+    fontWeight: "700",
+    fontSize: 13,
+  } as const,
+  selectOptionTextActive: { color: "#fff", fontWeight: "800" } as const,
+  selectOptionMeta: { color: "#64748b", fontSize: 11, marginTop: 2 } as const,
+  selectOptionMetaActive: { color: "#dbeafe" } as const,
   taskDescription: { color: "#475569", marginTop: 9, lineHeight: 20 } as const,
   progress: {
     backgroundColor: "#ecfdf5",
@@ -905,8 +1111,15 @@ const styles = {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: 12,
   } as const,
-  remove: { color: "#be123c", fontWeight: "800" } as const,
+  memberIdentity: { flex: 1, minWidth: 0 } as const,
+  remove: {
+    color: "#be123c",
+    fontWeight: "800",
+    textAlign: "right",
+    minWidth: 52,
+  } as const,
   error: {
     color: "#be123c",
     backgroundColor: "#fff1f2",

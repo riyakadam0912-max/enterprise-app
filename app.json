@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "7e204d99-1ac5-4810-b645-bb62dc2a4777"
+      }
+    },
+    "android": {
+      "package": "com.riya912.enterpriseapp"
+    }
+  }
+}

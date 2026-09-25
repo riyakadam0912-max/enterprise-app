@@ -9,12 +9,13 @@
     "dev:full": "npm run dev",
     "build": "npm --prefix api run build && npm --prefix web run build",
     "start": "concurrently -k --names API,WEB --prefix-colors blue,green \"npm --prefix api run start:prod\" \"npm --prefix web run start\"",
-    "lint": "npm --prefix api run lint && npm --prefix web run lint",
-    "test": "npm --prefix api run test && npm --prefix web run test",
-    "typecheck": "npm --prefix api run typecheck && npm --prefix web run typecheck",
+    "lint": "npm --prefix api run lint && npm --prefix web run lint && npm --prefix app run lint",
+    "test": "npm --prefix api run test && npm --prefix web run test && npm --prefix app run test",
+    "typecheck": "npm --prefix api run typecheck && npm --prefix web run typecheck && npm --prefix app run typecheck",
     "prisma:generate": "npm --prefix api run prisma:generate",
     "prisma:migrate": "npm --prefix api run prisma:migrate",
     "ci:prisma": "npm --prefix api run prisma:validate && npm --prefix api run prisma:migrate:status && npm --prefix api run prisma:migrate",
+    "release:audit": "node scripts/release-audit.js",
     "kill:ports": "node scripts/kill-ports.js"
   },
   "devDependencies": {

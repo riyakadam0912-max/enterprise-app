@@ -307,7 +307,7 @@ describe('ProjectsService', () => {
 
       expect(result).toEqual(mockProjects);
       expect(projectDelegate.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: {} }),
+        expect.objectContaining({ where: { deletedAt: null } }),
       );
     });
 
@@ -348,7 +348,7 @@ describe('ProjectsService', () => {
       );
     });
 
-    it('should include projects owned by the employee\'s reporting manager', async () => {
+    it("should include projects owned by the employee's reporting manager", async () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
       const userDelegate = getPrismaDelegate(mockPrisma, 'user');
       userDelegate.findUnique.mockResolvedValueOnce({
@@ -435,7 +435,7 @@ describe('ProjectsService', () => {
         expect.objectContaining({
           where: {
             AND: [
-              { organizationId: 1 },
+              { organizationId: 1, deletedAt: null },
               {
                 OR: [
                   { managerId: mockManagerUser.userId },

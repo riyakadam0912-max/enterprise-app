@@ -6,6 +6,7 @@ import { useAuth } from '@/src/providers/AuthProvider';
 import { can } from '@/src/utils/permissions';
 import { StatePanel } from '@/src/components/StatePanel';
 import { tokens } from '@/src/theme/tokens';
+import { getMobileCapability } from '@/src/config/mobile-capabilities';
 
 type Item = Record<string, unknown>;
 export type ListFilter = { key: string; label: string; options: string[] };
@@ -15,7 +16,7 @@ type ModuleListProps = { title: string; subtitle: string; queryKey: string[]; lo
 
 export function ModuleListScreen({ title, subtitle, queryKey, load, renderItem, renderActions, headerAction, searchKeys = [], filters = [], sortOptions = [], pageSize = 10, canAccess, permission, unauthorizedMessage = 'You do not have permission to view this workspace.', emptyMessage = 'No records in this workspace.' }: ModuleListProps) {
   const { session } = useAuth();
-  const inferredPermission = permission ?? ({ contacts: 'contact.read', deals: 'deal.read', employees: 'employee.read', expenses: 'expense.read', invoices: 'invoice.read', leads: 'lead.read', projects: 'project.read', tasks: 'task.read', timesheets: 'timesheet.read', quotes: 'quote.read', ledger: 'ledger.read', payments: 'payment.read', payslips: 'payroll.read', notifications: 'notification.read' } as Record<string, string>)[queryKey[0]];
+  const inferredPermission = permission ?? getMobileCapability(queryKey[0])?.permission;
   const authorized = canAccess ?? (inferredPermission ? can(session, inferredPermission) : true);
   const [search, setSearch] = useState('');
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});

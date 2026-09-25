@@ -1,11 +1,12 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useState, type ComponentProps } from 'react';
 import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { apiError } from '@/src/api/client';
 import { createExpense, updateExpense } from '@/src/api/expenses';
 import { uploadExpenseReceipt } from '@/src/api/files';
 import * as ImagePicker from 'expo-image-picker';
+import { validatePickedImage, type PickedImage } from '@/src/utils/image-upload';
 
 export default function AddExpense() {
   const router = useRouter();
@@ -14,12 +15,15 @@ export default function AddExpense() {
   const [receipt, setReceipt] = useState<{ uri: string; name: string; type: string } | null>(null);
   const [error, setError] = useState('');
   const mutation = useMutation({
-    mutationFn: createExpense,
-    onSuccess: async (expense) => {
+    mutationFn: async (payload: Parameters<typeof createExpense>[0]) => {
+      const expense = await createExpense(payload);
       if (receipt) {
         const uploaded = await uploadExpenseReceipt(receipt, expense.id);
-        await updateExpense(expense.id, { receiptImage: uploaded.downloadUrl ?? uploaded.previewUrl ?? undefined });
+        return updateExpense(expense.id, { receiptImage: uploaded.downloadUrl ?? uploaded.previewUrl ?? undefined });
       }
+      return expense;
+    },
+    onSuccess: async () => {
       void client.invalidateQueries({ queryKey: ['expenses'] });
       Alert.alert('Claim submitted', 'Your expense was sent for approval.', [{ text: 'Done', onPress: () => router.replace('/expenses') }]);
     },
@@ -35,7 +39,7 @@ export default function AddExpense() {
     if (form.expenseDate && !/^\d{4}-\d{2}-\d{2}$/.test(form.expenseDate)) return setError('Use a date in YYYY-MM-DD format.');
     mutation.mutate({ expenseDate: form.expenseDate || undefined, category: form.category.trim() || undefined, description: form.description.trim(), amount, currency: form.currency.trim().toUpperCase() });
   };
-  const pickReceipt = async () => { const permission = await ImagePicker.requestMediaLibraryPermissionsAsync(); if (!permission.granted) { setError('Gallery permission is required to choose a receipt.'); return; } const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.9 }); if (result.canceled || !result.assets[0]) return; const selected = result.assets[0]; if (!['image/jpeg', 'image/png'].includes(selected.mimeType ?? 'image/jpeg')) { setError('Please choose a JPG, JPEG, or PNG image.'); return; } if ((selected.fileSize ?? 0) > 5 * 1024 * 1024) { setError('Receipt image must be 5 MB or smaller.'); return; } setReceipt({ uri: selected.uri, name: selected.fileName ?? 'receipt.jpg', type: selected.mimeType ?? 'image/jpeg' }); setError(''); };
+  const pickReceipt = async () => { const permission = await ImagePicker.requestMediaLibraryPermissionsAsync(); if (!permission.granted) { setError('Gallery permission is required to choose a receipt.'); return; } const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.9 }); if (result.canceled || !result.assets[0]) return; try { setReceipt(validatePickedImage(result.assets[0], 'Receipt') as PickedImage); setError(''); } catch (value) { setError(value instanceof Error ? value.message : 'Invalid receipt image.'); } };
   return <ScrollView contentContainerStyle={styles.page}>
     <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={styles.back}>Back to expenses</Text></Pressable>
     <Text style={styles.title}>New expense claim</Text>
@@ -54,7 +58,7 @@ export default function AddExpense() {
   </ScrollView>;
 }
 
-function Field({ label, ...props }: { label: string } & React.ComponentProps<typeof TextInput>) {
+function Field({ label, ...props }: { label: string } & ComponentProps<typeof TextInput>) {
   return <View style={{ marginTop: 14 }}><Text style={styles.label}>{label}</Text><TextInput {...props} style={styles.input} /></View>;
 }
 

@@ -8,6 +8,12 @@
 dist
 build
 .next
+app/temp-export/
+app/temp-export-verify/
+app/web-build/
+
+# Runtime data
+api/uploads/
 
 # Dependencies
 node_modules

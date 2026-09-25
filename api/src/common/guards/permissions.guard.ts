@@ -3,6 +3,7 @@ import {
   CanActivate,
   ExecutionContext,
   ForbiddenException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Permission } from '../enums/permissions.enum';
@@ -45,6 +46,10 @@ export class PermissionsGuard implements CanActivate {
 
     if (!requiredPermissions || requiredPermissions.length === 0) {
       return true;
+    }
+
+    if (!user) {
+      throw new UnauthorizedException('Authentication is required');
     }
 
     // Check if user has required permissions

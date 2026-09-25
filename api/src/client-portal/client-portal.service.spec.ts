@@ -1,4 +1,4 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException } from '@nestjs/common';
 import { Role } from '../common/enums/role.enum';
 import type { AuthUser } from '../common/types/auth';
 import { ClientPortalService } from './client-portal.service';
@@ -36,19 +36,25 @@ describe('ClientPortalService', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('rejects client administration without an organization', async () => {
-    await expect(service.list(clientUser({ organizationId: null }))).rejects.toThrow(ForbiddenException);
+    await expect(
+      service.list(clientUser({ organizationId: null })),
+    ).rejects.toThrow(ForbiddenException);
     expect(prisma.clientProfile.findMany).not.toHaveBeenCalled();
   });
 
   it('lists only profiles in the authenticated organization', async () => {
     prisma.clientProfile.findMany.mockResolvedValueOnce([{ id: 3 }]);
     await expect(service.list(clientUser())).resolves.toEqual([{ id: 3 }]);
-    expect(prisma.clientProfile.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: 10 } }));
+    expect(prisma.clientProfile.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { organizationId: 10 } }),
+    );
   });
 
   it('does not allow a client to read portal projects through an inactive profile', async () => {
     prisma.clientProfile.findFirst.mockResolvedValueOnce(null);
-    await expect(service.myProjects(clientUser({ role: Role.CLIENT }))).rejects.toThrow(ForbiddenException);
+    await expect(
+      service.myProjects(clientUser({ role: Role.CLIENT })),
+    ).rejects.toThrow(ForbiddenException);
     expect(prisma.clientProjectAccess.findMany).not.toHaveBeenCalled();
   });
 
@@ -61,11 +67,15 @@ describe('ClientPortalService', () => {
       revokedAt: null,
       clientProfile: { userId: 8 },
     });
-    await expect(service.acceptInvitation('expired-token', 'StrongPassword1!')).rejects.toThrow(ForbiddenException);
+    await expect(
+      service.acceptInvitation('expired-token', 'StrongPassword1!'),
+    ).rejects.toThrow(ForbiddenException);
   });
 
   it('rejects a client project read when the profile is not active', async () => {
     prisma.clientProfile.findFirst.mockResolvedValueOnce(null);
-    await expect(service.myProjects(clientUser({ role: Role.CLIENT }))).rejects.toThrow(ForbiddenException);
+    await expect(
+      service.myProjects(clientUser({ role: Role.CLIENT })),
+    ).rejects.toThrow(ForbiddenException);
   });
 });

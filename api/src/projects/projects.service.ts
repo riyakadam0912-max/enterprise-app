@@ -141,13 +141,13 @@ export class ProjectsService {
     user: AuthUser,
   ): Promise<Prisma.ProjectWhereInput> {
     if (this.isPlatformAdmin(user) && user.organizationId == null) {
-      return {};
+      return { deletedAt: null };
     }
 
     const organizationId = this.validateOrganization(user);
     const scope = await this.businessUnitsService.resolveScope(user as any);
     const buWhere = this.businessUnitsService.buildDirectBUWhere(scope);
-    const baseWhere = { organizationId };
+    const baseWhere = { organizationId, deletedAt: null };
 
     let roleWhere: Prisma.ProjectWhereInput;
     let assignedEmployeeWhere: Prisma.ProjectWhereInput | null = null;
@@ -417,7 +417,10 @@ export class ProjectsService {
     const managerName = dto.manager ?? manager?.name ?? null;
 
     if (dto.customerId != null) {
-      const customer = await this.db.customer.findFirst({ where: { id: dto.customerId, organizationId, deletedAt: null }, select: { id: true } });
+      const customer = await this.db.customer.findFirst({
+        where: { id: dto.customerId, organizationId, deletedAt: null },
+        select: { id: true },
+      });
       if (!customer) throw new NotFoundException('Customer not found');
     }
 
@@ -472,7 +475,9 @@ export class ProjectsService {
           },
         },
         links: { where: { organizationId } },
-        customer: { select: { id: true, customerName: true, customerType: true } },
+        customer: {
+          select: { id: true, customerName: true, customerType: true },
+        },
       },
     });
     try {
@@ -563,7 +568,9 @@ export class ProjectsService {
           },
         },
         links: { where: { ...organizationFilter, deletedAt: null } },
-        customer: { select: { id: true, customerName: true, customerType: true } },
+        customer: {
+          select: { id: true, customerName: true, customerType: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });

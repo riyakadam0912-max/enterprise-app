@@ -118,16 +118,16 @@ export async function createNestApp() {
 
       if (isProduction && isVercelPreviewOrigin(origin)) {
         logger.warn(
-          `CORS: allowing unconfigured Vercel preview origin ${origin} — please add it to FRONTEND_URLS env`,
+          `CORS: rejecting unconfigured Vercel preview origin ${origin} — add it to FRONTEND_URLS env`,
         );
-        callback(null, true);
+        callback(new Error('Origin is not allowed by CORS'));
         return;
       }
 
       logger.warn(
-        `CORS: origin ${origin} not in whitelist — allowing leniently to prevent 500 cascade. Add to FRONTEND_URLS if this is intentional.`,
+        `CORS: rejecting origin ${origin} because it is not in the whitelist. Add it to FRONTEND_URLS if intentional.`,
       );
-      callback(null, true);
+      callback(new Error('Origin is not allowed by CORS'));
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

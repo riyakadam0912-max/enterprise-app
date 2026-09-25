@@ -1,6 +1,12 @@
 # Mobile ERP Parity Audit
 
-Date: 2026-09-04
+Date: 2026-09-11
+
+## Current Parity Tracking
+
+Mobile capability tracking is now maintained in `app/src/config/mobile-capabilities.ts`. The registry records verified mobile routes, permissions, and implemented UI capabilities; API-client availability is not treated as UI parity. `ModuleListScreen` uses the registry for permission inference, and the registry has focused tests for unique modules and capability lookups.
+
+The table below remains a delivery-gap reference. It should be updated when a workflow is implemented and its capability is added to the registry.
 
 ## Scope
 

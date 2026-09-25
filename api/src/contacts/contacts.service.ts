@@ -8,6 +8,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
 import { AuthUser } from '../common/types/auth';
+import { Permission } from '../common/enums/permissions.enum';
+import { Role } from '../common/enums/role.enum';
 
 const STATUSES = ['Active', 'On Hold', 'Inactive'] as const;
 
@@ -22,7 +24,20 @@ export class ContactsService {
     return user.organizationId;
   }
 
+  private assertPermission(user: AuthUser, permission: Permission) {
+    if (
+      user.role === Role.ADMIN ||
+      user.role === Role.SUPER_ADMIN ||
+      user.isPlatformAdmin ||
+      user.isSuperAdmin ||
+      user.permissions?.includes(permission)
+    )
+      return;
+    throw new ForbiddenException('Missing required contact permission');
+  }
+
   async create(dto: CreateContactDto, user: AuthUser) {
+    this.assertPermission(user, Permission.CONTACT_CREATE);
     const organizationId = this.validateOrganization(user);
     return this.prisma.contact.create({
       data: {
@@ -59,6 +74,7 @@ export class ContactsService {
   }
 
   async update(id: number, dto: UpdateContactDto, user: AuthUser) {
+    this.assertPermission(user, Permission.CONTACT_UPDATE);
     const organizationId = this.validateOrganization(user);
     await this.findOne(id, user);
     return this.prisma.contact.update({
@@ -81,6 +97,7 @@ export class ContactsService {
   }
 
   async remove(id: number, user: AuthUser) {
+    this.assertPermission(user, Permission.CONTACT_DELETE);
     const organizationId = this.validateOrganization(user);
     await this.findOne(id, user);
     return this.prisma.contact.update({
@@ -93,6 +110,7 @@ export class ContactsService {
     records: Array<Record<string, unknown>>,
     user: AuthUser,
   ): Promise<{ imported: number; errors: string[] }> {
+    this.assertPermission(user, Permission.CONTACT_IMPORT);
     const organizationId = this.validateOrganization(user);
     let imported = 0;
     const errors: string[] = [];

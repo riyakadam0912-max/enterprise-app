@@ -33,8 +33,6 @@ export interface Task {
     email: string;
   } | null;
   dueDate: string | null;
-  startDate: string | null;
-  completionPercent: number;
   priority: string | null;
   status: string;
   submissionLink?: string | null;
@@ -69,8 +67,6 @@ export interface TaskPayload {
   employeeId?: number | null;
   assignedToUserId?: number | null;
   dueDate?: string | null;
-  startDate?: string | null;
-  completionPercent?: number;
   priority?: string | null;
   status?: string;
   submissionLink?: string | null;

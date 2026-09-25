@@ -494,8 +494,6 @@ model Task {
   actualHours      Float?
   assignee         String?
   dueDate          DateTime?
-  startDate        DateTime?
-  completionPercent Int             @default(0)
   estimatedHours   Float?
   notes            String?
   priority         String?

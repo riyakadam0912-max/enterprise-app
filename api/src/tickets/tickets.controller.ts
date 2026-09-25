@@ -16,6 +16,9 @@ import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { CreateTicketTypeDto } from './dto/create-ticket-type.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
+import { Permission } from '../common/enums/permissions.enum';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -25,7 +28,7 @@ import {
 } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthUser } from '../common/types/auth';
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiTags('Support - Tickets')
 @ApiBearerAuth()
 @Controller('tickets')
@@ -40,6 +43,7 @@ export class TicketsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @ApiBody({ type: CreateTicketDto })
+  @RequirePermissions(Permission.TICKET_CREATE)
   @Post()
   create(@Body() dto: CreateTicketDto, @CurrentUser() user: AuthUser) {
     return this.ticketsService.create(dto, user);
@@ -51,6 +55,7 @@ export class TicketsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Post('import')
+  @RequirePermissions(Permission.TICKET_IMPORT)
   @HttpCode(HttpStatus.OK)
   importRecords(
     @Body() body: { records: Record<string, unknown>[] },
@@ -98,6 +103,7 @@ export class TicketsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @ApiBody({ type: UpdateTicketDto })
+  @RequirePermissions(Permission.TICKET_UPDATE)
   @Patch(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
@@ -112,6 +118,7 @@ export class TicketsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Delete(':id')
+  @RequirePermissions(Permission.TICKET_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
     return this.ticketsService.remove(id, user);
@@ -126,8 +133,12 @@ export class TicketsController {
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @ApiBody({ type: CreateTicketTypeDto })
   @Post('ticket-types')
-  createTicketType(@Body() dto: CreateTicketTypeDto) {
-    return this.ticketsService.createTicketType(dto);
+  @RequirePermissions(Permission.TICKET_TYPE_MANAGE)
+  createTicketType(
+    @Body() dto: CreateTicketTypeDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.createTicketType(dto, user);
   }
 
   @ApiOperation({ summary: 'GET ticket-types/all' })
@@ -146,8 +157,12 @@ export class TicketsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Delete('ticket-types/:id')
+  @RequirePermissions(Permission.TICKET_TYPE_MANAGE)
   @HttpCode(HttpStatus.NO_CONTENT)
-  removeTicketType(@Param('id', ParseIntPipe) id: number) {
-    return this.ticketsService.removeTicketType(id);
+  removeTicketType(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.removeTicketType(id, user);
   }
 }

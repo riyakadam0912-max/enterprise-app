@@ -1,9 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { CreateTicketTypeDto } from './dto/create-ticket-type.dto';
 import type { AuthUser } from '../common/types/auth';
+import { Permission } from '../common/enums/permissions.enum';
+import { Role } from '../common/enums/role.enum';
 
 const includeRelations = {
   ticketType: { select: { id: true, name: true, color: true } },
@@ -15,14 +21,27 @@ export class TicketsService {
 
   private validateOrganization(user: AuthUser): number {
     if (!user.organizationId) {
-      throw new Error('User has no associated organization');
+      throw new ForbiddenException('User has no associated organization');
     }
     return user.organizationId;
+  }
+
+  private assertPermission(user: AuthUser, permission: Permission) {
+    if (
+      user.role === Role.ADMIN ||
+      user.role === Role.SUPER_ADMIN ||
+      user.isPlatformAdmin ||
+      user.isSuperAdmin ||
+      user.permissions?.includes(permission)
+    )
+      return;
+    throw new ForbiddenException('Missing required ticket permission');
   }
 
   // ── Tickets ────────────────────────────────────────────────────────────────
 
   async create(dto: CreateTicketDto, user: AuthUser) {
+    this.assertPermission(user, Permission.TICKET_CREATE);
     const organizationId = this.validateOrganization(user);
 
     return this.prisma.ticket.create({
@@ -62,6 +81,7 @@ export class TicketsService {
   }
 
   async update(id: number, dto: UpdateTicketDto, user: AuthUser) {
+    this.assertPermission(user, Permission.TICKET_UPDATE);
     const organizationId = this.validateOrganization(user);
     await this.findOne(id, user);
 
@@ -89,6 +109,7 @@ export class TicketsService {
   }
 
   async remove(id: number, user: AuthUser) {
+    this.assertPermission(user, Permission.TICKET_DELETE);
     const organizationId = this.validateOrganization(user);
     await this.findOne(id, user);
     return this.prisma.ticket.update({
@@ -101,6 +122,7 @@ export class TicketsService {
     records: Record<string, unknown>[],
     user: AuthUser,
   ): Promise<{ imported: number; errors: string[] }> {
+    this.assertPermission(user, Permission.TICKET_IMPORT);
     const organizationId = this.validateOrganization(user);
     let imported = 0;
     const errors: string[] = [];
@@ -151,7 +173,8 @@ export class TicketsService {
 
   // ── Ticket Types ──────────────────────────────────────────────────────────
 
-  async createTicketType(dto: CreateTicketTypeDto) {
+  async createTicketType(dto: CreateTicketTypeDto, user: AuthUser) {
+    this.assertPermission(user, Permission.TICKET_TYPE_MANAGE);
     return this.prisma.ticketType.create({
       data: { name: dto.name, color: dto.color },
     });
@@ -161,7 +184,8 @@ export class TicketsService {
     return this.prisma.ticketType.findMany({ orderBy: { name: 'asc' } });
   }
 
-  async removeTicketType(id: number) {
+  async removeTicketType(id: number, user: AuthUser) {
+    this.assertPermission(user, Permission.TICKET_TYPE_MANAGE);
     const type = await this.prisma.ticketType.findUnique({ where: { id } });
     if (!type) throw new NotFoundException(`TicketType #${id} not found`);
     return this.prisma.ticketType.update({

@@ -120,16 +120,23 @@ export class TimesheetsService {
 
   async findOne(id: number, user: AuthUser) {
     const organizationId = await this.resolveOrganizationId(user);
-    const timesheet = await this.prisma.timesheet.findFirst({ where: { id, organizationId, deletedAt: null } });
-    if (!timesheet) throw new ForbiddenException('Timesheet not found in your organization');
+    const timesheet = await this.prisma.timesheet.findFirst({
+      where: { id, organizationId, deletedAt: null },
+    });
+    if (!timesheet)
+      throw new ForbiddenException('Timesheet not found in your organization');
     return { ...timesheet, date: timesheet.date.toISOString().split('T')[0] };
   }
 
   async update(id: number, dto: UpdateTimesheetDto, user: AuthUser) {
     const organizationId = await this.resolveOrganizationId(user);
-    const existing = await this.prisma.timesheet.findFirst({ where: { id, organizationId, deletedAt: null } });
-    if (!existing) throw new ForbiddenException('Timesheet not found in your organization');
-    if (existing.status === 'APPROVED') throw new ForbiddenException('Approved timesheets cannot be edited');
+    const existing = await this.prisma.timesheet.findFirst({
+      where: { id, organizationId, deletedAt: null },
+    });
+    if (!existing)
+      throw new ForbiddenException('Timesheet not found in your organization');
+    if (existing.status === 'APPROVED')
+      throw new ForbiddenException('Approved timesheets cannot be edited');
     return this.prisma.timesheet.update({
       where: { id },
       data: {

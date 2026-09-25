@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
@@ -24,7 +35,10 @@ export class CustomersController {
 
   @Get(':id')
   @RequirePermissions(Permission.CUSTOMER_READ)
-  findOne(@Param('id', ParseIntPipe) id: number, @Req() req: AuthenticatedRequest) {
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
     return this.customersService.findOne(id, req.user);
   }
 
@@ -38,13 +52,20 @@ export class CustomersController {
   @Patch(':id')
   @RequirePermissions(Permission.CUSTOMER_UPDATE)
   @ApiBody({ type: UpdateCustomerDto })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCustomerDto, @Req() req: AuthenticatedRequest) {
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCustomerDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
     return this.customersService.update(id, dto, req.user);
   }
 
   @Delete(':id')
   @RequirePermissions(Permission.CUSTOMER_DELETE)
-  remove(@Param('id', ParseIntPipe) id: number, @Req() req: AuthenticatedRequest) {
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
     return this.customersService.remove(id, req.user);
   }
 }

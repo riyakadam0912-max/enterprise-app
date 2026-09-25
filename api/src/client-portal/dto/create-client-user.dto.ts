@@ -1,4 +1,12 @@
-import { IsArray, IsEmail, IsInt, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import {
+  IsArray,
+  IsEmail,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+  MinLength,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateClientUserDto {
@@ -14,7 +22,10 @@ export class CreateClientUserDto {
   @IsOptional()
   @IsString()
   @MinLength(1)
-  @ApiPropertyOptional({ example: 'client-invitation', default: 'client-invitation' })
+  @ApiPropertyOptional({
+    example: 'client-invitation',
+    default: 'client-invitation',
+  })
   invitationTemplate?: string;
 
   @IsArray()

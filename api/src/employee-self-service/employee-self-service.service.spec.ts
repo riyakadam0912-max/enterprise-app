@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { beforeEach, describe, expect, it } from '@jest/globals';
 import { EmployeeSelfServiceService } from './employee-self-service.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role } from '../common/enums/role.enum';

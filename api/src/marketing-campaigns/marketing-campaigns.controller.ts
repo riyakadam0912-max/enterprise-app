@@ -13,6 +13,9 @@ import {
   Req,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
+import { Permission } from '../common/enums/permissions.enum';
 import { MarketingCampaignsService } from './marketing-campaigns.service';
 import { CreateMarketingCampaignDto } from './dto/create-marketing-campaign.dto';
 import { UpdateMarketingCampaignDto } from './dto/update-marketing-campaign.dto';
@@ -24,7 +27,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../common/types/request';
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiTags('CRM - Marketing Campaigns')
 @ApiBearerAuth()
 @Controller('marketing-campaigns')
@@ -37,6 +40,7 @@ export class MarketingCampaignsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @ApiBody({ type: CreateMarketingCampaignDto })
+  @RequirePermissions(Permission.MARKETING_CREATE)
   @Post()
   create(
     @Body() dto: CreateMarketingCampaignDto,
@@ -51,6 +55,7 @@ export class MarketingCampaignsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Post('import')
+  @RequirePermissions(Permission.MARKETING_IMPORT)
   @HttpCode(HttpStatus.OK)
   importRecords(
     @Body() body: { records: Record<string, unknown>[] },
@@ -98,6 +103,7 @@ export class MarketingCampaignsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @ApiBody({ type: UpdateMarketingCampaignDto })
+  @RequirePermissions(Permission.MARKETING_UPDATE)
   @Patch(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
@@ -113,6 +119,7 @@ export class MarketingCampaignsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Delete(':id')
+  @RequirePermissions(Permission.MARKETING_DELETE)
   remove(
     @Param('id', ParseIntPipe) id: number,
     @Req() req: AuthenticatedRequest,
