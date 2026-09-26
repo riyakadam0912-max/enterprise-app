@@ -52,6 +52,7 @@ model User {
   primaryBusinessUnit        BusinessUnit?          @relation("UserPrimaryBusinessUnit", fields: [primaryBusinessUnitId], references: [id], onDelete: SetNull)
   userRoles                  UserRole[]
   coManagedProjects          Project[]              @relation("ProjectCoManagers")
+  businessUnitAdminAssignments BusinessUnitAdmin[]  @relation("BusinessUnitAdminUser")
   clientProfile              ClientProfile?
 
   @@index([organizationId])
@@ -115,6 +116,7 @@ model Organization {
   activities               Activity[]
   activityTimelines        ActivityTimeline[]
   activityTimelineComments ActivityTimelineComment[]
+  businessUnitAdmins       BusinessUnitAdmin[]
   attendances              Attendance[]
   auditLogs                AuditLog[]
   campaignLeads            CampaignLead[]
@@ -212,10 +214,26 @@ model BusinessUnit {
   employees      Employee[]         @relation("EmployeeBusinessUnit")
   projects       Project[]          @relation("ProjectBusinessUnit")
   tasks          Task[]             @relation("TaskBusinessUnit")
+  administrators BusinessUnitAdmin[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
   @@index([parentId])
+}
+
+model BusinessUnitAdmin {
+  id             Int          @id @default(autoincrement())
+  userId         Int
+  businessUnitId Int
+  organizationId Int
+  createdAt      DateTime     @default(now())
+  user           User         @relation("BusinessUnitAdminUser", fields: [userId], references: [id], onDelete: Cascade)
+  businessUnit   BusinessUnit @relation(fields: [businessUnitId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, businessUnitId])
+  @@index([organizationId, businessUnitId])
+  @@index([userId, organizationId])
 }
 
 model Permission {

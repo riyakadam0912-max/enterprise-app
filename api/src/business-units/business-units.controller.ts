@@ -90,6 +90,59 @@ export class BusinessUnitsController {
     return this.businessUnitsService.list(organizationId, req.user);
   }
 
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  @Get('organizations/:organizationId/business-units/:businessUnitId/admins')
+  @ApiOperation({ summary: 'List administrators assigned to a Business Unit' })
+  listAdministrators(
+    @Param('organizationId', ParseIntPipe) organizationId: number,
+    @Param('businessUnitId', ParseIntPipe) businessUnitId: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.businessUnitsService.listAdministrators(
+      businessUnitId,
+      organizationId,
+      req.user,
+    );
+  }
+
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  @Post(
+    'organizations/:organizationId/business-units/:businessUnitId/admins/:userId',
+  )
+  @ApiOperation({ summary: 'Assign a user as Business Unit administrator' })
+  assignAdministrator(
+    @Param('organizationId', ParseIntPipe) organizationId: number,
+    @Param('businessUnitId', ParseIntPipe) businessUnitId: number,
+    @Param('userId', ParseIntPipe) userId: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.businessUnitsService.assignAdministrator(
+      businessUnitId,
+      organizationId,
+      userId,
+      req.user,
+    );
+  }
+
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  @Delete(
+    'organizations/:organizationId/business-units/:businessUnitId/admins/:userId',
+  )
+  @ApiOperation({ summary: 'Revoke a Business Unit administrator assignment' })
+  removeAdministrator(
+    @Param('organizationId', ParseIntPipe) organizationId: number,
+    @Param('businessUnitId', ParseIntPipe) businessUnitId: number,
+    @Param('userId', ParseIntPipe) userId: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.businessUnitsService.removeAdministrator(
+      businessUnitId,
+      organizationId,
+      userId,
+      req.user,
+    );
+  }
+
   @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR)
   @Post('organizations/:organizationId/business-units')
   @ApiOperation({ summary: 'Create a Business Unit' })

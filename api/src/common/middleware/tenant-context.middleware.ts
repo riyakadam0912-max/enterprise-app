@@ -98,37 +98,72 @@ export class TenantContextMiddleware implements NestMiddleware {
       return { businessUnitId: null, allBusinessUnits: true };
     }
 
-    if (headerBU !== undefined && headerBU !== null && headerBU !== '') {
-      const headerBUParsed = Number(headerBU);
-      if (
-        !Number.isNaN(headerBUParsed) &&
-        headerBUParsed > 0 &&
-        headerBUParsed === assignedBUId
-      ) {
-        const bu = await this.prisma.businessUnit.findFirst({
-          where: { id: assignedBUId, organizationId: resolvedOrganizationId },
-          select: { id: true },
-        });
-        if (bu) {
-          return { businessUnitId: assignedBUId, allBusinessUnits: false };
+    const userId = payload.userId ?? payload.sub;
+    const assignments =
+      userId == null
+        ? []
+        : await this.prisma.businessUnitAdmin.findMany({
+            where: { userId, organizationId: resolvedOrganizationId },
+            select: { businessUnitId: true },
+          });
+    const roots = Array.from(
+      new Set([
+        ...assignments.map((assignment) => assignment.businessUnitId),
+        ...(assignedBUId == null ? [] : [assignedBUId]),
+      ]),
+    );
+    const units = roots.length
+      ? await this.prisma.businessUnit.findMany({
+          where: { organizationId: resolvedOrganizationId, status: 'ACTIVE' },
+          select: { id: true, parentId: true },
+        })
+      : [];
+    const authorizedIds = new Set<number>();
+    for (const rootId of roots) {
+      if (units.some((unit) => unit.id === rootId)) authorizedIds.add(rootId);
+    }
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const unit of units) {
+        if (
+          unit.parentId != null &&
+          authorizedIds.has(unit.parentId) &&
+          !authorizedIds.has(unit.id)
+        ) {
+          authorizedIds.add(unit.id);
+          changed = true;
         }
       }
-      this.logger.warn(
-        `Non-privileged user ${payload.sub ?? payload.userId} tried to override X-Business-Unit-Id from ${assignedBUId} to ${headerBU} — ignoring and using assigned BU`,
-      );
     }
 
-    if (assignedBUId != null) {
-      const bu = await this.prisma.businessUnit.findFirst({
-        where: { id: assignedBUId, organizationId: resolvedOrganizationId },
-        select: { id: true },
-      });
-      if (bu) {
+    if (headerBU?.toUpperCase() === 'ALL' || !headerBU) {
+      if (assignments.length > 0) {
+        return { businessUnitId: null, allBusinessUnits: false };
+      }
+      if (assignedBUId != null && authorizedIds.has(assignedBUId)) {
         return { businessUnitId: assignedBUId, allBusinessUnits: false };
       }
+      return { businessUnitId: null, allBusinessUnits: false };
     }
 
-    return { businessUnitId: null, allBusinessUnits: false };
+    const requestedBUId = Number(headerBU);
+    if (Number.isInteger(requestedBUId) && authorizedIds.has(requestedBUId)) {
+      return { businessUnitId: requestedBUId, allBusinessUnits: false };
+    }
+    this.logger.warn(
+      `User ${userId ?? 'unknown'} requested an unassigned Business Unit ${headerBU}; using their authorized scope`,
+    );
+    if (assignments.length > 0) {
+      return { businessUnitId: null, allBusinessUnits: false };
+    }
+    return {
+      businessUnitId:
+        assignedBUId != null && authorizedIds.has(assignedBUId)
+          ? assignedBUId
+          : null,
+      allBusinessUnits: false,
+    };
   }
 
   async use(req: Request, _res: Response, next: NextFunction) {

@@ -214,6 +214,7 @@ axiosClient.interceptors.response.use(
         if (payload) {
 
           setAuthSession({
+            ...getAuthSessionSnapshot(),
             user: payload.user,
 
             role: payload.role,

@@ -11,10 +11,11 @@ import {
 } from 'react';
 import { usePathname } from 'next/navigation';
 
-import { ApiError } from '@/api/apiClient';
+import { ApiError, apiClient } from '@/api/apiClient';
 
 import {
   clearAuthSession,
+  getAuthSessionSnapshot,
   setAuthSession,
   useAuthSession,
 } from '@/stores/auth-store';
@@ -27,6 +28,31 @@ import {
 } from '@/api/authApi';
 
 import type { AuthSession } from '@/stores/auth-store';
+
+type BusinessUnitAccessResponse = {
+  units: AuthSession['availableBusinessUnits'];
+  canSelectAll: boolean;
+  assignedUnitId: number | null;
+};
+
+async function hydrateBusinessUnitAccess() {
+  try {
+    const access = await apiClient<BusinessUnitAccessResponse>('/me/business-units');
+    const current = getAuthSessionSnapshot();
+    const allowedIds = new Set(access.units.map((unit) => unit.id));
+    setAuthSession({
+      ...current,
+      availableBusinessUnits: access.units,
+      canSelectAllBusinessUnits: access.canSelectAll,
+      activeBusinessUnitId:
+        current.activeBusinessUnitId != null && allowedIds.has(current.activeBusinessUnitId)
+          ? current.activeBusinessUnitId
+          : null,
+    });
+  } catch {
+    // Keep sign-in usable if BU context discovery is temporarily unavailable.
+  }
+}
 
 export type AuthStatus = {
   session: AuthSession;
@@ -109,6 +135,8 @@ export function AuthProvider({
           isPlatformAdmin: current.isPlatformAdmin,
 
         });
+
+        await hydrateBusinessUnitAccess();
 
       }
 
@@ -195,6 +223,8 @@ export function AuthProvider({
           data.isPlatformAdmin,
 
       });
+
+      await hydrateBusinessUnitAccess();
 
     },
 

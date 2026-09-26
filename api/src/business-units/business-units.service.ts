@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { BusinessUnitStatus, Prisma } from '@prisma/client';
 import type { AuthUser } from '../common/types/auth';
@@ -10,6 +11,7 @@ import { Role } from '../common/enums/role.enum';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBusinessUnitDto } from './dto/create-business-unit.dto';
 import { UpdateBusinessUnitDto } from './dto/update-business-unit.dto';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 
 export type BusinessUnitScope = {
   organizationId: number;
@@ -31,7 +33,10 @@ const businessUnitInclude = {
 
 @Injectable()
 export class BusinessUnitsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly auditLogsService?: AuditLogsService,
+  ) {}
 
   private isPlatformAdmin(user: AuthUser) {
     return (
@@ -40,6 +45,10 @@ export class BusinessUnitsService {
       user.isSuperAdmin === true ||
       user.roles.includes(Role.SUPER_ADMIN)
     );
+  }
+
+  private isOrganizationWideBUAdmin(user: AuthUser): boolean {
+    return this.isWideScopedRole(user);
   }
 
   private async resolveOrganizationId(
@@ -129,6 +138,126 @@ export class BusinessUnitsService {
       include: businessUnitInclude,
       orderBy: [{ parentId: 'asc' }, { name: 'asc' }],
     });
+  }
+
+  async listAdministrators(
+    businessUnitId: number,
+    organizationId: number,
+    user: AuthUser,
+  ) {
+    const scopedOrganizationId = await this.resolveOrganizationId(
+      organizationId,
+      user,
+    );
+    await this.getUnit(businessUnitId, scopedOrganizationId);
+    return this.prisma.businessUnitAdmin.findMany({
+      where: { businessUnitId, organizationId: scopedOrganizationId },
+      include: {
+        user: { select: { id: true, name: true, email: true, role: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async assignAdministrator(
+    businessUnitId: number,
+    organizationId: number,
+    userId: number,
+    actor: AuthUser,
+  ) {
+    const scopedOrganizationId = await this.resolveOrganizationId(
+      organizationId,
+      actor,
+    );
+    const businessUnit = await this.prisma.businessUnit.findFirst({
+      where: {
+        id: businessUnitId,
+        organizationId: scopedOrganizationId,
+        status: 'ACTIVE',
+      },
+      select: { id: true },
+    });
+    if (!businessUnit) {
+      throw new NotFoundException('Active Business Unit not found');
+    }
+    const targetUser = await this.prisma.user.findFirst({
+      where: {
+        id: userId,
+        organizationId: scopedOrganizationId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (!targetUser) {
+      throw new NotFoundException('User not found in this organization');
+    }
+    const assignment = await this.prisma.businessUnitAdmin.upsert({
+      where: { userId_businessUnitId: { userId, businessUnitId } },
+      create: {
+        userId,
+        businessUnitId,
+        organizationId: scopedOrganizationId,
+      },
+      update: {},
+      include: {
+        user: { select: { id: true, name: true, email: true, role: true } },
+      },
+    });
+    await this.auditLogsService?.logCreate(
+      {
+        userId: actor.userId,
+        userName: actor.name,
+        userRole: actor.role,
+        module: 'Business Units',
+        entityType: 'BusinessUnit',
+        entityId: businessUnitId,
+        action: 'BUSINESS_UNIT_ADMIN_ASSIGNED',
+        description: `Assigned user ${userId} as administrator of Business Unit ${businessUnitId}`,
+        status: 'SUCCESS',
+      },
+      actor,
+    );
+    return assignment;
+  }
+
+  async removeAdministrator(
+    businessUnitId: number,
+    organizationId: number,
+    userId: number,
+    actor: AuthUser,
+  ) {
+    const scopedOrganizationId = await this.resolveOrganizationId(
+      organizationId,
+      actor,
+    );
+    await this.getUnit(businessUnitId, scopedOrganizationId);
+    const result = await this.prisma.businessUnitAdmin.deleteMany({
+      where: {
+        userId,
+        businessUnitId,
+        organizationId: scopedOrganizationId,
+      },
+    });
+    if (result.count === 0) {
+      throw new NotFoundException(
+        'Business Unit administrator assignment not found',
+      );
+    }
+    await this.auditLogsService?.logCreate(
+      {
+        userId: actor.userId,
+        userName: actor.name,
+        userRole: actor.role,
+        module: 'Business Units',
+        entityType: 'BusinessUnit',
+        entityId: businessUnitId,
+        action: 'BUSINESS_UNIT_ADMIN_REVOKED',
+        description: `Revoked user ${userId} as administrator of Business Unit ${businessUnitId}`,
+        status: 'SUCCESS',
+      },
+      actor,
+    );
+    return { success: true };
   }
 
   async create(
@@ -254,57 +383,50 @@ export class BusinessUnitsService {
     assignedUnitId: number | null;
   }> {
     const orgId = await this.resolveOrganizationId(scopedOrganizationId, user);
-
-    const canScopeMultiple =
-      this.isPlatformAdmin(user) ||
-      user.role === Role.HR ||
-      user.role === Role.COMPLIANCE_MANAGER ||
-      (Array.isArray(user.roles) &&
-        (user.roles.includes(Role.HR) ||
-          user.roles.includes(Role.COMPLIANCE_MANAGER)));
-
-    const assignedUnitId: number | null =
-      (typeof (user as any).employeeBusinessUnitId === 'number'
-        ? (user as any).employeeBusinessUnitId
-        : null) ??
-      (typeof (user as any).primaryBusinessUnitId === 'number'
-        ? (user as any).primaryBusinessUnitId
-        : null) ??
-      null;
-
-    const allUnits = await this.prisma.businessUnit.findMany({
-      where: { organizationId: orgId, status: 'ACTIVE' as any },
-      select: {
-        id: true,
-        name: true,
-        code: true,
-        parentId: true,
-        status: true,
-      },
-      orderBy: [{ parentId: 'asc' }, { name: 'asc' }],
-    });
-
-    if (canScopeMultiple) {
+    const assignedUnitId = this.resolveAssignedUnitId(user);
+    if (this.isOrganizationWideBUAdmin(user)) {
+      const allUnits = await this.prisma.businessUnit.findMany({
+        where: { organizationId: orgId, status: 'ACTIVE' },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          parentId: true,
+          status: true,
+        },
+        orderBy: [{ parentId: 'asc' }, { name: 'asc' }],
+      });
       return {
         units: allUnits,
         canSelectAll: true,
         assignedUnitId,
       };
     }
-
-    if (assignedUnitId != null) {
-      const assigned = allUnits.filter((u) => u.id === assignedUnitId);
-      return {
-        units: assigned,
-        canSelectAll: false,
-        assignedUnitId,
-      };
-    }
-
+    const scope = await this.resolveScope(
+      { ...user, businessUnitId: null, allBusinessUnits: false },
+      orgId,
+    );
+    const units = scope.unitIds.length
+      ? await this.prisma.businessUnit.findMany({
+          where: {
+            organizationId: orgId,
+            id: { in: scope.unitIds },
+            status: 'ACTIVE',
+          },
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            parentId: true,
+            status: true,
+          },
+          orderBy: [{ parentId: 'asc' }, { name: 'asc' }],
+        })
+      : [];
     return {
-      units: [],
-      canSelectAll: false,
-      assignedUnitId: null,
+      units,
+      canSelectAll: scope.unitIds.length > 1,
+      assignedUnitId,
     };
   }
 
@@ -314,25 +436,11 @@ export class BusinessUnitsService {
     scopedOrganizationId: number,
   ): Promise<{ businessUnitId: number | null; allBusinessUnits: boolean }> {
     const orgId = await this.resolveOrganizationId(scopedOrganizationId, user);
-
-    const canScopeMultiple =
-      this.isPlatformAdmin(user) ||
-      user.role === Role.HR ||
-      user.role === Role.COMPLIANCE_MANAGER ||
-      (Array.isArray(user.roles) &&
-        (user.roles.includes(Role.HR) ||
-          user.roles.includes(Role.COMPLIANCE_MANAGER)));
-
-    const assignedUnitId: number | null =
-      (typeof (user as any).employeeBusinessUnitId === 'number'
-        ? (user as any).employeeBusinessUnitId
-        : null) ??
-      (typeof (user as any).primaryBusinessUnitId === 'number'
-        ? (user as any).primaryBusinessUnitId
-        : null) ??
-      null;
-
-    if (canScopeMultiple) {
+    const scope = await this.resolveScope(
+      { ...user, businessUnitId: null, allBusinessUnits: false },
+      orgId,
+    );
+    if (scope.allUnits) {
       if (targetBusinessUnitId == null) {
         return { businessUnitId: null, allBusinessUnits: true };
       }
@@ -351,33 +459,15 @@ export class BusinessUnitsService {
       }
       return { businessUnitId: bu.id, allBusinessUnits: false };
     }
-
-    if (assignedUnitId == null) {
+    if (targetBusinessUnitId == null) {
       return { businessUnitId: null, allBusinessUnits: false };
     }
-
-    if (
-      targetBusinessUnitId != null &&
-      targetBusinessUnitId !== assignedUnitId
-    ) {
+    if (!scope.unitIds.includes(targetBusinessUnitId)) {
       throw new ForbiddenException(
-        'You are not authorized to access any Business Unit other than your assigned unit',
+        'You are not authorized to access the selected Business Unit',
       );
     }
-
-    const bu = await this.prisma.businessUnit.findFirst({
-      where: {
-        id: assignedUnitId,
-        organizationId: orgId,
-        status: 'ACTIVE' as any,
-      },
-      select: { id: true },
-    });
-    if (!bu) {
-      return { businessUnitId: null, allBusinessUnits: false };
-    }
-
-    return { businessUnitId: bu.id, allBusinessUnits: false };
+    return { businessUnitId: targetBusinessUnitId, allBusinessUnits: false };
   }
 
   private isWideScopedRole(user: AuthUser): boolean {
@@ -407,6 +497,24 @@ export class BusinessUnitsService {
         : null;
     if (primaryBU != null) return primaryBU;
     return null;
+  }
+
+  private async getAssignedBusinessUnitRoots(
+    user: AuthUser,
+    organizationId: number,
+  ): Promise<number[]> {
+    const assignments = await this.prisma.businessUnitAdmin.findMany({
+      where: { userId: user.userId, organizationId },
+      select: { businessUnitId: true },
+    });
+    return Array.from(
+      new Set([
+        ...assignments.map((assignment) => assignment.businessUnitId),
+        ...(this.resolveAssignedUnitId(user) == null
+          ? []
+          : [this.resolveAssignedUnitId(user)!]),
+      ]),
+    );
   }
 
   private async collectDescendantIds(
@@ -447,7 +555,7 @@ export class BusinessUnitsService {
     if (requested == null || !Number.isInteger(requested) || requested < 1) {
       throw new ForbiddenException('A valid organization is required');
     }
-    if (!this.isWideScopedRole(user) && user.organizationId !== requested) {
+    if (!this.isPlatformAdmin(user) && user.organizationId !== requested) {
       throw new ForbiddenException('Organization access denied');
     }
     const org = await this.prisma.organization.findFirst({
@@ -502,7 +610,18 @@ export class BusinessUnitsService {
       return { organizationId, allUnits: true, unitIds: [], assignedUnitId };
     }
 
-    if (assignedUnitId == null) {
+    const roots = await this.getAssignedBusinessUnitRoots(user, organizationId);
+    const validRoots = roots.length
+      ? await this.prisma.businessUnit.findMany({
+          where: {
+            organizationId,
+            id: { in: roots },
+            status: 'ACTIVE' as BusinessUnitStatus,
+          },
+          select: { id: true },
+        })
+      : [];
+    if (validRoots.length === 0) {
       return {
         organizationId,
         allUnits: false,
@@ -511,26 +630,10 @@ export class BusinessUnitsService {
       };
     }
 
-    const validAssigned = await this.prisma.businessUnit.findFirst({
-      where: {
-        id: assignedUnitId,
-        organizationId,
-        status: 'ACTIVE' as BusinessUnitStatus,
-      },
-      select: { id: true },
-    });
-    if (!validAssigned) {
-      return {
-        organizationId,
-        allUnits: false,
-        unitIds: [],
-        assignedUnitId: null,
-      };
-    }
-
-    const authorized = await this.collectDescendantIds(organizationId, [
-      assignedUnitId,
-    ]);
+    const authorized = await this.collectDescendantIds(
+      organizationId,
+      validRoots.map((unit) => unit.id),
+    );
     if (
       user.allBusinessUnits === false &&
       typeof user.businessUnitId === 'number'
@@ -617,12 +720,9 @@ export class BusinessUnitsService {
   ): Promise<void> {
     if (scope.allUnits) return;
     if (recordBU == null) {
-      if (scope.unitIds.length === 0) {
-        throw new ForbiddenException(
-          `You are not authorized to access this ${resourceName}`,
-        );
-      }
-      return;
+      throw new ForbiddenException(
+        `You are not authorized to access this ${resourceName}`,
+      );
     }
     if (!scope.unitIds.includes(recordBU)) {
       throw new ForbiddenException(
