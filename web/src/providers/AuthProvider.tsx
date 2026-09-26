@@ -33,6 +33,7 @@ type BusinessUnitAccessResponse = {
   units: AuthSession['availableBusinessUnits'];
   canSelectAll: boolean;
   assignedUnitId: number | null;
+  isBusinessUnitAdmin: boolean;
 };
 
 async function hydrateBusinessUnitAccess() {
@@ -44,6 +45,7 @@ async function hydrateBusinessUnitAccess() {
       ...current,
       availableBusinessUnits: access.units,
       canSelectAllBusinessUnits: access.canSelectAll,
+      isBusinessUnitAdmin: access.isBusinessUnitAdmin,
       activeBusinessUnitId:
         current.activeBusinessUnitId != null && allowedIds.has(current.activeBusinessUnitId)
           ? current.activeBusinessUnitId

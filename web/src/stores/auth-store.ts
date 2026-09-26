@@ -40,6 +40,7 @@ export type AuthSession = {
   availableBusinessUnits: BusinessUnit[];
   activeBusinessUnitId: number | null;
   canSelectAllBusinessUnits: boolean;
+  isBusinessUnitAdmin: boolean;
 };
 
 type AuthSessionInput = {
@@ -58,6 +59,7 @@ type AuthSessionInput = {
   availableBusinessUnits?: BusinessUnit[];
   activeBusinessUnitId?: number | null;
   canSelectAllBusinessUnits?: boolean;
+  isBusinessUnitAdmin?: boolean;
 };
 
 const AUTH_STATE_EVENT = 'enterprise-auth-state-change';
@@ -80,6 +82,7 @@ const SERVER_AUTH_SESSION: AuthSession = Object.freeze({
   availableBusinessUnits: [],
   activeBusinessUnitId: null,
   canSelectAllBusinessUnits: false,
+  isBusinessUnitAdmin: false,
 });
 
 let cachedSession: AuthSession = SERVER_AUTH_SESSION;
@@ -241,6 +244,7 @@ function loadSessionFromStorage(): AuthSession {
       availableBusinessUnits: parseBusinessUnits(parsed.availableBusinessUnits),
       activeBusinessUnitId: parseBusinessUnitId(parsed.activeBusinessUnitId == null ? null : String(parsed.activeBusinessUnitId)),
       canSelectAllBusinessUnits: parsed.canSelectAllBusinessUnits === true,
+      isBusinessUnitAdmin: parsed.isBusinessUnitAdmin === true,
     };
   } catch (e) {
     console.warn('[auth-store] Failed to load session from storage:', e);
@@ -322,6 +326,7 @@ export function setAuthSession(session: AuthSessionInput): void {
     availableBusinessUnits: parseBusinessUnits(session.availableBusinessUnits),
     activeBusinessUnitId: parseBusinessUnitId(session.activeBusinessUnitId == null ? null : String(session.activeBusinessUnitId)),
     canSelectAllBusinessUnits: session.canSelectAllBusinessUnits === true,
+    isBusinessUnitAdmin: session.isBusinessUnitAdmin === true,
   };
 
   saveSessionToStorage(cachedSession);

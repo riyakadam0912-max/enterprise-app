@@ -66,6 +66,7 @@ type NavItem = NavLink | NavDropdown;
 
 const navConfig: NavItem[] = [
   { type: 'link', label: 'Dashboard', href: '/dashboard', icon: <GridIcon /> },
+  { type: 'link', label: 'My Business Units', href: '/dashboard/business-units', icon: <OrganizationIcon /> },
   {
     type: 'dropdown', id: 'timesheets', label: 'Timesheets', icon: <ClockIcon />,
     children: [
@@ -355,13 +356,17 @@ export default function Sidebar({ currentPath }: SidebarProps) {
 
   const visibleNavConfig = useMemo(
     () => {
+      const withBusinessUnitAdminLink = (items: NavItem[]) =>
+        session.isBusinessUnitAdmin
+          ? [...items, navConfig.find((item) => item.type === 'link' && item.label === 'My Business Units')!]
+          : items;
       if (role === 'EMPLOYEE') {
-        return navConfig
+        return withBusinessUnitAdminLink(navConfig
           .filter((item) => EMPLOYEE_VISIBLE_LABELS.has(item.label))
-          .map(filterEventManagementChildren);
+          .map(filterEventManagementChildren));
       }
       if (role === 'MANAGER') {
-        return navConfig
+        return withBusinessUnitAdminLink(navConfig
           .filter((item) => MANAGER_VISIBLE_LABELS.has(item.label))
           .map(filterEventManagementChildren)
           .map((item) => {
@@ -372,16 +377,19 @@ export default function Sidebar({ currentPath }: SidebarProps) {
               };
             }
             return item;
-          });
+          }));
       }
       if (role === 'HR') {
         return navConfig.filter((item) => HR_VISIBLE_LABELS.has(item.label));
       }
-      return role === 'ADMIN' || role === 'SUPER_ADMIN'
+      if (role === 'SUPER_ADMIN') {
+        return navConfig.filter((item) => item.label !== 'My Business Units');
+      }
+      return role === 'ADMIN'
         ? navConfig
         : navConfig.filter((item) => item.label !== 'Organization');
     },
-    [role],
+    [role, session.isBusinessUnitAdmin],
   );
 
   // Only one dropdown open at a time

@@ -56,6 +56,12 @@ describe('TasksService', () => {
   let mockPrisma: ReturnType<typeof createMockPrismaService>;
   let mockWorkflowEngine: ReturnType<typeof createMockWorkflowEngineService>;
   let mockNotifications: ReturnType<typeof createMockNotificationsService>;
+  let mockBusinessUnitsService: {
+    resolveScope: jest.Mock;
+    buildDirectBUWhere: jest.Mock;
+    buildEmployeeBUWhere: jest.Mock;
+    assertRecordAccessible: jest.Mock;
+  };
 
   const mockAdminUser = createMockAuthUser(Role.ADMIN, { userId: 1 });
   const mockManagerUser = createMockAuthUser(Role.MANAGER, { userId: 2 });
@@ -69,6 +75,17 @@ describe('TasksService', () => {
     mockPrisma = createMockPrismaService();
     mockWorkflowEngine = createMockWorkflowEngineService();
     mockNotifications = createMockNotificationsService();
+    mockBusinessUnitsService = {
+      resolveScope: jest.fn().mockResolvedValue({
+        organizationId: 1,
+        allUnits: true,
+        unitIds: [],
+        assignedUnitId: null,
+      }),
+      buildDirectBUWhere: jest.fn().mockReturnValue({}),
+      buildEmployeeBUWhere: jest.fn().mockReturnValue({}),
+      assertRecordAccessible: jest.fn().mockResolvedValue(undefined),
+    };
     getPrismaDelegate(mockPrisma, 'employee').findFirst.mockResolvedValue({
       id: 101,
       businessUnitId: null,
@@ -86,17 +103,7 @@ describe('TasksService', () => {
         { provide: NotificationsService, useValue: mockNotifications },
         {
           provide: BusinessUnitsService,
-          useValue: {
-            resolveScope: jest.fn().mockResolvedValue({
-              organizationId: 1,
-              allUnits: true,
-              unitIds: [],
-              assignedUnitId: null,
-            }),
-            buildDirectBUWhere: jest.fn().mockReturnValue({}),
-            buildEmployeeBUWhere: jest.fn().mockReturnValue({}),
-            assertRecordAccessible: jest.fn().mockResolvedValue(undefined),
-          },
+          useValue: mockBusinessUnitsService,
         },
       ],
     }).compile();
@@ -273,6 +280,36 @@ describe('TasksService', () => {
   });
 
   describe('findAll', () => {
+    it('intersects manager task access with the manager BU scope', async () => {
+      mockBusinessUnitsService.resolveScope.mockResolvedValueOnce({
+        organizationId: 1,
+        allUnits: false,
+        unitIds: [10],
+        assignedUnitId: 10,
+      });
+      mockBusinessUnitsService.buildDirectBUWhere.mockReturnValueOnce({
+        organizationId: 1,
+        businessUnitId: { in: [10] },
+      });
+
+      const where = await (service as any).getTaskAccessWhere(mockManagerUser);
+
+      expect(where).toEqual({
+        AND: [
+          {
+            organizationId: 1,
+            OR: [
+              { assignedToUserId: mockManagerUser.userId },
+              { assignedByUserId: mockManagerUser.userId },
+              { projectRef: { managerId: mockManagerUser.userId } },
+              { projectRef: { coManagers: { some: { id: mockManagerUser.userId } } } },
+            ],
+          },
+          { organizationId: 1, businessUnitId: { in: [10] } },
+        ],
+      });
+    });
+
     it('should return all tasks for admin', async () => {
       const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
       const mockTasks = [{ id: 1, taskName: 'Test Task' }];
@@ -464,11 +501,15 @@ describe('TasksService', () => {
         expect.objectContaining({
           where: expect.objectContaining({
             organizationId: mockEmployeeUser.organizationId,
-            OR: [
-              { assignedToUserId: mockEmployeeUser.userId },
-              { assignedByUserId: mockEmployeeUser.userId },
-              { assignedToId: mockEmployeeUser.employeeId },
-            ],
+            AND: expect.arrayContaining([
+              expect.objectContaining({
+                OR: [
+                  { assignedToUserId: mockEmployeeUser.userId },
+                  { assignedByUserId: mockEmployeeUser.userId },
+                  { assignedToId: mockEmployeeUser.employeeId },
+                ],
+              }),
+            ]),
           }),
         }),
       );

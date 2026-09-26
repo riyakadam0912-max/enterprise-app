@@ -120,11 +120,9 @@ export class TasksService {
       } as Prisma.TaskWhereInput;
     }
 
-    if (user.role === Role.MANAGER || user.role === Role.EMPLOYEE) {
-      return { organizationId: scope.organizationId, ...roleWhere };
-    }
-
-    return { AND: [roleWhere, buWhere] };
+    return {
+      AND: [{ organizationId: scope.organizationId, ...roleWhere }, buWhere],
+    };
   }
 
   private async resolveAssignee(

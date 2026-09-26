@@ -114,12 +114,10 @@ describe('BusinessUnitsService', () => {
     ).rejects.toThrow(ForbiddenException);
   });
 
-  it('does not expose descendants of an inactive assigned BU', async () => {
+  it('returns no BU admin access for a user without an assignment', async () => {
     const prisma = createPrismaMock();
     prisma.organization.findFirst.mockResolvedValue({ id: 1 });
-    prisma.businessUnitAdmin.findMany.mockResolvedValue([
-      { businessUnitId: 10 },
-    ]);
+    prisma.businessUnitAdmin.findMany.mockResolvedValue([]);
     prisma.businessUnit.findMany.mockResolvedValue([]);
     const service = new BusinessUnitsService(prisma);
 
@@ -129,8 +127,39 @@ describe('BusinessUnitsService', () => {
       units: [],
       canSelectAll: false,
       assignedUnitId: null,
+      isBusinessUnitAdmin: false,
     });
-    expect(prisma.businessUnit.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.businessUnit.findMany).not.toHaveBeenCalled();
+  });
+
+  it('reports an active BU administrator assignment to the authenticated user', async () => {
+    const prisma = createPrismaMock();
+    prisma.organization.findFirst.mockResolvedValue({ id: 1 });
+    prisma.businessUnitAdmin.findMany.mockResolvedValue([
+      { businessUnitId: 10 },
+    ]);
+    prisma.businessUnit.findMany.mockImplementation(({ where }: any) => {
+      if (where.id?.in) {
+        return [
+          {
+            id: 10,
+            name: 'North',
+            code: 'NORTH',
+            parentId: null,
+            status: 'ACTIVE',
+          },
+        ];
+      }
+      return [];
+    });
+    const service = new BusinessUnitsService(prisma);
+
+    await expect(
+      service.getAccessibleBusinessUnitsForUser(user(Role.MANAGER), 1),
+    ).resolves.toMatchObject({
+      units: [{ id: 10, name: 'North' }],
+      isBusinessUnitAdmin: true,
+    });
   });
 
   it('rejects null-BU records for a restricted BU scope', async () => {

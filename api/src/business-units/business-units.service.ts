@@ -439,9 +439,15 @@ export class BusinessUnitsService {
     }>;
     canSelectAll: boolean;
     assignedUnitId: number | null;
+    isBusinessUnitAdmin: boolean;
   }> {
     const orgId = await this.resolveOrganizationId(scopedOrganizationId, user);
     const assignedUnitId = this.resolveAssignedUnitId(user);
+    const administratorAssignments = await this.prisma.businessUnitAdmin.findMany({
+      where: { userId: user.userId, organizationId: orgId },
+      select: { businessUnitId: true },
+    });
+    const isBusinessUnitAdmin = administratorAssignments.length > 0;
     if (this.isOrganizationWideBUAdmin(user)) {
       const allUnits = await this.prisma.businessUnit.findMany({
         where: { organizationId: orgId, status: 'ACTIVE' },
@@ -458,6 +464,7 @@ export class BusinessUnitsService {
         units: allUnits,
         canSelectAll: true,
         assignedUnitId,
+        isBusinessUnitAdmin,
       };
     }
     const scope = await this.resolveScope(
@@ -485,6 +492,7 @@ export class BusinessUnitsService {
       units,
       canSelectAll: scope.unitIds.length > 1,
       assignedUnitId,
+      isBusinessUnitAdmin,
     };
   }
 

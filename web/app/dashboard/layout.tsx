@@ -83,12 +83,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       return;
     }
 
-    if (role === 'EMPLOYEE' && !isEmployeePathAllowed(pathname)) {
+    if (role === 'EMPLOYEE' && !isEmployeePathAllowed(pathname) && !(session.isBusinessUnitAdmin && pathname === '/dashboard/business-units')) {
       router.replace('/dashboard');
       return;
     }
 
-    if (role === 'MANAGER' && !isManagerPathAllowed(pathname)) {
+    if (role === 'MANAGER' && !isManagerPathAllowed(pathname) && !(session.isBusinessUnitAdmin && pathname === '/dashboard/business-units')) {
       router.replace('/dashboard');
       return;
     }
