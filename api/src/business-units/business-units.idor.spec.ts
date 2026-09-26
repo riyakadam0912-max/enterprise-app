@@ -1,205 +1,124 @@
-/**
- * Business Unit IDOR Security Tests
- * Verifies that users cannot access data outside their authorized business units.
- * These tests should be run against a real database with multiple organizations and business units.
- */
-
-import { BusinessUnitsService } from '../business-units/business-units.service';
+import { ForbiddenException } from '@nestjs/common';
+import { BusinessUnitsService } from './business-units.service';
 import type { AuthUser } from '../common/types/auth';
 import { Role } from '../common/enums/role.enum';
 
-describe('Business Unit IDOR Security Tests', () => {
-  let businessUnitsService: BusinessUnitsService;
+const units = [
+  { id: 101, parentId: null },
+  { id: 102, parentId: 101 },
+  { id: 202, parentId: null },
+];
 
-  /**
-   * Test data: Two business units in same organization with different users
-   */
-  let orgId: number;
-  let bu1Id: number;
-  let bu2Id: number;
-  let user1InBu1: AuthUser;
+function makeUser(role: Role = Role.MANAGER): AuthUser {
+  return {
+    id: 1,
+    userId: 1,
+    email: 'bu-admin@example.com',
+    name: 'BU Admin',
+    role,
+    roles: [role],
+    permissions: [],
+    employeeId: 11,
+    organizationId: 1,
+    tokenType: 'access',
+    jti: null,
+  };
+}
 
-  beforeAll(async () => {
-    orgId = 1;
-    bu1Id = 101;
-    bu2Id = 202;
-    user1InBu1 = {
-      id: 1,
-      userId: 1,
-      email: 'bu-a@example.com',
-      name: 'BU-A User',
-      role: Role.MANAGER,
-      roles: [Role.MANAGER],
-      permissions: [],
-      employeeId: 11,
-      organizationId: orgId,
-      tokenType: 'Bearer',
-      jti: null,
-    };
-    businessUnitsService = {
-      resolveScope: jest.fn().mockResolvedValue({
-        organizationId: orgId,
-        unitIds: [bu1Id],
-        allUnits: false,
+function makeService() {
+  const prisma = {
+    organization: {
+      findFirst: jest.fn(({ where }: any) =>
+        where.id === 1 ? { id: 1 } : null,
+      ),
+    },
+    businessUnitAdmin: {
+      findMany: jest.fn().mockResolvedValue([{ businessUnitId: 101 }]),
+    },
+    businessUnit: {
+      findFirst: jest.fn(({ where }: any) =>
+        units.find(
+          (unit) =>
+            unit.id === where.id &&
+            where.organizationId === 1 &&
+            where.status === 'ACTIVE',
+        ) ?? null,
+      ),
+      findMany: jest.fn(({ where }: any) => {
+        if (where.id?.in) return units.filter((unit) => where.id.in.includes(unit.id));
+        if (where.parentId !== undefined) return units.filter((unit) => unit.parentId === where.parentId);
+        return [];
       }),
-      buildEmployeeBUWhere: jest.fn().mockReturnValue({
-        businessUnitId: { in: [bu1Id] },
-      }),
-    } as unknown as BusinessUnitsService;
+    },
+  } as any;
+
+  return new BusinessUnitsService(prisma);
+}
+
+describe('Business Unit IDOR authorization', () => {
+  it('limits an assigned BU admin to the assigned unit and active descendants', async () => {
+    const service = makeService();
+
+    const scope = await service.resolveScope(makeUser());
+
+    expect(scope.unitIds).toEqual([101, 102]);
+    expect(service.buildDirectBUWhere(scope)).toEqual({
+      organizationId: 1,
+      businessUnitId: { in: [101, 102] },
+    });
   });
 
-  describe('Employee Access Control', () => {
-    it('should deny user from BU-A access to BU-B employees', async () => {
-      // Mock user from BU-A trying to access BU-B employee
-      const buScopeA = await businessUnitsService.resolveScope({
-        ...user1InBu1,
-        organizationId: orgId,
-        businessUnitId: bu1Id,
+  it('rejects a forged selected BU outside the administrator assignment', async () => {
+    const service = makeService();
+
+    await expect(
+      service.resolveScope({
+        ...makeUser(),
+        businessUnitId: 202,
         allBusinessUnits: false,
-      } as any);
-
-      // BU scope should only contain BU-A
-      expect(buScopeA.unitIds).toContain(bu1Id);
-      expect(buScopeA.unitIds).not.toContain(bu2Id);
-
-      // Trying to query employees from BU-B should fail
-      const buBWhere = businessUnitsService.buildEmployeeBUWhere(buScopeA);
-      expect(buBWhere.businessUnitId).toEqual({ in: [bu1Id] });
-    });
-
-    it('should deny BU-A user from viewing BU-B attendance', async () => {
-      // This would fail at service level when checking BU scope
-      // Real test would attempt API call and expect ForbiddenException
-    });
+      }),
+    ).rejects.toThrow(ForbiddenException);
   });
 
-  describe('Leave Request Approval IDOR', () => {
-    it('should deny manager from BU-A approving leave from BU-B employee', async () => {
-      // Manager scope should only include their BU
-      // Attempting to approve a leave request from different BU should fail
+  it('does not allow an ALL context flag to widen a scoped administrator', async () => {
+    const service = makeService();
+
+    const scope = await service.resolveScope({
+      ...makeUser(),
+      allBusinessUnits: true,
     });
 
-    it('should deny HR from BU-A approving BU-B leave if not authorized', async () => {
-      // Depending on HR scope (all BUs vs assigned BUs)
-      // Should enforce scope restrictions
-    });
+    expect(scope.allUnits).toBe(false);
+    expect(scope.unitIds).toEqual([101, 102]);
   });
 
-  describe('Task Access Control', () => {
-    it('should deny user from BU-A reading BU-B tasks', async () => {
-      // Task queries should include BU scope
-      // directBUWhere should filter out BU-B tasks
-    });
+  it('denies access to records without a BU for a restricted administrator', async () => {
+    const service = makeService();
 
-    it('should deny BU-A user from assigning tasks to BU-B employees', async () => {
-      // When creating task, should validate assignee is within BU scope
-      // Should throw ForbiddenException for out-of-scope employees
-    });
-
-    it('should deny cross-BU project task creation', async () => {
-      // If project is in BU-A, task should not be assignable to BU-B employee
-      // Should throw ForbiddenException on scope mismatch
-    });
+    await expect(
+      service.assertRecordAccessible(
+        {
+          organizationId: 1,
+          allUnits: false,
+          unitIds: [101, 102],
+          assignedUnitId: null,
+        },
+        null,
+        'employee',
+      ),
+    ).rejects.toThrow(ForbiddenException);
   });
 
-  describe('Payroll IDOR', () => {
-    it('should deny BU-A manager viewing BU-B payroll', async () => {
-      // Payroll queries should use employeeBUWhere
-      // Should not expose salary data from different BU
-    });
+  it('keeps organization admins wide within their org but blocks another org', async () => {
+    const service = makeService();
+    const admin = makeUser(Role.ADMIN);
 
-    it('should deny accessing BU-B payslips', async () => {
-      // Payslip access should check employee BU scope
-      // ForbiddenException for out-of-scope access
+    await expect(service.resolveScope(admin)).resolves.toMatchObject({
+      organizationId: 1,
+      allUnits: true,
     });
-
-    it('should deny running BU-B salary cycle', async () => {
-      // Salary cycle should be BU-scoped
-      // Users should only manage their own BU's cycle
-    });
-  });
-
-  describe('Cross-Organization Protection', () => {
-    it('should prevent accessing BU from different organization', async () => {
-      // Even with crafted X-Business-Unit-Id header
-      // Middleware should validate BU belongs to user's org
-      // Should reject if BU.organizationId !== user.organizationId
-    });
-
-    it('should deny admin from org-1 accessing org-2 BU data', async () => {
-      // Wide-scoped roles still bound by organization
-      // Should require explicit org context before BU access
-    });
-  });
-
-  describe('Header Injection Protection', () => {
-    it('should ignore malformed X-Business-Unit-Id headers', async () => {
-      // Non-integer BU IDs should be rejected
-      // Middleware should fall back to user's assigned BU
-    });
-
-    it('should prevent non-admin from overriding BU context via header', async () => {
-      // Employee should not be able to use X-Business-Unit-Id
-      // Should use their assigned BU only
-    });
-
-    it('should prevent bypassing BU scope with ALL header if unauthorized', async () => {
-      // Only ADMIN/HR/COMPLIANCE_MANAGER can use ALL
-      // MANAGER/EMPLOYEE should get ForbiddenException
-    });
-  });
-
-  describe('Frontend-Backend Consistency', () => {
-    it('should ensure activeBusinessUnitId cannot expand permissions', async () => {
-      // Even if frontend sends invalid BU ID
-      // Backend should validate against user's availableBusinessUnits
-      // Should return only data user is authorized for
-    });
-
-    it('should handle stale BU context gracefully', async () => {
-      // If user's BU is deleted after login
-      // Backend should reject with ForbiddenException
-      // Frontend should clear invalid BU context
-    });
-  });
-
-  describe('NULL/Legacy Data Handling', () => {
-    it('should not expose NULL businessUnitId records to non-admin', async () => {
-      // Employees and managers should not see NULL BU data
-      // Even if organizationId matches
-      // Should be filtered by BU scope
-    });
-
-    it('should allow admin to view organization-wide NULL data', async () => {
-      // Admins with allUnits=true can see everything
-      // NULL BU records should be included in wide queries
-    });
+    await expect(service.resolveScope(admin, 2)).rejects.toThrow(
+      ForbiddenException,
+    );
   });
 });
-
-/**
- * MANUAL SECURITY AUDIT CHECKLIST
- *
- * Before deploying to production:
- *
- * [ ] Verify middleware sets businessUnitId and allBusinessUnits on every request
- * [ ] Confirm X-Business-Unit-Id is read from headers correctly
- * [ ] Test that resolveScope validates user has access to requested BU
- * [ ] Verify buildDirectBUWhere includes organizationId filtering
- * [ ] Check that buildEmployeeBUWhere includes organizationId filtering
- * [ ] Confirm all BU-scoped services use resolveScope or build*Where methods
- * [ ] Verify organizationId is never removed from WHERE clauses
- * [ ] Test that MANAGER/EMPLOYEE roles cannot use X-Business-Unit-Id header
- * [ ] Confirm wide-scoped roles still respect organizationId boundaries
- * [ ] Verify NULL businessUnitId handling in each service
- * [ ] Test that invalid BU IDs throw NotFoundException or ForbiddenException
- * [ ] Confirm frontend selector only shows available BUs
- * [ ] Verify API client sends correct X-Business-Unit-Id header
- * [ ] Test BU context switching via /me/business-units/switch endpoint
- * [ ] Verify audit logs include organizationId and businessUnitId
- * [ ] Check all controllers pass req.user to services (includes BU context)
- * [ ] Confirm no hardcoded BU IDs in code
- * [ ] Verify migrations include all necessary foreign keys
- * [ ] Test with browserDevTools simulating header injection
- * [ ] Run penetration tests for BU boundary violations
- */

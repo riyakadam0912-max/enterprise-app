@@ -22,7 +22,7 @@ function createPrismaMock() {
       upsert: jest.fn(),
       deleteMany: jest.fn(),
     },
-    user: { findFirst: jest.fn() },
+    user: { findFirst: jest.fn(), findMany: jest.fn() },
   } as any;
 }
 
@@ -164,11 +164,92 @@ describe('BusinessUnitsService', () => {
     expect(prisma.businessUnitAdmin.upsert).not.toHaveBeenCalled();
   });
 
+  it('does not assign an organization-wide admin as a scoped BU administrator', async () => {
+    const prisma = createPrismaMock();
+    prisma.organization.findFirst.mockResolvedValue({ id: 1 });
+    prisma.businessUnit.findFirst.mockResolvedValue({ id: 10 });
+    prisma.user.findFirst.mockResolvedValue({
+      id: 99,
+      role: Role.ADMIN,
+      isActive: true,
+    });
+    const service = new BusinessUnitsService(prisma);
+
+    await expect(
+      service.assignAdministrator(10, 1, 99, user(Role.ADMIN)),
+    ).rejects.toThrow(ForbiddenException);
+    expect(prisma.businessUnitAdmin.upsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects a scoped-role user who has an additional organization-wide RBAC role', async () => {
+    const prisma = createPrismaMock();
+    prisma.organization.findFirst.mockResolvedValue({ id: 1 });
+    prisma.businessUnit.findFirst.mockResolvedValue({ id: 10 });
+    prisma.user.findFirst.mockResolvedValue({
+      id: 99,
+      role: Role.MANAGER,
+      isActive: true,
+      userRoles: [{ role: { name: Role.ADMIN } }],
+    });
+    const service = new BusinessUnitsService(prisma);
+
+    await expect(
+      service.assignAdministrator(10, 1, 99, user(Role.ADMIN)),
+    ).rejects.toThrow(ForbiddenException);
+    expect(prisma.businessUnitAdmin.upsert).not.toHaveBeenCalled();
+  });
+
+  it('lists only active, unassigned, non-wide-role candidates in the organization', async () => {
+    const prisma = createPrismaMock();
+    prisma.organization.findFirst.mockResolvedValue({ id: 1 });
+    prisma.businessUnit.findFirst.mockResolvedValue({ id: 10 });
+    prisma.user.findMany.mockResolvedValue([]);
+    const service = new BusinessUnitsService(prisma);
+
+    await service.listAdministratorCandidates(10, 1, user(Role.ADMIN));
+
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId: 1,
+          isActive: true,
+          deletedAt: null,
+          role: {
+            notIn: [
+              Role.SUPER_ADMIN,
+              Role.ADMIN,
+              Role.HR,
+              Role.COMPLIANCE_MANAGER,
+            ],
+          },
+          userRoles: {
+            none: {
+              role: {
+                name: {
+                  in: [
+                    Role.SUPER_ADMIN,
+                    Role.ADMIN,
+                    Role.HR,
+                    Role.COMPLIANCE_MANAGER,
+                  ],
+                },
+              },
+            },
+          },
+        }),
+      }),
+    );
+  });
+
   it('audits BU administrator assignments with the target unit and actor', async () => {
     const prisma = createPrismaMock();
     prisma.organization.findFirst.mockResolvedValue({ id: 1 });
     prisma.businessUnit.findFirst.mockResolvedValue({ id: 10 });
-    prisma.user.findFirst.mockResolvedValue({ id: 99 });
+    prisma.user.findFirst.mockResolvedValue({
+      id: 99,
+      role: Role.MANAGER,
+      isActive: true,
+    });
     prisma.businessUnitAdmin.upsert.mockResolvedValue({ id: 4 });
     const auditLogs = { logCreate: jest.fn().mockResolvedValue(undefined) };
     const service = new BusinessUnitsService(prisma, auditLogs as any);

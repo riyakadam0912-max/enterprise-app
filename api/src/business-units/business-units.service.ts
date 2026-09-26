@@ -31,6 +31,13 @@ const businessUnitInclude = {
   _count: { select: { users: true, employees: true, children: true } },
 } satisfies Prisma.BusinessUnitInclude;
 
+const organizationWideRoles = [
+  Role.SUPER_ADMIN,
+  Role.ADMIN,
+  Role.HR,
+  Role.COMPLIANCE_MANAGER,
+];
+
 @Injectable()
 export class BusinessUnitsService {
   constructor(
@@ -159,6 +166,38 @@ export class BusinessUnitsService {
     });
   }
 
+  async listAdministratorCandidates(
+    businessUnitId: number,
+    organizationId: number,
+    user: AuthUser,
+  ) {
+    const scopedOrganizationId = await this.resolveOrganizationId(
+      organizationId,
+      user,
+    );
+    await this.getUnit(businessUnitId, scopedOrganizationId);
+    return this.prisma.user.findMany({
+      where: {
+        organizationId: scopedOrganizationId,
+        isActive: true,
+        deletedAt: null,
+        role: {
+          notIn: organizationWideRoles,
+        },
+        userRoles: {
+          none: {
+            role: { name: { in: organizationWideRoles } },
+          },
+        },
+        businessUnitAdminAssignments: {
+          none: { businessUnitId, organizationId: scopedOrganizationId },
+        },
+      },
+      select: { id: true, name: true, email: true, role: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
   async assignAdministrator(
     businessUnitId: number,
     organizationId: number,
@@ -186,10 +225,29 @@ export class BusinessUnitsService {
         organizationId: scopedOrganizationId,
         deletedAt: null,
       },
-      select: { id: true },
+      select: {
+        id: true,
+        role: true,
+        isActive: true,
+        userRoles: { select: { role: { select: { name: true } } } },
+      },
     });
     if (!targetUser) {
       throw new NotFoundException('User not found in this organization');
+    }
+    if (!targetUser.isActive) {
+      throw new ForbiddenException(
+        'Only active users can administer a Business Unit',
+      );
+    }
+    const targetRoles = new Set([
+      targetUser.role,
+      ...(targetUser.userRoles ?? []).map((assignment) => assignment.role.name),
+    ]);
+    if (organizationWideRoles.some((role) => targetRoles.has(role))) {
+      throw new ForbiddenException(
+        'Organization-wide roles cannot be assigned as scoped Business Unit administrators',
+      );
     }
     const assignment = await this.prisma.businessUnitAdmin.upsert({
       where: { userId_businessUnitId: { userId, businessUnitId } },

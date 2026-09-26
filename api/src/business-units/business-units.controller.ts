@@ -106,6 +106,23 @@ export class BusinessUnitsController {
   }
 
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  @Get(
+    'organizations/:organizationId/business-units/:businessUnitId/admin-candidates',
+  )
+  @ApiOperation({ summary: 'List eligible users for Business Unit administration' })
+  listAdministratorCandidates(
+    @Param('organizationId', ParseIntPipe) organizationId: number,
+    @Param('businessUnitId', ParseIntPipe) businessUnitId: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.businessUnitsService.listAdministratorCandidates(
+      businessUnitId,
+      organizationId,
+      req.user,
+    );
+  }
+
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @Post(
     'organizations/:organizationId/business-units/:businessUnitId/admins/:userId',
   )
