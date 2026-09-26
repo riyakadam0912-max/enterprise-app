@@ -236,6 +236,33 @@ describe('BusinessUnitsService', () => {
     );
   });
 
+  it('allows an assigned BU admin to create hierarchy only in their organization', async () => {
+    const prisma = createPrismaMock();
+    prisma.organization.findFirst.mockImplementation(({ where }: any) =>
+      where.id === 1 ? { id: 1 } : null,
+    );
+    prisma.businessUnitAdmin.findMany.mockResolvedValue([
+      { businessUnitId: 10 },
+    ]);
+    prisma.businessUnit.findMany.mockResolvedValue([{ id: 10 }]);
+    prisma.businessUnit.create.mockResolvedValue({
+      id: 20,
+      organizationId: 1,
+      name: 'South',
+      code: 'SOUTH',
+    });
+    const service = new BusinessUnitsService(prisma);
+    const buAdmin = user(Role.MANAGER);
+
+    await expect(
+      service.create(1, { name: 'South', code: 'SOUTH' }, buAdmin),
+    ).resolves.toMatchObject({ organizationId: 1, code: 'SOUTH' });
+    await expect(
+      service.create(2, { name: 'Other Org', code: 'OTHER' }, buAdmin),
+    ).rejects.toThrow(ForbiddenException);
+    expect(prisma.businessUnit.create).toHaveBeenCalledTimes(1);
+  });
+
   it('denies an unassigned manager from managing BU hierarchy', async () => {
     const prisma = createPrismaMock();
     prisma.organization.findFirst.mockResolvedValue({ id: 1 });

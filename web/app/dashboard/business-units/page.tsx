@@ -2,23 +2,38 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Building2, Search, ShieldCheck, UserMinus, UserPlus } from 'lucide-react';
+import { Building2, Pencil, Plus, Save, Search, ShieldCheck, Trash2, UserMinus, UserPlus, X } from 'lucide-react';
 import {
   assignBusinessUnitAdministrator,
+  createBusinessUnit,
+  deleteBusinessUnit,
   listBusinessUnitAdministratorCandidates,
   listBusinessUnitAdministrators,
   listBusinessUnits,
   revokeBusinessUnitAdministrator,
+  updateBusinessUnit,
   type BusinessUnit,
   type BusinessUnitAdministrator,
   type BusinessUnitAdministratorCandidate,
+  type BusinessUnitPayload,
+  type BusinessUnitStatus,
 } from '@/api/businessUnitsApi';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/providers/toast-provider';
 import { getActiveOrganizationId, useAuthSession } from '@/stores/auth-store';
+
+const emptyUnitForm: BusinessUnitPayload = {
+  name: '',
+  code: '',
+  description: '',
+  type: '',
+  status: 'ACTIVE',
+  parentId: null,
+};
 
 const operationalLinks = [
   { label: 'Employees', href: '/dashboard/employees' },
@@ -41,6 +56,10 @@ export default function BusinessUnitAdminPage() {
   const [search, setSearch] = useState('');
   const [candidateId, setCandidateId] = useState('');
   const [loading, setLoading] = useState(true);
+  const [savingUnit, setSavingUnit] = useState(false);
+  const [unitFormOpen, setUnitFormOpen] = useState(false);
+  const [editingUnit, setEditingUnit] = useState<BusinessUnit | null>(null);
+  const [unitForm, setUnitForm] = useState<BusinessUnitPayload>(emptyUnitForm);
   const [loadingAssignments, setLoadingAssignments] = useState(false);
   const [workingUserId, setWorkingUserId] = useState<number | null>(null);
 
@@ -91,6 +110,82 @@ export default function BusinessUnitAdminPage() {
   const filteredCandidates = candidates.filter((candidate) =>
     `${candidate.name} ${candidate.email} ${candidate.role}`.toLowerCase().includes(search.trim().toLowerCase()),
   );
+
+  async function refreshUnits(preferredUnitId?: number) {
+    if (organizationId == null) return;
+    const refreshedUnits = await listBusinessUnits(organizationId);
+    setUnits(refreshedUnits);
+    setSelectedUnitId((current) => {
+      if (preferredUnitId != null && refreshedUnits.some((unit) => unit.id === preferredUnitId)) {
+        return preferredUnitId;
+      }
+      return refreshedUnits.some((unit) => unit.id === current)
+        ? current
+        : refreshedUnits[0]?.id ?? null;
+    });
+  }
+
+  function openCreateUnit() {
+    setEditingUnit(null);
+    setUnitForm(emptyUnitForm);
+    setUnitFormOpen(true);
+  }
+
+  function openEditUnit(unit: BusinessUnit) {
+    setEditingUnit(unit);
+    setUnitForm({
+      name: unit.name,
+      code: unit.code,
+      description: unit.description ?? '',
+      type: unit.type ?? '',
+      status: unit.status,
+      parentId: unit.parentId,
+    });
+    setUnitFormOpen(true);
+  }
+
+  async function saveUnit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (organizationId == null || !unitForm.name.trim() || !unitForm.code.trim()) return;
+    setSavingUnit(true);
+    try {
+      if (editingUnit) {
+        await updateBusinessUnit(editingUnit.id, unitForm);
+        await refreshUnits(editingUnit.id);
+      } else {
+        const created = await createBusinessUnit(organizationId, {
+          ...unitForm,
+          name: unitForm.name.trim(),
+          code: unitForm.code.trim(),
+        });
+        await refreshUnits(created.id);
+      }
+      setUnitFormOpen(false);
+      toast.success(
+        editingUnit ? 'Business Unit updated' : 'Business Unit created',
+        'The organization unit list has been refreshed.',
+      );
+    } catch (error) {
+      toast.error('Business Unit save failed', error instanceof Error ? error.message : 'Unable to save this Business Unit');
+    } finally {
+      setSavingUnit(false);
+    }
+  }
+
+  async function removeUnit(unit: BusinessUnit) {
+    if (organizationId == null) return;
+    if (!window.confirm(`Delete ${unit.name}? This cannot be undone.`)) return;
+    setSavingUnit(true);
+    try {
+      await deleteBusinessUnit(unit.id);
+      await refreshUnits();
+      toast.success('Business Unit deleted', `${unit.name} was removed from this organization.`);
+    } catch (error) {
+      toast.error('Business Unit delete failed', error instanceof Error ? error.message : 'Move or remove child units first.');
+    } finally {
+      setSavingUnit(false);
+    }
+  }
 
   async function assignSelectedUser() {
     if (!canManageAssignments || organizationId == null || selectedUnit == null || !candidateId) return;
@@ -145,7 +240,10 @@ export default function BusinessUnitAdminPage() {
           <h1 className="mt-1 text-2xl font-semibold text-slate-950">Business Unit Admin</h1>
           <p className="mt-1 text-sm text-slate-600">{session.role === 'ADMIN' ? 'Manage business units and their administrator assignments in your organization.' : session.isBusinessUnitAdmin ? 'Manage business units and administrators across your organization.' : 'Review your assigned units and open the operational areas available to your role.'}</p>
         </div>
-        {session.organizationName ? <span className="text-sm font-medium text-slate-600">{session.organizationName}</span> : null}
+        <div className="flex items-center gap-3">
+          {session.organizationName ? <span className="text-sm font-medium text-slate-600">{session.organizationName}</span> : null}
+          {canManageAssignments ? <Button type="button" onClick={openCreateUnit} disabled={loading}><Plus className="h-4 w-4" />Create Business Unit</Button> : null}
+        </div>
       </header>
 
       {!canManageAssignments ? (
@@ -175,6 +273,38 @@ export default function BusinessUnitAdminPage() {
         </>
       ) : (
         <>
+          <Card className="overflow-hidden border-slate-200 bg-white">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div>
+                <h2 className="font-semibold text-slate-900">Business Unit directory</h2>
+                <p className="mt-1 text-xs text-slate-500">Units in this organization; only active units are available in the switcher.</p>
+              </div>
+              <span className="text-sm text-slate-500">{units.length} total</span>
+            </div>
+            {loading ? <p className="p-5 text-sm text-slate-500">Loading business units...</p> : units.length === 0 ? (
+              <p className="p-5 text-sm text-slate-500">No business units have been created for this organization yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                    <tr><th className="px-5 py-3">Unit</th><th className="px-5 py-3">Parent</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Employees</th><th className="px-5 py-3 text-right">Actions</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {units.map((unit) => (
+                      <tr key={unit.id}>
+                        <td className="px-5 py-3"><span className="font-medium text-slate-900">{unit.name}</span><span className="ml-2 text-xs text-slate-500">{unit.code}</span></td>
+                        <td className="px-5 py-3 text-slate-600">{unit.parent?.name ?? 'Top level'}</td>
+                        <td className="px-5 py-3"><span className={unit.status === 'ACTIVE' ? 'text-emerald-700' : 'text-slate-500'}>{unit.status}</span></td>
+                        <td className="px-5 py-3 text-slate-600">{unit._count?.employees ?? 0}</td>
+                        <td className="px-5 py-3"><div className="flex justify-end gap-2"><Button type="button" size="sm" variant="outline" aria-label={`Edit ${unit.name}`} title={`Edit ${unit.name}`} disabled={savingUnit} onClick={() => openEditUnit(unit)}><Pencil className="h-4 w-4" /></Button><Button type="button" size="sm" variant="outline" aria-label={`Delete ${unit.name}`} title={`Delete ${unit.name}`} disabled={savingUnit || (unit._count?.children ?? 0) > 0} onClick={() => void removeUnit(unit)}><Trash2 className="h-4 w-4 text-rose-600" /></Button></div></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
           <Card className="flex flex-col gap-3 border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3"><Building2 className="h-5 w-5 text-orange-700" /><div><p className="text-sm font-semibold text-slate-900">Business Unit</p><p className="text-xs text-slate-500">Select any active unit in your organization</p></div></div>
             <Select className="sm:max-w-md" aria-label="Select Business Unit" value={selectedUnit?.id ?? ''} onChange={(event) => setSelectedUnitId(Number(event.target.value) || null)} disabled={loading || units.length === 0}>
@@ -207,6 +337,21 @@ export default function BusinessUnitAdminPage() {
           )}
         </>
       )}
+
+      {unitFormOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingUnit) setUnitFormOpen(false); }}>
+          <form onSubmit={saveUnit} role="dialog" aria-modal="true" aria-labelledby="business-unit-form-title" className="w-full max-w-xl space-y-4 rounded-xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4"><div><h2 id="business-unit-form-title" className="text-lg font-semibold text-slate-900">{editingUnit ? 'Edit Business Unit' : 'Create Business Unit'}</h2><p className="mt-1 text-sm text-slate-500">This unit will belong to the currently selected organization.</p></div><button type="button" aria-label="Close" disabled={savingUnit} onClick={() => setUnitFormOpen(false)}><X className="h-5 w-5 text-slate-500" /></button></div>
+            <label className="block text-sm font-medium text-slate-700">Name<Input className="mt-1" required value={unitForm.name} onChange={(event) => setUnitForm((current) => ({ ...current, name: event.target.value }))} /></label>
+            <label className="block text-sm font-medium text-slate-700">Code<Input className="mt-1" required value={unitForm.code} onChange={(event) => setUnitForm((current) => ({ ...current, code: event.target.value }))} /></label>
+            <label className="block text-sm font-medium text-slate-700">Type<Input className="mt-1" value={unitForm.type ?? ''} onChange={(event) => setUnitForm((current) => ({ ...current, type: event.target.value }))} /></label>
+            <label className="block text-sm font-medium text-slate-700">Parent unit<Select className="mt-1" value={unitForm.parentId ?? ''} onChange={(event) => setUnitForm((current) => ({ ...current, parentId: Number(event.target.value) || null }))}><option value="">Top level</option>{units.filter((unit) => unit.id !== editingUnit?.id).map((unit) => <option key={unit.id} value={unit.id}>{unit.name} ({unit.code})</option>)}</Select></label>
+            <label className="block text-sm font-medium text-slate-700">Status<Select className="mt-1" value={unitForm.status ?? 'ACTIVE'} onChange={(event) => setUnitForm((current) => ({ ...current, status: event.target.value as BusinessUnitStatus }))}><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option><option value="SUSPENDED">Suspended</option></Select></label>
+            <label className="block text-sm font-medium text-slate-700">Description<Textarea className="mt-1" value={unitForm.description ?? ''} onChange={(event) => setUnitForm((current) => ({ ...current, description: event.target.value }))} /></label>
+            <div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={savingUnit} onClick={() => setUnitFormOpen(false)}>Cancel</Button><Button type="submit" loading={savingUnit}><Save className="h-4 w-4" />Save Business Unit</Button></div>
+          </form>
+        </div>
+      ) : null}
     </div>
   );
 }
