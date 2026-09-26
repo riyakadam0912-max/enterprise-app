@@ -32,7 +32,8 @@ const operationalLinks = [
 export default function BusinessUnitAdminPage() {
   const session = useAuthSession();
   const organizationId = getActiveOrganizationId() ?? session.organizationId;
-  const canManageAssignments = session.role === 'ADMIN';
+  const canManageAssignments =
+    session.role === 'ADMIN' || session.isBusinessUnitAdmin;
   const [units, setUnits] = useState<BusinessUnit[]>([]);
   const [selectedUnitId, setSelectedUnitId] = useState<number | null>(null);
   const [administrators, setAdministrators] = useState<BusinessUnitAdministrator[]>([]);
@@ -142,7 +143,7 @@ export default function BusinessUnitAdminPage() {
         <div>
           <p className="text-xs font-semibold uppercase text-orange-700">Organization administration</p>
           <h1 className="mt-1 text-2xl font-semibold text-slate-950">Business Unit Admin</h1>
-          <p className="mt-1 text-sm text-slate-600">{canManageAssignments ? 'Assign and revoke scoped administrators for your organization.' : 'Review your assigned units and open the operational areas available to your role.'}</p>
+          <p className="mt-1 text-sm text-slate-600">{session.role === 'ADMIN' ? 'Manage business units and their administrator assignments in your organization.' : session.isBusinessUnitAdmin ? 'Manage business units and administrators across your organization.' : 'Review your assigned units and open the operational areas available to your role.'}</p>
         </div>
         {session.organizationName ? <span className="text-sm font-medium text-slate-600">{session.organizationName}</span> : null}
       </header>
@@ -175,13 +176,13 @@ export default function BusinessUnitAdminPage() {
       ) : (
         <>
           <Card className="flex flex-col gap-3 border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3"><Building2 className="h-5 w-5 text-orange-700" /><div><p className="text-sm font-semibold text-slate-900">Business Unit</p><p className="text-xs text-slate-500">Choose a unit to manage its administrators</p></div></div>
+            <div className="flex items-center gap-3"><Building2 className="h-5 w-5 text-orange-700" /><div><p className="text-sm font-semibold text-slate-900">Business Unit</p><p className="text-xs text-slate-500">Select any active unit in your organization</p></div></div>
             <Select className="sm:max-w-md" aria-label="Select Business Unit" value={selectedUnit?.id ?? ''} onChange={(event) => setSelectedUnitId(Number(event.target.value) || null)} disabled={loading || units.length === 0}>
               {units.length === 0 ? <option value="">No Business Units</option> : units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name} ({unit.code}) · {unit.status}</option>)}
             </Select>
           </Card>
 
-          {loading ? <p className="py-8 text-center text-sm text-slate-500">Loading Business Units...</p> : !selectedUnit ? <p className="rounded-lg border border-dashed border-slate-300 p-6 text-sm text-slate-500">Create a Business Unit before assigning administrators.</p> : (
+          {loading ? <p className="py-8 text-center text-sm text-slate-500">Loading Business Units...</p> : !selectedUnit ? <p className="rounded-lg border border-dashed border-slate-300 p-6 text-sm text-slate-500">No active Business Units are available.</p> : (
             <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
               <Card className="border-slate-200 bg-white p-5">
                 <div className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-emerald-700" /><h2 className="font-semibold text-slate-900">Assigned administrators</h2></div>

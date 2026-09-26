@@ -63,7 +63,7 @@ describe('BusinessUnitsService', () => {
     expect(prisma.organization.findFirst).not.toHaveBeenCalled();
   });
 
-  it('limits a BU administrator to assigned units and their descendants', async () => {
+  it('grants an active BU administrator all-unit scope within their organization', async () => {
     const prisma = createPrismaMock();
     prisma.organization.findFirst.mockResolvedValue({ id: 1 });
     prisma.businessUnitAdmin.findMany.mockResolvedValue([
@@ -81,34 +81,56 @@ describe('BusinessUnitsService', () => {
 
     expect(scope).toEqual({
       organizationId: 1,
-      allUnits: false,
-      unitIds: [10, 11],
+      allUnits: true,
+      unitIds: [],
       assignedUnitId: null,
     });
     expect(service.buildDirectBUWhere(scope)).toEqual({
       organizationId: 1,
-      businessUnitId: { in: [10, 11] },
     });
   });
 
-  it('rejects a selected BU outside a BU administrator assignment', async () => {
+  it('allows an active BU administrator to narrow scope to any BU in their organization', async () => {
     const prisma = createPrismaMock();
     prisma.organization.findFirst.mockResolvedValue({ id: 1 });
     prisma.businessUnitAdmin.findMany.mockResolvedValue([
       { businessUnitId: 10 },
     ]);
+    prisma.businessUnit.findMany.mockResolvedValue([{ id: 10 }]);
+    prisma.businessUnit.findFirst.mockResolvedValue({ id: 20 });
     prisma.businessUnit.findMany.mockImplementation(({ where }: any) => {
       if (where.id?.in) return [{ id: 10 }];
-      if (where.parentId === 10) return [{ id: 11 }];
-      if (where.parentId === 11) return [];
+      if (where.parentId === 20) return [{ id: 21 }];
       return [];
     });
+    const service = new BusinessUnitsService(prisma);
+
+    await expect(service.resolveScope({
+        ...user(Role.MANAGER),
+        businessUnitId: 20,
+        allBusinessUnits: false,
+      })).resolves.toEqual({
+      organizationId: 1,
+      allUnits: false,
+      unitIds: [20, 21],
+      assignedUnitId: null,
+    });
+  });
+
+  it('rejects a selected BU outside the authenticated organization', async () => {
+    const prisma = createPrismaMock();
+    prisma.organization.findFirst.mockResolvedValue({ id: 1 });
+    prisma.businessUnitAdmin.findMany.mockResolvedValue([
+      { businessUnitId: 10 },
+    ]);
+    prisma.businessUnit.findMany.mockResolvedValue([{ id: 10 }]);
+    prisma.businessUnit.findFirst.mockResolvedValue(null);
     const service = new BusinessUnitsService(prisma);
 
     await expect(
       service.resolveScope({
         ...user(Role.MANAGER),
-        businessUnitId: 20,
+        businessUnitId: 99,
         allBusinessUnits: false,
       }),
     ).rejects.toThrow(ForbiddenException);
@@ -150,7 +172,15 @@ describe('BusinessUnitsService', () => {
           },
         ];
       }
-      return [];
+      return [
+        {
+          id: 10,
+          name: 'North',
+          code: 'NORTH',
+          parentId: null,
+          status: 'ACTIVE',
+        },
+      ];
     });
     const service = new BusinessUnitsService(prisma);
 
@@ -160,6 +190,62 @@ describe('BusinessUnitsService', () => {
       units: [{ id: 10, name: 'North' }],
       isBusinessUnitAdmin: true,
     });
+  });
+
+  it('allows an assigned BU admin to list all BUs in their organization', async () => {
+    const prisma = createPrismaMock();
+    prisma.organization.findFirst.mockResolvedValue({ id: 1 });
+    prisma.businessUnitAdmin.findMany.mockResolvedValue([
+      { businessUnitId: 10 },
+    ]);
+    prisma.businessUnit.findMany.mockResolvedValue([{ id: 10 }]);
+    const service = new BusinessUnitsService(prisma);
+
+    await expect(service.list(1, user(Role.MANAGER))).resolves.toEqual([
+      { id: 10 },
+    ]);
+    expect(prisma.businessUnit.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { organizationId: 1 } }),
+    );
+  });
+
+  it('allows an assigned BU admin to assign and revoke other admins in the same organization', async () => {
+    const prisma = createPrismaMock();
+    prisma.organization.findFirst.mockResolvedValue({ id: 1 });
+    prisma.businessUnitAdmin.findMany.mockResolvedValue([
+      { businessUnitId: 10 },
+    ]);
+    prisma.businessUnit.findMany.mockResolvedValue([{ id: 10 }]);
+    prisma.businessUnit.findFirst.mockResolvedValue({ id: 10 });
+    prisma.user.findFirst.mockResolvedValue({
+      id: 99,
+      role: Role.MANAGER,
+      isActive: true,
+      userRoles: [],
+    });
+    prisma.businessUnitAdmin.upsert.mockResolvedValue({ id: 5 });
+    prisma.businessUnitAdmin.deleteMany.mockResolvedValue({ count: 1 });
+    const service = new BusinessUnitsService(prisma);
+    const actor = user(Role.MANAGER);
+
+    await expect(service.assignAdministrator(10, 1, 99, actor)).resolves.toEqual(
+      { id: 5 },
+    );
+    await expect(service.removeAdministrator(10, 1, 99, actor)).resolves.toEqual(
+      { success: true },
+    );
+  });
+
+  it('denies an unassigned manager from managing BU hierarchy', async () => {
+    const prisma = createPrismaMock();
+    prisma.organization.findFirst.mockResolvedValue({ id: 1 });
+    prisma.businessUnitAdmin.findMany.mockResolvedValue([]);
+    const service = new BusinessUnitsService(prisma);
+
+    await expect(service.list(1, user(Role.MANAGER))).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(prisma.businessUnit.findMany).not.toHaveBeenCalled();
   });
 
   it('rejects null-BU records for a restricted BU scope', async () => {

@@ -58,6 +58,52 @@ export class BusinessUnitsService {
     return this.isWideScopedRole(user);
   }
 
+  private async getActiveAdministratorUnitIds(
+    user: AuthUser,
+    organizationId: number,
+  ): Promise<number[]> {
+    const assignments = await this.prisma.businessUnitAdmin.findMany({
+      where: { userId: user.userId, organizationId },
+      select: { businessUnitId: true },
+    });
+    if (assignments.length === 0) return [];
+
+    const activeUnits = await this.prisma.businessUnit.findMany({
+      where: {
+        organizationId,
+        status: 'ACTIVE',
+        id: { in: assignments.map((assignment) => assignment.businessUnitId) },
+      },
+      select: { id: true },
+    });
+    return (activeUnits ?? []).map((unit) => unit.id);
+  }
+
+  private async assertCanManageBusinessUnits(
+    user: AuthUser,
+    organizationId: number,
+  ): Promise<void> {
+    const organizationManagementRoles = new Set<string>([
+      Role.SUPER_ADMIN,
+      Role.ADMIN,
+      Role.HR,
+    ]);
+    if (
+      user.isPlatformAdmin === true ||
+      user.isSuperAdmin === true ||
+      organizationManagementRoles.has(user.role) ||
+      user.roles.some((role) => organizationManagementRoles.has(role))
+    ) {
+      return;
+    }
+
+    if ((await this.getActiveAdministratorUnitIds(user, organizationId)).length === 0) {
+      throw new ForbiddenException(
+        'Only organization administrators and active Business Unit administrators can manage Business Units',
+      );
+    }
+  }
+
   private async resolveOrganizationId(
     requestedOrganizationId: number,
     user: AuthUser,
@@ -140,6 +186,7 @@ export class BusinessUnitsService {
       organizationId,
       user,
     );
+    await this.assertCanManageBusinessUnits(user, scopedOrganizationId);
     return this.prisma.businessUnit.findMany({
       where: { organizationId: scopedOrganizationId },
       include: businessUnitInclude,
@@ -156,6 +203,7 @@ export class BusinessUnitsService {
       organizationId,
       user,
     );
+    await this.assertCanManageBusinessUnits(user, scopedOrganizationId);
     await this.getUnit(businessUnitId, scopedOrganizationId);
     return this.prisma.businessUnitAdmin.findMany({
       where: { businessUnitId, organizationId: scopedOrganizationId },
@@ -175,6 +223,7 @@ export class BusinessUnitsService {
       organizationId,
       user,
     );
+    await this.assertCanManageBusinessUnits(user, scopedOrganizationId);
     await this.getUnit(businessUnitId, scopedOrganizationId);
     return this.prisma.user.findMany({
       where: {
@@ -208,6 +257,7 @@ export class BusinessUnitsService {
       organizationId,
       actor,
     );
+    await this.assertCanManageBusinessUnits(actor, scopedOrganizationId);
     const businessUnit = await this.prisma.businessUnit.findFirst({
       where: {
         id: businessUnitId,
@@ -288,6 +338,7 @@ export class BusinessUnitsService {
       organizationId,
       actor,
     );
+    await this.assertCanManageBusinessUnits(actor, scopedOrganizationId);
     await this.getUnit(businessUnitId, scopedOrganizationId);
     const result = await this.prisma.businessUnitAdmin.deleteMany({
       where: {
@@ -327,6 +378,7 @@ export class BusinessUnitsService {
       organizationId,
       user,
     );
+    await this.assertCanManageBusinessUnits(user, scopedOrganizationId);
     await this.validateParent(dto.parentId, scopedOrganizationId);
 
     try {
@@ -360,6 +412,7 @@ export class BusinessUnitsService {
       organizationId,
       user,
     );
+    await this.assertCanManageBusinessUnits(user, scopedOrganizationId);
     return this.getUnit(id, scopedOrganizationId);
   }
 
@@ -373,6 +426,7 @@ export class BusinessUnitsService {
       organizationId,
       user,
     );
+    await this.assertCanManageBusinessUnits(user, scopedOrganizationId);
     const existing = await this.getUnit(id, scopedOrganizationId);
     await this.validateParent(dto.parentId, scopedOrganizationId, existing.id);
 
@@ -410,6 +464,7 @@ export class BusinessUnitsService {
       organizationId,
       user,
     );
+    await this.assertCanManageBusinessUnits(user, scopedOrganizationId);
     const existing = await this.getUnit(id, scopedOrganizationId);
     const childCount = await this.prisma.businessUnit.count({
       where: { organizationId: scopedOrganizationId, parentId: existing.id },
@@ -443,12 +498,9 @@ export class BusinessUnitsService {
   }> {
     const orgId = await this.resolveOrganizationId(scopedOrganizationId, user);
     const assignedUnitId = this.resolveAssignedUnitId(user);
-    const administratorAssignments = await this.prisma.businessUnitAdmin.findMany({
-      where: { userId: user.userId, organizationId: orgId },
-      select: { businessUnitId: true },
-    });
-    const isBusinessUnitAdmin = administratorAssignments.length > 0;
-    if (this.isOrganizationWideBUAdmin(user)) {
+    const isBusinessUnitAdmin =
+      (await this.getActiveAdministratorUnitIds(user, orgId)).length > 0;
+    if (this.isOrganizationWideBUAdmin(user) || isBusinessUnitAdmin) {
       const allUnits = await this.prisma.businessUnit.findMany({
         where: { organizationId: orgId, status: 'ACTIVE' },
         select: {
@@ -670,6 +722,38 @@ export class BusinessUnitsService {
           organizationId,
           allUnits: false,
           unitIds: ids,
+          assignedUnitId,
+        };
+      }
+      return { organizationId, allUnits: true, unitIds: [], assignedUnitId };
+    }
+
+    const administratorUnitIds = await this.getActiveAdministratorUnitIds(
+      user,
+      organizationId,
+    );
+    if (administratorUnitIds.length > 0) {
+      if (
+        user.allBusinessUnits === false &&
+        typeof user.businessUnitId === 'number'
+      ) {
+        const selected = await this.prisma.businessUnit.findFirst({
+          where: {
+            id: user.businessUnitId,
+            organizationId,
+            status: 'ACTIVE' as BusinessUnitStatus,
+          },
+          select: { id: true },
+        });
+        if (!selected) {
+          throw new ForbiddenException(
+            'Selected Business Unit is not available in this organization',
+          );
+        }
+        return {
+          organizationId,
+          allUnits: false,
+          unitIds: await this.collectDescendantIds(organizationId, [selected.id]),
           assignedUnitId,
         };
       }

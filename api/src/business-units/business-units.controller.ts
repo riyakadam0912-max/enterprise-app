@@ -80,7 +80,13 @@ export class BusinessUnitsController {
     };
   }
 
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR)
+  @Roles(
+    Role.SUPER_ADMIN,
+    Role.ADMIN,
+    Role.HR,
+    Role.MANAGER,
+    Role.EMPLOYEE,
+  )
   @Get('organizations/:organizationId/business-units')
   @ApiOperation({ summary: 'List Business Units for an organization' })
   list(
@@ -90,7 +96,7 @@ export class BusinessUnitsController {
     return this.businessUnitsService.list(organizationId, req.user);
   }
 
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.EMPLOYEE)
   @Get('organizations/:organizationId/business-units/:businessUnitId/admins')
   @ApiOperation({ summary: 'List administrators assigned to a Business Unit' })
   listAdministrators(
@@ -105,7 +111,7 @@ export class BusinessUnitsController {
     );
   }
 
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.EMPLOYEE)
   @Get(
     'organizations/:organizationId/business-units/:businessUnitId/admin-candidates',
   )
@@ -122,7 +128,7 @@ export class BusinessUnitsController {
     );
   }
 
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.EMPLOYEE)
   @Post(
     'organizations/:organizationId/business-units/:businessUnitId/admins/:userId',
   )
@@ -141,7 +147,7 @@ export class BusinessUnitsController {
     );
   }
 
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.EMPLOYEE)
   @Delete(
     'organizations/:organizationId/business-units/:businessUnitId/admins/:userId',
   )
@@ -160,7 +166,13 @@ export class BusinessUnitsController {
     );
   }
 
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR)
+  @Roles(
+    Role.SUPER_ADMIN,
+    Role.ADMIN,
+    Role.HR,
+    Role.MANAGER,
+    Role.EMPLOYEE,
+  )
   @Post('organizations/:organizationId/business-units')
   @ApiOperation({ summary: 'Create a Business Unit' })
   @ApiBody({ type: CreateBusinessUnitDto })
@@ -172,7 +184,13 @@ export class BusinessUnitsController {
     return this.businessUnitsService.create(organizationId, dto, req.user);
   }
 
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR)
+  @Roles(
+    Role.SUPER_ADMIN,
+    Role.ADMIN,
+    Role.HR,
+    Role.MANAGER,
+    Role.EMPLOYEE,
+  )
   @Get('business-units/:id')
   @ApiOperation({ summary: 'Get a Business Unit' })
   get(@Param('id', ParseIntPipe) id: number, @Req() req: AuthenticatedRequest) {
@@ -185,7 +203,13 @@ export class BusinessUnitsController {
     return this.businessUnitsService.get(id, organizationId, req.user);
   }
 
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR)
+  @Roles(
+    Role.SUPER_ADMIN,
+    Role.ADMIN,
+    Role.HR,
+    Role.MANAGER,
+    Role.EMPLOYEE,
+  )
   @Patch('business-units/:id')
   @ApiOperation({ summary: 'Update a Business Unit' })
   @ApiBody({ type: UpdateBusinessUnitDto })
@@ -196,12 +220,20 @@ export class BusinessUnitsController {
   ) {
     const organizationId = req.organizationId ?? req.user.organizationId;
     if (organizationId == null) {
-      throw new Error('Select an organization before modifying Business Units');
+      throw new ForbiddenException(
+        'Select an organization before modifying Business Units',
+      );
     }
     return this.businessUnitsService.update(id, organizationId, dto, req.user);
   }
 
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR)
+  @Roles(
+    Role.SUPER_ADMIN,
+    Role.ADMIN,
+    Role.HR,
+    Role.MANAGER,
+    Role.EMPLOYEE,
+  )
   @Delete('business-units/:id')
   @ApiOperation({ summary: 'Delete a leaf Business Unit' })
   remove(
@@ -210,7 +242,9 @@ export class BusinessUnitsController {
   ) {
     const organizationId = req.organizationId ?? req.user.organizationId;
     if (organizationId == null) {
-      throw new Error('Select an organization before modifying Business Units');
+      throw new ForbiddenException(
+        'Select an organization before modifying Business Units',
+      );
     }
     return this.businessUnitsService.remove(id, organizationId, req.user);
   }

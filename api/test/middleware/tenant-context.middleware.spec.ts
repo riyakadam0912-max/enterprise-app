@@ -127,18 +127,27 @@ describe('TenantContextMiddleware', () => {
     expect(inactiveReq.organizationId).toBeNull();
   });
 
-  it('limits BU-admin header selection to assigned units and descendants', async () => {
+  it('lets an active BU admin select any unit in their organization', async () => {
     const fakeJwt = new JwtService({ secret: 'test' } as any);
     const prismaMock: any = {
       businessUnitAdmin: {
         findMany: jest.fn().mockResolvedValue([{ businessUnitId: 10 }]),
       },
       businessUnit: {
-        findMany: jest.fn().mockResolvedValue([
-          { id: 10, parentId: null },
-          { id: 11, parentId: 10 },
-          { id: 20, parentId: null },
-        ]),
+        findMany: jest.fn(({ where }: any) =>
+          where.id?.in
+            ? [{ id: 10 }]
+            : [
+                { id: 10, parentId: null },
+                { id: 11, parentId: 10 },
+                { id: 20, parentId: null },
+              ],
+        ),
+        findFirst: jest.fn(({ where }: any) =>
+          [11, 20].includes(where.id) && where.organizationId === 1
+            ? { id: where.id }
+            : null,
+        ),
       },
     };
     const middleware = new TenantContextMiddleware(fakeJwt, prismaMock);
@@ -155,10 +164,38 @@ describe('TenantContextMiddleware', () => {
     ).resolves.toEqual({ businessUnitId: 11, allBusinessUnits: false });
     await expect(
       middleware.resolveBusinessUnitContext({}, payload, 1, false, '20'),
-    ).resolves.toEqual({ businessUnitId: null, allBusinessUnits: false });
+    ).resolves.toEqual({ businessUnitId: 20, allBusinessUnits: false });
     await expect(
       middleware.resolveBusinessUnitContext({}, payload, 1, false, 'ALL'),
-    ).resolves.toEqual({ businessUnitId: null, allBusinessUnits: false });
+    ).resolves.toEqual({ businessUnitId: null, allBusinessUnits: true });
+  });
+
+  it('does not accept a BU-admin selection outside the resolved organization', async () => {
+    const fakeJwt = new JwtService({ secret: 'test' } as any);
+    const prismaMock: any = {
+      businessUnitAdmin: {
+        findMany: jest.fn().mockResolvedValue([{ businessUnitId: 10 }]),
+      },
+      businessUnit: {
+        findMany: jest.fn().mockResolvedValue([{ id: 10 }]),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+    };
+    const middleware = new TenantContextMiddleware(fakeJwt, prismaMock);
+    const payload = {
+      userId: 8,
+      role: 'MANAGER',
+      roles: ['MANAGER'],
+      organizationId: 1,
+    } as any;
+
+    await expect(
+      middleware.resolveBusinessUnitContext({}, payload, 1, false, '99'),
+    ).resolves.toEqual({ businessUnitId: null, allBusinessUnits: true });
+    expect(prismaMock.businessUnit.findFirst).toHaveBeenCalledWith({
+      where: { id: 99, organizationId: 1, status: 'ACTIVE' },
+      select: { id: true },
+    });
   });
 
   it('does not let a tenant admin select a business unit from another organization', async () => {

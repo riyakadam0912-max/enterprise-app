@@ -33,7 +33,9 @@ function makeService() {
       ),
     },
     businessUnitAdmin: {
-      findMany: jest.fn().mockResolvedValue([{ businessUnitId: 101 }]),
+      findMany: jest.fn(({ where }: any) =>
+        where.userId === 1 ? [{ businessUnitId: 101 }] : [],
+      ),
     },
     businessUnit: {
       findFirst: jest.fn(({ where }: any) =>
@@ -56,31 +58,31 @@ function makeService() {
 }
 
 describe('Business Unit IDOR authorization', () => {
-  it('limits an assigned BU admin to the assigned unit and active descendants', async () => {
+  it('grants all active BUs in the assigned organization', async () => {
     const service = makeService();
 
     const scope = await service.resolveScope(makeUser());
 
-    expect(scope.unitIds).toEqual([101, 102]);
+    expect(scope.allUnits).toBe(true);
+    expect(scope.unitIds).toEqual([]);
     expect(service.buildDirectBUWhere(scope)).toEqual({
       organizationId: 1,
-      businessUnitId: { in: [101, 102] },
     });
   });
 
-  it('rejects a forged selected BU outside the administrator assignment', async () => {
+  it('rejects a selected BU outside the administrator organization', async () => {
     const service = makeService();
 
     await expect(
       service.resolveScope({
         ...makeUser(),
-        businessUnitId: 202,
+        businessUnitId: 999,
         allBusinessUnits: false,
       }),
     ).rejects.toThrow(ForbiddenException);
   });
 
-  it('does not allow an ALL context flag to widen a scoped administrator', async () => {
+  it('allows an assigned BU admin to select all units in their organization', async () => {
     const service = makeService();
 
     const scope = await service.resolveScope({
@@ -88,24 +90,21 @@ describe('Business Unit IDOR authorization', () => {
       allBusinessUnits: true,
     });
 
-    expect(scope.allUnits).toBe(false);
-    expect(scope.unitIds).toEqual([101, 102]);
+    expect(scope.allUnits).toBe(true);
+    expect(scope.unitIds).toEqual([]);
   });
 
-  it('denies access to records without a BU for a restricted administrator', async () => {
+  it('keeps restricted users without a BU-admin assignment fail-closed', async () => {
     const service = makeService();
 
+    const scope = await service.resolveScope({
+      ...makeUser(),
+      userId: 999,
+    });
+    expect(scope.allUnits).toBe(false);
+    expect(scope.unitIds).toEqual([]);
     await expect(
-      service.assertRecordAccessible(
-        {
-          organizationId: 1,
-          allUnits: false,
-          unitIds: [101, 102],
-          assignedUnitId: null,
-        },
-        null,
-        'employee',
-      ),
+      service.assertRecordAccessible(scope, null, 'employee'),
     ).rejects.toThrow(ForbiddenException);
   });
 

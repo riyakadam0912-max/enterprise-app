@@ -106,9 +106,50 @@ export class TenantContextMiddleware implements NestMiddleware {
             where: { userId, organizationId: resolvedOrganizationId },
             select: { businessUnitId: true },
           });
+    const activeAssignmentIds = assignments.length
+      ? await this.prisma.businessUnit.findMany({
+          where: {
+            organizationId: resolvedOrganizationId,
+            status: 'ACTIVE',
+            id: { in: assignments.map((assignment) => assignment.businessUnitId) },
+          },
+          select: { id: true },
+        })
+      : [];
+
+    if (activeAssignmentIds.length > 0) {
+      if (
+        headerBU === undefined ||
+        headerBU === null ||
+        headerBU === '' ||
+        headerBU.toUpperCase() === 'ALL'
+      ) {
+        return { businessUnitId: null, allBusinessUnits: true };
+      }
+
+      const requestedBUId = Number(headerBU);
+      if (Number.isInteger(requestedBUId) && requestedBUId > 0) {
+        const requestedUnit = await this.prisma.businessUnit.findFirst({
+          where: {
+            id: requestedBUId,
+            organizationId: resolvedOrganizationId,
+            status: 'ACTIVE',
+          },
+          select: { id: true },
+        });
+        if (requestedUnit) {
+          return { businessUnitId: requestedUnit.id, allBusinessUnits: false };
+        }
+      }
+
+      this.logger.warn(
+        `BU administrator ${userId} requested an unavailable Business Unit ${headerBU} in organization ${resolvedOrganizationId}`,
+      );
+      return { businessUnitId: null, allBusinessUnits: true };
+    }
+
     const roots = Array.from(
       new Set([
-        ...assignments.map((assignment) => assignment.businessUnitId),
         ...(assignedBUId == null ? [] : [assignedBUId]),
       ]),
     );
