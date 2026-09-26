@@ -27,6 +27,15 @@ export interface Organization {
   industry?: string | null;
 }
 
+export type AccessibleOrganization = Pick<
+  Organization,
+  'id' | 'name' | 'slug' | 'logoUrl' | 'parentId'
+>;
+
+export async function getAccessibleOrganizations(): Promise<AccessibleOrganization[]> {
+  return apiClient<AccessibleOrganization[]>('/organizations/accessible');
+}
+
 export interface PlatformStats {
   organizations: {
     total: number;

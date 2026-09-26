@@ -357,7 +357,7 @@ export function setActiveOrganization(organizationId: number): void {
 
   const session = getAuthSessionSnapshot();
   const isPrivilegedTenantContext =
-    session.isSuperAdmin || session.isPlatformAdmin;
+    session.isSuperAdmin || session.isPlatformAdmin || session.role === 'ADMIN';
 
   if (!isPrivilegedTenantContext) {
     try {
@@ -407,7 +407,7 @@ export function setActiveOrganizationDetails(details: {
   }
 
   const session = getAuthSessionSnapshot();
-  if (!(session.isSuperAdmin || session.isPlatformAdmin)) {
+  if (!(session.isSuperAdmin || session.isPlatformAdmin || session.role === 'ADMIN')) {
     return;
   }
 
@@ -448,7 +448,7 @@ export function clearActiveOrganization(): void {
 export function getActiveOrganizationId(): number | null {
   const session = getAuthSessionSnapshot();
   const isPrivilegedTenantContext =
-    session.isSuperAdmin || session.isPlatformAdmin;
+    session.isSuperAdmin || session.isPlatformAdmin || session.role === 'ADMIN';
 
   if (!isPrivilegedTenantContext) {
     return null;

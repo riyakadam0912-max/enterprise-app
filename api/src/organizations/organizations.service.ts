@@ -104,7 +104,34 @@ export class OrganizationsService {
   }
 
   private isOrganizationAdmin(user: AuthUser) {
-    return user?.role === Role.ADMIN && user.organizationId != null;
+    return (
+      user?.role === Role.ADMIN ||
+      user?.roles?.includes(Role.ADMIN) === true
+    ) && (user.homeOrganizationId ?? user.organizationId) != null;
+  }
+
+  private async canAccessOrganization(user: AuthUser, organizationId: number) {
+    if (this.isPlatformAdmin(user) || this.isOrganizationAdmin(user)) return true;
+    return false;
+  }
+
+  async getAccessibleOrganizations(user: AuthUser) {
+    if (this.isPlatformAdmin(user)) {
+      throw new ForbiddenException(
+        'Platform administrators use the platform organization selector',
+      );
+    }
+    if (!this.isOrganizationAdmin(user)) {
+      throw new ForbiddenException(
+        'Only organization admins can switch organizations',
+      );
+    }
+
+    return this.prisma.organization.findMany({
+      where: { status: 'ACTIVE', deletedAt: null },
+      select: { id: true, name: true, slug: true, logoUrl: true, parentId: true },
+      orderBy: { name: 'asc' },
+    });
   }
 
   async getPlatformStats(user: AuthUser) {
@@ -286,9 +313,9 @@ export class OrganizationsService {
   }
 
   async getOrganization(id: number, user: AuthUser) {
-    if (!this.isPlatformAdmin(user)) {
+    if (!(await this.canAccessOrganization(user, id))) {
       throw new ForbiddenException(
-        'Only platform administrators can view organization details',
+        'Organization access denied',
       );
     }
 
@@ -461,12 +488,14 @@ export class OrganizationsService {
     if (!organization) {
       throw new NotFoundException('Organization not found');
     }
-    if (
-      !this.isPlatformAdmin(user) &&
-      organization.parentId !== user.organizationId
-    ) {
+    if (!(await this.canAccessOrganization(user, id))) {
       throw new ForbiddenException(
-        'You can only update organizations directly under your organization',
+        'Organization access denied',
+      );
+    }
+    if (!this.isPlatformAdmin(user) && dto.status !== undefined) {
+      throw new ForbiddenException(
+        'Only platform administrators can change organization status',
       );
     }
 
@@ -568,12 +597,9 @@ export class OrganizationsService {
     if (!organization) {
       throw new NotFoundException('Organization not found');
     }
-    if (
-      !this.isPlatformAdmin(user) &&
-      organization.parentId !== user.organizationId
-    ) {
+    if (!this.isPlatformAdmin(user)) {
       throw new ForbiddenException(
-        'You can only delete organizations directly under your organization',
+        'Only platform administrators can delete organizations',
       );
     }
 
@@ -609,26 +635,31 @@ export class OrganizationsService {
     // gets the full global list (super-admin dashboard use-case).
     let scopeParentId: number | null = null;
 
-    if (!isPlatformAdmin) {
-      // Regular org users must be scoped to their own org's children
+    if (!isPlatformAdmin && !this.isOrganizationAdmin(user)) {
       if (!user?.organizationId) {
         throw new ForbiddenException(
           'Only platform administrators can list organizations',
         );
       }
-      scopeParentId = user.organizationId;
+      throw new ForbiddenException(
+        'Only platform and organization administrators can list organizations',
+      );
+    }
+
+    if (isPlatformAdmin) {
+      // Platform admins should see the full global list by default. An explicit
+      // parentId still narrows the results to a specific org tree.
+      if (options?.parentId != null && options.parentId > 0) {
+        scopeParentId = options.parentId;
+      }
     } else {
-      // Platform admin: use explicit parentId param, or fall back to the
-      // active impersonation org (organizationId set by TenantContextMiddleware
-      // when X-Organization-Id header is present).
+      // Organization admins remain scoped to their active org unless a
+      // different parentId is explicitly provided.
       if (options?.parentId != null && options.parentId > 0) {
         scopeParentId = options.parentId;
       } else if (user.organizationId != null) {
-        // Impersonating a specific org — show its children
         scopeParentId = user.organizationId;
       }
-      // If scopeParentId is still null, we are in the global super-admin view
-      // — no hierarchy scoping is applied and all orgs are returned.
     }
 
     // Build the base where clause

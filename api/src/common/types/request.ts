@@ -4,6 +4,7 @@ import type { AuthUser } from './auth';
 export interface AuthenticatedRequest extends Request {
   user: AuthUser;
   organizationId?: number | null;
+  homeOrganizationId?: number | null;
   businessUnitId?: number | null;
   allBusinessUnits?: boolean;
 }

@@ -11,6 +11,7 @@ import {
 } from '@/stores/auth-store';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import { BusinessUnitSelector } from '@/components/business-units/BusinessUnitSelector';
+import { OrganizationSwitcher } from '@/components/OrganizationSwitcher';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { getMyOrganization, getOrganizationById } from '@/api/organizationsApi';
 import ImpersonationBanner from '@/components/super-admin/ImpersonationBanner';
@@ -167,6 +168,8 @@ export default function Topbar() {
 
         {/* Business Unit Selector */}
         <BusinessUnitSelector />
+
+        <OrganizationSwitcher />
 
         {isSuperAdmin && <ImpersonationBanner />}
 

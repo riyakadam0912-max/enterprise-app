@@ -42,6 +42,14 @@ export class OrganizationsController {
   }
 
   @ApiOperation({
+    summary: 'List organizations accessible to a child organization admin',
+  })
+  @Get('accessible')
+  getAccessibleOrganizations(@Req() req: AuthenticatedRequest) {
+    return this.organizationsService.getAccessibleOrganizations(req.user);
+  }
+
+  @ApiOperation({
     summary: 'Update the authenticated organization admin organization',
   })
   @UseGuards(PermissionsGuard)

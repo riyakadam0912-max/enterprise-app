@@ -10,6 +10,7 @@ export interface AuthUser {
   permissions: string[];
   employeeId: number | null;
   organizationId: number | null;
+  homeOrganizationId?: number | null;
   organizationSlug?: string | null;
   organizationName?: string | null;
   organizationLogo?: string | null;
@@ -33,6 +34,7 @@ export interface JwtPayload {
   permissions?: string[];
   employeeId?: number | null;
   organizationId?: number | null;
+  homeOrganizationId?: number | null;
   organizationSlug?: string | null;
   organizationName?: string | null;
   organizationLogo?: string | null;

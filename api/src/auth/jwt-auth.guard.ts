@@ -36,6 +36,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       if (request.__isPlatformAdmin === true) {
         user.isPlatformAdmin = true;
       }
+      if (request.homeOrganizationId !== undefined) {
+        user.homeOrganizationId = request.homeOrganizationId;
+      }
       if (request.businessUnitId !== undefined) {
         user.businessUnitId = request.businessUnitId;
       }

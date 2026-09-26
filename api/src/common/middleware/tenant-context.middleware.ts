@@ -207,6 +207,34 @@ export class TenantContextMiddleware implements NestMiddleware {
     };
   }
 
+  private async resolveOrganizationAdminOrganization(
+    payload: JwtPayload,
+    requestedOrganizationId: number,
+  ): Promise<number | null> {
+    const isAdmin = payload.role === Role.ADMIN;
+    const homeOrganizationId = payload.homeOrganizationId ?? payload.organizationId;
+    if (!isAdmin || homeOrganizationId == null) return null;
+
+    const [homeOrganization, requestedOrganization] = await Promise.all([
+      this.prisma.organization.findFirst({
+        where: { id: homeOrganizationId, status: 'ACTIVE', deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.organization.findFirst({
+        where: {
+          id: requestedOrganizationId,
+          status: 'ACTIVE',
+          deletedAt: null,
+        },
+        select: { id: true },
+      }),
+    ]);
+
+    return homeOrganization && requestedOrganization
+      ? requestedOrganization.id
+      : null;
+  }
+
   async use(req: Request, _res: Response, next: NextFunction) {
     try {
       const cookieToken = (req.cookies as Record<string, string | undefined>)
@@ -252,9 +280,17 @@ export class TenantContextMiddleware implements NestMiddleware {
       const request = req as any;
 
       if (!isPlatformAdmin && headerOrg) {
-        this.logger.warn(
-          `Ignoring X-Organization-Id header for non-platform user ${payload.sub ?? payload.userId}: ${headerOrg}`,
-        );
+        const requestedOrganizationId = Number(headerOrg);
+        const accessibleOrganizationId = Number.isInteger(requestedOrganizationId)
+          ? await this.resolveOrganizationAdminOrganization(payload, requestedOrganizationId)
+          : null;
+        if (accessibleOrganizationId != null) {
+          resolvedOrganizationId = accessibleOrganizationId;
+        } else {
+          this.logger.warn(
+            `Ignoring unauthorized X-Organization-Id for user ${payload.sub ?? payload.userId}: ${headerOrg}`,
+          );
+        }
       }
 
       if (isPlatformAdmin) {
@@ -308,7 +344,7 @@ export class TenantContextMiddleware implements NestMiddleware {
             );
           }
         }
-      } else if (typeof payload.organizationId === 'number') {
+      } else if (resolvedOrganizationId == null && typeof payload.organizationId === 'number') {
         const org = await this.prisma.organization.findUnique({
           where: { id: payload.organizationId },
           select: { id: true, status: true },
@@ -328,6 +364,7 @@ export class TenantContextMiddleware implements NestMiddleware {
       }
 
       request.organizationId = resolvedOrganizationId;
+      request.homeOrganizationId = payload.homeOrganizationId ?? payload.organizationId ?? null;
       request.__tenantResolvedByMiddleware = true;
       request.__isPlatformAdmin = isPlatformAdmin;
 

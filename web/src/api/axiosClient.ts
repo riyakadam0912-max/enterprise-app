@@ -72,7 +72,7 @@ axiosClient.interceptors.request.use(
       try {
         const session = getAuthSessionSnapshot();
         const isPrivilegedTenantContext =
-          session.isSuperAdmin || session.isPlatformAdmin;
+          session.isSuperAdmin || session.isPlatformAdmin || session.role === 'ADMIN';
         const requestUrl = config.url ?? '';
         const isAuthRequest = requestUrl.includes('/auth/');
 

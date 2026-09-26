@@ -46,6 +46,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       permissions: payload.permissions ?? [],
       employeeId: payload.employeeId ?? null,
       organizationId: payload.organizationId ?? null,
+      homeOrganizationId: payload.organizationId ?? null,
       organizationSlug: payload.organizationSlug ?? null,
       organizationName: payload.organizationName ?? null,
       organizationLogo: payload.organizationLogo ?? null,

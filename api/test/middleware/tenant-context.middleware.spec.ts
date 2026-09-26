@@ -63,6 +63,7 @@ describe('TenantContextMiddleware', () => {
     const prismaMock: any = {
       organization: {
         findUnique: jest.fn().mockResolvedValue({ id: 7, status: 'ACTIVE' }),
+        findFirst: jest.fn().mockResolvedValue(null),
       },
     };
 
@@ -222,5 +223,68 @@ describe('TenantContextMiddleware', () => {
       where: { userId: 5, organizationId: 1 },
       select: { businessUnitId: true },
     });
+  });
+
+  it('allows child admins to switch only to their direct parent or siblings', async () => {
+    const fakeJwt = new JwtService({ secret: 'test' } as any);
+    const prismaMock: any = {
+      organization: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValueOnce({ id: 11, parentId: 1 })
+          .mockResolvedValueOnce({ id: 12, parentId: 1 })
+          .mockResolvedValueOnce({ id: 11, parentId: 1 })
+          .mockResolvedValueOnce({ id: 1, parentId: null })
+          .mockResolvedValueOnce({ id: 11, parentId: 1 })
+          .mockResolvedValueOnce({ id: 30, parentId: 2 }),
+      },
+    };
+    const middleware = new TenantContextMiddleware(fakeJwt, prismaMock);
+    const childAdmin = {
+      userId: 7,
+      role: 'ADMIN',
+      roles: ['ADMIN'],
+      organizationId: 11,
+    } as any;
+
+    await expect(
+      (middleware as any).resolveChildAdminOrganization(childAdmin, 12),
+    ).resolves.toBe(12);
+    await expect(
+      (middleware as any).resolveChildAdminOrganization(childAdmin, 1),
+    ).resolves.toBe(1);
+    await expect(
+      (middleware as any).resolveChildAdminOrganization(childAdmin, 30),
+    ).resolves.toBeNull();
+  });
+
+  it('keeps home organization immutable when child admin switches context', async () => {
+    const fakeJwt = new JwtService({ secret: 'test' } as any);
+    const prismaMock: any = {
+      organization: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValueOnce({ id: 11, parentId: 1 })
+          .mockResolvedValueOnce({ id: 1, parentId: null }),
+      },
+      businessUnitAdmin: { findMany: jest.fn().mockResolvedValue([]) },
+      businessUnit: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    jest.spyOn(fakeJwt, 'verify' as any).mockImplementation(() => ({
+      userId: 7,
+      role: 'ADMIN',
+      roles: ['ADMIN'],
+      organizationId: 11,
+    }));
+    const middleware = new TenantContextMiddleware(fakeJwt, prismaMock);
+    const request: any = {
+      headers: { 'x-organization-id': '1' },
+      cookies: { enterprise_access_token: 'child-admin-token' },
+    };
+
+    await middleware.use(request, {} as any, jest.fn());
+
+    expect(request.organizationId).toBe(1);
+    expect(request.homeOrganizationId).toBe(11);
   });
 });
