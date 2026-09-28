@@ -8,6 +8,10 @@ import { PermissionsGuard } from './permissions.guard';
 import { RolesGuard } from './roles.guard';
 import { Permission } from '../enums/permissions.enum';
 import { Role } from '../enums/role.enum';
+import { ROLES_KEY } from '../decorators/roles.decorator';
+import { LeadsController } from '../../leads/leads.controller';
+import { DealsController } from '../../deals/deals.controller';
+import { QuotesController } from '../../quotes/quotes.controller';
 
 function contextWithUser(user?: Record<string, unknown>): ExecutionContext {
   return {
@@ -49,5 +53,30 @@ describe('authorization guards', () => {
     expect(() =>
       guard.canActivate(contextWithUser({ role: Role.EMPLOYEE, roles: [] })),
     ).toThrow(ForbiddenException);
+  });
+
+  it('accepts case-insensitive role values from the request user', () => {
+    const reflector = {
+      getAllAndOverride: jest.fn().mockReturnValue([Role.ADMIN]),
+    } as unknown as Reflector;
+    const guard = new RolesGuard(reflector);
+
+    expect(() =>
+      guard.canActivate(
+        contextWithUser({ role: 'admin', roles: ['admin'] }),
+      ),
+    ).not.toThrow();
+  });
+
+  it('allows managers to read CRM records on the same controller paths as the service logic', () => {
+    expect(
+      Reflect.getMetadata(ROLES_KEY, LeadsController.prototype.findAll),
+    ).toEqual(expect.arrayContaining([Role.MANAGER]));
+    expect(
+      Reflect.getMetadata(ROLES_KEY, DealsController.prototype.findAll),
+    ).toEqual(expect.arrayContaining([Role.MANAGER]));
+    expect(
+      Reflect.getMetadata(ROLES_KEY, QuotesController.prototype.findAll),
+    ).toEqual(expect.arrayContaining([Role.MANAGER]));
   });
 });

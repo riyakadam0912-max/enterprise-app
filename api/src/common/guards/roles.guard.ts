@@ -16,6 +16,20 @@ interface RequestWithUser {
   method?: string;
 }
 
+const normalizeRoleName = (value: string | undefined | null): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return normalized ? normalized.toUpperCase() : null;
+};
+
+const normalizeRoleList = (values: string[] | undefined): string[] =>
+  (values ?? [])
+    .map((value) => normalizeRoleName(value))
+    .filter((value): value is string => value !== null);
+
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
@@ -29,15 +43,18 @@ export class RolesGuard implements CanActivate {
       [context.getHandler(), context.getClass()],
     );
 
+    const normalizedRequiredRoles = normalizeRoleList(requiredRoles);
+    const normalizedUserRoles = normalizeRoleList(user?.roles);
+    const normalizedUserRole = normalizeRoleName(user?.role);
+
     // Platform admins bypass role checks for privileged routes.
     const isPlatformAdmin =
-      user?.role === Role.ADMIN ||
-      user?.role === Role.SUPER_ADMIN ||
+      normalizedUserRole === Role.ADMIN ||
+      normalizedUserRole === Role.SUPER_ADMIN ||
       user?.isSuperAdmin === true ||
       user?.isPlatformAdmin === true ||
-      (user?.roles &&
-        (user.roles.includes(Role.ADMIN) ||
-          user.roles.includes(Role.SUPER_ADMIN)));
+      normalizedUserRoles.includes(Role.ADMIN) ||
+      normalizedUserRoles.includes(Role.SUPER_ADMIN);
 
     if (isPlatformAdmin) {
       return true;
@@ -51,11 +68,9 @@ export class RolesGuard implements CanActivate {
       throw new UnauthorizedException('Authentication is required');
     }
 
-    // Check both user.role and user.roles array
     const hasRole =
-      requiredRoles.includes(user.role) ||
-      (user.roles &&
-        user.roles.some((role: string) => requiredRoles.includes(role)));
+      normalizedRequiredRoles.includes(normalizedUserRole ?? '') ||
+      normalizedUserRoles.some((role) => normalizedRequiredRoles.includes(role));
 
     if (!hasRole) {
       throw new ForbiddenException('Access denied');
