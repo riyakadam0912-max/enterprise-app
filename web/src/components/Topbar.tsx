@@ -154,35 +154,30 @@ export default function Topbar() {
   if (pathname.includes('/add')) pageLabel = `Add ${segmentLabels[segments[segments.indexOf('add') - 1]] ?? ''}`;
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white/80 px-4 shadow-[0_12px_32px_-28px_rgba(15,23,42,0.45)] backdrop-blur sm:px-6">
+    <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white/90 px-3 shadow-[0_12px_28px_-28px_rgba(15,23,42,0.25)] backdrop-blur-sm sm:px-5">
 
-      {/* ── Breadcrumb ── */}
       <div className="flex min-w-0 items-center gap-1.5 text-sm">
         <span className="hidden text-slate-400 font-medium sm:inline">Enterprise Management</span>
         <ChevronRightIcon />
         <span className="truncate text-slate-900 font-semibold">{pageLabel}</span>
       </div>
 
-      {/* ── Right actions ── */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="hidden items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 md:flex">
+          <BusinessUnitSelector />
+        </div>
 
-        {/* Business Unit Selector */}
-        <BusinessUnitSelector />
-
-        <OrganizationSwitcher />
+        <div className="hidden items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 lg:flex">
+          <OrganizationSwitcher />
+        </div>
 
         {isSuperAdmin && <ImpersonationBanner />}
 
-        {/* Notification bell */}
         <NotificationBell />
 
-        {/* Divider */}
-        <div className="w-px h-6 bg-slate-200" />
-
-        {/* Organization name badge */}
         {orgName ? (
           <div
-            className="hidden sm:flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 max-w-45"
+            className="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 max-w-40 md:flex"
             title={orgName}
           >
             {orgLogo ? (
@@ -198,20 +193,15 @@ export default function Topbar() {
                 />
               </>
             ) : (
-              /* Initials fallback — 2-letter coloured avatar */
               <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-orange-500 text-[8px] font-bold text-white leading-none">
                 {getInitials(orgName)}
               </span>
             )}
-            <span className="truncate text-xs font-medium text-slate-700">{orgName}</span>
+            <span className="truncate text-[11px] font-medium text-slate-700">{orgName}</span>
           </div>
         ) : null}
 
-        {/* Divider */}
-        <div className="w-px h-6 bg-slate-200" />
-
-        {/* User avatar */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-1.5 py-1">
           <UserAvatar
             userId={session.user?.id}
             fileId={session.avatarFileId}
@@ -219,11 +209,10 @@ export default function Topbar() {
             className="bg-linear-to-br from-orange-500 to-amber-400 shadow-sm shadow-orange-500/20"
           />
           <div className="hidden sm:block">
-            <p className="text-xs font-semibold text-slate-800 leading-tight">{sessionUser.name}</p>
-            <p className="text-[10px] text-slate-400 leading-tight">{sessionUser.role}</p>
+            <p className="text-[11px] font-semibold text-slate-800 leading-tight">{sessionUser.name}</p>
+            <p className="text-[9px] text-slate-400 leading-tight">{sessionUser.role}</p>
           </div>
         </div>
-
       </div>
     </header>
   );
