@@ -24,6 +24,7 @@ import {
 } from '@/api/projectsApi';
 import { createTask, getTaskMessages, reviewTask, sendTaskMessage, submitTaskWork, updateTask, updateTaskStatus } from '@/api/tasksApi';
 import { apiClient } from '@/api/apiClient';
+import { createTimesheet, getTimesheetsReport } from '@/api/timesheetsApi';
 import { TaskDetailPanel } from '@/components/tasks/TaskDetailPanel';
 import { SuccessFeedback } from '@/components/feedback/SuccessFeedback';
 import { canAccessUsers } from '@/utils/auth/permissions';
@@ -166,7 +167,7 @@ function RichTextEditor({ value, onChange, placeholder }: { value: string; onCha
         role="textbox"
         aria-label={placeholder}
         onInput={(event) => onChange((event.currentTarget as HTMLDivElement).innerHTML)}
-        className="min-h-[120px] px-3 py-2.5 text-sm leading-6 text-slate-700 outline-none"
+        className="min-h-30 px-3 py-2.5 text-sm leading-6 text-slate-700 outline-none"
         data-placeholder={placeholder}
       />
     </div>
@@ -252,6 +253,16 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     priority: 'MEDIUM',
   });
   const [showTimeLogEntry, setShowTimeLogEntry] = useState(false);
+  const [timeLogEntries, setTimeLogEntries] = useState<Array<{
+    id: number;
+    employee: string;
+    date: string;
+    task: string;
+    hours: number;
+    status: string;
+    note: string | null;
+  }>>([]);
+  const [timeLogLoading, setTimeLogLoading] = useState(false);
   const [timeLogForm, setTimeLogForm] = useState({
     employee: '',
     date: new Date().toISOString().slice(0, 10),
@@ -414,6 +425,15 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
   }, [canLoadDirectoryData, initialProjectId]);
 
   useEffect(() => {
+    if (!selectedProjectId) {
+      setTimeLogEntries([]);
+      return;
+    }
+
+    void loadProjectTimeLogs(selectedProjectId);
+  }, [selectedProjectId]);
+
+  useEffect(() => {
     if (searchParams.get('create') === '1') {
       setShowProjectCreate(true);
     }
@@ -487,50 +507,6 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     });
   }, [availableEmployeeOptions, employeeSearch]);
 
-  const timeLogEntries = useMemo(() => {
-    const generatedEntries = (projectDetails?.tasks ?? []).slice(0, 5).map((task, index) => ({
-      id: task.id,
-      employee: task.assignedToUser?.name ?? 'Unassigned',
-      date: task.updatedAt ?? task.createdAt ?? new Date().toISOString(),
-      task: task.taskName,
-      hours: Number(task.actualHours ?? (index + 1) * 1.5),
-      status: index % 2 === 0 ? 'APPROVED' : 'PENDING',
-      note: task.description ?? 'Work completed for the project timeline.',
-    }));
-
-    if (generatedEntries.length > 0) return generatedEntries;
-
-    return [
-      {
-        id: 1,
-        employee: 'Aisha Patel',
-        date: '2026-09-25',
-        task: 'Brand asset preparation',
-        hours: 3.5,
-        status: 'APPROVED',
-        note: 'Reviewed creative references and started the final asset pack.',
-      },
-      {
-        id: 2,
-        employee: 'Rohan Mehta',
-        date: '2026-09-24',
-        task: 'Landing page adaptation',
-        hours: 4,
-        status: 'PENDING',
-        note: 'Adjusted responsive layout and QA pass for desktop review.',
-      },
-      {
-        id: 3,
-        employee: 'Nisha Shah',
-        date: '2026-09-23',
-        task: 'Content editing',
-        hours: 2.5,
-        status: 'APPROVED',
-        note: 'Final copy polish and deck formatting.',
-      },
-    ];
-  }, [projectDetails?.tasks]);
-
   const timeLogSummary = useMemo(() => {
     const totalHours = timeLogEntries.reduce((sum, entry) => sum + Number(entry.hours || 0), 0);
     const approvedHours = timeLogEntries
@@ -542,6 +518,59 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
 
     return { totalHours, approvedHours, pendingHours };
   }, [timeLogEntries]);
+
+  async function loadProjectTimeLogs(projectId: number) {
+    setTimeLogLoading(true);
+    try {
+      const response = await getTimesheetsReport({ projectId, limit: 50 });
+      setTimeLogEntries(
+        response.data.map((entry) => ({
+          id: entry.id,
+          employee: entry.employee?.name ?? 'Unassigned',
+          date: entry.date,
+          task: entry.task,
+          hours: Number(entry.hours ?? 0),
+          status: entry.status,
+          note: entry.notes ?? '',
+        })),
+      );
+    } catch (err) {
+      reportError(err, 'Unable to load project time logs');
+      setTimeLogEntries([]);
+    } finally {
+      setTimeLogLoading(false);
+    }
+  }
+
+  async function onSaveTimeLogEntry() {
+    if (!selectedProjectId) return;
+
+    try {
+      await createTimesheet({
+        task: timeLogForm.task.trim() || selectedTask?.taskName || projectDetails?.projectName || 'Project work',
+        project: projectDetails?.projectName ?? null,
+        projectId: selectedProjectId,
+        taskId: selectedTask?.id ?? null,
+        date: timeLogForm.date,
+        hours: Number(timeLogForm.hours || 0),
+        status: timeLogForm.status,
+        notes: timeLogForm.note.trim() || undefined,
+      });
+
+      setShowTimeLogEntry(false);
+      setTimeLogForm({
+        employee: '',
+        date: new Date().toISOString().slice(0, 10),
+        task: selectedTask?.taskName ?? '',
+        hours: '2',
+        note: '',
+        status: 'PENDING',
+      });
+      await loadProjectTimeLogs(selectedProjectId);
+    } catch (err) {
+      setActionFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to save time entry' });
+    }
+  }
 
   async function onProjectSelect(projectId: number) {
     if (!dedicated) {
@@ -1181,17 +1210,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setShowTimeLogEntry(false);
-                  setTimeLogForm({
-                    employee: '',
-                    date: new Date().toISOString().slice(0, 10),
-                    task: '',
-                    hours: '2',
-                    note: '',
-                    status: 'PENDING',
-                  });
-                }}
+                onClick={onSaveTimeLogEntry}
                 className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
               >
                 Save entry
@@ -1656,9 +1675,10 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                 <button
                   type="button"
                   onClick={() => setShowTimeLogEntry(true)}
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                  disabled={timeLogLoading}
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  + Add entry
+                  {timeLogLoading ? 'Loading...' : '+ Add entry'}
                 </button>
               </div>
 

@@ -18,6 +18,16 @@ export class CreateTimesheetDto {
   @ApiPropertyOptional({ example: 'sample-project' })
   project?: string;
 
+  @IsOptional()
+  @IsInt()
+  @ApiPropertyOptional({ example: 12 })
+  projectId?: number;
+
+  @IsOptional()
+  @IsInt()
+  @ApiPropertyOptional({ example: 34 })
+  taskId?: number;
+
   @IsDateString()
   @ApiProperty({ example: '2026-04-14' })
   date!: string;

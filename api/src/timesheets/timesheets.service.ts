@@ -46,6 +46,8 @@ export class TimesheetsService {
       limit = 10,
       status,
       project,
+      projectId,
+      taskId,
       dateFrom,
       dateTo,
       search,
@@ -57,8 +59,14 @@ export class TimesheetsService {
 
     if (status) where.status = status;
 
-    if (project) {
+    if (projectId) {
+      where.projectId = Number(projectId);
+    } else if (project) {
       where.project = { contains: project, mode: 'insensitive' };
+    }
+
+    if (taskId) {
+      where.taskId = Number(taskId);
     }
 
     if (dateFrom || dateTo) {
@@ -90,6 +98,8 @@ export class TimesheetsService {
       data: rows.map((t) => ({
         id: t.id,
         task: t.task,
+        projectId: t.projectId ?? null,
+        taskId: t.taskId ?? null,
         date: t.date.toISOString().split('T')[0],
         hours: t.hours,
         status: t.status,
@@ -110,6 +120,8 @@ export class TimesheetsService {
         organizationId,
         task: dto.task,
         project: dto.project,
+        projectId: dto.projectId,
+        taskId: dto.taskId,
         date: new Date(dto.date),
         hours: dto.hours,
         status: dto.status ?? 'PENDING',
@@ -142,6 +154,8 @@ export class TimesheetsService {
       data: {
         ...(dto.task !== undefined && { task: dto.task }),
         ...(dto.project !== undefined && { project: dto.project }),
+        ...(dto.projectId !== undefined && { projectId: dto.projectId }),
+        ...(dto.taskId !== undefined && { taskId: dto.taskId }),
         ...(dto.date !== undefined && { date: new Date(dto.date) }),
         ...(dto.hours !== undefined && { hours: dto.hours }),
         ...(dto.status !== undefined && { status: dto.status }),
@@ -161,6 +175,8 @@ export class TimesheetsService {
       const r = records[i];
       const task = typeof r.task === 'string' ? r.task : '';
       const project = typeof r.project === 'string' ? r.project : undefined;
+      const projectId = typeof r.projectId === 'number' ? r.projectId : Number(r.projectId);
+      const taskId = typeof r.taskId === 'number' ? r.taskId : Number(r.taskId);
       const date = typeof r.date === 'string' ? r.date : '';
       const hours = typeof r.hours === 'number' ? r.hours : Number(r.hours);
       const status = typeof r.status === 'string' ? r.status : 'PENDING';
@@ -184,6 +200,8 @@ export class TimesheetsService {
             organizationId,
             task,
             project,
+            projectId: Number.isFinite(projectId) ? projectId : undefined,
+            taskId: Number.isFinite(taskId) ? taskId : undefined,
             date: new Date(date),
             hours,
             status,

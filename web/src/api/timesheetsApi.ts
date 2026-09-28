@@ -4,6 +4,8 @@ export interface TimesheetRow {
   id: number;
   task: string;
   project: string | null;
+  projectId: number | null;
+  taskId: number | null;
   date: string;
   hours: number;
   status: string;
@@ -25,9 +27,29 @@ export interface TimesheetFilters {
   employee?: string;
   status?: string;
   project?: string;
+  projectId?: number;
+  taskId?: number;
   dateFrom?: string;
   dateTo?: string;
   search?: string;
+}
+
+export interface CreateTimesheetPayload {
+  task: string;
+  project?: string | null;
+  projectId?: number | null;
+  taskId?: number | null;
+  date: string;
+  hours: number;
+  status?: string;
+  notes?: string | null;
+}
+
+export async function createTimesheet(payload: CreateTimesheetPayload): Promise<TimesheetRow> {
+  return apiClient<TimesheetRow>('/timesheets', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function getTimesheetsReport(filters: TimesheetFilters = {}): Promise<TimesheetReportResponse> {

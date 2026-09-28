@@ -462,6 +462,8 @@ model Timesheet {
   id             Int          @id @default(autoincrement())
   task           String
   project        String?
+  projectId      Int?
+  taskId         Int?
   date           DateTime
   hours          Float
   status         String       @default("PENDING")
@@ -471,8 +473,12 @@ model Timesheet {
   deletedAt      DateTime?
   organizationId Int
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectRef     Project?     @relation("ProjectTimesheets", fields: [projectId], references: [id], onDelete: SetNull)
+  taskRef        Task?        @relation("TaskTimesheets", fields: [taskId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
+  @@index([projectId])
+  @@index([taskId])
 }
 
 model Deal {
@@ -544,6 +550,7 @@ model Task {
   organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   projectRef       Project?      @relation("ProjectTasks", fields: [projectId], references: [id])
   reviewedByUser   User?         @relation("TaskReviewedBy", fields: [reviewedBy], references: [id])
+  timesheets       Timesheet[]   @relation("TaskTimesheets")
   messages         TaskMessage[]
 
   @@index([organizationId])
@@ -726,6 +733,7 @@ model Project {
   customerId            Int?
   customer              Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
   tasks                 Task[]           @relation("ProjectTasks")
+  timesheets            Timesheet[]      @relation("ProjectTimesheets")
   assignedEmployees     Employee[]       @relation("ProjectAssignedEmployees")
   coManagers            User[]           @relation("ProjectCoManagers")
 

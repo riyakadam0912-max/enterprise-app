@@ -19,6 +19,16 @@ export class UpdateTimesheetDto {
   project?: string;
 
   @IsOptional()
+  @IsNumber()
+  @ApiPropertyOptional({ example: 12 })
+  projectId?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @ApiPropertyOptional({ example: 34 })
+  taskId?: number;
+
+  @IsOptional()
   @IsDateString()
   @ApiPropertyOptional({ example: '2026-04-14' })
   date?: string;
