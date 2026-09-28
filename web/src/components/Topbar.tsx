@@ -163,45 +163,45 @@ export default function Topbar() {
       </div>
 
       <div className="flex items-center gap-1.5 sm:gap-2">
-        <div className="hidden items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 md:flex">
+        <div className="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50/80 p-1 md:flex">
           <BusinessUnitSelector />
-        </div>
-
-        <div className="hidden items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 lg:flex">
+          <div className="h-5 w-px bg-slate-200" aria-hidden="true" />
           <OrganizationSwitcher />
         </div>
 
         {isSuperAdmin && <ImpersonationBanner />}
 
-        <NotificationBell />
+        <div className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50/80 p-1">
+          <NotificationBell />
 
-        {orgName ? (
-          <div
-            className="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 max-w-40 md:flex"
-            title={orgName}
-          >
-            {orgLogo ? (
-              <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={orgLogo}
-                  alt={orgName}
-                  className="h-4 w-4 rounded-full object-cover shrink-0"
-                  onError={(event) => {
-                    (event.currentTarget as HTMLImageElement).style.display = 'none';
-                  }}
-                />
-              </>
-            ) : (
-              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-orange-500 text-[8px] font-bold text-white leading-none">
-                {getInitials(orgName)}
-              </span>
-            )}
-            <span className="truncate text-[11px] font-medium text-slate-700">{orgName}</span>
-          </div>
-        ) : null}
+          {orgName ? (
+            <div
+              className="hidden items-center gap-1.5 rounded-full bg-white px-2 py-1 max-w-40 md:flex"
+              title={orgName}
+            >
+              {orgLogo ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={orgLogo}
+                    alt={orgName}
+                    className="h-4 w-4 rounded-full object-cover shrink-0"
+                    onError={(event) => {
+                      (event.currentTarget as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                </>
+              ) : (
+                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-orange-500 text-[8px] font-bold text-white leading-none">
+                  {getInitials(orgName)}
+                </span>
+              )}
+              <span className="truncate text-[11px] font-medium text-slate-700">{orgName}</span>
+            </div>
+          ) : null}
+        </div>
 
-        <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-1.5 py-1">
+        <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-1.5 py-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <UserAvatar
             userId={session.user?.id}
             fileId={session.avatarFileId}

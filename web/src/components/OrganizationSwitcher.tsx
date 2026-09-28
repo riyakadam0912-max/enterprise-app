@@ -66,7 +66,7 @@ export function OrganizationSwitcher() {
         value={activeOrganizationId}
         disabled={switching}
         onChange={(event) => void handleChange(event.target.value)}
-        className="max-w-44 rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs font-medium text-slate-700 outline-none hover:border-slate-300 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:opacity-60"
+        className="max-w-40 appearance-none rounded-full border border-slate-200 bg-white px-2.5 py-1.5 pr-7 text-[11px] font-medium text-slate-700 outline-none transition-colors hover:border-slate-300 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:opacity-60"
       >
         {organizations.map((organization) => (
           <option key={organization.id} value={organization.id}>
