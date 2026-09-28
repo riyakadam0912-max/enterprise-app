@@ -11,7 +11,7 @@ export default function AddProjectPage() {
   }, [router]);
 
   return (
-    <div className="flex min-h-[240px] items-center justify-center p-6 text-sm text-slate-500">
+    <div className="flex min-h-60 items-center justify-center p-6 text-sm text-slate-500">
       Redirecting to the project creation drawer...
     </div>
   );

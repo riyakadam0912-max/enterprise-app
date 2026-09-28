@@ -478,14 +478,17 @@ export default function Sidebar({ currentPath }: SidebarProps) {
         <div className="sidebar-brand flex items-center justify-between px-4 py-4 lg:px-5">
           <div className="flex min-w-0 items-center gap-3">
             {session.organizationLogo ? (
-              <img
-                src={session.organizationLogo}
-                alt={session.organizationName ?? 'Organization logo'}
-                className="sidebar-brand-mark h-9 w-9 shrink-0 rounded-xl object-cover"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = 'none';
-                }}
-              />
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={session.organizationLogo}
+                  alt={session.organizationName ?? 'Organization logo'}
+                  className="sidebar-brand-mark h-9 w-9 shrink-0 rounded-xl object-cover"
+                  onError={(event) => {
+                    (event.currentTarget as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              </>
             ) : (
               <div className="sidebar-brand-mark flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-500">
                 <span className="text-base font-bold text-white">

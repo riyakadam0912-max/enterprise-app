@@ -83,7 +83,7 @@ export function BusinessUnitSelector() {
             d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4"
           />
         </svg>
-        <span className="truncate max-w-[200px]">{displayLabel}</span>
+        <span className="truncate max-w-50">{displayLabel}</span>
         <svg
           className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
           fill="none"

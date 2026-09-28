@@ -94,21 +94,6 @@ function formatDate(value?: string | null) {
   });
 }
 
-function statusBadgeClass(status: string) {
-  return status === 'COMPLETED'
-    ? 'bg-emerald-100 text-emerald-700'
-    : 'bg-orange-100 text-orange-700';
-}
-
-function progressColorClass(progressPercent?: number | null) {
-  if (progressPercent === null || progressPercent === undefined) {
-    return 'bg-gray-300';
-  }
-  if (progressPercent >= 75) return 'bg-emerald-500';
-  if (progressPercent >= 40) return 'bg-amber-400';
-  return 'bg-rose-500';
-}
-
 function formatBudget(value?: number | null) {
   if (!value) {
     return 'Not set';
@@ -371,8 +356,17 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
   }, [activeTab, selectedProjectId, canViewChat]);
 
   useEffect(() => {
-    getCustomers().then(setCustomerOptions).catch(() => setCustomerOptions([]));
-  }, []);
+    const canLoadCustomers = ['SUPER_ADMIN', 'ADMIN', 'COMPLIANCE_MANAGER', 'HR', 'MANAGER'].includes(role ?? '');
+
+    if (!canLoadCustomers) {
+      setCustomerOptions([]);
+      return;
+    }
+
+    getCustomers()
+      .then(setCustomerOptions)
+      .catch(() => setCustomerOptions([]));
+  }, [role]);
 
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -990,7 +984,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                     <select
                       value={managerSelection}
                       onChange={(e) => setManagerSelection(e.target.value)}
-                      className="min-w-[170px] border-0 bg-transparent pr-1 text-sm font-medium text-slate-700 outline-none"
+                      className="min-w-42.5 border-0 bg-transparent pr-1 text-sm font-medium text-slate-700 outline-none"
                     >
                       <option value="">Assign manager</option>
                       {managers.map((manager) => (
@@ -1015,7 +1009,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                     <select
                       value={projectDetails.status}
                       onChange={(e) => onUpdateProjectStatus(e.target.value)}
-                      className="min-w-[150px] border-0 bg-transparent pr-1 text-sm font-medium text-slate-700 outline-none"
+                      className="min-w-37.5 border-0 bg-transparent pr-1 text-sm font-medium text-slate-700 outline-none"
                     >
                       <option value="NOT_STARTED">Not started</option>
                       <option value="IN_PROGRESS">In progress</option>

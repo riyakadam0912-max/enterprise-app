@@ -125,6 +125,8 @@ export function TaskDetailPanel({
       onSubmitTask={onSubmitTask}
       onReviewTask={onReviewTask}
       onEditTask={onEditTask}
+      onLoadMessages={onLoadMessages}
+      onSendMessage={onSendMessage}
       onUpdateStatus={onUpdateStatus}
       busy={busy}
     />

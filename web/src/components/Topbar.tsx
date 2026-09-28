@@ -182,16 +182,21 @@ export default function Topbar() {
         {/* Organization name badge */}
         {orgName ? (
           <div
-            className="hidden sm:flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 max-w-[180px]"
+            className="hidden sm:flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 max-w-45"
             title={orgName}
           >
             {orgLogo ? (
-              <img
-                src={orgLogo}
-                alt={orgName}
-                className="h-4 w-4 rounded-full object-cover shrink-0"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-              />
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={orgLogo}
+                  alt={orgName}
+                  className="h-4 w-4 rounded-full object-cover shrink-0"
+                  onError={(event) => {
+                    (event.currentTarget as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              </>
             ) : (
               /* Initials fallback — 2-letter coloured avatar */
               <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-orange-500 text-[8px] font-bold text-white leading-none">
@@ -211,7 +216,7 @@ export default function Topbar() {
             userId={session.user?.id}
             fileId={session.avatarFileId}
             name={sessionUser.name}
-            className="bg-gradient-to-br from-orange-500 to-amber-400 shadow-sm shadow-orange-500/20"
+            className="bg-linear-to-br from-orange-500 to-amber-400 shadow-sm shadow-orange-500/20"
           />
           <div className="hidden sm:block">
             <p className="text-xs font-semibold text-slate-800 leading-tight">{sessionUser.name}</p>

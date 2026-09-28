@@ -27,7 +27,7 @@ import { AuditContextMiddleware } from './audit-logs/audit-context.middleware';
 import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware';
 import { resolveRedisConnection } from './config/redis';
 import { EmailModule } from './email/email.module';
-import { ClientPortalModule } from './client-portal/client-portal.module';
+import { ClientPortalModule } from './client-portal/client-portal.module.js';
 import { CustomersModule } from './customers/customers.module';
 
 const redisConnection = resolveRedisConnection(process.env);
