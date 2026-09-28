@@ -71,6 +71,23 @@ const tabs: Array<{ id: ProjectTab; label: string }> = [
   { id: 'timeLogs', label: 'Time Logs' },
 ];
 
+const PROJECT_CATEGORY_OPTIONS = [
+  'Video Editing',
+  'Shoots',
+  'Graphic',
+  'Designing',
+  'UI/UX Designing',
+  'Photo Editing',
+  'Motion Graphic Designing',
+  'Content Writing',
+  'Social Media Posting',
+  'Reports',
+  'Frontend Development',
+  'Backend Development',
+  'App Development',
+  'Website Development',
+];
+
 const taskStatusClass: Record<string, string> = {
   PENDING: 'bg-slate-200 text-slate-700',
   IN_PROGRESS: 'bg-blue-100 text-blue-700',
@@ -102,6 +119,58 @@ function formatBudget(value?: number | null) {
   return `₹${new Intl.NumberFormat('en-IN', {
     maximumFractionDigits: 0,
   }).format(value)}`;
+}
+
+function RichTextEditor({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) {
+  const editorRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (editorRef.current && editorRef.current.innerHTML !== value) {
+      editorRef.current.innerHTML = value;
+    }
+  }, [value]);
+
+  const applyCommand = (command: string, arg?: string) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    document.execCommand(command, false, arg);
+    onChange(editor.innerHTML);
+  };
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2">
+        {[
+          { label: 'B', command: 'bold', className: 'font-bold' },
+          { label: 'I', command: 'italic', className: 'italic' },
+          { label: 'U', command: 'underline', className: 'underline' },
+          { label: '• List', command: 'insertUnorderedList' },
+          { label: '1. List', command: 'insertOrderedList' },
+        ].map((tool) => (
+          <button
+            key={tool.label}
+            type="button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => applyCommand(tool.command)}
+            className={`rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:border-slate-300 ${tool.className ?? ''}`}
+          >
+            {tool.label}
+          </button>
+        ))}
+      </div>
+      <div
+        ref={editorRef}
+        contentEditable
+        suppressContentEditableWarning
+        role="textbox"
+        aria-label={placeholder}
+        onInput={(event) => onChange((event.currentTarget as HTMLDivElement).innerHTML)}
+        className="min-h-[120px] px-3 py-2.5 text-sm leading-6 text-slate-700 outline-none"
+        data-placeholder={placeholder}
+      />
+    </div>
+  );
 }
 
 export default function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { initialProjectId?: number; dedicated?: boolean } = {}) {
@@ -866,7 +935,12 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                     <input value={projectCreateForm.projectName} onChange={(event) => setProjectCreateForm((current) => ({ ...current, projectName: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Project name" />
                     <div className="grid gap-3 sm:grid-cols-2">
                       <input value={projectCreateForm.clientName} onChange={(event) => setProjectCreateForm((current) => ({ ...current, clientName: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Client name" />
-                      <input value={projectCreateForm.category} onChange={(event) => setProjectCreateForm((current) => ({ ...current, category: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Category" />
+                      <select value={projectCreateForm.category} onChange={(event) => setProjectCreateForm((current) => ({ ...current, category: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
+                        <option value="">Category</option>
+                        {PROJECT_CATEGORY_OPTIONS.map((option) => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <select value={projectCreateForm.projectType} onChange={(event) => setProjectCreateForm((current) => ({ ...current, projectType: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
@@ -920,7 +994,10 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                   <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Details</p>
                   <div className="space-y-3">
                     <input value={projectCreateForm.specificTask} onChange={(event) => setProjectCreateForm((current) => ({ ...current, specificTask: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Primary project task" />
-                    <textarea value={projectCreateForm.description} onChange={(event) => setProjectCreateForm((current) => ({ ...current, description: event.target.value }))} rows={5} className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Project description" />
+                    <div className="space-y-2">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Project description</label>
+                      <RichTextEditor value={projectCreateForm.description} onChange={(value) => setProjectCreateForm((current) => ({ ...current, description: value }))} placeholder="Project description" />
+                    </div>
                     <textarea value={projectCreateForm.remarks} onChange={(event) => setProjectCreateForm((current) => ({ ...current, remarks: event.target.value }))} rows={3} className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Remarks" />
                   </div>
                 </div>
@@ -1098,7 +1175,10 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                   <div className="mb-2 flex items-center justify-between gap-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Project Summary</p>
                   </div>
-                  <p className="whitespace-pre-wrap wrap-break-word text-sm text-slate-700">{projectDetails.description ?? 'No description available.'}</p>
+                  <div
+                    className="prose prose-sm max-w-none text-sm text-slate-700"
+                    dangerouslySetInnerHTML={{ __html: projectDetails.description || '<p>No description available.</p>' }}
+                  />
                   <div className="mt-4 space-y-1 text-sm text-slate-600">
                     <p>Start: {formatDate(projectDetails.startDate)}</p>
                     <p>Deadline: {formatDate(projectDetails.deadline ?? projectDetails.endDate)}</p>
@@ -1206,20 +1286,13 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                     className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
                   >
                     <option value="">Category</option>
-                    <option value="Development">Development</option>
-                    <option value="Design">Design</option>
-                    <option value="Testing">Testing</option>
-                    <option value="Review">Review</option>
-                    <option value="Documentation">Documentation</option>
-                    <option value="Other">Other</option>
+                    {PROJECT_CATEGORY_OPTIONS.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
                   </select>
-                  <textarea
-                    value={taskForm.description}
-                    onChange={(e) => setTaskForm((prev) => ({ ...prev, description: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm md:col-span-2"
-                    placeholder="Describe what the employee needs to do. Include steps, context, and any reference materials."
-                    rows={4}
-                  />
+                  <div className="md:col-span-2">
+                    <RichTextEditor value={taskForm.description} onChange={(value) => setTaskForm((prev) => ({ ...prev, description: value }))} placeholder="Describe what the employee needs to do. Include steps, context, and any reference materials." />
+                  </div>
                   <input
                     value={taskForm.links}
                     onChange={(e) => setTaskForm((prev) => ({ ...prev, links: e.target.value }))}
@@ -1606,7 +1679,12 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                       <input value={projectNameDraft} onChange={(event) => setProjectNameDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Project name" />
                       <div className="grid gap-3 sm:grid-cols-2">
                         <input value={projectClientNameDraft} onChange={(event) => setProjectClientNameDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Client name" />
-                        <input value={projectCategoryDraft} onChange={(event) => setProjectCategoryDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Category" />
+                        <select value={projectCategoryDraft} onChange={(event) => setProjectCategoryDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
+                          <option value="">Category</option>
+                          {PROJECT_CATEGORY_OPTIONS.map((option) => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
+                        </select>
                       </div>
                       <div className="grid gap-3 sm:grid-cols-2">
                         <select value={projectTypeDraft} onChange={(event) => setProjectTypeDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
@@ -1642,7 +1720,10 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                     <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Details</p>
                     <div className="space-y-3">
                       <input value={projectSpecificTaskDraft} onChange={(event) => setProjectSpecificTaskDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Primary project task" />
-                      <textarea value={projectDescriptionDraft} onChange={(event) => setProjectDescriptionDraft(event.target.value)} rows={5} className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Project description" />
+                      <div className="space-y-2">
+                        <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Project description</label>
+                        <RichTextEditor value={projectDescriptionDraft} onChange={setProjectDescriptionDraft} placeholder="Project description" />
+                      </div>
                       <textarea value={projectRemarksDraft} onChange={(event) => setProjectRemarksDraft(event.target.value)} rows={3} className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Remarks" />
                     </div>
                   </div>
