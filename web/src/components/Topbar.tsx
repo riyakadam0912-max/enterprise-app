@@ -165,7 +165,6 @@ export default function Topbar() {
       <div className="flex items-center gap-1.5 sm:gap-2">
         <div className="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50/80 p-1 md:flex">
           <BusinessUnitSelector />
-          <div className="h-5 w-px bg-slate-200" aria-hidden="true" />
           <OrganizationSwitcher />
         </div>
 

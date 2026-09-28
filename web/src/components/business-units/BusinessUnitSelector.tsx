@@ -64,11 +64,13 @@ export function BusinessUnitSelector() {
 
   return (
     <div className="relative inline-block">
-      {/* Button */}
       <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
         disabled={isSwitching}
-        className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+        aria-label="Switch business unit"
+        title={displayLabel}
+        className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <svg
           className="h-3.5 w-3.5"
@@ -81,20 +83,6 @@ export function BusinessUnitSelector() {
             strokeLinejoin="round"
             strokeWidth={2}
             d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4"
-          />
-        </svg>
-        <span className="max-w-[6rem] truncate">{displayLabel}</span>
-        <svg
-          className={`h-3.5 w-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 14l-7 7m0 0l-7-7m7 7V3"
           />
         </svg>
       </button>
