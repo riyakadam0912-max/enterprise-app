@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { reportError } from '@/lib/error-handling';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { getCustomers, type Customer } from '@/api/customersApi';
 import {
   addCoManager,
   assignProjectManager,
   assignEmployee,
+  createProject,
   getProject,
   getProjectProgress,
   getProjects,
@@ -133,7 +135,32 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [showProjectCreate, setShowProjectCreate] = useState(false);
   const [showProjectEdit, setShowProjectEdit] = useState(false);
+  const [projectCreateForm, setProjectCreateForm] = useState({
+    projectName: '',
+    startDate: '',
+    endDate: '',
+    clientName: '',
+    category: '',
+    projectType: '',
+    specificTask: '',
+    priority: 'MEDIUM',
+    budget: '',
+    remarks: '',
+    finalDeliverablesLink: '',
+    client: '',
+    description: '',
+    driveLink: '',
+    managerId: role === 'MANAGER' && userId ? String(userId) : '',
+    manager: role === 'MANAGER' && userId ? session.user?.name ?? '' : '',
+    ownerId: '',
+    status: '',
+    customerId: '',
+    tags: '',
+  });
+  const [customerOptions, setCustomerOptions] = useState<Customer[]>([]);
+  const [createProjectBusy, setCreateProjectBusy] = useState(false);
   const [projectNameDraft, setProjectNameDraft] = useState('');
   const [projectStartDateDraft, setProjectStartDateDraft] = useState('');
   const [projectEndDateDraft, setProjectEndDateDraft] = useState('');
@@ -174,6 +201,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
   const [chatLoading, setChatLoading] = useState(false);
   const [taskSubmitting, setTaskSubmitting] = useState(false);
   const [busy, setBusy] = useState(false);
+  const searchParams = useSearchParams();
   const projectRequestId = useRef(0);
 
   const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN';
@@ -323,6 +351,12 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
   }, [canLoadDirectoryData, initialProjectId]);
 
   useEffect(() => {
+    if (searchParams.get('create') === '1') {
+      setShowProjectCreate(true);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     if (activeTab === 'chat' && selectedProjectId && canViewChat) {
       void loadMessages(selectedProjectId);
       const interval = window.setInterval(() => {
@@ -335,6 +369,10 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, selectedProjectId, canViewChat]);
+
+  useEffect(() => {
+    getCustomers().then(setCustomerOptions).catch(() => setCustomerOptions([]));
+  }, []);
 
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -448,6 +486,80 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
       setActionFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to update project' });
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function onCreateProject() {
+    if (!((role === 'ADMIN' || role === 'SUPER_ADMIN' || role === 'MANAGER'))) {
+      setActionFeedback({ type: 'error', message: 'You do not have permission to create projects.' });
+      return;
+    }
+
+    if (!projectCreateForm.projectName.trim()) {
+      setActionFeedback({ type: 'error', message: 'Project name is required.' });
+      return;
+    }
+
+    setCreateProjectBusy(true);
+    setActionFeedback(null);
+
+    try {
+      const createdProject = await createProject({
+        projectName: projectCreateForm.projectName.trim(),
+        startDate: projectCreateForm.startDate || undefined,
+        endDate: projectCreateForm.endDate || undefined,
+        manager: projectCreateForm.manager.trim() || undefined,
+        managerId: projectCreateForm.managerId ? Number(projectCreateForm.managerId) : undefined,
+        ownerId: projectCreateForm.ownerId ? Number(projectCreateForm.ownerId) : null,
+        status: projectCreateForm.status || undefined,
+        description: projectCreateForm.description.trim() || undefined,
+        client: projectCreateForm.client.trim() || undefined,
+        clientName: projectCreateForm.clientName.trim() || undefined,
+        category: projectCreateForm.category.trim() || undefined,
+        projectType: projectCreateForm.projectType || undefined,
+        specificTask: projectCreateForm.specificTask.trim() || undefined,
+        priority: projectCreateForm.priority || undefined,
+        budget: projectCreateForm.budget ? Number(projectCreateForm.budget) : undefined,
+        remarks: projectCreateForm.remarks.trim() || undefined,
+        finalDeliverablesLink: projectCreateForm.finalDeliverablesLink.trim() || undefined,
+        driveLink: projectCreateForm.driveLink.trim() || undefined,
+        customerId: projectCreateForm.customerId ? Number(projectCreateForm.customerId) : null,
+        tags: projectCreateForm.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
+      });
+
+      setProjectCreateForm({
+        projectName: '',
+        startDate: '',
+        endDate: '',
+        clientName: '',
+        category: '',
+        projectType: '',
+        specificTask: '',
+        priority: 'MEDIUM',
+        budget: '',
+        remarks: '',
+        finalDeliverablesLink: '',
+        client: '',
+        description: '',
+        driveLink: '',
+        managerId: userId ? String(userId) : '',
+        manager: isManager && userId ? session.user?.name ?? '' : '',
+        ownerId: '',
+        status: '',
+        customerId: '',
+        tags: '',
+      });
+
+      setShowProjectCreate(false);
+      await refreshProjects(createdProject.id);
+      setActionFeedback({ type: 'success', message: 'Project created successfully.' });
+      if (typeof window !== 'undefined') {
+        window.history.replaceState({}, '', '/dashboard/projects');
+      }
+    } catch (err) {
+      setActionFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to create project.' });
+    } finally {
+      setCreateProjectBusy(false);
     }
   }
 
@@ -705,7 +817,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
           </div>
           {(isAdmin || isManager) && (
             <button
-              onClick={() => router.push('/dashboard/projects/add')}
+              onClick={() => setShowProjectCreate(true)}
               className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600"
             >
               + Create Project
@@ -1367,6 +1479,108 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
             </div>
           )}
         </section>
+
+        {showProjectCreate && (
+          <>
+            <button
+              type="button"
+              aria-label="Close create project drawer"
+              onClick={() => setShowProjectCreate(false)}
+              className="fixed inset-0 z-40 cursor-default bg-slate-950/20"
+            />
+            <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col bg-white shadow-2xl">
+              <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Project settings</p>
+                  <h2 className="mt-1 text-xl font-semibold text-slate-950">Create project</h2>
+                </div>
+                <button type="button" onClick={() => setShowProjectCreate(false)} className="text-2xl leading-none text-slate-400 hover:text-slate-900" aria-label="Close create project drawer">×</button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-6 py-6">
+                <div className="space-y-7">
+                  <div>
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Identity</p>
+                    <div className="space-y-3">
+                      <input value={projectCreateForm.projectName} onChange={(event) => setProjectCreateForm((current) => ({ ...current, projectName: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Project name" />
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <input value={projectCreateForm.clientName} onChange={(event) => setProjectCreateForm((current) => ({ ...current, clientName: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Client name" />
+                        <input value={projectCreateForm.category} onChange={(event) => setProjectCreateForm((current) => ({ ...current, category: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Category" />
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <select value={projectCreateForm.projectType} onChange={(event) => setProjectCreateForm((current) => ({ ...current, projectType: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
+                          <option value="">Project type</option>
+                          <option value="EVENT_MANAGEMENT">Event management</option>
+                          <option value="PRODUCTION_EM">Production EM</option>
+                          <option value="DIGITAL_MARKETING">Digital marketing</option>
+                          <option value="PRODUCTION_DM">Production DM</option>
+                          <option value="PRODUCTION_OTHER">Production other</option>
+                          <option value="TECH_PROJECTS">Tech projects</option>
+                        </select>
+                        <input value={projectCreateForm.client} onChange={(event) => setProjectCreateForm((current) => ({ ...current, client: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Client reference" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Schedule and priority</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <input type="date" value={projectCreateForm.startDate} onChange={(event) => setProjectCreateForm((current) => ({ ...current, startDate: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                      <input type="date" value={projectCreateForm.endDate} onChange={(event) => setProjectCreateForm((current) => ({ ...current, endDate: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                      <select value={projectCreateForm.priority} onChange={(event) => setProjectCreateForm((current) => ({ ...current, priority: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
+                        <option value="LOW">Low</option>
+                        <option value="MEDIUM">Medium</option>
+                        <option value="HIGH">High</option>
+                        <option value="CRITICAL">Critical</option>
+                      </select>
+                      <input type="number" min="0" value={projectCreateForm.budget} onChange={(event) => setProjectCreateForm((current) => ({ ...current, budget: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Budget" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Ownership</p>
+                    <div className="space-y-3">
+                      <select value={projectCreateForm.managerId} onChange={(event) => setProjectCreateForm((current) => ({ ...current, managerId: event.target.value, manager: managers.find((manager) => String(manager.id) === event.target.value)?.name ?? current.manager }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
+                        <option value="">Assign manager</option>
+                        {managers.map((manager) => (
+                          <option key={manager.id} value={String(manager.id)}>{manager.name}</option>
+                        ))}
+                      </select>
+                      <select value={projectCreateForm.customerId} onChange={(event) => setProjectCreateForm((current) => ({ ...current, customerId: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
+                        <option value="">No customer linked</option>
+                        {customerOptions.map((customer) => (
+                          <option key={customer.id} value={String(customer.id)}>{customer.customerName}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Details</p>
+                    <div className="space-y-3">
+                      <input value={projectCreateForm.specificTask} onChange={(event) => setProjectCreateForm((current) => ({ ...current, specificTask: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Primary project task" />
+                      <textarea value={projectCreateForm.description} onChange={(event) => setProjectCreateForm((current) => ({ ...current, description: event.target.value }))} rows={5} className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Project description" />
+                      <textarea value={projectCreateForm.remarks} onChange={(event) => setProjectCreateForm((current) => ({ ...current, remarks: event.target.value }))} rows={3} className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Remarks" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Links</p>
+                    <div className="space-y-3">
+                      <input value={projectCreateForm.driveLink} onChange={(event) => setProjectCreateForm((current) => ({ ...current, driveLink: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Google Drive link" />
+                      <input value={projectCreateForm.finalDeliverablesLink} onChange={(event) => setProjectCreateForm((current) => ({ ...current, finalDeliverablesLink: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Final deliverables link" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-6 py-4">
+                <button type="button" onClick={() => setShowProjectCreate(false)} className="rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+                <button type="button" disabled={createProjectBusy} onClick={onCreateProject} className="rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">{createProjectBusy ? 'Creating...' : 'Create project'}</button>
+              </div>
+            </aside>
+          </>
+        )}
 
         {showProjectEdit && (
           <>

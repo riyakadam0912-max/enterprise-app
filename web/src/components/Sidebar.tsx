@@ -176,9 +176,8 @@ const navConfig: NavItem[] = [
   {
     type: 'dropdown', id: 'projects', label: 'Projects', icon: <FolderIcon />,
     children: [
-      { label: '+ Projects',   href: '/dashboard/projects/add',          icon: <PlusCircleIcon /> },
-      { label: 'All Projects', href: '/dashboard/projects',              icon: <ReportIcon /> },
-      { label: 'Statuses',     href: '/dashboard/projects/statuses',     icon: <KanbanIcon /> },
+      { label: 'All Projects', href: '/dashboard/projects',          icon: <ReportIcon /> },
+      { label: 'Statuses',     href: '/dashboard/projects/statuses', icon: <KanbanIcon /> },
     ],
   },
   {

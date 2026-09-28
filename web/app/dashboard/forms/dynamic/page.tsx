@@ -321,14 +321,6 @@ const SECTIONS: SectionDef[] = [
     description: 'Deliver work through projects and tasks',
     items: [
       {
-        label: 'Add Project',
-        description: 'Initiate a new client or internal project',
-        href: '/dashboard/projects/add',
-        iconBg: 'bg-blue-50',
-        iconColor: 'text-blue-600',
-        Icon: IconFolder,
-      },
-      {
         label: 'Add Task',
         description: 'Create an actionable work item',
         href: '/dashboard/tasks/add',
