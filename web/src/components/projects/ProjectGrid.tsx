@@ -31,7 +31,12 @@ export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted, 
   const [visible, setVisible] = useState<Record<string, boolean>>({});
   const [widths, setWidths] = useState<Record<string, number>>({});
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const preferenceKey = 'erp-table-preferences:projects';
+
+  const statusOptions = ['ALL', 'IN_PROGRESS', 'COMPLETED', 'BLOCKED_CANCELLED', 'IN_APPROVAL'];
 
   useEffect(() => {
     try {
@@ -48,6 +53,22 @@ export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted, 
   }, [visible, widths]);
 
   const columns = useMemo(() => DEFAULT_COLUMNS.filter((column) => visible[column.key] !== false), [visible]);
+
+  const filteredProjects = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+
+    return projects.filter((project) => {
+      const matchesSearch =
+        term.length === 0 ||
+        project.projectName.toLowerCase().includes(term) ||
+        (project.customer?.customerName ?? project.clientName ?? project.client ?? '').toLowerCase().includes(term) ||
+        (project.owner?.name ?? project.managerUser?.name ?? project.manager ?? '').toLowerCase().includes(term) ||
+        project.status.toLowerCase().includes(term);
+
+      const matchesStatus = statusFilter === 'ALL' || project.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [projects, searchTerm, statusFilter]);
 
   function resetColumns() {
     setVisible(Object.fromEntries(DEFAULT_COLUMNS.map((column) => [column.key, true])));
@@ -81,25 +102,113 @@ export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted, 
     }
   }
 
+  function SearchIcon() {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4 text-slate-400">
+        <circle cx="11" cy="11" r="6" />
+        <path d="M16 16L21 21" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  function FilterIcon() {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+        <path d="M4 6H20" strokeLinecap="round" />
+        <path d="M7 12H17" strokeLinecap="round" />
+        <path d="M10 18H14" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
-        <div className="flex items-center gap-3"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Spreadsheet view</p>{selectedIds.length > 0 && <span className="text-xs font-semibold text-orange-600">{selectedIds.length} selected</span>}</div>
-        <details className="relative">
-          <summary className="cursor-pointer list-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Columns</summary>
-          <div className="absolute right-0 z-20 mt-2 w-56 rounded-lg border border-slate-200 bg-white p-3 shadow-xl">
-            {DEFAULT_COLUMNS.map((column) => <label key={column.key} className="flex items-center gap-2 py-1.5 text-sm text-slate-700"><input type="checkbox" checked={visible[column.key] !== false} onChange={(event) => setVisible((current) => ({ ...current, [column.key]: event.target.checked }))} />{column.label}</label>)}
-            <button type="button" onClick={resetColumns} className="mt-2 w-full border-t border-slate-100 pt-2 text-left text-xs font-semibold text-orange-600">Reset columns</button>
+      <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+        <div className="flex items-center gap-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Spreadsheet view</p>
+          {selectedIds.length > 0 && <span className="text-xs font-semibold text-orange-600">{selectedIds.length} selected</span>}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">
+              <SearchIcon />
+            </span>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search projects"
+              aria-label="Search projects"
+              className="w-52 rounded-full border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-700 outline-none transition focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
+            />
           </div>
-        </details>
+
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsFilterOpen((open) => !open)}
+              className={`flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition ${
+                statusFilter !== 'ALL' ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+              }`}
+            >
+              <FilterIcon />
+              <span>Filter</span>
+              {statusFilter !== 'ALL' && <span className="rounded-full bg-orange-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{1}</span>}
+            </button>
+
+            {isFilterOpen && (
+              <div className="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+                {statusOptions.map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => {
+                      setStatusFilter(status);
+                      setIsFilterOpen(false);
+                    }}
+                    className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-sm transition ${
+                      statusFilter === status ? 'bg-orange-50 text-orange-700' : 'text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>{status === 'ALL' ? 'All statuses' : status.replaceAll('_', ' ')}</span>
+                    {statusFilter === status && <span className="text-xs font-semibold">✓</span>}
+                  </button>
+                ))}
+                {statusFilter !== 'ALL' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStatusFilter('ALL');
+                      setIsFilterOpen(false);
+                    }}
+                    className="mt-2 w-full rounded-lg border border-slate-200 px-2.5 py-2 text-left text-xs font-semibold text-slate-600"
+                  >
+                    Clear filter
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          <details className="relative">
+            <summary className="cursor-pointer list-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Columns</summary>
+            <div className="absolute right-0 z-20 mt-2 w-56 rounded-lg border border-slate-200 bg-white p-3 shadow-xl">
+              {DEFAULT_COLUMNS.map((column) => <label key={column.key} className="flex items-center gap-2 py-1.5 text-sm text-slate-700"><input type="checkbox" checked={visible[column.key] !== false} onChange={(event) => setVisible((current) => ({ ...current, [column.key]: event.target.checked }))} />{column.label}</label>)}
+              <button type="button" onClick={resetColumns} className="mt-2 w-full border-t border-slate-100 pt-2 text-left text-xs font-semibold text-orange-600">Reset columns</button>
+            </div>
+          </details>
+        </div>
       </div>
+
       {selectedIds.length > 0 && <div className="flex items-center gap-2 border-b border-orange-100 bg-orange-50 px-4 py-2"><button type="button" onClick={exportSelected} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">Export CSV</button><button type="button" onClick={() => void deleteSelected()} className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white">Delete</button><button type="button" onClick={() => setSelectedIds([])} className="text-xs font-semibold text-slate-500">Clear</button></div>}
+
       <div className="overflow-x-auto">
         <table className="min-w-max border-collapse text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50"><tr><th className="sticky left-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-3"><input type="checkbox" checked={projects.length > 0 && selectedIds.length === projects.length} onChange={(event) => setSelectedIds(event.target.checked ? projects.map((project) => project.id) : [])} aria-label="Select all projects" /></th>{columns.map((column, index) => <th key={column.key} style={{ width: widths[column.key] ?? column.width }} className={`relative whitespace-nowrap border-b border-slate-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 ${index < 2 ? 'sticky z-10 bg-slate-50' : ''}`}><span className="block">{column.label}</span><span role="separator" aria-label={`Resize ${column.label}`} onMouseDown={(event) => { const start = event.clientX; const initial = widths[column.key] ?? column.width; const move = (moveEvent: MouseEvent) => setWidths((current) => ({ ...current, [column.key]: Math.max(70, initial + moveEvent.clientX - start) })); const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); }; window.addEventListener('mousemove', move); window.addEventListener('mouseup', up); }} className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-orange-400" /></th>)}</tr></thead>
-          <tbody className="divide-y divide-slate-100">{projects.map((project) => <tr key={project.id} tabIndex={0} onClick={() => onSelect(project.id)} onKeyDown={(event) => { if (event.key === 'Enter') onSelect(project.id); }} className={`cursor-pointer transition hover:bg-orange-50/50 ${selectedProjectId === project.id ? 'bg-orange-50' : ''}`}><td className="sticky left-0 z-10 bg-white px-3 py-3" onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={selectedIds.includes(project.id)} onChange={() => toggleSelected(project.id)} aria-label={`Select project ${project.projectName}`} /></td>{columns.map((column, index) => <td key={column.key} className={`whitespace-nowrap px-4 py-3 text-slate-700 ${index < 2 ? 'sticky z-10 bg-white' : ''}`}>{column.key === 'projectName' ? <span className="font-semibold text-slate-900">{column.getValue(project)}</span> : column.key === 'status' ? <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusClass[project.status] ?? 'bg-slate-100 text-slate-600'}`}>{column.getValue(project)}</span> : column.getValue(project)}</td>)}</tr>)}</tbody>
+          <tbody className="divide-y divide-slate-100">{filteredProjects.map((project) => <tr key={project.id} tabIndex={0} onClick={() => onSelect(project.id)} onKeyDown={(event) => { if (event.key === 'Enter') onSelect(project.id); }} className={`cursor-pointer transition hover:bg-orange-50/50 ${selectedProjectId === project.id ? 'bg-orange-50' : ''}`}><td className="sticky left-0 z-10 bg-white px-3 py-3" onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={selectedIds.includes(project.id)} onChange={() => toggleSelected(project.id)} aria-label={`Select project ${project.projectName}`} /></td>{columns.map((column, index) => <td key={column.key} className={`whitespace-nowrap px-4 py-3 text-slate-700 ${index < 2 ? 'sticky z-10 bg-white' : ''}`}>{column.key === 'projectName' ? <span className="font-semibold text-slate-900">{column.getValue(project)}</span> : column.key === 'status' ? <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusClass[project.status] ?? 'bg-slate-100 text-slate-600'}`}>{column.getValue(project)}</span> : column.getValue(project)}</td>)}</tr>)}</tbody>
         </table>
-        {projects.length === 0 && <p className="px-4 py-10 text-center text-sm text-slate-500">No projects found.</p>}
+        {filteredProjects.length === 0 && <p className="px-4 py-10 text-center text-sm text-slate-500">No matching projects found.</p>}
       </div>
     </div>
   );
