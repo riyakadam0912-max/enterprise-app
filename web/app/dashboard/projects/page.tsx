@@ -847,6 +847,108 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
         </div>
       )}
 
+      {showProjectCreate && (
+        <>
+          <button
+            type="button"
+            aria-label="Close create project drawer"
+            onClick={() => setShowProjectCreate(false)}
+            className="fixed inset-0 z-40 cursor-default bg-slate-950/20"
+          />
+          <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Project settings</p>
+                <h2 className="mt-1 text-xl font-semibold text-slate-950">Create project</h2>
+              </div>
+              <button type="button" onClick={() => setShowProjectCreate(false)} className="text-2xl leading-none text-slate-400 hover:text-slate-900" aria-label="Close create project drawer">×</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-6">
+              <div className="space-y-7">
+                <div>
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Identity</p>
+                  <div className="space-y-3">
+                    <input value={projectCreateForm.projectName} onChange={(event) => setProjectCreateForm((current) => ({ ...current, projectName: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Project name" />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <input value={projectCreateForm.clientName} onChange={(event) => setProjectCreateForm((current) => ({ ...current, clientName: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Client name" />
+                      <input value={projectCreateForm.category} onChange={(event) => setProjectCreateForm((current) => ({ ...current, category: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Category" />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <select value={projectCreateForm.projectType} onChange={(event) => setProjectCreateForm((current) => ({ ...current, projectType: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
+                        <option value="">Project type</option>
+                        <option value="EVENT_MANAGEMENT">Event management</option>
+                        <option value="PRODUCTION_EM">Production EM</option>
+                        <option value="DIGITAL_MARKETING">Digital marketing</option>
+                        <option value="PRODUCTION_DM">Production DM</option>
+                        <option value="PRODUCTION_OTHER">Production other</option>
+                        <option value="TECH_PROJECTS">Tech projects</option>
+                      </select>
+                      <input value={projectCreateForm.client} onChange={(event) => setProjectCreateForm((current) => ({ ...current, client: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Client reference" />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Schedule and priority</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <input type="date" value={projectCreateForm.startDate} onChange={(event) => setProjectCreateForm((current) => ({ ...current, startDate: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                    <input type="date" value={projectCreateForm.endDate} onChange={(event) => setProjectCreateForm((current) => ({ ...current, endDate: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                    <select value={projectCreateForm.priority} onChange={(event) => setProjectCreateForm((current) => ({ ...current, priority: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
+                      <option value="LOW">Low</option>
+                      <option value="MEDIUM">Medium</option>
+                      <option value="HIGH">High</option>
+                      <option value="CRITICAL">Critical</option>
+                    </select>
+                    <input type="number" min="0" value={projectCreateForm.budget} onChange={(event) => setProjectCreateForm((current) => ({ ...current, budget: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Budget" />
+                  </div>
+                </div>
+
+                <div>
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Ownership</p>
+                  <div className="space-y-3">
+                    <select value={projectCreateForm.managerId} onChange={(event) => setProjectCreateForm((current) => ({ ...current, managerId: event.target.value, manager: managers.find((manager) => String(manager.id) === event.target.value)?.name ?? current.manager }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
+                      <option value="">Assign manager</option>
+                      {managers.map((manager) => (
+                        <option key={manager.id} value={String(manager.id)}>{manager.name}</option>
+                      ))}
+                    </select>
+                    <select value={projectCreateForm.customerId} onChange={(event) => setProjectCreateForm((current) => ({ ...current, customerId: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
+                      <option value="">No customer linked</option>
+                      {customerOptions.map((customer) => (
+                        <option key={customer.id} value={String(customer.id)}>{customer.customerName}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Details</p>
+                  <div className="space-y-3">
+                    <input value={projectCreateForm.specificTask} onChange={(event) => setProjectCreateForm((current) => ({ ...current, specificTask: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Primary project task" />
+                    <textarea value={projectCreateForm.description} onChange={(event) => setProjectCreateForm((current) => ({ ...current, description: event.target.value }))} rows={5} className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Project description" />
+                    <textarea value={projectCreateForm.remarks} onChange={(event) => setProjectCreateForm((current) => ({ ...current, remarks: event.target.value }))} rows={3} className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Remarks" />
+                  </div>
+                </div>
+
+                <div>
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Links</p>
+                  <div className="space-y-3">
+                    <input value={projectCreateForm.driveLink} onChange={(event) => setProjectCreateForm((current) => ({ ...current, driveLink: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Google Drive link" />
+                    <input value={projectCreateForm.finalDeliverablesLink} onChange={(event) => setProjectCreateForm((current) => ({ ...current, finalDeliverablesLink: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Final deliverables link" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-6 py-4">
+              <button type="button" onClick={() => setShowProjectCreate(false)} className="rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+              <button type="button" disabled={createProjectBusy} onClick={onCreateProject} className="rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">{createProjectBusy ? 'Creating...' : 'Create project'}</button>
+            </div>
+          </aside>
+        </>
+      )}
+
       {dedicated && projectDetails && (
         <>
         <section className="-mx-6 -mt-6 min-h-screen bg-white px-6 pb-10 pt-5">
@@ -1479,108 +1581,6 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
             </div>
           )}
         </section>
-
-        {showProjectCreate && (
-          <>
-            <button
-              type="button"
-              aria-label="Close create project drawer"
-              onClick={() => setShowProjectCreate(false)}
-              className="fixed inset-0 z-40 cursor-default bg-slate-950/20"
-            />
-            <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col bg-white shadow-2xl">
-              <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Project settings</p>
-                  <h2 className="mt-1 text-xl font-semibold text-slate-950">Create project</h2>
-                </div>
-                <button type="button" onClick={() => setShowProjectCreate(false)} className="text-2xl leading-none text-slate-400 hover:text-slate-900" aria-label="Close create project drawer">×</button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto px-6 py-6">
-                <div className="space-y-7">
-                  <div>
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Identity</p>
-                    <div className="space-y-3">
-                      <input value={projectCreateForm.projectName} onChange={(event) => setProjectCreateForm((current) => ({ ...current, projectName: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Project name" />
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <input value={projectCreateForm.clientName} onChange={(event) => setProjectCreateForm((current) => ({ ...current, clientName: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Client name" />
-                        <input value={projectCreateForm.category} onChange={(event) => setProjectCreateForm((current) => ({ ...current, category: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Category" />
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <select value={projectCreateForm.projectType} onChange={(event) => setProjectCreateForm((current) => ({ ...current, projectType: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
-                          <option value="">Project type</option>
-                          <option value="EVENT_MANAGEMENT">Event management</option>
-                          <option value="PRODUCTION_EM">Production EM</option>
-                          <option value="DIGITAL_MARKETING">Digital marketing</option>
-                          <option value="PRODUCTION_DM">Production DM</option>
-                          <option value="PRODUCTION_OTHER">Production other</option>
-                          <option value="TECH_PROJECTS">Tech projects</option>
-                        </select>
-                        <input value={projectCreateForm.client} onChange={(event) => setProjectCreateForm((current) => ({ ...current, client: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Client reference" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Schedule and priority</p>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <input type="date" value={projectCreateForm.startDate} onChange={(event) => setProjectCreateForm((current) => ({ ...current, startDate: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
-                      <input type="date" value={projectCreateForm.endDate} onChange={(event) => setProjectCreateForm((current) => ({ ...current, endDate: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
-                      <select value={projectCreateForm.priority} onChange={(event) => setProjectCreateForm((current) => ({ ...current, priority: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
-                        <option value="LOW">Low</option>
-                        <option value="MEDIUM">Medium</option>
-                        <option value="HIGH">High</option>
-                        <option value="CRITICAL">Critical</option>
-                      </select>
-                      <input type="number" min="0" value={projectCreateForm.budget} onChange={(event) => setProjectCreateForm((current) => ({ ...current, budget: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Budget" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Ownership</p>
-                    <div className="space-y-3">
-                      <select value={projectCreateForm.managerId} onChange={(event) => setProjectCreateForm((current) => ({ ...current, managerId: event.target.value, manager: managers.find((manager) => String(manager.id) === event.target.value)?.name ?? current.manager }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
-                        <option value="">Assign manager</option>
-                        {managers.map((manager) => (
-                          <option key={manager.id} value={String(manager.id)}>{manager.name}</option>
-                        ))}
-                      </select>
-                      <select value={projectCreateForm.customerId} onChange={(event) => setProjectCreateForm((current) => ({ ...current, customerId: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
-                        <option value="">No customer linked</option>
-                        {customerOptions.map((customer) => (
-                          <option key={customer.id} value={String(customer.id)}>{customer.customerName}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Details</p>
-                    <div className="space-y-3">
-                      <input value={projectCreateForm.specificTask} onChange={(event) => setProjectCreateForm((current) => ({ ...current, specificTask: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Primary project task" />
-                      <textarea value={projectCreateForm.description} onChange={(event) => setProjectCreateForm((current) => ({ ...current, description: event.target.value }))} rows={5} className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Project description" />
-                      <textarea value={projectCreateForm.remarks} onChange={(event) => setProjectCreateForm((current) => ({ ...current, remarks: event.target.value }))} rows={3} className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Remarks" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Links</p>
-                    <div className="space-y-3">
-                      <input value={projectCreateForm.driveLink} onChange={(event) => setProjectCreateForm((current) => ({ ...current, driveLink: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Google Drive link" />
-                      <input value={projectCreateForm.finalDeliverablesLink} onChange={(event) => setProjectCreateForm((current) => ({ ...current, finalDeliverablesLink: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Final deliverables link" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-6 py-4">
-                <button type="button" onClick={() => setShowProjectCreate(false)} className="rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
-                <button type="button" disabled={createProjectBusy} onClick={onCreateProject} className="rounded-lg bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">{createProjectBusy ? 'Creating...' : 'Create project'}</button>
-              </div>
-            </aside>
-          </>
-        )}
 
         {showProjectEdit && (
           <>
