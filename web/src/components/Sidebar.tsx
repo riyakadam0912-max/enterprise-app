@@ -70,9 +70,8 @@ const navConfig: NavItem[] = [
   {
     type: 'dropdown', id: 'timesheets', label: 'Timesheets', icon: <ClockIcon />,
     children: [
-      { label: '+ Timesheets',      href: '/dashboard/timesheets/add',       icon: <PlusCircleIcon /> },
-      { label: 'Timesheets Report', href: '/dashboard/timesheets',           icon: <ReportIcon /> },
-      { label: 'Statuses',          href: '/dashboard/timesheets/statuses',  icon: <KanbanIcon /> },
+      { label: 'Timesheets Report', href: '/dashboard/timesheets',          icon: <ReportIcon /> },
+      { label: 'Statuses',          href: '/dashboard/timesheets/statuses', icon: <KanbanIcon /> },
     ],
   },
   { type: 'link', label: 'Attendance', href: '/dashboard/attendance', icon: <CalendarCheckIcon /> },

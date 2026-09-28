@@ -207,14 +207,6 @@ const SECTIONS: SectionDef[] = [
     description: 'Track time worked and attendance events',
     items: [
       {
-        label: 'Add Timesheet',
-        description: 'Log hours against tasks & projects',
-        href: '/dashboard/timesheets/add',
-        iconBg: 'bg-amber-50',
-        iconColor: 'text-amber-600',
-        Icon: IconClock,
-      },
-      {
         label: 'Attendance',
         description: 'Record check-in / check-out',
         href: '/dashboard/attendance',
