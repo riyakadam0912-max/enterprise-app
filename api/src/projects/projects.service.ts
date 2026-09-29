@@ -591,6 +591,15 @@ export class ProjectsService {
             OR: [
               { assignedToUserId: user.userId },
               ...(user.employeeId ? [{ assignedToId: user.employeeId }] : []),
+              ...(user.employeeId
+                ? [
+                    {
+                      projectRef: {
+                        assignedEmployees: { some: { id: user.employeeId } },
+                      },
+                    },
+                  ]
+                : []),
             ],
           }
         : {
@@ -629,6 +638,10 @@ export class ProjectsService {
     const tasks = await this.db.task.findMany({
       where: tasksWhere,
       include: {
+        timerSessions: {
+          include: { user: { select: { id: true, name: true, email: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
         assignedToUser: { select: { id: true, name: true, email: true } },
         assignedByUser: { select: { id: true, name: true, email: true } },
       },

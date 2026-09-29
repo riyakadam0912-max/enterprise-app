@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient';
+import type { TaskTimerSession } from './tasksApi';
 
 export interface Project {
   id: number;
@@ -54,6 +55,7 @@ export interface Project {
   tasks?: Array<{
     id: number;
     taskName: string;
+    assignedToId?: number | null;
     assignedToUserId?: number | null;
     assignedToUser?: { id: number; name: string; email: string } | null;
     assignedByUser?: { id: number; name: string; email: string } | null;
@@ -67,12 +69,8 @@ export interface Project {
     estimatedHours?: number | null;
     completionPercent?: number | null;
     actualHours?: number | null;
-    timerStatus?: 'IDLE' | 'RUNNING' | 'PAUSED' | 'STOPPED';
-    timerDurationSeconds?: number;
-    timerRemainingSeconds?: number;
-    timerStartedAt?: string | null;
-    timerStartedByUserId?: number | null;
-    timerTotalSeconds?: number;
+    timerSessions?: TaskTimerSession[];
+    legacyTimerTotalSeconds?: number;
     createdAt?: string;
     updatedAt?: string;
     notes: string | null;

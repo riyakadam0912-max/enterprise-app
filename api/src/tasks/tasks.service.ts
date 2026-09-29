@@ -118,6 +118,15 @@ export class TasksService {
           { assignedToUserId: user.userId },
           { assignedByUserId: user.userId },
           ...(user.employeeId ? [{ assignedToId: user.employeeId }] : []),
+          ...(user.employeeId
+            ? [
+                {
+                  projectRef: {
+                    assignedEmployees: { some: { id: user.employeeId } },
+                  },
+                },
+              ]
+            : []),
         ],
       } as Prisma.TaskWhereInput;
     }
@@ -321,6 +330,10 @@ export class TasksService {
     return this.db.task.findMany({
       where,
       include: {
+        timerSessions: {
+          include: { user: { select: { id: true, name: true, email: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
         projectRef: {
           select: { id: true, projectName: true, managerId: true },
         },
@@ -337,6 +350,10 @@ export class TasksService {
     const task = await this.db.task.findFirst({
       where: { id, ...where },
       include: {
+        timerSessions: {
+          include: { user: { select: { id: true, name: true, email: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
         projectRef: {
           select: { id: true, projectName: true, managerId: true },
         },
@@ -387,229 +404,298 @@ export class TasksService {
     });
   }
 
-  async updateTimer(taskId: number, dto: UpdateTaskTimerDto, user: AuthUser) {
+  private async assertTaskTimerAccess(taskId: number, user: AuthUser) {
     const organizationId = this.validateOrganization(user);
-    if (!(await this.canManageTask(taskId, user))) {
-      throw new ForbiddenException(
-        'Only admins or the project manager can control task timers',
-      );
-    }
-
     const task = await this.db.task.findFirst({
       where: { id: taskId, organizationId, deletedAt: null },
+      select: {
+        id: true,
+        organizationId: true,
+        taskName: true,
+        project: true,
+        projectId: true,
+        estimatedHours: true,
+        assignedToUserId: true,
+        assignedByUserId: true,
+        assignedToId: true,
+        projectRef: {
+          select: {
+            managerId: true,
+            coManagers: { where: { organizationId }, select: { id: true } },
+            assignedEmployees: {
+              where: { organizationId },
+              select: { id: true },
+            },
+          },
+        },
+      },
     });
     if (!task) throw new NotFoundException(`Task #${taskId} not found`);
 
+    const canManage = await this.canManageTask(taskId, user);
+    const isDirectlyAssigned =
+      task.assignedToUserId === user.userId ||
+      task.assignedByUserId === user.userId;
+    const isManagerOnProject =
+      user.role === Role.MANAGER &&
+      (task.projectRef?.managerId === user.userId ||
+        task.projectRef?.coManagers.some(
+          (manager) => manager.id === user.userId,
+        ));
+    const isEmployeeOnProject =
+      user.role === Role.EMPLOYEE &&
+      user.employeeId != null &&
+      (task.assignedToId === user.employeeId ||
+        task.projectRef?.assignedEmployees.some(
+          (employee) => employee.id === user.employeeId,
+        ));
+    if (
+      !canManage &&
+      !isDirectlyAssigned &&
+      !isManagerOnProject &&
+      !isEmployeeOnProject
+    ) {
+      throw new ForbiddenException('You cannot track time for this task');
+    }
+    return task;
+  }
+
+  private async findTaskWithTimerSessions(
+    taskId: number,
+    organizationId: number,
+  ) {
+    return this.db.task.findFirstOrThrow({
+      where: { id: taskId, organizationId },
+      include: {
+        timerSessions: {
+          include: { user: { select: { id: true, name: true, email: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+  }
+
+  async updateTimer(taskId: number, dto: UpdateTaskTimerDto, user: AuthUser) {
+    const task = await this.assertTaskTimerAccess(taskId, user);
+    const organizationId = task.organizationId;
+    const userId = user.userId;
     const now = new Date();
+    const session = await this.db.taskTimerSession.findFirst({
+      where: {
+        taskId,
+        userId,
+        organizationId,
+        status: { in: ['RUNNING', 'PAUSED'] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!session && dto.action === 'stop') {
+      return this.findTaskWithTimerSessions(taskId, organizationId);
+    }
+
     if (dto.action === 'start') {
-      if (task.timerStatus === 'RUNNING' || task.timerStatus === 'PAUSED') {
-        throw new ConflictException('This task timer is already active');
+      if (session) {
+        throw new ConflictException(
+          'You already have an active timer for this task',
+        );
       }
       if (!task.estimatedHours || task.estimatedHours <= 0) {
         throw new BadRequestException(
           'Set a task estimate before starting its countdown',
         );
       }
-      const runningTimer = await this.db.task.findFirst({
-        where: {
-          organizationId,
-          deletedAt: null,
-          timerStatus: 'RUNNING',
-          timerStartedByUserId: user.userId,
-          id: { not: taskId },
-        },
-        select: { id: true, taskName: true },
+      const otherRunningTimer = await this.db.taskTimerSession.findFirst({
+        where: { organizationId, userId, status: 'RUNNING' },
+        include: { task: { select: { taskName: true } } },
       });
-      if (runningTimer) {
+      if (otherRunningTimer) {
         throw new ConflictException(
-          `Timer is already running for task: ${runningTimer.taskName}`,
+          `Your timer is already running for task: ${otherRunningTimer.task.taskName}`,
         );
       }
-      const durationSeconds = Math.max(
-        1,
-        Math.round(task.estimatedHours * 3600),
-      );
-      let changed: { count: number };
       try {
-        changed = await this.db.task.updateMany({
-          where: { id: taskId, organizationId, timerStatus: task.timerStatus },
+        await this.db.taskTimerSession.create({
           data: {
-            timerStatus: 'RUNNING',
-            timerDurationSeconds: durationSeconds,
-            timerRemainingSeconds: durationSeconds,
-            timerStartedAt: now,
-            timerStartedByUserId: user.userId,
+            taskId,
+            userId,
+            organizationId,
+            status: 'RUNNING',
+            durationSeconds: Math.max(
+              1,
+              Math.round(task.estimatedHours * 3600),
+            ),
+            remainingSeconds: Math.max(
+              1,
+              Math.round(task.estimatedHours * 3600),
+            ),
+            startedAt: now,
           },
         });
       } catch (error) {
         if (this.isTimerUniquenessConflict(error)) {
-          throw new ConflictException('You already have a running task timer');
+          throw new ConflictException('You already have an active task timer');
         }
         throw error;
       }
-      if (changed.count !== 1) {
-        throw new ConflictException(
-          'Task timer changed; refresh and try again',
-        );
-      }
-      return this.db.task.findFirstOrThrow({
-        where: { id: taskId, organizationId },
-      });
+      return this.findTaskWithTimerSessions(taskId, organizationId);
+    }
+
+    if (!session) {
+      throw new BadRequestException(
+        'You do not have an active timer for this task',
+      );
     }
 
     if (dto.action === 'pause') {
-      if (task.timerStatus !== 'RUNNING' || !task.timerStartedAt) {
+      if (session.status !== 'RUNNING' || !session.startedAt) {
         throw new BadRequestException('Only a running timer can be paused');
       }
+      const elapsedSeconds = Math.max(
+        0,
+        Math.floor((now.getTime() - session.startedAt.getTime()) / 1000),
+      );
       const remainingSeconds = Math.max(
         0,
-        task.timerRemainingSeconds -
-          Math.floor((now.getTime() - task.timerStartedAt.getTime()) / 1000),
+        session.remainingSeconds - elapsedSeconds,
       );
       if (remainingSeconds === 0) {
-        return this.finishTaskTimer(task, organizationId, dto.notes, user, now);
+        await this.finishTaskTimerSession(session, task, user, now, 0);
+      } else {
+        const updated = await this.db.taskTimerSession.updateMany({
+          where: {
+            id: session.id,
+            status: 'RUNNING',
+            startedAt: session.startedAt,
+          },
+          data: {
+            status: 'PAUSED',
+            remainingSeconds,
+            startedAt: null,
+            totalSeconds: session.totalSeconds + elapsedSeconds,
+          },
+        });
+        if (updated.count !== 1) {
+          throw new ConflictException('Timer changed; refresh and try again');
+        }
       }
-      const changed = await this.db.task.updateMany({
-        where: {
-          id: taskId,
-          organizationId,
-          timerStatus: 'RUNNING',
-          timerStartedAt: task.timerStartedAt,
-        },
-        data: {
-          timerStatus: 'PAUSED',
-          timerRemainingSeconds: remainingSeconds,
-          timerStartedAt: null,
-        },
-      });
-      if (changed.count !== 1) {
-        throw new ConflictException(
-          'Task timer changed; refresh and try again',
-        );
-      }
-      return this.db.task.findFirstOrThrow({
-        where: { id: taskId, organizationId },
-      });
+      return this.findTaskWithTimerSessions(taskId, organizationId);
     }
 
     if (dto.action === 'resume') {
-      if (task.timerStatus !== 'PAUSED') {
+      if (session.status !== 'PAUSED') {
         throw new BadRequestException('Only a paused timer can be resumed');
       }
-      const runningTimer = await this.db.task.findFirst({
+      const otherRunningTimer = await this.db.taskTimerSession.findFirst({
         where: {
           organizationId,
-          deletedAt: null,
-          timerStatus: 'RUNNING',
-          timerStartedByUserId: task.timerStartedByUserId,
-          id: { not: taskId },
+          userId,
+          status: 'RUNNING',
+          id: { not: session.id },
         },
-        select: { id: true, taskName: true },
+        include: { task: { select: { taskName: true } } },
       });
-      if (runningTimer) {
+      if (otherRunningTimer) {
         throw new ConflictException(
-          `Timer is already running for task: ${runningTimer.taskName}`,
+          `Your timer is already running for task: ${otherRunningTimer.task.taskName}`,
         );
       }
-      let changed: { count: number };
       try {
-        changed = await this.db.task.updateMany({
-          where: { id: taskId, organizationId, timerStatus: 'PAUSED' },
-          data: { timerStatus: 'RUNNING', timerStartedAt: now },
+        const updated = await this.db.taskTimerSession.updateMany({
+          where: { id: session.id, status: 'PAUSED' },
+          data: { status: 'RUNNING', startedAt: now },
         });
+        if (updated.count !== 1) {
+          throw new ConflictException('Timer changed; refresh and try again');
+        }
       } catch (error) {
         if (this.isTimerUniquenessConflict(error)) {
-          throw new ConflictException('You already have a running task timer');
+          throw new ConflictException('You already have an active task timer');
         }
         throw error;
       }
-      if (changed.count !== 1) {
-        throw new ConflictException(
-          'Task timer changed; refresh and try again',
-        );
-      }
-      return this.db.task.findFirstOrThrow({
-        where: { id: taskId, organizationId },
-      });
+      return this.findTaskWithTimerSessions(taskId, organizationId);
     }
 
-    if (task.timerStatus !== 'RUNNING' && task.timerStatus !== 'PAUSED') {
+    if (session.status !== 'RUNNING' && session.status !== 'PAUSED') {
       throw new BadRequestException('There is no active timer to stop');
     }
-    return this.finishTaskTimer(task, organizationId, dto.notes, user, now);
+    const remainingSeconds =
+      session.status === 'RUNNING' && session.startedAt
+        ? Math.max(
+            0,
+            session.remainingSeconds -
+              Math.floor((now.getTime() - session.startedAt.getTime()) / 1000),
+          )
+        : session.remainingSeconds;
+    await this.finishTaskTimerSession(
+      session,
+      task,
+      user,
+      now,
+      remainingSeconds,
+      dto.notes,
+    );
+    return this.findTaskWithTimerSessions(taskId, organizationId);
   }
 
-  private async finishTaskTimer(
+  private async finishTaskTimerSession(
+    session: {
+      id: number;
+      status: string;
+      startedAt: Date | null;
+      durationSeconds: number;
+      remainingSeconds: number;
+      totalSeconds: number;
+    },
     task: {
       id: number;
-      timerStatus: string;
-      timerStartedAt: Date | null;
-      timerStartedByUserId: number | null;
-      timerDurationSeconds: number;
-      timerRemainingSeconds: number;
-      timerTotalSeconds: number;
+      organizationId: number;
       taskName: string;
       project: string | null;
       projectId: number | null;
     },
-    organizationId: number,
-    notes: string | undefined,
     user: AuthUser,
     now: Date,
+    remainingSeconds: number,
+    notes?: string,
   ) {
-    const remainingSeconds =
-      task.timerStatus === 'RUNNING' && task.timerStartedAt
-        ? Math.max(
-            0,
-            task.timerRemainingSeconds -
-              Math.floor(
-                (now.getTime() - task.timerStartedAt.getTime()) / 1000,
-              ),
-          )
-        : task.timerRemainingSeconds;
-    const elapsedSeconds = Math.max(
-      1,
-      task.timerDurationSeconds - remainingSeconds,
-    );
-    const startedByUserId = task.timerStartedByUserId ?? user.userId;
-
+    const elapsedSeconds =
+      session.status === 'RUNNING' && session.startedAt
+        ? Math.max(0, session.remainingSeconds - remainingSeconds)
+        : 0;
+    const totalSeconds = session.totalSeconds + elapsedSeconds;
     return this.db.$transaction(async (tx) => {
-      const changed = await tx.task.updateMany({
+      const updated = await tx.taskTimerSession.updateMany({
         where: {
-          id: task.id,
-          organizationId,
-          timerStatus: task.timerStatus,
-          timerStartedAt: task.timerStartedAt,
+          id: session.id,
+          status: session.status,
+          startedAt: session.startedAt,
         },
         data: {
-          timerStatus: 'STOPPED',
-          timerRemainingSeconds: 0,
-          timerStartedAt: null,
-          timerStartedByUserId: null,
-          timerTotalSeconds: task.timerTotalSeconds + elapsedSeconds,
+          status: 'STOPPED',
+          remainingSeconds: 0,
+          startedAt: null,
+          totalSeconds,
         },
       });
-      if (changed.count !== 1) {
-        throw new ConflictException(
-          'Task timer changed; refresh and try again',
-        );
+      if (updated.count !== 1) {
+        throw new ConflictException('Timer changed; refresh and try again');
       }
       await tx.timesheet.create({
         data: {
-          organizationId,
+          organizationId: task.organizationId,
           task: task.taskName,
           project: task.project,
           taskId: task.id,
           projectId: task.projectId,
-          date: task.timerStartedAt ?? now,
-          hours: elapsedSeconds / 3600,
+          timerSessionId: session.id,
+          date: session.startedAt ?? now,
+          hours: Math.max(1, totalSeconds) / 3600,
           status: 'PENDING',
           notes: notes?.trim() || 'Tracked with task countdown timer',
-          createdByUserId: startedByUserId,
+          createdByUserId: user.userId,
         },
-      });
-      return tx.task.findFirstOrThrow({
-        where: { id: task.id, organizationId },
       });
     });
   }

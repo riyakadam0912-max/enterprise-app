@@ -3,16 +3,22 @@ import { TasksService } from './tasks.service';
 import { Role } from '../common/enums/role.enum';
 import type { AuthUser } from '../common/types/auth';
 
-describe('TasksService task countdown timer', () => {
+describe('TasksService per-user task timer sessions', () => {
   const organizationId = 12;
-  const admin = {
-    id: 5,
-    userId: 5,
-    organizationId,
-    role: Role.ADMIN,
-  } as AuthUser;
-
-  const baseTask = {
+  const makeUser = (
+    userId: number,
+    role: Role,
+    employeeId: number | null = null,
+  ) =>
+    ({
+      id: userId,
+      userId,
+      organizationId,
+      employeeId,
+      role,
+    }) as AuthUser;
+  const admin = makeUser(5, Role.ADMIN);
+  const task = {
     id: 8,
     organizationId,
     deletedAt: null,
@@ -20,51 +26,48 @@ describe('TasksService task countdown timer', () => {
     project: 'Spring campaign',
     projectId: 42,
     estimatedHours: 1,
-    timerStatus: 'IDLE',
-    timerDurationSeconds: 0,
-    timerRemainingSeconds: 0,
-    timerStartedAt: null,
-    timerStartedByUserId: null,
-    timerTotalSeconds: 0,
+    assignedToUserId: 11,
+    assignedToId: 101,
+    projectRef: { assignedEmployees: [{ id: 101 }, { id: 102 }] },
   };
 
   let service: TasksService;
   let prisma: {
-    task: {
+    task: { findFirst: jest.Mock; findFirstOrThrow: jest.Mock };
+    taskTimerSession: {
       findFirst: jest.Mock;
+      create: jest.Mock;
       updateMany: jest.Mock;
-      findFirstOrThrow: jest.Mock;
     };
     $transaction: jest.Mock;
-    timesheet: { create: jest.Mock };
   };
-  let transaction: {
-    task: { updateMany: jest.Mock; findFirstOrThrow: jest.Mock };
+  let tx: {
+    taskTimerSession: { updateMany: jest.Mock };
     timesheet: { create: jest.Mock };
   };
 
   beforeEach(() => {
-    transaction = {
-      task: {
+    tx = {
+      taskTimerSession: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-        findFirstOrThrow: jest
-          .fn()
-          .mockResolvedValue({ ...baseTask, timerStatus: 'STOPPED' }),
       },
-      timesheet: { create: jest.fn().mockResolvedValue({ id: 1 }) },
+      timesheet: { create: jest.fn().mockResolvedValue({ id: 77 }) },
     };
     prisma = {
       task: {
-        findFirst: jest.fn().mockResolvedValue(baseTask),
-        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findFirst: jest.fn().mockResolvedValue(task),
         findFirstOrThrow: jest
           .fn()
-          .mockResolvedValue({ ...baseTask, timerStatus: 'RUNNING' }),
+          .mockResolvedValue({ ...task, timerSessions: [] }),
       },
-      $transaction: jest.fn((callback: (tx: typeof transaction) => unknown) =>
-        callback(transaction),
+      taskTimerSession: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 101 }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      $transaction: jest.fn((callback: (transaction: typeof tx) => unknown) =>
+        callback(tx),
       ),
-      timesheet: { create: jest.fn() },
     };
     service = new TasksService(
       prisma as never,
@@ -74,95 +77,117 @@ describe('TasksService task countdown timer', () => {
     );
   });
 
-  it('starts an estimate-based countdown for an admin', async () => {
-    prisma.task.findFirst
-      .mockResolvedValueOnce(baseTask)
-      .mockResolvedValueOnce(null);
-    await service.updateTimer(8, { action: 'start' }, admin);
+  it('allows two assigned people to run independent timers on the same task', async () => {
+    const firstWorker = makeUser(11, Role.EMPLOYEE, 101);
+    const secondWorker = makeUser(12, Role.EMPLOYEE, 102);
 
-    expect(prisma.task.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 8, organizationId, timerStatus: 'IDLE' },
-        data: expect.objectContaining({
-          timerStatus: 'RUNNING',
-          timerDurationSeconds: 3600,
-          timerRemainingSeconds: 3600,
-          timerStartedByUserId: admin.userId,
-        }),
+    await service.updateTimer(8, { action: 'start' }, firstWorker);
+    await service.updateTimer(8, { action: 'start' }, secondWorker);
+
+    expect(prisma.taskTimerSession.create).toHaveBeenCalledTimes(2);
+    expect(prisma.taskTimerSession.create).toHaveBeenNthCalledWith(1, {
+      data: expect.objectContaining({
+        taskId: 8,
+        userId: 11,
+        organizationId,
+        status: 'RUNNING',
       }),
-    );
+    });
+    expect(prisma.taskTimerSession.create).toHaveBeenNthCalledWith(2, {
+      data: expect.objectContaining({
+        taskId: 8,
+        userId: 12,
+        organizationId,
+        status: 'RUNNING',
+      }),
+    });
   });
 
-  it('does not allow a user to run timers on two tasks simultaneously', async () => {
-    prisma.task.findFirst
-      .mockResolvedValueOnce(baseTask)
-      .mockResolvedValueOnce({ id: 9, taskName: 'Review landing page' });
+  it('allows an employee to track only an assigned task', async () => {
+    prisma.task.findFirst.mockResolvedValueOnce({
+      ...task,
+      assignedToUserId: 90,
+      assignedToId: 900,
+      projectRef: { assignedEmployees: [] },
+    });
 
     await expect(
-      service.updateTimer(8, { action: 'start' }, admin),
-    ).rejects.toThrow('Timer is already running for task: Review landing page');
-    expect(prisma.task.updateMany).not.toHaveBeenCalled();
+      service.updateTimer(
+        8,
+        { action: 'start' },
+        makeUser(11, Role.EMPLOYEE, 101),
+      ),
+    ).rejects.toThrow(ForbiddenException);
+    expect(prisma.taskTimerSession.create).not.toHaveBeenCalled();
   });
 
-  it('requires an estimate before starting', async () => {
+  it('requires an estimate before starting a countdown', async () => {
     prisma.task.findFirst.mockResolvedValueOnce({
-      ...baseTask,
+      ...task,
       estimatedHours: null,
     });
 
     await expect(
       service.updateTimer(8, { action: 'start' }, admin),
     ).rejects.toThrow(BadRequestException);
-    expect(prisma.task.updateMany).not.toHaveBeenCalled();
+    expect(prisma.taskTimerSession.create).not.toHaveBeenCalled();
   });
 
-  it('rejects employees from controlling timers', async () => {
-    const employee = { ...admin, role: Role.EMPLOYEE } as AuthUser;
-
-    await expect(
-      service.updateTimer(8, { action: 'start' }, employee),
-    ).rejects.toThrow(ForbiddenException);
-    expect(prisma.task.findFirst).not.toHaveBeenCalled();
-  });
-
-  it('stops the timer and creates an attributed pending timesheet atomically', async () => {
+  it('links a stopped session to exactly one attributed pending timesheet', async () => {
     const startedAt = new Date(Date.now() - 30_000);
-    prisma.task.findFirst.mockResolvedValueOnce({
-      ...baseTask,
-      timerStatus: 'RUNNING',
-      timerDurationSeconds: 3600,
-      timerRemainingSeconds: 3570,
-      timerStartedAt: startedAt,
-      timerStartedByUserId: 9,
+    prisma.taskTimerSession.findFirst.mockResolvedValueOnce({
+      id: 101,
+      taskId: 8,
+      userId: 11,
+      organizationId,
+      status: 'RUNNING',
+      durationSeconds: 3600,
+      remainingSeconds: 3570,
+      startedAt,
+      totalSeconds: 0,
     });
 
     await service.updateTimer(
       8,
-      { action: 'stop', notes: 'Asset preparation' },
-      admin,
+      { action: 'stop' },
+      makeUser(11, Role.EMPLOYEE, 101),
     );
 
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(transaction.timesheet.create).toHaveBeenCalledWith({
+    expect(tx.taskTimerSession.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 101,
+          status: 'RUNNING',
+          startedAt,
+        }),
+        data: expect.objectContaining({
+          status: 'STOPPED',
+          remainingSeconds: 0,
+        }),
+      }),
+    );
+    expect(tx.timesheet.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         organizationId,
         taskId: 8,
         projectId: 42,
-        task: 'Prepare campaign assets',
-        project: 'Spring campaign',
+        timerSessionId: 101,
         status: 'PENDING',
-        notes: 'Asset preparation',
-        createdByUserId: 9,
+        createdByUserId: 11,
         hours: expect.any(Number),
       }),
     });
-    expect(transaction.task.updateMany).toHaveBeenCalledWith(
+  });
+
+  it('treats repeated stop as idempotent after the session is already closed', async () => {
+    await service.updateTimer(8, { action: 'stop' }, admin);
+
+    expect(prisma.task.findFirstOrThrow).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          timerStatus: 'STOPPED',
-          timerRemainingSeconds: 0,
-        }),
+        where: { id: 8, organizationId },
       }),
     );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });

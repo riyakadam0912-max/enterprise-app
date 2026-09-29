@@ -163,7 +163,7 @@ export class TasksController {
     return this.tasksService.sendMessage(id, dto, req.user);
   }
 
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.EMPLOYEE)
   @Patch(':id/timer')
   updateTimer(
     @Param('id', ParseIntPipe) id: number,

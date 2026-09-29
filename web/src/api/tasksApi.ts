@@ -20,6 +20,7 @@ export interface Task {
     managerId: number | null;
   } | null;
   assignee: string | null;
+  assignedToId?: number | null;
   assignedToUserId?: number | null;
   assignedByUserId?: number | null;
   assignedToUser?: {
@@ -47,17 +48,28 @@ export interface Task {
   } | null;
   estimatedHours: number | null;
   actualHours: number | null;
-  timerStatus?: 'IDLE' | 'RUNNING' | 'PAUSED' | 'STOPPED';
-  timerDurationSeconds?: number;
-  timerRemainingSeconds?: number;
-  timerStartedAt?: string | null;
-  timerStartedByUserId?: number | null;
-  timerTotalSeconds?: number;
+  timerSessions?: TaskTimerSession[];
+  legacyTimerTotalSeconds?: number;
   notes: string | null;
   leadId: number | null;
   dealId: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TaskTimerSession {
+  id: number;
+  taskId: number;
+  userId: number;
+  organizationId: number;
+  status: 'RUNNING' | 'PAUSED' | 'STOPPED';
+  durationSeconds: number;
+  remainingSeconds: number;
+  startedAt: string | null;
+  totalSeconds: number;
+  createdAt: string;
+  updatedAt: string;
+  user: { id: number; name: string; email: string };
 }
 
 export interface TaskPayload {

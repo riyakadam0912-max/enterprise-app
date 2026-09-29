@@ -21,7 +21,7 @@ import { useAuthSession, type AuthRole } from '@/stores/auth-store';
 import { useAuth } from '@/providers/AuthProvider';
 import { UserIdentity } from '@/components/common/UserIdentity';
 import { SuccessFeedback } from '@/components/feedback/SuccessFeedback';
-import { TaskTimerCell } from '@/components/tasks/TaskTimerCell';
+import { TaskTimerSessionsCell } from '@/components/tasks/TaskTimerSessionsCell';
 
 type DashboardRole = AuthRole;
 type TaskFilter = 'all' | 'mine' | 'needs-review';
@@ -1231,16 +1231,14 @@ export default function AllTasksPage() {
                     <td className="px-4 py-3 text-slate-600">{task.estimatedHours ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-600">{task.actualHours ?? '—'}</td>
                     <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
-                      <TaskTimerCell
+                      <TaskTimerSessionsCell
                         taskId={task.id}
                         estimateHours={task.estimatedHours}
                         actualHours={task.actualHours}
-                        timerStatus={task.timerStatus}
-                        timerDurationSeconds={task.timerDurationSeconds}
-                        timerRemainingSeconds={task.timerRemainingSeconds}
-                        timerStartedAt={task.timerStartedAt}
-                        timerTotalSeconds={task.timerTotalSeconds}
-                        canControl={role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER'}
+                        sessions={task.timerSessions}
+                        legacyTimerTotalSeconds={task.legacyTimerTotalSeconds}
+                        currentUserId={currentUserId}
+                        canControl={role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER' || role === 'EMPLOYEE'}
                       />
                     </td>
                   </tr>

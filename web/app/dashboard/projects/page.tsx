@@ -26,7 +26,7 @@ import { createTask, getTaskMessages, reviewTask, sendTaskMessage, submitTaskWor
 import { apiClient } from '@/api/apiClient';
 import { createTimesheet, getTimesheetsReport } from '@/api/timesheetsApi';
 import { TaskDetailPanel } from '@/components/tasks/TaskDetailPanel';
-import { TaskTimerCell } from '@/components/tasks/TaskTimerCell';
+import { TaskTimerSessionsCell } from '@/components/tasks/TaskTimerSessionsCell';
 import { SuccessFeedback } from '@/components/feedback/SuccessFeedback';
 import { canAccessUsers } from '@/utils/auth/permissions';
 import { useStableNow } from '@/hooks/useStableNow';
@@ -54,12 +54,8 @@ type TaskPanelData = {
   dueDate?: string | null;
   completionPercent?: number | null;
   actualHours?: number | null;
-  timerStatus?: 'IDLE' | 'RUNNING' | 'PAUSED' | 'STOPPED';
-  timerDurationSeconds?: number;
-  timerRemainingSeconds?: number;
-  timerStartedAt?: string | null;
-  timerStartedByUserId?: number | null;
-  timerTotalSeconds?: number;
+  timerSessions?: NonNullable<Project['tasks']>[number]['timerSessions'];
+  legacyTimerTotalSeconds?: number;
   createdAt?: string;
   updatedAt?: string;
   notes?: string | null;
@@ -514,10 +510,16 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
   const visibleTasks = useMemo(() => {
     const all = projectDetails?.tasks ?? [];
     if (isEmployee && userId) {
-      return all.filter((task) => task.assignedToUserId === userId);
+      return all.filter((task) => (
+        task.assignedToUserId === userId ||
+        (employeeId != null && (
+          task.assignedToId === employeeId ||
+          assignedEmployees.some((employee) => employee.id === employeeId)
+        ))
+      ));
     }
     return all;
-  }, [projectDetails?.tasks, isEmployee, userId]);
+  }, [projectDetails?.tasks, isEmployee, userId, employeeId, assignedEmployees]);
 
   const selectedTask = useMemo(
     () => visibleTasks.find((task) => task.id === selectedTaskId) ?? null,
@@ -1624,16 +1626,14 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                             <td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${taskPriorityClass[priority] ?? taskPriorityClass.LOW}`}>{priority}</span></td>
                             <td className="min-w-32 px-4 py-3"><div className="flex items-center gap-2"><div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-orange-500" style={{ width: `${Math.max(0, Math.min(100, completion))}%` }} /></div><span className="text-xs text-slate-600">{completion}%</span></div></td>
                             <td className="px-4 py-3">
-                              <TaskTimerCell
+                              <TaskTimerSessionsCell
                                 taskId={task.id}
                                 estimateHours={task.estimatedHours}
                                 actualHours={task.actualHours}
-                                timerStatus={task.timerStatus}
-                                timerDurationSeconds={task.timerDurationSeconds}
-                                timerRemainingSeconds={task.timerRemainingSeconds}
-                                timerStartedAt={task.timerStartedAt}
-                                timerTotalSeconds={task.timerTotalSeconds}
-                                canControl={role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER'}
+                                sessions={task.timerSessions}
+                                legacyTimerTotalSeconds={task.legacyTimerTotalSeconds}
+                                currentUserId={userId}
+                                canControl={role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER' || role === 'EMPLOYEE'}
                               />
                             </td>
                             <td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${taskStatusClass[status] ?? 'bg-slate-200 text-slate-700'}`}>{status.replace('_', ' ')}</span></td>

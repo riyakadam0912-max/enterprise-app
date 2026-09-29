@@ -43,8 +43,8 @@ model User {
   createdTasks               Task[]                 @relation("TaskAssignedBy")
   assignedTasks              Task[]                 @relation("TaskAssignedTo")
   reviewedTasks              Task[]                 @relation("TaskReviewedBy")
-  startedTaskTimers          Task[]                 @relation("TaskTimerStartedBy")
   createdTimesheets           Timesheet[]            @relation("TimesheetCreatedBy")
+  taskTimerSessions           TaskTimerSession[]
   employee                   Employee?              @relation("UserEmployee", fields: [employeeId], references: [id])
   manager                    User?                  @relation("UserManager", fields: [managerId], references: [id])
   teamMembers                User[]                 @relation("UserManager")
@@ -171,6 +171,7 @@ model Organization {
   taxDeclarations          TaxDeclaration[]
   tickets                  Ticket[]
   timesheets               Timesheet[]
+  taskTimerSessions        TaskTimerSession[]
   users                    User[]
   workflowActions          WorkflowAction[]
   workflowAssignments      WorkflowAssignment[]
@@ -475,8 +476,10 @@ model Timesheet {
   deletedAt      DateTime?
   organizationId Int
   createdByUserId Int?
+  timerSessionId Int?         @unique
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdByUser  User?        @relation("TimesheetCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  timerSession   TaskTimerSession? @relation(fields: [timerSessionId], references: [id], onDelete: SetNull)
   projectRef     Project?     @relation("ProjectTimesheets", fields: [projectId], references: [id], onDelete: SetNull)
   taskRef        Task?        @relation("TaskTimesheets", fields: [taskId], references: [id], onDelete: SetNull)
 
@@ -546,12 +549,7 @@ model Task {
   submissionNotes  String?
   organizationId   Int
   businessUnitId   Int?
-  timerStatus      String        @default("IDLE")
-  timerDurationSeconds Int       @default(0)
-  timerRemainingSeconds Int      @default(0)
-  timerStartedAt   DateTime?
-  timerStartedByUserId Int?
-  timerTotalSeconds Int          @default(0)
+  legacyTimerTotalSeconds Int   @default(0)
   assignedByUser   User?         @relation("TaskAssignedBy", fields: [assignedByUserId], references: [id])
   assignedEmployee Employee?     @relation("TaskAssignee", fields: [assignedToId], references: [id])
   assignedToUser   User?         @relation("TaskAssignedTo", fields: [assignedToUserId], references: [id])
@@ -561,13 +559,34 @@ model Task {
   organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   projectRef       Project?      @relation("ProjectTasks", fields: [projectId], references: [id])
   reviewedByUser   User?         @relation("TaskReviewedBy", fields: [reviewedBy], references: [id])
-  timerStartedByUser User?       @relation("TaskTimerStartedBy", fields: [timerStartedByUserId], references: [id], onDelete: SetNull)
+  timerSessions      TaskTimerSession[]
   timesheets       Timesheet[]   @relation("TaskTimesheets")
   messages         TaskMessage[]
 
   @@index([organizationId])
   @@index([businessUnitId])
-  @@index([timerStartedByUserId])
+}
+
+model TaskTimerSession {
+  id                    Int      @id @default(autoincrement())
+  taskId                Int
+  userId                Int
+  organizationId        Int
+  status                String   @default("RUNNING")
+  durationSeconds       Int
+  remainingSeconds      Int
+  startedAt             DateTime?
+  totalSeconds          Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  task                  Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  timesheet             Timesheet?
+
+  @@index([taskId, status])
+  @@index([userId, status])
+  @@index([organizationId])
 }
 
 model TaskMessage {
