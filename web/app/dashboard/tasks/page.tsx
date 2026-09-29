@@ -21,6 +21,7 @@ import { useAuthSession, type AuthRole } from '@/stores/auth-store';
 import { useAuth } from '@/providers/AuthProvider';
 import { UserIdentity } from '@/components/common/UserIdentity';
 import { SuccessFeedback } from '@/components/feedback/SuccessFeedback';
+import { TaskTimerCell } from '@/components/tasks/TaskTimerCell';
 
 type DashboardRole = AuthRole;
 type TaskFilter = 'all' | 'mine' | 'needs-review';
@@ -187,6 +188,7 @@ function TaskDetailModal({
     links: string;
     driveLink: string;
     priority: string;
+    estimatedHours: number | null;
     dueDate: string | null;
   }) => Promise<void>;
   onUpdateStatus: (taskId: number, status: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED') => Promise<void>;
@@ -206,6 +208,7 @@ function TaskDetailModal({
   const [editLinks, setEditLinks] = useState(task?.links ?? '');
   const [editDriveLink, setEditDriveLink] = useState(task?.driveLink ?? '');
   const [editPriority, setEditPriority] = useState(task?.priority ?? 'MEDIUM');
+  const [editEstimatedHours, setEditEstimatedHours] = useState(task?.estimatedHours?.toString() ?? '');
   const [editDueDate, setEditDueDate] = useState(task?.dueDate?.slice(0, 10) ?? '');
   const [chatDraft, setChatDraft] = useState('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -351,6 +354,7 @@ function TaskDetailModal({
       links: editLinks,
       driveLink: editDriveLink.trim(),
       priority: editPriority,
+      estimatedHours: editEstimatedHours ? Number(editEstimatedHours) : null,
       dueDate: editDueDate || null,
     });
     setShowEditForm(false);
@@ -500,6 +504,7 @@ function TaskDetailModal({
                     <input value={editTaskName} onChange={(e) => setEditTaskName(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="Task title" />
                     <div className="grid gap-3 sm:grid-cols-2">
                       <input value={editCategory} onChange={(e) => setEditCategory(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="Category" />
+                      <input type="number" min="0.01" step="0.25" value={editEstimatedHours} onChange={(e) => setEditEstimatedHours(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="Estimate in hours" />
                       <select value={editPriority} onChange={(e) => setEditPriority(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
                         <option value="LOW">LOW</option>
                         <option value="MEDIUM">MEDIUM</option>
@@ -1032,6 +1037,7 @@ export default function AllTasksPage() {
     links: string;
     driveLink: string;
     priority: string;
+    estimatedHours: number | null;
     dueDate: string | null;
   }) {
     setBusy(true);
@@ -1158,8 +1164,74 @@ export default function AllTasksPage() {
             {selectedTaskIds.length > 0 && <div className="mb-2 flex items-center gap-2 rounded-lg border border-orange-100 bg-orange-50 px-3 py-2"><span className="text-xs font-semibold text-orange-700">{selectedTaskIds.length} selected</span><button type="button" onClick={exportSelectedTasks} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">Export CSV</button><button type="button" onClick={() => void deleteSelectedTasks()} className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white">Delete</button><button type="button" onClick={() => setSelectedTaskIds([])} className="text-xs font-semibold text-slate-500">Clear</button></div>}
             <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
             <table className="min-w-full border-collapse text-sm">
-              <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"><tr><th className="sticky left-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-3"><input type="checkbox" checked={filteredTasks.length > 0 && filteredTasks.every((task) => selectedTaskIds.includes(task.id))} onChange={(event) => setSelectedTaskIds(event.target.checked ? filteredTasks.map((task) => task.id) : [])} aria-label="Select all tasks" /></th>{['ID', 'Task', 'Project', 'Assignee', 'Status', 'Priority', 'Due Date', 'Estimated Hours', 'Actual Hours'].map((heading, index) => <th key={heading} className={`whitespace-nowrap border-b border-slate-200 px-4 py-3 ${index < 2 ? 'sticky z-10 bg-slate-50' : ''}`}>{heading}</th>)}</tr></thead>
-              <tbody className="divide-y divide-slate-100">{filteredTasks.map((task) => <tr key={task.id} tabIndex={0} onClick={() => { setSelectedTaskId(task.id); setActiveTab('overview'); }} onKeyDown={(event) => { if (event.key === 'Enter') { setSelectedTaskId(task.id); setActiveTab('overview'); } }} className="cursor-pointer transition hover:bg-orange-50/50"><td className="sticky left-0 z-10 bg-white px-3 py-3" onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} aria-label={`Select task ${task.taskName}`} /></td><td className="sticky z-10 bg-white px-4 py-3 text-slate-500">#{task.id}</td><td className="sticky z-10 bg-white px-4 py-3 font-semibold text-slate-900">{task.taskName}</td><td className="px-4 py-3 text-slate-600">{task.project ?? '—'}</td><td className="px-4 py-3 text-slate-600">{task.assignedToUser?.name ?? task.assignee ?? 'Unassigned'}</td><td className="px-4 py-3"><span className={cn('rounded-full px-2 py-1 text-xs font-semibold', STATUS_BADGE[task.status?.toUpperCase()] ?? STATUS_BADGE.PENDING)}>{task.status?.replace('_', ' ')}</span></td><td className="px-4 py-3 text-slate-600">{task.priority ?? '—'}</td><td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatDate(task.dueDate)}</td><td className="px-4 py-3 text-slate-600">{task.estimatedHours ?? '—'}</td><td className="px-4 py-3 text-slate-600">{task.actualHours ?? '—'}</td></tr>)}</tbody>
+              <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="sticky left-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-3">
+                    <input
+                      type="checkbox"
+                      checked={filteredTasks.length > 0 && filteredTasks.every((task) => selectedTaskIds.includes(task.id))}
+                      onChange={(event) => setSelectedTaskIds(event.target.checked ? filteredTasks.map((task) => task.id) : [])}
+                      aria-label="Select all tasks"
+                    />
+                  </th>
+                  {['ID', 'Task', 'Project', 'Assignee', 'Status', 'Priority', 'Due Date', 'Estimated Hours', 'Actual Hours', 'Timer'].map((heading, index) => (
+                    <th key={heading} className={`whitespace-nowrap border-b border-slate-200 px-4 py-3 ${index < 2 ? 'sticky z-10 bg-slate-50' : ''}`}>
+                      {heading}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredTasks.map((task) => (
+                  <tr
+                    key={task.id}
+                    tabIndex={0}
+                    onClick={() => { setSelectedTaskId(task.id); setActiveTab('overview'); }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        setSelectedTaskId(task.id);
+                        setActiveTab('overview');
+                      }
+                    }}
+                    className="cursor-pointer transition hover:bg-orange-50/50"
+                  >
+                    <td className="sticky left-0 z-10 bg-white px-3 py-3" onClick={(event) => event.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedTaskIds.includes(task.id)}
+                        onChange={() => toggleTaskSelection(task.id)}
+                        aria-label={`Select task ${task.taskName}`}
+                      />
+                    </td>
+                    <td className="sticky z-10 bg-white px-4 py-3 text-slate-500">#{task.id}</td>
+                    <td className="sticky z-10 bg-white px-4 py-3 font-semibold text-slate-900">{task.taskName}</td>
+                    <td className="px-4 py-3 text-slate-600">{task.project ?? '—'}</td>
+                    <td className="px-4 py-3 text-slate-600">{task.assignedToUser?.name ?? task.assignee ?? 'Unassigned'}</td>
+                    <td className="px-4 py-3">
+                      <span className={cn('rounded-full px-2 py-1 text-xs font-semibold', STATUS_BADGE[task.status?.toUpperCase()] ?? STATUS_BADGE.PENDING)}>
+                        {task.status?.replace('_', ' ')}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{task.priority ?? '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatDate(task.dueDate)}</td>
+                    <td className="px-4 py-3 text-slate-600">{task.estimatedHours ?? '—'}</td>
+                    <td className="px-4 py-3 text-slate-600">{task.actualHours ?? '—'}</td>
+                    <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
+                      <TaskTimerCell
+                        taskId={task.id}
+                        estimateHours={task.estimatedHours}
+                        actualHours={task.actualHours}
+                        timerStatus={task.timerStatus}
+                        timerDurationSeconds={task.timerDurationSeconds}
+                        timerRemainingSeconds={task.timerRemainingSeconds}
+                        timerStartedAt={task.timerStartedAt}
+                        timerTotalSeconds={task.timerTotalSeconds}
+                        canControl={role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER'}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
             </table>
             </div>
           </>

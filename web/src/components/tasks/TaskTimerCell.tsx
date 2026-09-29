@@ -63,6 +63,16 @@ export function TaskTimerCell({
     return () => window.clearInterval(interval);
   }, [timer.timerStatus]);
 
+  useEffect(() => {
+    setTimer({
+      timerStatus,
+      timerDurationSeconds,
+      timerRemainingSeconds,
+      timerStartedAt,
+      timerTotalSeconds,
+    });
+  }, [timerDurationSeconds, timerRemainingSeconds, timerStartedAt, timerStatus, timerTotalSeconds]);
+
   const remainingSeconds = timer.timerStatus === 'RUNNING' && timer.timerStartedAt
     ? Math.max(
         0,
