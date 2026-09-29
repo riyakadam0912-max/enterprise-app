@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Clock3, Pause, Play, Square } from 'lucide-react';
-import { updateTaskTimer } from '@/api/tasksApi';
+import { getTask, updateTaskTimer } from '@/api/tasksApi';
 
 type TimerStatus = 'IDLE' | 'RUNNING' | 'PAUSED' | 'STOPPED';
 
@@ -22,6 +22,20 @@ function formatDuration(totalSeconds: number) {
   return [hours, minutes, remainder]
     .map((part) => String(part).padStart(2, '0'))
     .join(':');
+}
+
+function toTimerSnapshot(task: Awaited<ReturnType<typeof getTask>>): TimerSnapshot {
+  return {
+    timerStatus: task.timerStatus ?? 'IDLE',
+    timerDurationSeconds: task.timerDurationSeconds ?? 0,
+    timerRemainingSeconds: task.timerRemainingSeconds ?? 0,
+    timerStartedAt: task.timerStartedAt ?? null,
+    timerTotalSeconds: task.timerTotalSeconds ?? 0,
+  };
+}
+
+function isConflictError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'status' in error && error.status === 409;
 }
 
 export function TaskTimerCell({
@@ -58,7 +72,10 @@ export function TaskTimerCell({
   const automaticStopStarted = useRef(false);
 
   useEffect(() => {
-    if (timer.timerStatus !== 'RUNNING') return undefined;
+    if (timer.timerStatus !== 'RUNNING') {
+      automaticStopStarted.current = false;
+      return undefined;
+    }
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(interval);
   }, [timer.timerStatus]);
@@ -92,18 +109,24 @@ export function TaskTimerCell({
     automaticStopStarted.current = true;
     void updateTaskTimer(taskId, 'stop')
       .then((updated) => {
-        setTimer({
-          timerStatus: updated.timerStatus ?? 'STOPPED',
-          timerDurationSeconds: updated.timerDurationSeconds ?? 0,
-          timerRemainingSeconds: updated.timerRemainingSeconds ?? 0,
-          timerStartedAt: updated.timerStartedAt ?? null,
-          timerTotalSeconds: updated.timerTotalSeconds ?? 0,
-        });
+        setTimer(toTimerSnapshot(updated));
       })
       .catch((reason: unknown) => {
+        if (isConflictError(reason)) {
+          void getTask(taskId)
+            .then((freshTask) => {
+              const freshTimer = toTimerSnapshot(freshTask);
+              setTimer(freshTimer);
+              setNow(Date.now());
+              if (freshTimer.timerStatus === 'RUNNING' || freshTimer.timerStatus === 'PAUSED') {
+                setError(reason instanceof Error ? reason.message : 'Timer changed; state refreshed');
+              }
+            })
+            .catch(() => setError(reason instanceof Error ? reason.message : 'Unable to refresh timer state'));
+          return;
+        }
         setError(reason instanceof Error ? reason.message : 'Unable to stop timer');
-      })
-      .finally(() => { automaticStopStarted.current = false; });
+      });
   }, [canControl, remainingSeconds, taskId, timer.timerStatus]);
 
   async function act(action: 'start' | 'pause' | 'resume' | 'stop') {
@@ -111,16 +134,27 @@ export function TaskTimerCell({
     setError('');
     try {
       const updated = await updateTaskTimer(taskId, action);
-      setTimer({
-        timerStatus: updated.timerStatus ?? 'IDLE',
-        timerDurationSeconds: updated.timerDurationSeconds ?? 0,
-        timerRemainingSeconds: updated.timerRemainingSeconds ?? 0,
-        timerStartedAt: updated.timerStartedAt ?? null,
-        timerTotalSeconds: updated.timerTotalSeconds ?? 0,
-      });
+      setTimer(toTimerSnapshot(updated));
       setNow(Date.now());
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Unable to update timer');
+      if (isConflictError(reason)) {
+        try {
+          const freshTimer = toTimerSnapshot(await getTask(taskId));
+          setTimer(freshTimer);
+          setNow(Date.now());
+          const actionAlreadyApplied =
+            ((action === 'start' || action === 'resume') && freshTimer.timerStatus === 'RUNNING') ||
+            (action === 'pause' && freshTimer.timerStatus === 'PAUSED') ||
+            (action === 'stop' && freshTimer.timerStatus !== 'RUNNING' && freshTimer.timerStatus !== 'PAUSED');
+          if (!actionAlreadyApplied) {
+            setError(reason instanceof Error ? reason.message : 'Timer changed; state refreshed');
+          }
+        } catch {
+          setError(reason instanceof Error ? reason.message : 'Unable to refresh timer state');
+        }
+      } else {
+        setError(reason instanceof Error ? reason.message : 'Unable to update timer');
+      }
     } finally {
       setBusy(false);
     }

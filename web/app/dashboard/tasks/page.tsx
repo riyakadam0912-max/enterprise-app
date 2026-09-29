@@ -835,23 +835,37 @@ export default function AllTasksPage() {
 
   const isManagerOrAdmin = role === 'ADMIN' || role === 'MANAGER';
 
-  async function loadTasks() {
-    setLoading(true);
+  const loadTasks = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError('');
     try {
       const data = await getTasks();
       setTasks(data);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to load tasks');
-      setTasks([]);
+      if (!silent) {
+        setError(err instanceof Error ? err.message : 'Failed to load tasks');
+        setTasks([]);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     void loadTasks();
-  }, []);
+  }, [loadTasks]);
+
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void loadTasks(true);
+    };
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [loadTasks]);
 
   const filteredTasks = useMemo(() => {
     const query = search.trim().toLowerCase();

@@ -377,6 +377,36 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
   }
 
   useEffect(() => {
+    if (!dedicated || !selectedProjectId) return undefined;
+    let cancelled = false;
+
+    const refreshProjectTasks = async () => {
+      try {
+        const freshProject = await getProject(selectedProjectId);
+        if (cancelled) return;
+        setProjectDetails((current) => (
+          current?.id === selectedProjectId
+            ? { ...current, tasks: freshProject.tasks }
+            : current
+        ));
+      } catch (refreshError) {
+        reportError(refreshError, 'Unable to refresh project task timers');
+      }
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void refreshProjectTasks();
+    };
+
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [dedicated, selectedProjectId]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function loadInitialData() {
