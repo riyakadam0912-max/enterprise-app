@@ -96,12 +96,26 @@ export interface ProjectMessage {
   projectId: number;
   senderId: number;
   content: string;
+  mentions?: ProjectMessageMention[] | null;
   createdAt: string;
   sender: {
     id: number;
     name: string;
     email: string;
   };
+}
+
+export interface ProjectMessageMention {
+  type: 'user' | 'task';
+  id: number;
+  label: string;
+  start: number;
+  end: number;
+}
+
+export interface ProjectMessageMentionOptions {
+  users: Array<{ id: number; name: string; email: string; role: string }>;
+  tasks: Array<{ id: number; name: string; status: string }>;
 }
 
 export interface ProjectLink {
@@ -237,10 +251,18 @@ export async function getMessages(projectId: number): Promise<ProjectMessage[]> 
   return apiClient<ProjectMessage[]>(`/projects/${projectId}/messages`);
 }
 
-export async function sendMessage(projectId: number, content: string): Promise<ProjectMessage> {
+export async function getMessageMentionOptions(projectId: number): Promise<ProjectMessageMentionOptions> {
+  return apiClient<ProjectMessageMentionOptions>(`/projects/${projectId}/message-mention-options`);
+}
+
+export async function sendMessage(
+  projectId: number,
+  content: string,
+  mentions: ProjectMessageMention[] = [],
+): Promise<ProjectMessage> {
   return apiClient<ProjectMessage>(`/projects/${projectId}/messages`, {
     method: 'POST',
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, mentions }),
   });
 }
 

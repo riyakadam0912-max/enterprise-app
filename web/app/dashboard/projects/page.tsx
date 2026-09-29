@@ -13,8 +13,11 @@ import {
   getProjectProgress,
   getProjects,
   getMessages,
+  getMessageMentionOptions,
   type Project,
   type ProjectMessage,
+  type ProjectMessageMention,
+  type ProjectMessageMentionOptions,
   type ProjectProgress,
   removeCoManager,
   removeEmployee,
@@ -64,6 +67,18 @@ type TaskPanelData = {
   reviewComment?: string | null;
   reviewedAt?: string | null;
   reviewedByUser?: { id: number; name: string; email: string } | null;
+};
+
+type MentionSuggestion =
+  | { type: 'user'; id: number; label: string; detail: string }
+  | { type: 'task'; id: number; label: string; detail: string };
+
+type MentionMenuState = {
+  trigger: '@' | '#';
+  query: string;
+  start: number;
+  end: number;
+  activeIndex: number;
 };
 
 const tabs: Array<{ id: ProjectTab; label: string }> = [
@@ -178,6 +193,44 @@ function RichTextEditor({ value, onChange, placeholder }: { value: string; onCha
   );
 }
 
+function renderProjectMessageContent(
+  message: ProjectMessage,
+  onUserMention: (mention: ProjectMessageMention) => void,
+  onTaskMention: (mention: ProjectMessageMention) => void,
+) {
+  const validMentions = (message.mentions ?? [])
+    .filter((mention) => (
+      Number.isInteger(mention.start) &&
+      Number.isInteger(mention.end) &&
+      mention.start >= 0 &&
+      mention.end > mention.start &&
+      mention.end <= message.content.length
+    ))
+    .sort((a, b) => a.start - b.start);
+  const segments: React.ReactNode[] = [];
+  let cursor = 0;
+
+  validMentions.forEach((mention) => {
+    if (mention.start < cursor) return;
+    segments.push(message.content.slice(cursor, mention.start));
+    const token = message.content.slice(mention.start, mention.end);
+    const buttonClass = 'font-semibold underline decoration-current/60 underline-offset-2 hover:decoration-2';
+    segments.push(mention.type === 'user' ? (
+      <button key={`${mention.type}-${mention.id}-${mention.start}`} type="button" className={buttonClass} onClick={() => onUserMention(mention)}>
+        {token}
+      </button>
+    ) : (
+      <button key={`${mention.type}-${mention.id}-${mention.start}`} type="button" className={buttonClass} onClick={() => onTaskMention(mention)}>
+        {token}
+      </button>
+    ));
+    cursor = mention.end;
+  });
+
+  segments.push(message.content.slice(cursor));
+  return segments;
+}
+
 export default function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { initialProjectId?: number; dedicated?: boolean } = {}) {
   const router = useRouter();
   const session = useAuthSession();
@@ -277,6 +330,11 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     status: 'PENDING' as 'PENDING' | 'APPROVED' | 'REJECTED',
   });
   const [chatDraft, setChatDraft] = useState('');
+  const [chatMentions, setChatMentions] = useState<ProjectMessageMention[]>([]);
+  const [mentionOptions, setMentionOptions] = useState<ProjectMessageMentionOptions>({ users: [], tasks: [] });
+  const [mentionMenu, setMentionMenu] = useState<MentionMenuState | null>(null);
+  const [mentionedUserCard, setMentionedUserCard] = useState<MentionSuggestion | null>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [chatLoading, setChatLoading] = useState(false);
   const [taskSubmitting, setTaskSubmitting] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -351,6 +409,25 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
       setMessages([]);
     }
   }
+
+  useEffect(() => {
+    if (!selectedProjectId || !canViewChat) {
+      setMentionOptions({ users: [], tasks: [] });
+      return;
+    }
+    let cancelled = false;
+    getMessageMentionOptions(selectedProjectId)
+      .then((options) => {
+        if (!cancelled) setMentionOptions(options);
+      })
+      .catch((mentionError: unknown) => {
+        if (!cancelled) {
+          setMentionOptions({ users: [], tasks: [] });
+          reportError(mentionError, 'Unable to load project chat mention options');
+        }
+      });
+    return () => { cancelled = true; };
+  }, [selectedProjectId, canViewChat]);
 
   async function refreshProjects(initialProjectId?: number | null) {
     const list = await getProjects();
@@ -970,13 +1047,162 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     }
   }
 
+  function updateChatDraft(value: string, cursor: number) {
+    const previous = chatDraft;
+    let prefixLength = 0;
+    while (
+      prefixLength < previous.length &&
+      prefixLength < value.length &&
+      previous[prefixLength] === value[prefixLength]
+    ) prefixLength += 1;
+    let suffixLength = 0;
+    while (
+      suffixLength < previous.length - prefixLength &&
+      suffixLength < value.length - prefixLength &&
+      previous[previous.length - suffixLength - 1] === value[value.length - suffixLength - 1]
+    ) suffixLength += 1;
+    const oldChangeEnd = previous.length - suffixLength;
+    const newChangeEnd = value.length - suffixLength;
+    const delta = newChangeEnd - oldChangeEnd;
+    setChatMentions((current) => current.flatMap((mention) => {
+      if (mention.end <= prefixLength) return [mention];
+      if (mention.start >= oldChangeEnd) {
+        return [{ ...mention, start: mention.start + delta, end: mention.end + delta }];
+      }
+      return [];
+    }));
+    setChatDraft(value);
+
+    const beforeCursor = value.slice(0, cursor);
+    const match = /(^|\s)([@#])([^\s@#]*)$/.exec(beforeCursor);
+    if (!match) {
+      setMentionMenu(null);
+      return;
+    }
+    const leadingSpaceLength = match[1].length;
+    setMentionMenu({
+      trigger: match[2] as '@' | '#',
+      query: match[3],
+      start: cursor - match[0].length + leadingSpaceLength,
+      end: cursor,
+      activeIndex: 0,
+    });
+  }
+
+  const mentionSuggestions = useMemo<MentionSuggestion[]>(() => {
+    if (!mentionMenu) return [];
+    const query = mentionMenu.query.trim().toLocaleLowerCase();
+    if (mentionMenu.trigger === '@') {
+      return mentionOptions.users
+        .filter((person) => !query || person.name.toLocaleLowerCase().includes(query) || person.email.toLocaleLowerCase().includes(query))
+        .slice(0, 8)
+        .map((person) => ({
+          type: 'user',
+          id: person.id,
+          label: person.name,
+          detail: `${person.role} · ${person.email}`,
+        }));
+    }
+    return mentionOptions.tasks
+      .filter((task) => !query || task.name.toLocaleLowerCase().includes(query))
+      .slice(0, 8)
+      .map((task) => ({
+        type: 'task',
+        id: task.id,
+        label: task.name,
+        detail: `Task #${task.id} · ${task.status.replaceAll('_', ' ')}`,
+      }));
+  }, [mentionMenu, mentionOptions]);
+
+  function selectMention(suggestion: MentionSuggestion) {
+    if (!mentionMenu) return;
+    const marker = suggestion.type === 'user' ? '@' : '#';
+    const token = `${marker}${suggestion.label}`;
+    const nextDraft = `${chatDraft.slice(0, mentionMenu.start)}${token}${chatDraft.slice(mentionMenu.end)}`;
+    const delta = token.length - (mentionMenu.end - mentionMenu.start);
+    const shiftedMentions = chatMentions.flatMap((mention) => {
+      if (mention.end <= mentionMenu.start) return [mention];
+      if (mention.start >= mentionMenu.end) {
+        return [{ ...mention, start: mention.start + delta, end: mention.end + delta }];
+      }
+      return [];
+    });
+    const nextMention: ProjectMessageMention = {
+      type: suggestion.type,
+      id: suggestion.id,
+      label: suggestion.label,
+      start: mentionMenu.start,
+      end: mentionMenu.start + token.length,
+    };
+    setChatDraft(nextDraft);
+    setChatMentions([...shiftedMentions, nextMention].sort((a, b) => a.start - b.start));
+    setMentionMenu(null);
+    requestAnimationFrame(() => {
+      const input = chatInputRef.current;
+      const caret = mentionMenu.start + token.length;
+      input?.focus();
+      input?.setSelectionRange(caret, caret);
+    });
+  }
+
+  function onChatInputKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (mentionMenu && mentionSuggestions.length > 0) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const direction = event.key === 'ArrowDown' ? 1 : -1;
+        setMentionMenu((menu) => menu ? {
+          ...menu,
+          activeIndex: (menu.activeIndex + direction + mentionSuggestions.length) % mentionSuggestions.length,
+        } : menu);
+        return;
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        selectMention(mentionSuggestions[mentionMenu.activeIndex] ?? mentionSuggestions[0]);
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMentionMenu(null);
+        return;
+      }
+    }
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      void onSendMessage();
+    }
+  }
+
+  function onProjectUserMention(mention: ProjectMessageMention) {
+    const person = mentionOptions.users.find((candidate) => candidate.id === mention.id);
+    setMentionedUserCard({
+      type: 'user',
+      id: mention.id,
+      label: person?.name ?? mention.label,
+      detail: person ? `${person.role} · ${person.email}` : 'Project participant',
+    });
+  }
+
+  function onProjectTaskMention(mention: ProjectMessageMention) {
+    setMentionedUserCard(null);
+    setSelectedTaskId(mention.id);
+    setActiveTab('tasks');
+  }
+
   async function onSendMessage() {
     if (!selectedProjectId || !chatDraft.trim()) return;
     setChatLoading(true);
     try {
-      const sent = await sendMessage(selectedProjectId, chatDraft.trim());
+      const leadingWhitespace = chatDraft.length - chatDraft.trimStart().length;
+      const content = chatDraft.trim();
+      const mentions = chatMentions
+        .map((mention) => ({ ...mention, start: mention.start - leadingWhitespace, end: mention.end - leadingWhitespace }))
+        .filter((mention) => mention.start >= 0 && mention.end <= content.length);
+      const sent = await sendMessage(selectedProjectId, content, mentions);
       setMessages((prev) => [...prev, sent]);
       setChatDraft('');
+      setChatMentions([]);
+      setMentionMenu(null);
     } catch (err) {
       setActionFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to send message' });
     } finally {
@@ -1682,7 +1908,9 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                           <p className={`text-xs font-semibold ${isMine ? 'text-blue-100' : 'text-slate-700'}`}>
                             {message.sender.name}
                           </p>
-                          <p className="mt-1 text-sm leading-6">{message.content}</p>
+                          <p className="mt-1 whitespace-pre-wrap text-sm leading-6">
+                            {renderProjectMessageContent(message, onProjectUserMention, onProjectTaskMention)}
+                          </p>
                           <p className={`mt-2 text-[11px] ${isMine ? 'text-blue-100' : 'text-slate-500'}`}>
                             {new Date(message.createdAt).toLocaleString('en-GB', {
                               day: '2-digit',
@@ -1698,12 +1926,43 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                 )}
                 <div ref={messagesEndRef} />
               </div>
-              <div className="mt-4 flex gap-2">
-                <input
+              {mentionedUserCard && (
+                <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-900">{mentionedUserCard.label}</p>
+                    <p className="truncate text-xs text-slate-500">{mentionedUserCard.detail}</p>
+                  </div>
+                  <button type="button" aria-label="Close mentioned user details" onClick={() => setMentionedUserCard(null)} className="px-2 py-1 text-sm text-slate-500 hover:text-slate-900">×</button>
+                </div>
+              )}
+              <div className="relative mt-4 flex items-end gap-2">
+                {mentionMenu && mentionSuggestions.length > 0 && (
+                  <div role="listbox" aria-label={mentionMenu.trigger === '@' ? 'Mention a project participant' : 'Mention a project task'} className="absolute bottom-full left-0 z-20 mb-2 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                    {mentionSuggestions.map((suggestion, index) => (
+                      <button
+                        key={`${suggestion.type}-${suggestion.id}`}
+                        type="button"
+                        role="option"
+                        aria-selected={index === mentionMenu.activeIndex}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => selectMention(suggestion)}
+                        className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left ${index === mentionMenu.activeIndex ? 'bg-slate-100' : 'hover:bg-slate-50'}`}
+                      >
+                        <span className="truncate text-sm font-medium text-slate-900">{mentionMenu.trigger}{suggestion.label}</span>
+                        <span className="truncate text-xs text-slate-500">{suggestion.detail}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <textarea
+                  ref={chatInputRef}
                   value={chatDraft}
-                  onChange={(e) => setChatDraft(e.target.value)}
-                  className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                  placeholder="Write a message to the project team"
+                  rows={2}
+                  onChange={(event) => updateChatDraft(event.target.value, event.currentTarget.selectionStart)}
+                  onKeyDown={onChatInputKeyDown}
+                  className="min-h-11 max-h-32 flex-1 resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  placeholder="Write a message. Use @ for people or # for tasks."
+                  aria-label="Write a project chat message"
                 />
                 <button
                   onClick={onSendMessage}

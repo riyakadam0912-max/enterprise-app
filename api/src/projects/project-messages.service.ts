@@ -1,11 +1,21 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role } from '../common/enums/role.enum';
 import type { AuthUser } from '../common/types/auth';
+
+export type ProjectMessageMention = {
+  type: 'user' | 'task';
+  id: number;
+  label: string;
+  start: number;
+  end: number;
+};
 
 @Injectable()
 export class ProjectMessagesService {
@@ -128,9 +138,116 @@ export class ProjectMessagesService {
     });
   }
 
+  async getMentionOptions(projectId: number, requestingUser: AuthUser) {
+    const organizationId = this.validateOrganization(requestingUser);
+    if (!(await this.canAccessProjectChat(projectId, requestingUser))) {
+      throw new ForbiddenException(
+        'You can only access mentions for projects you belong to',
+      );
+    }
+
+    const project = await this.db.project.findFirst({
+      where: { id: projectId, organizationId, deletedAt: null },
+      select: {
+        managerUser: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+        coManagers: {
+          where: { organizationId },
+          select: { id: true, name: true, email: true, role: true },
+        },
+        assignedEmployees: {
+          where: { organizationId, deletedAt: null },
+          select: {
+            user: {
+              select: { id: true, name: true, email: true, role: true },
+            },
+          },
+        },
+      },
+    });
+    if (!project)
+      throw new NotFoundException(`Project #${projectId} not found`);
+
+    const taskWhere: Prisma.TaskWhereInput = {
+      organizationId,
+      projectId,
+      deletedAt: null,
+      ...(requestingUser.role === Role.EMPLOYEE
+        ? {
+            OR: [
+              { assignedToUserId: requestingUser.userId },
+              ...(requestingUser.employeeId
+                ? [{ assignedToId: requestingUser.employeeId }]
+                : []),
+            ],
+          }
+        : {}),
+    };
+    const tasks = await this.db.task.findMany({
+      where: taskWhere,
+      select: {
+        id: true,
+        taskName: true,
+        status: true,
+        assignedToUser: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+        assignedByUser: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+      },
+      orderBy: { taskName: 'asc' },
+    });
+
+    const userOptions = new Map<
+      number,
+      {
+        id: number;
+        name: string;
+        email: string;
+        role: string;
+      }
+    >();
+    const addUser = (
+      candidate:
+        | typeof project.managerUser
+        | (typeof tasks)[number]['assignedToUser'],
+    ) => {
+      if (candidate) {
+        userOptions.set(candidate.id, {
+          id: candidate.id,
+          name: candidate.name,
+          email: candidate.email,
+          role: String(candidate.role),
+        });
+      }
+    };
+
+    addUser(project.managerUser);
+    project.coManagers.forEach(addUser);
+    project.assignedEmployees.forEach((employee) => addUser(employee.user));
+    tasks.forEach((task) => {
+      addUser(task.assignedToUser);
+      addUser(task.assignedByUser);
+    });
+
+    return {
+      users: [...userOptions.values()].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      ),
+      tasks: tasks.map((task) => ({
+        id: task.id,
+        name: task.taskName,
+        status: task.status,
+      })),
+    };
+  }
+
   async createMessage(
     projectId: number,
     content: string,
+    mentions: ProjectMessageMention[] | undefined,
     requestingUser: AuthUser,
   ) {
     const organizationId = this.validateOrganization(requestingUser);
@@ -154,11 +271,70 @@ export class ProjectMessagesService {
       throw new NotFoundException(`Project #${projectId} not found`);
     }
 
+    const mentionOptions = await this.getMentionOptions(
+      projectId,
+      requestingUser,
+    );
+    if (
+      mentions !== undefined &&
+      (!Array.isArray(mentions) || mentions.length > 50)
+    ) {
+      throw new BadRequestException('Invalid project chat mentions');
+    }
+    const usersById = new Map(
+      mentionOptions.users.map((mention) => [mention.id, mention]),
+    );
+    const tasksById = new Map(
+      mentionOptions.tasks.map((mention) => [mention.id, mention]),
+    );
+    const validatedMentions = (mentions ?? [])
+      .map((mention) => {
+        if (
+          !mention ||
+          !Number.isInteger(mention.id) ||
+          !Number.isInteger(mention.start) ||
+          !Number.isInteger(mention.end) ||
+          mention.start < 0 ||
+          mention.end <= mention.start ||
+          mention.end > message.length
+        ) {
+          throw new BadRequestException('Invalid project chat mention');
+        }
+        const target =
+          mention.type === 'user'
+            ? usersById.get(mention.id)
+            : mention.type === 'task'
+              ? tasksById.get(mention.id)
+              : undefined;
+        if (!target) {
+          throw new BadRequestException(
+            'Mention target is not available in this project',
+          );
+        }
+        const expectedText = `${mention.type === 'user' ? '@' : '#'}${target.name}`;
+        if (message.slice(mention.start, mention.end) !== expectedText) {
+          throw new BadRequestException(
+            'Mention text does not match its target',
+          );
+        }
+        return { ...mention, label: target.name };
+      })
+      .sort((a, b) => a.start - b.start);
+
+    for (let index = 1; index < validatedMentions.length; index += 1) {
+      if (validatedMentions[index].start < validatedMentions[index - 1].end) {
+        throw new BadRequestException('Project chat mentions cannot overlap');
+      }
+    }
+
     return this.db.projectMessage.create({
       data: {
         projectId,
         senderId: requestingUser.userId,
         content: message,
+        ...(validatedMentions.length > 0 && {
+          mentions: validatedMentions as Prisma.InputJsonValue,
+        }),
         organizationId,
       },
       include: {

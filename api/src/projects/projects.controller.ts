@@ -33,6 +33,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { ProjectMessagesService } from './project-messages.service';
+import type { ProjectMessageMention } from './project-messages.service';
 import type { AuthUser } from '../common/types/auth';
 
 type ProjectRequest = {
@@ -335,7 +336,7 @@ export class ProjectsController {
     return this.service.removeLink(id, linkId, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER, Role.EMPLOYEE)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.EMPLOYEE)
   @ApiOperation({ summary: 'GET :id/messages' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -350,7 +351,17 @@ export class ProjectsController {
     return this.messagesService.getMessages(id, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER, Role.EMPLOYEE)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.EMPLOYEE)
+  @ApiOperation({ summary: 'GET :id/message-mention-options' })
+  @Get(':id/message-mention-options')
+  getMessageMentionOptions(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: ProjectRequest,
+  ) {
+    return this.messagesService.getMentionOptions(id, req.user);
+  }
+
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.EMPLOYEE)
   @ApiOperation({ summary: 'POST :id/messages' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -359,10 +370,15 @@ export class ProjectsController {
   @Post(':id/messages')
   sendMessage(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { content: string },
+    @Body() body: { content: string; mentions?: ProjectMessageMention[] },
     @Req()
     req: ProjectRequest,
   ) {
-    return this.messagesService.createMessage(id, body.content, req.user);
+    return this.messagesService.createMessage(
+      id,
+      body.content,
+      body.mentions,
+      req.user,
+    );
   }
 }

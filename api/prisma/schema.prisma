@@ -779,6 +779,7 @@ model ProjectMessage {
   projectId      Int
   senderId       Int
   content        String
+  mentions       Json?
   createdAt      DateTime     @default(now())
   organizationId Int
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
