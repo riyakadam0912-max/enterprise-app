@@ -252,6 +252,18 @@ describe('Production Bootstrap (seed.production.ts)', () => {
         }),
       );
     });
+    it('should map customer.read to seeded default roles', async () => {
+      await bootstrapProduction();
+
+      const customerReadId =
+        Object.values(Permission).indexOf(Permission.CUSTOMER_READ) + 1;
+      const customerReadMappings =
+        mockPrisma.rolePermission.upsert.mock.calls.filter(
+          ([args]) =>
+            args.where.roleId_permissionId.permissionId === customerReadId,
+        );
+      expect(customerReadMappings).toHaveLength(4);
+    });
 
     it('should create ADMIN role with appropriate permissions', async () => {
       await bootstrapProduction();

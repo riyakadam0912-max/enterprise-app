@@ -257,6 +257,10 @@ async function ensureRolesAndPermissions(): Promise<void> {
       Permission.CONTACT_UPDATE,
       Permission.CONTACT_DELETE,
       Permission.CONTACT_IMPORT,
+      Permission.CUSTOMER_READ,
+      Permission.CUSTOMER_CREATE,
+      Permission.CUSTOMER_UPDATE,
+      Permission.CUSTOMER_DELETE,
       Permission.LEDGER_READ,
       Permission.LEDGER_CREATE,
       Permission.LEDGER_UPDATE,
@@ -331,6 +335,7 @@ async function ensureRolesAndPermissions(): Promise<void> {
       Permission.LEAVE_APPROVE,
       Permission.ATTENDANCE_READ,
       Permission.TASK_READ,
+      Permission.CUSTOMER_READ,
     ],
     'Team Manager',
   );
@@ -347,6 +352,7 @@ async function ensureRolesAndPermissions(): Promise<void> {
       Permission.LEAVE_CREATE,
       Permission.ATTENDANCE_READ,
       Permission.ATTENDANCE_CREATE,
+      Permission.CUSTOMER_READ,
     ],
     'Regular Employee',
   );

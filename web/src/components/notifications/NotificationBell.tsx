@@ -167,7 +167,7 @@ export default function NotificationBell({ className = '' }: NotificationBellPro
                   >
                     <div className="flex items-start gap-3">
                       {/* Type Icon */}
-                      <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-sm ${
+                      <div className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-sm ${
                         notification.isRead ? 'bg-slate-100' : 'bg-orange-100'
                       }`}>
                         {getTypeIcon(notification.type)}
@@ -182,7 +182,7 @@ export default function NotificationBell({ className = '' }: NotificationBellPro
                             {notification.title}
                           </p>
                           {!notification.isRead && (
-                            <span className="flex-shrink-0 w-2 h-2 bg-orange-500 rounded-full mt-1" />
+                            <span className="shrink-0 w-2 h-2 bg-orange-500 rounded-full mt-1" />
                           )}
                         </div>
                         <p className="text-xs text-slate-500 leading-tight line-clamp-2 mb-1">

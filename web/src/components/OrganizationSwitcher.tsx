@@ -99,7 +99,7 @@ export function OrganizationSwitcher() {
             {getInitials(displayName)}
           </span>
         )}
-        <span className="max-w-[9rem] truncate">{displayName}</span>
+        <span className="max-w-36 truncate">{displayName}</span>
         <svg
           className={`h-3.5 w-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`}
           viewBox="0 0 20 20"
