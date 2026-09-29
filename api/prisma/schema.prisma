@@ -43,6 +43,8 @@ model User {
   createdTasks               Task[]                 @relation("TaskAssignedBy")
   assignedTasks              Task[]                 @relation("TaskAssignedTo")
   reviewedTasks              Task[]                 @relation("TaskReviewedBy")
+  startedTaskTimers          Task[]                 @relation("TaskTimerStartedBy")
+  createdTimesheets           Timesheet[]            @relation("TimesheetCreatedBy")
   employee                   Employee?              @relation("UserEmployee", fields: [employeeId], references: [id])
   manager                    User?                  @relation("UserManager", fields: [managerId], references: [id])
   teamMembers                User[]                 @relation("UserManager")
@@ -472,13 +474,16 @@ model Timesheet {
   updatedAt      DateTime     @updatedAt
   deletedAt      DateTime?
   organizationId Int
+  createdByUserId Int?
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser  User?        @relation("TimesheetCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   projectRef     Project?     @relation("ProjectTimesheets", fields: [projectId], references: [id], onDelete: SetNull)
   taskRef        Task?        @relation("TaskTimesheets", fields: [taskId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([projectId])
   @@index([taskId])
+  @@index([createdByUserId])
 }
 
 model Deal {
@@ -541,6 +546,12 @@ model Task {
   submissionNotes  String?
   organizationId   Int
   businessUnitId   Int?
+  timerStatus      String        @default("IDLE")
+  timerDurationSeconds Int       @default(0)
+  timerRemainingSeconds Int      @default(0)
+  timerStartedAt   DateTime?
+  timerStartedByUserId Int?
+  timerTotalSeconds Int          @default(0)
   assignedByUser   User?         @relation("TaskAssignedBy", fields: [assignedByUserId], references: [id])
   assignedEmployee Employee?     @relation("TaskAssignee", fields: [assignedToId], references: [id])
   assignedToUser   User?         @relation("TaskAssignedTo", fields: [assignedToUserId], references: [id])
@@ -550,11 +561,13 @@ model Task {
   organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   projectRef       Project?      @relation("ProjectTasks", fields: [projectId], references: [id])
   reviewedByUser   User?         @relation("TaskReviewedBy", fields: [reviewedBy], references: [id])
+  timerStartedByUser User?       @relation("TaskTimerStartedBy", fields: [timerStartedByUserId], references: [id], onDelete: SetNull)
   timesheets       Timesheet[]   @relation("TaskTimesheets")
   messages         TaskMessage[]
 
   @@index([organizationId])
   @@index([businessUnitId])
+  @@index([timerStartedByUserId])
 }
 
 model TaskMessage {

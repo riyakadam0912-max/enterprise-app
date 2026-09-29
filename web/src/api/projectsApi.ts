@@ -64,8 +64,15 @@ export interface Project {
     dueDate: string | null;
     startDate?: string | null;
     priority: string | null;
+    estimatedHours?: number | null;
     completionPercent?: number | null;
     actualHours?: number | null;
+    timerStatus?: 'IDLE' | 'RUNNING' | 'PAUSED' | 'STOPPED';
+    timerDurationSeconds?: number;
+    timerRemainingSeconds?: number;
+    timerStartedAt?: string | null;
+    timerStartedByUserId?: number | null;
+    timerTotalSeconds?: number;
     createdAt?: string;
     updatedAt?: string;
     notes: string | null;

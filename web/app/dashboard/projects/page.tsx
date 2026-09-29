@@ -26,6 +26,7 @@ import { createTask, getTaskMessages, reviewTask, sendTaskMessage, submitTaskWor
 import { apiClient } from '@/api/apiClient';
 import { createTimesheet, getTimesheetsReport } from '@/api/timesheetsApi';
 import { TaskDetailPanel } from '@/components/tasks/TaskDetailPanel';
+import { TaskTimerCell } from '@/components/tasks/TaskTimerCell';
 import { SuccessFeedback } from '@/components/feedback/SuccessFeedback';
 import { canAccessUsers } from '@/utils/auth/permissions';
 import { useStableNow } from '@/hooks/useStableNow';
@@ -40,6 +41,7 @@ type TaskPanelData = {
   taskName: string;
   status: string;
   priority?: string | null;
+  estimatedHours?: number | null;
   category?: string | null;
   description?: string | null;
   links?: string | null;
@@ -52,6 +54,12 @@ type TaskPanelData = {
   dueDate?: string | null;
   completionPercent?: number | null;
   actualHours?: number | null;
+  timerStatus?: 'IDLE' | 'RUNNING' | 'PAUSED' | 'STOPPED';
+  timerDurationSeconds?: number;
+  timerRemainingSeconds?: number;
+  timerStartedAt?: string | null;
+  timerStartedByUserId?: number | null;
+  timerTotalSeconds?: number;
   createdAt?: string;
   updatedAt?: string;
   notes?: string | null;
@@ -251,6 +259,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     assignedEmployeeId: '',
     dueDate: '',
     priority: 'MEDIUM',
+    estimatedHours: '',
   });
   const [showTimeLogEntry, setShowTimeLogEntry] = useState(false);
   const [timeLogEntries, setTimeLogEntries] = useState<Array<{
@@ -526,7 +535,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
       setTimeLogEntries(
         response.data.map((entry) => ({
           id: entry.id,
-          employee: entry.employee?.name ?? 'Unassigned',
+          employee: entry.employee?.name ?? entry.createdByUser?.name ?? 'Unassigned',
           date: entry.date,
           task: entry.task,
           hours: Number(entry.hours ?? 0),
@@ -727,6 +736,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     links: string;
     driveLink: string;
     priority: string;
+    estimatedHours: number | null;
     dueDate: string | null;
   }) {
     await updateTask(taskId, {
@@ -800,6 +810,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
         employeeId: Number(taskForm.assignedEmployeeId),
         dueDate: taskForm.dueDate || null,
         priority: taskForm.priority,
+        estimatedHours: taskForm.estimatedHours ? Number(taskForm.estimatedHours) : null,
         status: 'PENDING',
       });
       setTaskForm({
@@ -811,6 +822,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
         assignedEmployeeId: '',
         dueDate: '',
         priority: 'MEDIUM',
+        estimatedHours: '',
       });
       await loadProjectDetails(selectedProjectId);
       setShowTaskForm(false);
@@ -1506,7 +1518,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                     className="rounded-lg border border-slate-200 px-3 py-2 text-sm md:col-span-2"
                     placeholder="Google Drive link (optional)"
                   />
-                  <div className="grid gap-3 md:grid-cols-3">
+                  <div className="grid gap-3 md:grid-cols-4">
                     <select
                       value={taskForm.priority}
                       onChange={(e) => setTaskForm((prev) => ({ ...prev, priority: e.target.value }))}
@@ -1516,6 +1528,15 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                       <option value="MEDIUM">MEDIUM</option>
                       <option value="HIGH">HIGH</option>
                     </select>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.25"
+                      value={taskForm.estimatedHours}
+                      onChange={(e) => setTaskForm((prev) => ({ ...prev, estimatedHours: e.target.value }))}
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      placeholder="Estimate (hours)"
+                    />
                     <input
                       type="date"
                       value={taskForm.dueDate}
@@ -1572,7 +1593,19 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                             <td className="px-4 py-3 text-slate-600">{start && due ? `${Math.max(1, Math.ceil((due.getTime() - start.getTime()) / 86400000) + 1)} days` : '—'}</td>
                             <td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${taskPriorityClass[priority] ?? taskPriorityClass.LOW}`}>{priority}</span></td>
                             <td className="min-w-32 px-4 py-3"><div className="flex items-center gap-2"><div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-orange-500" style={{ width: `${Math.max(0, Math.min(100, completion))}%` }} /></div><span className="text-xs text-slate-600">{completion}%</span></div></td>
-                            <td className="px-4 py-3 text-slate-600">{task.actualHours == null ? '—' : `${task.actualHours}h`}</td>
+                            <td className="px-4 py-3">
+                              <TaskTimerCell
+                                taskId={task.id}
+                                estimateHours={task.estimatedHours}
+                                actualHours={task.actualHours}
+                                timerStatus={task.timerStatus}
+                                timerDurationSeconds={task.timerDurationSeconds}
+                                timerRemainingSeconds={task.timerRemainingSeconds}
+                                timerStartedAt={task.timerStartedAt}
+                                timerTotalSeconds={task.timerTotalSeconds}
+                                canControl={role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER'}
+                              />
+                            </td>
                             <td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${taskStatusClass[status] ?? 'bg-slate-200 text-slate-700'}`}>{status.replace('_', ' ')}</span></td>
                           </tr>
                         );

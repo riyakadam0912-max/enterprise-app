@@ -24,6 +24,7 @@ import { SubmitTaskWorkDto } from './dto/submit-task-work.dto';
 import { ReviewTaskDto } from './dto/review-task.dto';
 import { UpdateTaskStatusDto } from './dto/update-task-status.dto';
 import { CreateTaskMessageDto } from './dto/create-task-message.dto';
+import { UpdateTaskTimerDto } from './dto/update-task-timer.dto';
 import { CompletionNotificationInterceptor } from '../common/interceptors/completion-notification.interceptor';
 import {
   ApiBearerAuth,
@@ -160,6 +161,16 @@ export class TasksController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.tasksService.sendMessage(id, dto, req.user);
+  }
+
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
+  @Patch(':id/timer')
+  updateTimer(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateTaskTimerDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.tasksService.updateTimer(id, dto, req.user);
   }
 
   @Roles(Role.ADMIN, Role.MANAGER)

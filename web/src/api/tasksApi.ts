@@ -47,6 +47,12 @@ export interface Task {
   } | null;
   estimatedHours: number | null;
   actualHours: number | null;
+  timerStatus?: 'IDLE' | 'RUNNING' | 'PAUSED' | 'STOPPED';
+  timerDurationSeconds?: number;
+  timerRemainingSeconds?: number;
+  timerStartedAt?: string | null;
+  timerStartedByUserId?: number | null;
+  timerTotalSeconds?: number;
   notes: string | null;
   leadId: number | null;
   dealId: number | null;
@@ -127,6 +133,16 @@ export async function updateTaskStatus(
   return request<Task>(`/tasks/${id}/status`, {
     method: 'PATCH',
     body: JSON.stringify({ status }),
+  });
+}
+
+export async function updateTaskTimer(
+  id: number,
+  action: 'start' | 'pause' | 'resume' | 'stop',
+): Promise<Task> {
+  return request<Task>(`/tasks/${id}/timer`, {
+    method: 'PATCH',
+    body: JSON.stringify({ action }),
   });
 }
 

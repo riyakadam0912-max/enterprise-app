@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -17,6 +18,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { AuthUser } from '../common/types/auth';
 import { BusinessUnitsService } from '../business-units/business-units.service';
 import { CreateTaskMessageDto } from './dto/create-task-message.dto';
+import { UpdateTaskTimerDto } from './dto/update-task-timer.dto';
 
 const PRIORITIES = ['High', 'Low', 'Medium', 'Critical'] as const;
 const TASK_STATUSES = [
@@ -383,6 +385,242 @@ export class TasksService {
       },
       include: { sender: { select: { id: true, name: true, email: true } } },
     });
+  }
+
+  async updateTimer(taskId: number, dto: UpdateTaskTimerDto, user: AuthUser) {
+    const organizationId = this.validateOrganization(user);
+    if (!(await this.canManageTask(taskId, user))) {
+      throw new ForbiddenException(
+        'Only admins or the project manager can control task timers',
+      );
+    }
+
+    const task = await this.db.task.findFirst({
+      where: { id: taskId, organizationId, deletedAt: null },
+    });
+    if (!task) throw new NotFoundException(`Task #${taskId} not found`);
+
+    const now = new Date();
+    if (dto.action === 'start') {
+      if (task.timerStatus === 'RUNNING' || task.timerStatus === 'PAUSED') {
+        throw new ConflictException('This task timer is already active');
+      }
+      if (!task.estimatedHours || task.estimatedHours <= 0) {
+        throw new BadRequestException(
+          'Set a task estimate before starting its countdown',
+        );
+      }
+      const runningTimer = await this.db.task.findFirst({
+        where: {
+          organizationId,
+          deletedAt: null,
+          timerStatus: 'RUNNING',
+          timerStartedByUserId: user.userId,
+          id: { not: taskId },
+        },
+        select: { id: true, taskName: true },
+      });
+      if (runningTimer) {
+        throw new ConflictException(
+          `Timer is already running for task: ${runningTimer.taskName}`,
+        );
+      }
+      const durationSeconds = Math.max(
+        1,
+        Math.round(task.estimatedHours * 3600),
+      );
+      let changed: { count: number };
+      try {
+        changed = await this.db.task.updateMany({
+          where: { id: taskId, organizationId, timerStatus: task.timerStatus },
+          data: {
+            timerStatus: 'RUNNING',
+            timerDurationSeconds: durationSeconds,
+            timerRemainingSeconds: durationSeconds,
+            timerStartedAt: now,
+            timerStartedByUserId: user.userId,
+          },
+        });
+      } catch (error) {
+        if (this.isTimerUniquenessConflict(error)) {
+          throw new ConflictException('You already have a running task timer');
+        }
+        throw error;
+      }
+      if (changed.count !== 1) {
+        throw new ConflictException(
+          'Task timer changed; refresh and try again',
+        );
+      }
+      return this.db.task.findFirstOrThrow({
+        where: { id: taskId, organizationId },
+      });
+    }
+
+    if (dto.action === 'pause') {
+      if (task.timerStatus !== 'RUNNING' || !task.timerStartedAt) {
+        throw new BadRequestException('Only a running timer can be paused');
+      }
+      const remainingSeconds = Math.max(
+        0,
+        task.timerRemainingSeconds -
+          Math.floor((now.getTime() - task.timerStartedAt.getTime()) / 1000),
+      );
+      if (remainingSeconds === 0) {
+        return this.finishTaskTimer(task, organizationId, dto.notes, user, now);
+      }
+      const changed = await this.db.task.updateMany({
+        where: {
+          id: taskId,
+          organizationId,
+          timerStatus: 'RUNNING',
+          timerStartedAt: task.timerStartedAt,
+        },
+        data: {
+          timerStatus: 'PAUSED',
+          timerRemainingSeconds: remainingSeconds,
+          timerStartedAt: null,
+        },
+      });
+      if (changed.count !== 1) {
+        throw new ConflictException(
+          'Task timer changed; refresh and try again',
+        );
+      }
+      return this.db.task.findFirstOrThrow({
+        where: { id: taskId, organizationId },
+      });
+    }
+
+    if (dto.action === 'resume') {
+      if (task.timerStatus !== 'PAUSED') {
+        throw new BadRequestException('Only a paused timer can be resumed');
+      }
+      const runningTimer = await this.db.task.findFirst({
+        where: {
+          organizationId,
+          deletedAt: null,
+          timerStatus: 'RUNNING',
+          timerStartedByUserId: task.timerStartedByUserId,
+          id: { not: taskId },
+        },
+        select: { id: true, taskName: true },
+      });
+      if (runningTimer) {
+        throw new ConflictException(
+          `Timer is already running for task: ${runningTimer.taskName}`,
+        );
+      }
+      let changed: { count: number };
+      try {
+        changed = await this.db.task.updateMany({
+          where: { id: taskId, organizationId, timerStatus: 'PAUSED' },
+          data: { timerStatus: 'RUNNING', timerStartedAt: now },
+        });
+      } catch (error) {
+        if (this.isTimerUniquenessConflict(error)) {
+          throw new ConflictException('You already have a running task timer');
+        }
+        throw error;
+      }
+      if (changed.count !== 1) {
+        throw new ConflictException(
+          'Task timer changed; refresh and try again',
+        );
+      }
+      return this.db.task.findFirstOrThrow({
+        where: { id: taskId, organizationId },
+      });
+    }
+
+    if (task.timerStatus !== 'RUNNING' && task.timerStatus !== 'PAUSED') {
+      throw new BadRequestException('There is no active timer to stop');
+    }
+    return this.finishTaskTimer(task, organizationId, dto.notes, user, now);
+  }
+
+  private async finishTaskTimer(
+    task: {
+      id: number;
+      timerStatus: string;
+      timerStartedAt: Date | null;
+      timerStartedByUserId: number | null;
+      timerDurationSeconds: number;
+      timerRemainingSeconds: number;
+      timerTotalSeconds: number;
+      taskName: string;
+      project: string | null;
+      projectId: number | null;
+    },
+    organizationId: number,
+    notes: string | undefined,
+    user: AuthUser,
+    now: Date,
+  ) {
+    const remainingSeconds =
+      task.timerStatus === 'RUNNING' && task.timerStartedAt
+        ? Math.max(
+            0,
+            task.timerRemainingSeconds -
+              Math.floor(
+                (now.getTime() - task.timerStartedAt.getTime()) / 1000,
+              ),
+          )
+        : task.timerRemainingSeconds;
+    const elapsedSeconds = Math.max(
+      1,
+      task.timerDurationSeconds - remainingSeconds,
+    );
+    const startedByUserId = task.timerStartedByUserId ?? user.userId;
+
+    return this.db.$transaction(async (tx) => {
+      const changed = await tx.task.updateMany({
+        where: {
+          id: task.id,
+          organizationId,
+          timerStatus: task.timerStatus,
+          timerStartedAt: task.timerStartedAt,
+        },
+        data: {
+          timerStatus: 'STOPPED',
+          timerRemainingSeconds: 0,
+          timerStartedAt: null,
+          timerStartedByUserId: null,
+          timerTotalSeconds: task.timerTotalSeconds + elapsedSeconds,
+        },
+      });
+      if (changed.count !== 1) {
+        throw new ConflictException(
+          'Task timer changed; refresh and try again',
+        );
+      }
+      await tx.timesheet.create({
+        data: {
+          organizationId,
+          task: task.taskName,
+          project: task.project,
+          taskId: task.id,
+          projectId: task.projectId,
+          date: task.timerStartedAt ?? now,
+          hours: elapsedSeconds / 3600,
+          status: 'PENDING',
+          notes: notes?.trim() || 'Tracked with task countdown timer',
+          createdByUserId: startedByUserId,
+        },
+      });
+      return tx.task.findFirstOrThrow({
+        where: { id: task.id, organizationId },
+      });
+    });
+  }
+
+  private isTimerUniquenessConflict(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'P2002'
+    );
   }
 
   async update(id: number, dto: UpdateTaskDto, user: AuthUser) {

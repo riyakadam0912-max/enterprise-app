@@ -18,6 +18,7 @@ type TaskLike = {
   taskName: string;
   status: string;
   priority?: string | null;
+  estimatedHours?: number | null;
   category?: string | null;
   description?: string | null;
   links?: string | null;
@@ -53,6 +54,7 @@ type TaskDetailPanelProps = {
     links: string;
     driveLink: string;
     priority: string;
+    estimatedHours: number | null;
     dueDate: string | null;
   }) => Promise<void> | void;
   onLoadMessages?: (taskId: number) => Promise<TaskChatMessage[]>;
@@ -148,6 +150,7 @@ type TaskDetailPanelBodyProps = {
     links: string;
     driveLink: string;
     priority: string;
+    estimatedHours: number | null;
     dueDate: string | null;
   }) => Promise<void> | void;
   onLoadMessages?: (taskId: number) => Promise<TaskChatMessage[]>;
@@ -181,6 +184,7 @@ function TaskDetailPanelBody({
   const [editLinks, setEditLinks] = useState(task.links ?? '');
   const [editDriveLink, setEditDriveLink] = useState(task.driveLink ?? '');
   const [editPriority, setEditPriority] = useState(task.priority ?? 'MEDIUM');
+  const [editEstimatedHours, setEditEstimatedHours] = useState(task.estimatedHours?.toString() ?? '');
   const [editDueDate, setEditDueDate] = useState(task.dueDate?.slice(0, 10) ?? '');
   const [submissionNote, setSubmissionNote] = useState('');
   const [submissionLink, setSubmissionLink] = useState('');
@@ -408,6 +412,15 @@ function TaskDetailPanelBody({
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     placeholder="Category"
                   />
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.25"
+                    value={editEstimatedHours}
+                    onChange={(event) => setEditEstimatedHours(event.target.value)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    placeholder="Estimate in hours (needed for countdown)"
+                  />
                   <select value={editPriority} onChange={(event) => setEditPriority(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
                     <option value="LOW">LOW</option>
                     <option value="MEDIUM">MEDIUM</option>
@@ -443,6 +456,7 @@ function TaskDetailPanelBody({
                         links: editLinks,
                         driveLink: editDriveLink.trim(),
                         priority: editPriority,
+                        estimatedHours: editEstimatedHours ? Number(editEstimatedHours) : null,
                         dueDate: editDueDate || null,
                       });
                       setShowEditForm(false);

@@ -12,6 +12,7 @@ export interface TimesheetRow {
   notes: string | null;
   employeeId: number | null;
   employee: { id: number; name: string } | null;
+  createdByUser?: { id: number; name: string } | null;
 }
 
 export interface TimesheetReportResponse {

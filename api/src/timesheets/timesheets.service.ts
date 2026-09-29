@@ -90,6 +90,9 @@ export class TimesheetsService {
         skip,
         take: +limit,
         orderBy: { date: 'desc' },
+        include: {
+          createdByUser: { select: { id: true, name: true } },
+        },
       }),
       this.prisma.timesheet.count({ where }),
     ]);
@@ -106,6 +109,7 @@ export class TimesheetsService {
         project: t.project ?? null,
         notes: t.notes ?? null,
         employee: null,
+        createdByUser: t.createdByUser ?? null,
       })),
       total,
       page: +page,
