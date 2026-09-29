@@ -46,7 +46,7 @@ describe('LeadsService', () => {
 
   const mockAdminUser = createMockAuthUser(Role.ADMIN, {
     userId: 1,
-    employeeId: 101,
+    employeeId: null,
   });
   const _mockManagerUser = createMockAuthUser(Role.MANAGER, { userId: 2 });
   const mockEmployeeUser = createMockAuthUser(Role.EMPLOYEE, {
@@ -129,6 +129,25 @@ describe('LeadsService', () => {
 
       const result = await service.findAll(mockAdminUser);
       expect(result).toEqual(mockLeads);
+      expect(leadDelegate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ organizationId: 1, deletedAt: null }),
+        }),
+      );
+      expect(getPrismaDelegate(mockPrisma, 'user').findUnique).not.toHaveBeenCalled();
+    });
+
+    it('should allow a manager without an employee link to read organization leads', async () => {
+      const leadDelegate = getPrismaDelegate(mockPrisma, 'lead');
+      leadDelegate.findMany.mockResolvedValueOnce([]);
+
+      await expect(service.findAll(_mockManagerUser)).resolves.toEqual([]);
+      expect(leadDelegate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ organizationId: 1, deletedAt: null }),
+        }),
+      );
+      expect(getPrismaDelegate(mockPrisma, 'user').findUnique).not.toHaveBeenCalled();
     });
 
     it('should return filtered leads for employee', async () => {

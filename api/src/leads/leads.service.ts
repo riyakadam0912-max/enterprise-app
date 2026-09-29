@@ -51,7 +51,11 @@ export class LeadsService {
   ): Promise<Prisma.EmployeeGetPayload<{
     select: { id: true; name: true };
   }> | null> {
-    if (!user || this.isPlatformAdmin(user)) {
+    if (
+      !user ||
+      user.role !== Role.EMPLOYEE ||
+      this.isPlatformAdmin(user)
+    ) {
       return null;
     }
 

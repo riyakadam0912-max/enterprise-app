@@ -56,7 +56,7 @@ describe('DealsService', () => {
 
   const mockAdminUser = createMockAuthUser(Role.ADMIN, {
     userId: 1,
-    isPlatformAdmin: true,
+    employeeId: null,
   });
   const _mockManagerUser = createMockAuthUser(Role.MANAGER, { userId: 2 });
   const mockEmployeeUser = createMockAuthUser(Role.EMPLOYEE, {
@@ -141,6 +141,25 @@ describe('DealsService', () => {
 
       const result = await service.findAll(mockAdminUser);
       expect(result).toEqual(mockDeals);
+      expect(dealDelegate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ organizationId: 1, deletedAt: null }),
+        }),
+      );
+      expect(getPrismaDelegate(mockPrisma, 'user').findUnique).not.toHaveBeenCalled();
+    });
+
+    it('should allow a manager without an employee link to read organization deals', async () => {
+      const dealDelegate = getPrismaDelegate(mockPrisma, 'deal');
+      dealDelegate.findMany.mockResolvedValueOnce([]);
+
+      await expect(service.findAll(_mockManagerUser)).resolves.toEqual([]);
+      expect(dealDelegate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ organizationId: 1, deletedAt: null }),
+        }),
+      );
+      expect(getPrismaDelegate(mockPrisma, 'user').findUnique).not.toHaveBeenCalled();
     });
 
     it('should return filtered deals for employee', async () => {
