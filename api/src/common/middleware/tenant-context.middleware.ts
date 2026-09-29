@@ -111,7 +111,9 @@ export class TenantContextMiddleware implements NestMiddleware {
           where: {
             organizationId: resolvedOrganizationId,
             status: 'ACTIVE',
-            id: { in: assignments.map((assignment) => assignment.businessUnitId) },
+            id: {
+              in: assignments.map((assignment) => assignment.businessUnitId),
+            },
           },
           select: { id: true },
         })
@@ -149,9 +151,7 @@ export class TenantContextMiddleware implements NestMiddleware {
     }
 
     const roots = Array.from(
-      new Set([
-        ...(assignedBUId == null ? [] : [assignedBUId]),
-      ]),
+      new Set([...(assignedBUId == null ? [] : [assignedBUId])]),
     );
     const units = roots.length
       ? await this.prisma.businessUnit.findMany({
@@ -212,7 +212,8 @@ export class TenantContextMiddleware implements NestMiddleware {
     requestedOrganizationId: number,
   ): Promise<number | null> {
     const isAdmin = payload.role === Role.ADMIN;
-    const homeOrganizationId = payload.homeOrganizationId ?? payload.organizationId;
+    const homeOrganizationId =
+      payload.homeOrganizationId ?? payload.organizationId;
     if (!isAdmin || homeOrganizationId == null) return null;
 
     const [homeOrganization, requestedOrganization] = await Promise.all([
@@ -281,8 +282,13 @@ export class TenantContextMiddleware implements NestMiddleware {
 
       if (!isPlatformAdmin && headerOrg) {
         const requestedOrganizationId = Number(headerOrg);
-        const accessibleOrganizationId = Number.isInteger(requestedOrganizationId)
-          ? await this.resolveOrganizationAdminOrganization(payload, requestedOrganizationId)
+        const accessibleOrganizationId = Number.isInteger(
+          requestedOrganizationId,
+        )
+          ? await this.resolveOrganizationAdminOrganization(
+              payload,
+              requestedOrganizationId,
+            )
           : null;
         if (accessibleOrganizationId != null) {
           resolvedOrganizationId = accessibleOrganizationId;
@@ -344,7 +350,10 @@ export class TenantContextMiddleware implements NestMiddleware {
             );
           }
         }
-      } else if (resolvedOrganizationId == null && typeof payload.organizationId === 'number') {
+      } else if (
+        resolvedOrganizationId == null &&
+        typeof payload.organizationId === 'number'
+      ) {
         const org = await this.prisma.organization.findUnique({
           where: { id: payload.organizationId },
           select: { id: true, status: true },
@@ -364,7 +373,8 @@ export class TenantContextMiddleware implements NestMiddleware {
       }
 
       request.organizationId = resolvedOrganizationId;
-      request.homeOrganizationId = payload.homeOrganizationId ?? payload.organizationId ?? null;
+      request.homeOrganizationId =
+        payload.homeOrganizationId ?? payload.organizationId ?? null;
       request.__tenantResolvedByMiddleware = true;
       request.__isPlatformAdmin = isPlatformAdmin;
 

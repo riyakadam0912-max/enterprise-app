@@ -38,17 +38,20 @@ function makeService() {
       ),
     },
     businessUnit: {
-      findFirst: jest.fn(({ where }: any) =>
-        units.find(
-          (unit) =>
-            unit.id === where.id &&
-            where.organizationId === 1 &&
-            where.status === 'ACTIVE',
-        ) ?? null,
+      findFirst: jest.fn(
+        ({ where }: any) =>
+          units.find(
+            (unit) =>
+              unit.id === where.id &&
+              where.organizationId === 1 &&
+              where.status === 'ACTIVE',
+          ) ?? null,
       ),
       findMany: jest.fn(({ where }: any) => {
-        if (where.id?.in) return units.filter((unit) => where.id.in.includes(unit.id));
-        if (where.parentId !== undefined) return units.filter((unit) => unit.parentId === where.parentId);
+        if (where.id?.in)
+          return units.filter((unit) => where.id.in.includes(unit.id));
+        if (where.parentId !== undefined)
+          return units.filter((unit) => unit.parentId === where.parentId);
         return [];
       }),
     },

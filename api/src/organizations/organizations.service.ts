@@ -105,13 +105,15 @@ export class OrganizationsService {
 
   private isOrganizationAdmin(user: AuthUser) {
     return (
-      user?.role === Role.ADMIN ||
-      user?.roles?.includes(Role.ADMIN) === true
-    ) && (user.homeOrganizationId ?? user.organizationId) != null;
+      (user?.role === Role.ADMIN ||
+        user?.roles?.includes(Role.ADMIN) === true) &&
+      (user.homeOrganizationId ?? user.organizationId) != null
+    );
   }
 
-  private async canAccessOrganization(user: AuthUser, organizationId: number) {
-    if (this.isPlatformAdmin(user) || this.isOrganizationAdmin(user)) return true;
+  private async canAccessOrganization(user: AuthUser, _organizationId: number) {
+    if (this.isPlatformAdmin(user) || this.isOrganizationAdmin(user))
+      return true;
     return false;
   }
 
@@ -129,7 +131,13 @@ export class OrganizationsService {
 
     return this.prisma.organization.findMany({
       where: { status: 'ACTIVE', deletedAt: null },
-      select: { id: true, name: true, slug: true, logoUrl: true, parentId: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        logoUrl: true,
+        parentId: true,
+      },
       orderBy: { name: 'asc' },
     });
   }
@@ -314,9 +322,7 @@ export class OrganizationsService {
 
   async getOrganization(id: number, user: AuthUser) {
     if (!(await this.canAccessOrganization(user, id))) {
-      throw new ForbiddenException(
-        'Organization access denied',
-      );
+      throw new ForbiddenException('Organization access denied');
     }
 
     const organization = await this.prisma.organization.findFirst({
@@ -489,9 +495,7 @@ export class OrganizationsService {
       throw new NotFoundException('Organization not found');
     }
     if (!(await this.canAccessOrganization(user, id))) {
-      throw new ForbiddenException(
-        'Organization access denied',
-      );
+      throw new ForbiddenException('Organization access denied');
     }
     if (!this.isPlatformAdmin(user) && dto.status !== undefined) {
       throw new ForbiddenException(

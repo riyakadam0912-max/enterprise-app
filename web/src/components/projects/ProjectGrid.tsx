@@ -27,29 +27,64 @@ const statusClass: Record<string, string> = {
   IN_APPROVAL: 'bg-amber-50 text-amber-700',
 };
 
+const defaultVisibleState = () =>
+  Object.fromEntries(DEFAULT_COLUMNS.map((column) => [column.key, true]));
+
+const defaultWidthsState = () =>
+  Object.fromEntries(DEFAULT_COLUMNS.map((column) => [column.key, column.width]));
+
+const getSavedTablePreferences = () => {
+  if (typeof window === 'undefined') {
+    return { visible: defaultVisibleState(), widths: defaultWidthsState() };
+  }
+
+  try {
+    const saved = JSON.parse(localStorage.getItem('erp-table-preferences:projects') ?? '{}') as {
+      visible?: Record<string, boolean>;
+      widths?: Record<string, number>;
+    };
+
+    return {
+      visible: saved.visible ?? defaultVisibleState(),
+      widths: saved.widths ?? defaultWidthsState(),
+    };
+  } catch {
+    return { visible: defaultVisibleState(), widths: defaultWidthsState() };
+  }
+};
+
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4 text-slate-400">
+      <circle cx="11" cy="11" r="6" />
+      <path d="M16 16L21 21" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function FilterIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <path d="M4 6H20" strokeLinecap="round" />
+      <path d="M7 12H17" strokeLinecap="round" />
+      <path d="M10 18H14" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted, onDeleteError }: { projects: Project[]; selectedProjectId: number | null; onSelect: (id: number) => void; onDeleted?: (ids: number[]) => void | Promise<void>; onDeleteError?: (message: string) => void }) {
-  const [visible, setVisible] = useState<Record<string, boolean>>({});
-  const [widths, setWidths] = useState<Record<string, number>>({});
+  const initialPreferences = useMemo(() => getSavedTablePreferences(), []);
+  const [visible, setVisible] = useState<Record<string, boolean>>(initialPreferences.visible);
+  const [widths, setWidths] = useState<Record<string, number>>(initialPreferences.widths);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const preferenceKey = 'erp-table-preferences:projects';
 
   const statusOptions = ['ALL', 'IN_PROGRESS', 'COMPLETED', 'BLOCKED_CANCELLED', 'IN_APPROVAL'];
 
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(preferenceKey) ?? '{}') as { visible?: Record<string, boolean>; widths?: Record<string, number> };
-      setVisible(saved.visible ?? Object.fromEntries(DEFAULT_COLUMNS.map((column) => [column.key, true])));
-      setWidths(saved.widths ?? Object.fromEntries(DEFAULT_COLUMNS.map((column) => [column.key, column.width])));
-    } catch {
-      setVisible(Object.fromEntries(DEFAULT_COLUMNS.map((column) => [column.key, true])));
-    }
-  }, []);
-
-  useEffect(() => {
-    if (Object.keys(visible).length > 0) localStorage.setItem(preferenceKey, JSON.stringify({ visible, widths }));
+    if (Object.keys(visible).length > 0) localStorage.setItem('erp-table-preferences:projects', JSON.stringify({ visible, widths }));
   }, [visible, widths]);
 
   const columns = useMemo(() => DEFAULT_COLUMNS.filter((column) => visible[column.key] !== false), [visible]);
@@ -100,25 +135,6 @@ export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted, 
     } catch (error) {
       onDeleteError?.(error instanceof Error ? error.message : 'Failed to delete selected projects');
     }
-  }
-
-  function SearchIcon() {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4 text-slate-400">
-        <circle cx="11" cy="11" r="6" />
-        <path d="M16 16L21 21" strokeLinecap="round" />
-      </svg>
-    );
-  }
-
-  function FilterIcon() {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-        <path d="M4 6H20" strokeLinecap="round" />
-        <path d="M7 12H17" strokeLinecap="round" />
-        <path d="M10 18H14" strokeLinecap="round" />
-      </svg>
-    );
   }
 
   return (

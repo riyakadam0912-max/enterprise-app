@@ -167,6 +167,7 @@ export function DataTable<TData, TValue>({
     return [selectionColumn, ...columns, actionColumn].filter(Boolean) as ColumnDef<TData, TValue>[];
   }, [actionColumn, columns, enableRowSelection]);
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data,
     columns: tableColumns,

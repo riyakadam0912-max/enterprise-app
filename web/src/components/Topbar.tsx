@@ -52,16 +52,6 @@ function ChevronRightIcon() {
   );
 }
 
-/** Get initials from a name string (up to 2 chars). */
-function getInitials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0].toUpperCase())
-    .join('');
-}
-
 export default function Topbar() {
   const pathname = usePathname();
   const session = useAuthSession();
@@ -72,18 +62,16 @@ export default function Topbar() {
 
   const isSuperAdmin = isSuperAdminSession(session);
 
-  // The org name/logo shown in the badge.
+  // The org name shown in the badge.
   // For SA: we read from session (which is populated by the effect below).
   // For regular users: session.organizationName is set at login/bootstrap.
   let orgName = session.organizationName;
-  let orgLogo = session.organizationLogo;
 
   // SA without an active impersonation context should show no org badge.
   if (isSuperAdmin) {
     const activeOrgId = typeof window !== 'undefined' ? getActiveOrganizationId() : null;
     if (activeOrgId == null) {
       orgName = null;
-      orgLogo = null;
     }
   }
 

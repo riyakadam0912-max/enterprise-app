@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
 import { TimesheetFilters } from '../../api/timesheetsApi';
 import { useTimesheetsReport } from '../../hooks/useTimesheets';
 import TimesheetFiltersBar from './TimesheetFiltersBar';

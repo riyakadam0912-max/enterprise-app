@@ -62,9 +62,7 @@ describe('authorization guards', () => {
     const guard = new RolesGuard(reflector);
 
     expect(() =>
-      guard.canActivate(
-        contextWithUser({ role: 'admin', roles: ['admin'] }),
-      ),
+      guard.canActivate(contextWithUser({ role: 'admin', roles: ['admin'] })),
     ).not.toThrow();
   });
 

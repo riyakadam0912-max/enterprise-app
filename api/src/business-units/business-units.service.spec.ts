@@ -105,11 +105,13 @@ describe('BusinessUnitsService', () => {
     });
     const service = new BusinessUnitsService(prisma);
 
-    await expect(service.resolveScope({
+    await expect(
+      service.resolveScope({
         ...user(Role.MANAGER),
         businessUnitId: 20,
         allBusinessUnits: false,
-      })).resolves.toEqual({
+      }),
+    ).resolves.toEqual({
       organizationId: 1,
       allUnits: false,
       unitIds: [20, 21],
@@ -228,12 +230,12 @@ describe('BusinessUnitsService', () => {
     const service = new BusinessUnitsService(prisma);
     const actor = user(Role.MANAGER);
 
-    await expect(service.assignAdministrator(10, 1, 99, actor)).resolves.toEqual(
-      { id: 5 },
-    );
-    await expect(service.removeAdministrator(10, 1, 99, actor)).resolves.toEqual(
-      { success: true },
-    );
+    await expect(
+      service.assignAdministrator(10, 1, 99, actor),
+    ).resolves.toEqual({ id: 5 });
+    await expect(
+      service.removeAdministrator(10, 1, 99, actor),
+    ).resolves.toEqual({ success: true });
   });
 
   it('allows an assigned BU admin to create hierarchy only in their organization', async () => {

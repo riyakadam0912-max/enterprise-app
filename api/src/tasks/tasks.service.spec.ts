@@ -302,7 +302,11 @@ describe('TasksService', () => {
               { assignedToUserId: mockManagerUser.userId },
               { assignedByUserId: mockManagerUser.userId },
               { projectRef: { managerId: mockManagerUser.userId } },
-              { projectRef: { coManagers: { some: { id: mockManagerUser.userId } } } },
+              {
+                projectRef: {
+                  coManagers: { some: { id: mockManagerUser.userId } },
+                },
+              },
             ],
           },
           { organizationId: 1, businessUnitId: { in: [10] } },

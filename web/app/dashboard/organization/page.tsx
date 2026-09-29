@@ -233,7 +233,7 @@ export default function OrganizationPage() {
       totalLoss,
       net: totalProfit - totalLoss,
     };
-  }, [childOrgs.length, childProfitLossData]);
+  }, [childOrgs, childProfitLossData]);
 
   useEffect(() => {
     let active = true;
@@ -382,6 +382,7 @@ export default function OrganizationPage() {
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-linear-to-br from-indigo-600 to-indigo-500 text-white shadow-sm ring-1 ring-indigo-200">
               {parentOrg?.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img src={parentOrg.logoUrl} alt={parentOrg.name} className="h-full w-full object-cover"
                   onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
               ) : (
@@ -434,6 +435,7 @@ export default function OrganizationPage() {
                           <div className="flex items-center gap-2.5">
                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold overflow-hidden">
                               {item.logoUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
                                 <img src={item.logoUrl} alt={item.name} className="h-full w-full object-cover"
                                   onError={(e) => {
                                     (e.currentTarget as HTMLImageElement).style.display = 'none';
@@ -510,6 +512,7 @@ export default function OrganizationPage() {
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-linear-to-br from-orange-500 to-amber-400 text-white shadow-sm ring-1 ring-orange-200">
             {parentOrg?.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img src={parentOrg.logoUrl} alt={parentOrg.name ?? 'Organization'} className="h-full w-full object-cover"
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
             ) : (
@@ -760,6 +763,7 @@ export default function OrganizationPage() {
                         <div className="flex items-center gap-2.5">
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-orange-100 text-orange-700 text-xs font-bold overflow-hidden">
                             {item.logoUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
                               <img src={item.logoUrl} alt={item.name} className="h-full w-full object-cover"
                                 onError={(e) => {
                                   (e.currentTarget as HTMLImageElement).style.display = 'none';

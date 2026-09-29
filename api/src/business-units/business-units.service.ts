@@ -97,7 +97,10 @@ export class BusinessUnitsService {
       return;
     }
 
-    if ((await this.getActiveAdministratorUnitIds(user, organizationId)).length === 0) {
+    if (
+      (await this.getActiveAdministratorUnitIds(user, organizationId))
+        .length === 0
+    ) {
       throw new ForbiddenException(
         'Only organization administrators and active Business Unit administrators can manage Business Units',
       );
@@ -753,7 +756,9 @@ export class BusinessUnitsService {
         return {
           organizationId,
           allUnits: false,
-          unitIds: await this.collectDescendantIds(organizationId, [selected.id]),
+          unitIds: await this.collectDescendantIds(organizationId, [
+            selected.id,
+          ]),
           assignedUnitId,
         };
       }

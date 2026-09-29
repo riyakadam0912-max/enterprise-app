@@ -175,7 +175,8 @@ export class TimesheetsService {
       const r = records[i];
       const task = typeof r.task === 'string' ? r.task : '';
       const project = typeof r.project === 'string' ? r.project : undefined;
-      const projectId = typeof r.projectId === 'number' ? r.projectId : Number(r.projectId);
+      const projectId =
+        typeof r.projectId === 'number' ? r.projectId : Number(r.projectId);
       const taskId = typeof r.taskId === 'number' ? r.taskId : Number(r.taskId);
       const date = typeof r.date === 'string' ? r.date : '';
       const hours = typeof r.hours === 'number' ? r.hours : Number(r.hours);

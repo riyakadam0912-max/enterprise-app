@@ -30,7 +30,6 @@ export function OrganizationSwitcher() {
 
   useEffect(() => {
     if (session.role !== 'ADMIN') {
-      setOrganizations([]);
       return;
     }
 
@@ -51,11 +50,13 @@ export function OrganizationSwitcher() {
       .catch(() => setOrganizations([]));
   }, [session.role, session.user?.id, session.organizationId]);
 
-  if (session.role !== 'ADMIN' || organizations.length <= 1) return null;
+  const visibleOrganizations = session.role === 'ADMIN' ? organizations : [];
+
+  if (session.role !== 'ADMIN' || visibleOrganizations.length <= 1) return null;
 
   const activeOrganizationId = getActiveOrganizationId() ?? session.organizationId ?? '';
   const activeOrganization =
-    organizations.find((organization) => organization.id === Number(activeOrganizationId)) ?? organizations[0];
+    visibleOrganizations.find((organization) => organization.id === Number(activeOrganizationId)) ?? visibleOrganizations[0];
   const displayName = activeOrganization?.name ?? session.organizationName ?? 'Organization';
 
   async function handleSwitch(organization: AccessibleOrganization) {
@@ -113,7 +114,7 @@ export function OrganizationSwitcher() {
 
       {isOpen && (
         <div className="absolute right-0 z-50 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
-          {organizations.map((organization) => {
+          {visibleOrganizations.map((organization) => {
             const isActive = organization.id === Number(activeOrganizationId);
 
             return (
