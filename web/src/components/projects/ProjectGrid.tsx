@@ -11,6 +11,7 @@ const DEFAULT_COLUMNS: GridColumn[] = [
   { key: 'projectName', label: 'Project Name', width: 240, getValue: (project) => project.projectName },
   { key: 'customer', label: 'Customer', width: 180, getValue: (project) => project.customer?.customerName ?? project.clientName ?? project.client ?? 'Unlinked' },
   { key: 'owner', label: 'Owner', width: 160, getValue: (project) => project.owner?.name ?? project.managerUser?.name ?? project.manager ?? 'Unassigned' },
+  { key: 'managerAssignedBy', label: 'Manager assigned by', width: 190, getValue: (project) => project.managerAssignedBy?.name ?? '—' },
   { key: 'status', label: 'Status', width: 150, getValue: (project) => project.status.replaceAll('_', ' ') },
   { key: 'tasks', label: 'Tasks', width: 90, getValue: (project) => String(project.tasksCount ?? project._count?.tasks ?? project.tasks?.length ?? 0) },
   { key: 'phases', label: 'Phases', width: 90, getValue: () => '0' },
@@ -98,6 +99,7 @@ export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted, 
         project.projectName.toLowerCase().includes(term) ||
         (project.customer?.customerName ?? project.clientName ?? project.client ?? '').toLowerCase().includes(term) ||
         (project.owner?.name ?? project.managerUser?.name ?? project.manager ?? '').toLowerCase().includes(term) ||
+        (project.managerAssignedBy?.name ?? '').toLowerCase().includes(term) ||
         project.status.toLowerCase().includes(term);
 
       const matchesStatus = statusFilter === 'ALL' || project.status === statusFilter;
@@ -116,7 +118,7 @@ export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted, 
 
   function exportSelected() {
     const rows = projects.filter((project) => selectedIds.includes(project.id));
-    const csv = ['ID,Project Name,Customer,Owner,Status', ...rows.map((project) => [project.id, project.projectName, columnValue('customer', project), columnValue('owner', project), project.status].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','))].join('\n');
+    const csv = ['ID,Project Name,Customer,Owner,Manager assigned by,Status', ...rows.map((project) => [project.id, project.projectName, columnValue('customer', project), columnValue('owner', project), columnValue('managerAssignedBy', project), project.status].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'projects.csv'; anchor.click(); URL.revokeObjectURL(url);
