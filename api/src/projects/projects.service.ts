@@ -411,7 +411,10 @@ export class ProjectsService {
       throw new ForbiddenException('Project name is required');
     }
 
-    const owners = await this.validateOwners(dto.ownerIds ?? [], organizationId);
+    const owners = await this.validateOwners(
+      dto.ownerIds ?? [],
+      organizationId,
+    );
     const managerId =
       dto.managerId ?? (user.role === Role.MANAGER ? user.userId : undefined);
     const manager = managerId
@@ -446,8 +449,9 @@ export class ProjectsService {
         managerId: managerId,
         managerAssignedById: managerId != null ? user.userId : null,
         owners: {
-          connect: [...new Set([user.userId, ...owners.map((owner) => owner.id)])]
-            .map((id) => ({ id })),
+          connect: [
+            ...new Set([user.userId, ...owners.map((owner) => owner.id)]),
+          ].map((id) => ({ id })),
         },
         createdById: user.userId,
         status: this.normalizeProjectStatus(dto.status),
