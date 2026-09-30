@@ -16,6 +16,7 @@ import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { BusinessUnitsService } from '../business-units/business-units.service';
 import { FILE_STORAGE_PROVIDER } from '../file-management/file-management.constants';
+import { OrganizationScopeService } from '../organizations/organization-scope.service';
 
 // Helper to create valid mock AuthUser
 function createMockAuthUser(
@@ -88,6 +89,12 @@ describe('ExpensesService', () => {
               assignedUnitId: null,
             }),
             assertRecordAccessible: jest.fn(),
+          },
+        },
+        {
+          provide: OrganizationScopeService,
+          useValue: {
+            getOrganizationIds: jest.fn().mockResolvedValue([1]),
           },
         },
       ],
@@ -163,6 +170,59 @@ describe('ExpensesService', () => {
       expect(mockWorkflowEngine.submitWorkflow).toHaveBeenCalledTimes(1);
       expect(mockCacheManager.del).toHaveBeenCalledTimes(1);
     });
+
+    it('creates a child employee expense under the employee organization', async () => {
+      const expenseDelegate = getPrismaDelegate(mockPrisma, 'expense');
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      const organizationScope = (service as any).organizationScopeService;
+      jest
+        .spyOn(organizationScope, 'getOrganizationIds')
+        .mockResolvedValue([1, 2]);
+      employeeDelegate.findFirst.mockResolvedValueOnce({
+        organizationId: 2,
+        businessUnitId: null,
+      });
+      expenseDelegate.create.mockResolvedValueOnce({
+        id: 12,
+        organizationId: 2,
+        category: 'Travel',
+      });
+      (mockWorkflowEngine.submitWorkflow as jest.Mock).mockResolvedValueOnce(
+        {},
+      );
+
+      await service.create(
+        { employeeId: 202, category: 'Travel', amount: 50 } as CreateExpenseDto,
+        mockAdminUser,
+      );
+
+      expect(expenseDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            organization: { connect: { id: 2 } },
+          }),
+        }),
+      );
+      expect(mockWorkflowEngine.submitWorkflow).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: 2 }),
+      );
+    });
+  });
+
+  describe('update', () => {
+    it('prevents employees from reassigning a pending expense', async () => {
+      jest.spyOn(service, 'findOne').mockResolvedValueOnce({
+        id: 7,
+        organizationId: 1,
+        employeeId: 101,
+        status: 'PENDING_MANAGER',
+      } as never);
+
+      await expect(
+        service.update(7, { employeeId: 202 } as UpdateExpenseDto, mockEmployeeUser),
+      ).rejects.toThrow(ForbiddenException);
+      expect(getPrismaDelegate(mockPrisma, 'expense').update).not.toHaveBeenCalled();
+    });
   });
 
   describe('findAll', () => {
@@ -173,6 +233,25 @@ describe('ExpensesService', () => {
 
       const result = await service.findAll(mockAdminUser);
       expect(result).toEqual(mockExpenses);
+    });
+
+    it('includes descendant organizations in parent admin expense scope', async () => {
+      const expenseDelegate = getPrismaDelegate(mockPrisma, 'expense');
+      const organizationScope = (service as any).organizationScopeService;
+      jest
+        .spyOn(organizationScope, 'getOrganizationIds')
+        .mockResolvedValue([1, 2]);
+      expenseDelegate.findMany.mockResolvedValueOnce([]);
+
+      await service.findAll(mockAdminUser);
+
+      expect(expenseDelegate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: { in: [1, 2] },
+          }),
+        }),
+      );
     });
 
     it('should return filtered expenses for employee', async () => {

@@ -3,6 +3,7 @@ import { axiosClient } from './axiosClient';
 
 export interface Expense {
   id: number;
+  organization?: { id: number; name: string };
   expenseDate: string | null;
   category: string | null;
   description: string | null;
@@ -26,6 +27,7 @@ export interface Expense {
     id: number;
     name: string;
     email?: string | null;
+    organization?: { id: number; name: string };
   } | null;
   submittedByUser?: {
     id: number;

@@ -878,6 +878,7 @@ export default function AllTasksPage() {
         task.category,
         task.description,
         task.assignee,
+        task.organization?.name,
         task.project,
         task.status,
         task.submissionNotes,
@@ -924,7 +925,7 @@ export default function AllTasksPage() {
 
   function exportSelectedTasks() {
     const rows = filteredTasks.filter((task) => selectedTaskIds.includes(task.id));
-    const csv = ['ID,Task,Project,Assignee,Status,Priority,Due Date', ...rows.map((task) => [task.id, task.taskName, task.project ?? '', task.assignedToUser?.name ?? task.assignee ?? '', task.status, task.priority ?? '', task.dueDate ?? ''].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','))].join('\n');
+    const csv = ['ID,Task,Organization,Project,Assignee,Status,Priority,Due Date', ...rows.map((task) => [task.id, task.taskName, task.organization?.name ?? '', task.project ?? '', task.assignedToUser?.name ?? task.assignee ?? '', task.status, task.priority ?? '', task.dueDate ?? ''].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','))].join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'tasks.csv'; anchor.click(); URL.revokeObjectURL(url);
   }
@@ -1188,7 +1189,7 @@ export default function AllTasksPage() {
                       aria-label="Select all tasks"
                     />
                   </th>
-                  {['ID', 'Task', 'Project', 'Assignee', 'Status', 'Priority', 'Due Date', 'Estimated Hours', 'Actual Hours', 'Timer'].map((heading, index) => (
+                  {['ID', 'Task', 'Organization', 'Project', 'Assignee', 'Status', 'Priority', 'Due Date', 'Estimated Hours', 'Actual Hours', 'Timer'].map((heading, index) => (
                     <th key={heading} className={`whitespace-nowrap border-b border-slate-200 px-4 py-3 ${index < 2 ? 'sticky z-10 bg-slate-50' : ''}`}>
                       {heading}
                     </th>
@@ -1219,6 +1220,7 @@ export default function AllTasksPage() {
                     </td>
                     <td className="sticky z-10 bg-white px-4 py-3 text-slate-500">#{task.id}</td>
                     <td className="sticky z-10 bg-white px-4 py-3 font-semibold text-slate-900">{task.taskName}</td>
+                    <td className="px-4 py-3 text-slate-600">{task.organization?.name ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-600">{task.project ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-600">{task.assignedToUser?.name ?? task.assignee ?? 'Unassigned'}</td>
                     <td className="px-4 py-3">

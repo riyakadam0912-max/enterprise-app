@@ -300,7 +300,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
 
   const [managers, setManagers] = useState<Array<{ id: number; name: string; role: string }>>([]);
   const [ownerOptions, setOwnerOptions] = useState<Array<{ id: number; name: string; role: string }>>([]);
-  const [employees, setEmployees] = useState<Array<{ id: number; userId: number | null; name: string; email: string | null; department: string | null; designation: string | null }>>([]);
+  const [employees, setEmployees] = useState<Array<{ id: number; userId: number | null; name: string; email: string | null; department: string | null; designation: string | null; organization?: { id: number; name: string } }>>([]);
   const [managerSelection, setManagerSelection] = useState('');
   const [showCoManagerPicker, setShowCoManagerPicker] = useState(false);
   const [coManagerSelection, setCoManagerSelection] = useState('');
@@ -325,6 +325,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
   const [timeLogEntries, setTimeLogEntries] = useState<Array<{
     id: number;
     employee: string;
+    organization: string;
     date: string;
     task: string;
     hours: number;
@@ -503,8 +504,8 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
         ? apiClient<Array<{ id: number; name: string; role: string; employeeId?: number | null }>>('/users')
         : Promise.resolve([] as Array<{ id: number; name: string; role: string; employeeId?: number | null }>);
       const employeesPromise = canLoadDirectoryData
-        ? apiClient<Array<{ id: number; name: string; email: string | null; department: string | null; designation: string | null }>>('/employees')
-        : Promise.resolve([] as Array<{ id: number; name: string; email: string | null; department: string | null; designation: string | null }>);
+        ? apiClient<Array<{ id: number; name: string; email: string | null; department: string | null; designation: string | null; organization?: { id: number; name: string } }>>('/employees')
+        : Promise.resolve([] as Array<{ id: number; name: string; email: string | null; department: string | null; designation: string | null; organization?: { id: number; name: string } }>);
 
       const [usersResult, employeesResult] = await Promise.allSettled([usersPromise, employeesPromise]);
 
@@ -658,11 +659,20 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
   async function loadProjectTimeLogs(projectId: number) {
     setTimeLogLoading(true);
     try {
-      const response = await getTimesheetsReport({ projectId, limit: 50 });
+      const pageSize = 100;
+      const firstPage = await getTimesheetsReport({ projectId, page: 1, limit: pageSize });
+      const pages = await Promise.all(
+        Array.from(
+          { length: Math.max(0, Math.ceil(firstPage.total / pageSize) - 1) },
+          (_, index) => getTimesheetsReport({ projectId, page: index + 2, limit: pageSize }),
+        ),
+      );
+      const entries = [firstPage, ...pages].flatMap((response) => response.data);
       setTimeLogEntries(
-        response.data.map((entry) => ({
+        entries.map((entry) => ({
           id: entry.id,
           employee: entry.employee?.name ?? entry.createdByUser?.name ?? 'Unassigned',
+          organization: entry.organization?.name ?? '—',
           date: entry.date,
           task: entry.task,
           hours: Number(entry.hours ?? 0),
@@ -1781,7 +1791,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                       <option value="">Assign to employee</option>
                       {taskAssigneeOptions.map((employee) => (
                         <option key={employee.id} value={employee.id}>
-                          {employee.name}{employee.department ? ` · ${employee.department}` : ''}
+                          {employee.name}{[employee.organization?.name, employee.department].filter(Boolean).length ? ` · ${[employee.organization?.name, employee.department].filter(Boolean).join(' · ')}` : ''}
                         </option>
                       ))}
                     </select>
@@ -2075,6 +2085,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                             <p className="text-sm font-semibold text-slate-900">{entry.employee}</p>
                             <span className="text-xs text-slate-400">{new Date(entry.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                           </div>
+                          <p className="text-xs text-slate-500">{entry.organization}</p>
                           <p className="mt-0.5 text-sm text-slate-600">{entry.task}</p>
                           <p className="mt-1 text-xs text-slate-500">{entry.note}</p>
                         </div>
@@ -2208,7 +2219,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                           >
                             <p className="text-sm font-medium text-slate-900">{employee.name}</p>
                             <p className="text-xs text-slate-500">
-                              {[employee.department, employee.designation].filter(Boolean).join(' · ') || employee.email || 'Employee'}
+                              {[employee.organization?.name, employee.department, employee.designation].filter(Boolean).join(' · ') || employee.email || 'Employee'}
                             </p>
                           </button>
                         ))

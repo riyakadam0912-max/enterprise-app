@@ -13,6 +13,7 @@ import { AuthUser } from '../common/types/auth';
 import { Role } from '../common/enums/role.enum';
 import { hashPassword } from '../users/utils/hash-password';
 import { BusinessUnitsService } from '../business-units/business-units.service';
+import { OrganizationScopeService } from '../organizations/organization-scope.service';
 
 const ALLOWED_DEPARTMENTS = [
   'Sales',
@@ -42,6 +43,7 @@ export class EmployeesService {
   constructor(
     private prisma: PrismaService,
     private businessUnitsService: BusinessUnitsService,
+    private organizationScopeService: OrganizationScopeService,
   ) {}
 
   private validateOrganization(user: AuthUser): number {
@@ -140,6 +142,27 @@ export class EmployeesService {
     const buWhere = this.businessUnitsService.buildEmployeeBUWhere(scope);
 
     if (this.isWideScoped(user)) {
+      const organizationIds =
+        await this.organizationScopeService.getOrganizationIds(user);
+      if (organizationIds === null) {
+        return { deletedAt: null };
+      }
+      const rootOrganizationId =
+        scope?.organizationId ?? user.homeOrganizationId ?? user.organizationId;
+      const descendantIds = organizationIds.filter(
+        (id) => id !== rootOrganizationId,
+      );
+      if (descendantIds.length > 0) {
+        return {
+          OR: [
+            buWhere,
+            {
+              organizationId: { in: descendantIds },
+              deletedAt: null,
+            },
+          ],
+        };
+      }
       return buWhere;
     }
 
@@ -241,12 +264,14 @@ export class EmployeesService {
     }
 
     if (businessUnitId != null) {
-      const scope = await this.businessUnitsService.resolveScope(user as any);
-      await this.businessUnitsService.assertRecordAccessible(
-        scope,
-        businessUnitId,
-        'employee:reportingManager',
-      );
+      if (organizationId === user.organizationId) {
+        const scope = await this.businessUnitsService.resolveScope(user as any);
+        await this.businessUnitsService.assertRecordAccessible(
+          scope,
+          businessUnitId,
+          'employee:reportingManager',
+        );
+      }
       if (
         managers.some(
           (manager) =>
@@ -529,6 +554,7 @@ export class EmployeesService {
       where,
       include: {
         shift: true,
+        organization: { select: { id: true, name: true } },
         user: {
           select: {
             id: true,
@@ -557,6 +583,7 @@ export class EmployeesService {
       where: { id: requestedEmployeeId, ...(where ?? {}) },
       include: {
         shift: true,
+        organization: { select: { id: true, name: true } },
         user: {
           select: {
             id: true,
@@ -615,8 +642,9 @@ export class EmployeesService {
     updateEmployeeDto: UpdateEmployeeDto,
     user: AuthUser & { roles?: string[] },
   ) {
-    const organizationId = this.validateOrganization(user);
+    this.validateOrganization(user);
     const employee = await this.findOne(id, user);
+    const organizationId = employee.organizationId;
     const canPrivilegedEdit =
       user.role === Role.ADMIN ||
       user.role === Role.HR ||
@@ -679,6 +707,37 @@ export class EmployeesService {
     if (updateEmployeeDto.hireDate) {
       data.hireDate = new Date(updateEmployeeDto.hireDate);
     }
+    if (updateEmployeeDto.businessUnitId !== undefined) {
+      if (updateEmployeeDto.businessUnitId === null) {
+        data.businessUnit = { disconnect: true };
+      } else {
+        const businessUnit = await this.prisma.businessUnit.findFirst({
+          where: {
+            id: updateEmployeeDto.businessUnitId,
+            organizationId,
+            status: 'ACTIVE',
+          },
+          select: { id: true },
+        });
+        if (!businessUnit) {
+          throw new NotFoundException(
+            'Selected Business Unit not found in the employee organization.',
+          );
+        }
+        if (organizationId === user.organizationId) {
+          const scope = await this.businessUnitsService.resolveScope(
+            user as any,
+          );
+          await this.businessUnitsService.assertRecordAccessible(
+            scope,
+            businessUnit.id,
+            'employee:businessUnit',
+          );
+        }
+        data.businessUnit = { connect: { id: businessUnit.id } };
+      }
+      delete (data as { businessUnitId?: number | null }).businessUnitId;
+    }
     if (reportingManagerIds !== undefined) {
       if (!employee.user?.id) {
         throw new BadRequestException(
@@ -735,7 +794,7 @@ export class EmployeesService {
   async remove(id: number, user: AuthUser) {
     const employee = await this.findOne(id, user);
     return this.prisma.employee.update({
-      where: { id: employee.id },
+      where: { id: employee.id, organizationId: employee.organizationId },
       data: { deletedAt: new Date() },
     });
   }

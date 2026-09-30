@@ -22,7 +22,7 @@ export interface LeaveRequest {
     reason: string | null;
   }[] | null;
   employeeId: number | null;
-  employee:   { id: number; name: string } | null;
+  employee:   { id: number; name: string; organization?: { id: number; name: string } } | null;
   createdAt:  string;
   updatedAt:  string;
 }

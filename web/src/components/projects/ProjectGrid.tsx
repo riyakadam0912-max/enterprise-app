@@ -9,6 +9,7 @@ type GridColumn = { key: string; label: string; width: number; getValue: (projec
 const DEFAULT_COLUMNS: GridColumn[] = [
   { key: 'id', label: 'ID', width: 72, getValue: (project) => String(project.id) },
   { key: 'projectName', label: 'Project Name', width: 240, getValue: (project) => project.projectName },
+  { key: 'organization', label: 'Organization', width: 190, getValue: (project) => project.organization?.name ?? '—' },
   { key: 'customer', label: 'Customer', width: 180, getValue: (project) => project.customer?.customerName ?? project.clientName ?? project.client ?? 'Unlinked' },
   { key: 'owner', label: 'Owner', width: 220, getValue: (project) => {
     const names = project.owners?.map((owner) => owner.name) ?? [];
@@ -103,6 +104,7 @@ export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted, 
         term.length === 0 ||
         project.projectName.toLowerCase().includes(term) ||
         (project.customer?.customerName ?? project.clientName ?? project.client ?? '').toLowerCase().includes(term) ||
+        (project.organization?.name ?? '').toLowerCase().includes(term) ||
         (project.owners ?? []).some((owner) => owner.name.toLowerCase().includes(term)) ||
         (project.managerUser?.name ?? project.manager ?? '').toLowerCase().includes(term) ||
         (project.managerAssignedBy?.name ?? '').toLowerCase().includes(term) ||
@@ -124,7 +126,7 @@ export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted, 
 
   function exportSelected() {
     const rows = projects.filter((project) => selectedIds.includes(project.id));
-    const csv = ['ID,Project Name,Customer,Owner,Managed by,Manager assigned by,Status', ...rows.map((project) => [project.id, project.projectName, columnValue('customer', project), columnValue('owner', project), columnValue('manager', project), columnValue('managerAssignedBy', project), project.status].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','))].join('\n');
+    const csv = ['ID,Project Name,Organization,Customer,Owner,Managed by,Manager assigned by,Status', ...rows.map((project) => [project.id, project.projectName, columnValue('organization', project), columnValue('customer', project), columnValue('owner', project), columnValue('manager', project), columnValue('managerAssignedBy', project), project.status].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'projects.csv'; anchor.click(); URL.revokeObjectURL(url);

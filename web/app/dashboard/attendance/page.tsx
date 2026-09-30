@@ -28,6 +28,7 @@ type MonthlyReportStatus = AttendanceStatus | 'LATE' | '';
 interface MonthlyAttendanceReportRow {
   employeeId: number;
   employeeName: string;
+  organization?: { id: number; name: string };
   hireDate: string | null;
   department: string | null;
   role: string;
@@ -466,9 +467,10 @@ export default function AttendancePage() {
     const rows = monthlyReport?.rows ?? [];
     if (rows.length === 0) return;
 
-    const headers = ['Employee Name', 'Employee ID', 'Department', 'Role', 'Total Present', 'Total Absent', 'Late Count', 'Half Days', 'Leaves', 'Working Days', 'Attendance %', 'Overtime (hrs)', 'Worked (hrs)', 'Expected (hrs)', 'Shortfall (hrs)'];
+    const headers = ['Employee Name', 'Organization', 'Employee ID', 'Department', 'Role', 'Total Present', 'Total Absent', 'Late Count', 'Half Days', 'Leaves', 'Working Days', 'Attendance %', 'Overtime (hrs)', 'Worked (hrs)', 'Expected (hrs)', 'Shortfall (hrs)'];
     const body = rows.map((row) => [
       row.employeeName,
+      row.organization?.name ?? '',
       row.employeeId,
       row.department ?? '',
       row.role,
@@ -672,6 +674,7 @@ export default function AttendancePage() {
                 <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="px-4 py-3">Employee Name</th>
+                    <th className="px-4 py-3">Organization</th>
                     <th className="px-4 py-3">Employee ID</th>
                     <th className="px-4 py-3">Department</th>
                     <th className="px-4 py-3">Role</th>
@@ -693,6 +696,7 @@ export default function AttendancePage() {
                           {formatHireDate(row.hireDate)}
                         </div>
                       </td>
+                      <td className="px-4 py-3 text-slate-600">{row.organization?.name ?? '—'}</td>
                       <td className="px-4 py-3 text-slate-600">{row.employeeId}</td>
                       <td className="px-4 py-3 text-slate-600">{row.department ?? '—'}</td>
                       <td className="px-4 py-3 text-slate-600">{row.role}</td>
@@ -713,7 +717,7 @@ export default function AttendancePage() {
                     </tr>
                   )) : (
                     <tr>
-                      <td colSpan={11} className="px-4 py-10 text-center text-sm text-slate-500">No monthly report rows match the current filters.</td>
+                      <td colSpan={12} className="px-4 py-10 text-center text-sm text-slate-500">No monthly report rows match the current filters.</td>
                     </tr>
                   )}
                 </tbody>
@@ -1073,7 +1077,7 @@ export default function AttendancePage() {
                       <Link href={`/dashboard/attendance/employee/${row.employeeId}`} className="font-medium text-slate-900 hover:text-orange-600">
                         {row.employee.name}
                       </Link>
-                      <p className="text-xs text-slate-400 mt-1">{row.employee.designation ?? row.employee.department ?? 'Employee'}</p>
+                      <p className="text-xs text-slate-400 mt-1">{[row.employee.organization?.name, row.employee.designation ?? row.employee.department ?? 'Employee'].filter(Boolean).join(' · ')}</p>
                     </td>
                   )}
                   <td className="px-5 py-4 text-slate-600">{new Date(row.date).toLocaleDateString()}</td>

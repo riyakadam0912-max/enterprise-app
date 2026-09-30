@@ -36,6 +36,7 @@ export interface AttendanceEmployee {
   name: string;
   department: string | null;
   designation: string | null;
+  organization?: { id: number; name: string };
 }
 
 export interface AttendanceRecord {
@@ -149,6 +150,7 @@ export interface AttendanceFilters {
 export interface MonthlyAttendanceReportRow {
   employeeId: number;
   employeeName: string;
+  organization: { id: number; name: string };
   hireDate: string | null;
   department: string | null;
   role: string;

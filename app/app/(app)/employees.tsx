@@ -32,7 +32,8 @@ export default function Employees() {
           const employeeUser = typeof item.user === 'object' && item.user !== null ? (item.user as { id?: number | null }) : null;
           const rawId = typeof item.id === 'number' ? item.id : Number(item.id ?? 0);
           const userId = employeeUser?.id ?? (Number.isFinite(rawId) && rawId > 0 ? rawId : null);
-          const subtitle = [item.department, item.designation].filter(Boolean).join(' · ') || String(item.status ?? 'Employee');
+          const organization = typeof item.organization === 'object' && item.organization !== null ? (item.organization as { name?: string }).name : undefined;
+          const subtitle = [organization, item.department, item.designation].filter(Boolean).join(' · ') || String(item.status ?? 'Employee');
 
           return (
             <Link href={{ pathname: '/employee/[id]', params: { id: String(item.id) } }} asChild>

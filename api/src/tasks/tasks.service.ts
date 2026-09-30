@@ -19,6 +19,8 @@ import { AuthUser } from '../common/types/auth';
 import { BusinessUnitsService } from '../business-units/business-units.service';
 import { CreateTaskMessageDto } from './dto/create-task-message.dto';
 import { UpdateTaskTimerDto } from './dto/update-task-timer.dto';
+import { Optional } from '@nestjs/common';
+import { OrganizationScopeService } from '../organizations/organization-scope.service';
 
 const PRIORITIES = ['High', 'Low', 'Medium', 'Critical'] as const;
 const TASK_STATUSES = [
@@ -35,6 +37,8 @@ export class TasksService {
     private readonly workflowEngine: WorkflowEngineService,
     private readonly notificationsService: NotificationsService,
     private readonly businessUnitsService: BusinessUnitsService,
+    @Optional()
+    private readonly organizationScopeService?: OrganizationScopeService,
   ) {}
 
   private get db() {
@@ -52,20 +56,17 @@ export class TasksService {
     taskId: number,
     user: AuthUser,
   ): Promise<boolean> {
-    if (user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN) return true;
+    if (
+      user.role === Role.ADMIN ||
+      user.role === Role.HR ||
+      user.role === Role.SUPER_ADMIN
+    ) {
+      return true;
+    }
     if (user.role !== Role.MANAGER) return false;
-    const organizationId = this.validateOrganization(user);
-
+    const accessWhere = await this.getTaskAccessWhere(user);
     const task = await this.db.task.findFirst({
-      where: {
-        id: taskId,
-        organizationId,
-        OR: [
-          { assignedByUserId: user.userId },
-          { projectRef: { managerId: user.userId } },
-          { projectRef: { coManagers: { some: { id: user.userId } } } },
-        ],
-      },
+      where: { id: taskId, ...accessWhere },
       select: { id: true },
     });
     return Boolean(task);
@@ -94,11 +95,16 @@ export class TasksService {
   ): Promise<Prisma.TaskWhereInput> {
     const scope = await this.businessUnitsService.resolveScope(user as any);
     const buWhere = this.businessUnitsService.buildDirectBUWhere(scope);
+    const relatedOrganizationIds =
+      (await this.organizationScopeService?.getRelatedOrganizationIds(
+        user.homeOrganizationId ?? user.organizationId ?? scope.organizationId,
+      )) ?? [scope.organizationId];
 
     let roleWhere: Prisma.TaskWhereInput;
     if (
       user.role === Role.SUPER_ADMIN ||
       user.role === Role.ADMIN ||
+      user.role === Role.HR ||
       user.isSuperAdmin === true ||
       user.isPlatformAdmin === true
     ) {
@@ -131,13 +137,27 @@ export class TasksService {
       } as Prisma.TaskWhereInput;
     }
 
-    return {
+    const otherOrganizationIds = relatedOrganizationIds.filter(
+      (id) => id !== scope.organizationId,
+    );
+    const ownOrganizationWhere: Prisma.TaskWhereInput = {
       AND: [{ organizationId: scope.organizationId, ...roleWhere }, buWhere],
+    };
+    if (otherOrganizationIds.length === 0) return ownOrganizationWhere;
+
+    return {
+      OR: [
+        ownOrganizationWhere,
+        {
+          organizationId: { in: otherOrganizationIds },
+          ...roleWhere,
+        },
+      ],
     };
   }
 
   private async resolveAssignee(
-    organizationId: number,
+    organizationIds: number | number[],
     employeeId?: number | null,
     assignedToUserId?: number | null,
   ): Promise<
@@ -151,32 +171,37 @@ export class TasksService {
       };
     }>
   > {
+    const allowedOrganizationIds = Array.isArray(organizationIds)
+      ? organizationIds
+      : [organizationIds];
     if (assignedToUserId) {
-      const assigneeUser = await this.db.user.findUnique({
-        where: { id: assignedToUserId, organizationId },
-        select: {
-          id: true,
-          name: true,
-          employeeId: true,
-          role: true,
-          managerId: true,
-        },
-      });
+      const where = {
+        id: assignedToUserId,
+        organizationId:
+          allowedOrganizationIds.length === 1
+            ? allowedOrganizationIds[0]
+            : { in: allowedOrganizationIds },
+      };
+      const assigneeUser =
+        allowedOrganizationIds.length === 1
+          ? await this.db.user.findUnique({ where })
+          : await this.db.user.findFirst({ where });
       if (!assigneeUser) throw new NotFoundException('Assigned user not found');
       return assigneeUser;
     }
 
     if (employeeId) {
-      const assigneeUser = await this.db.user.findFirst({
-        where: { employeeId, organizationId },
-        select: {
-          id: true,
-          name: true,
-          employeeId: true,
-          role: true,
-          managerId: true,
-        },
-      });
+      const where = {
+        employeeId,
+        organizationId:
+          allowedOrganizationIds.length === 1
+            ? allowedOrganizationIds[0]
+            : { in: allowedOrganizationIds },
+      };
+      const assigneeUser =
+        allowedOrganizationIds.length === 1
+          ? await this.db.user.findUnique({ where })
+          : await this.db.user.findFirst({ where });
       if (!assigneeUser)
         throw new NotFoundException(
           'No user account found for selected employee',
@@ -201,6 +226,11 @@ export class TasksService {
 
   async create(dto: CreateTaskDto, user: AuthUser) {
     const organizationId = this.validateOrganization(user);
+    if (dto.status === 'APPROVED' || dto.status === 'REJECTED') {
+      throw new ForbiddenException(
+        'Tasks cannot be created in a reviewed status',
+      );
+    }
     const resolvedTaskName = dto.taskName?.trim() || dto.title?.trim();
     if (!resolvedTaskName) {
       throw new ForbiddenException('Task title is required');
@@ -211,22 +241,58 @@ export class TasksService {
     );
     const employeeBUWhere =
       this.businessUnitsService.buildEmployeeBUWhere(callerScope);
+    const isHierarchyAdmin = new Set<Role>([
+      Role.ADMIN,
+      Role.HR,
+      Role.SUPER_ADMIN,
+    ]).has(user.role);
+    const relatedOrganizationIds = isHierarchyAdmin
+      ? await this.organizationScopeService?.getRelatedOrganizationIds(
+          user.homeOrganizationId ?? organizationId,
+        )
+      : [organizationId];
+    const projectOrganizationIds = relatedOrganizationIds?.length
+      ? relatedOrganizationIds
+      : [organizationId];
 
+    const projectWhere = {
+      id: dto.projectId!,
+      organizationId:
+        projectOrganizationIds.length === 1
+          ? projectOrganizationIds[0]
+          : { in: projectOrganizationIds },
+    };
     const project = dto.projectId
-      ? await this.db.project.findUnique({
-          where: { id: dto.projectId, organizationId },
-          select: {
-            id: true,
-            projectName: true,
-            businessUnitId: true,
-            managerId: true,
-          },
-        })
+      ? projectOrganizationIds.length === 1
+        ? await this.db.project.findUnique({
+            where: projectWhere,
+            select: {
+              id: true,
+              organizationId: true,
+              projectName: true,
+              businessUnitId: true,
+              managerId: true,
+            },
+          })
+        : await this.db.project.findFirst({
+            where: projectWhere,
+            select: {
+              id: true,
+              organizationId: true,
+              projectName: true,
+              businessUnitId: true,
+              managerId: true,
+            },
+          })
       : null;
-    if (dto.projectId && !project)
+    if (dto.projectId && !project) {
       throw new NotFoundException('Project not found');
+    }
 
-    if (project && project.businessUnitId != null) {
+    if (
+      project?.businessUnitId != null &&
+      project.organizationId === organizationId
+    ) {
       await this.businessUnitsService.assertRecordAccessible(
         callerScope,
         project.businessUnitId,
@@ -234,10 +300,17 @@ export class TasksService {
       );
     }
 
+    const actorOrganizationIds = isHierarchyAdmin
+      ? await this.organizationScopeService?.getOrganizationIds(user)
+      : [organizationId];
+    const assignableOrganizationIds =
+      project && actorOrganizationIds?.includes(project.organizationId)
+        ? actorOrganizationIds
+        : [organizationId];
     const assignee =
       dto.assignedToUserId || dto.employeeId
         ? await this.resolveAssignee(
-            organizationId,
+            assignableOrganizationIds,
             dto.employeeId ?? null,
             dto.assignedToUserId ?? null,
           )
@@ -265,25 +338,31 @@ export class TasksService {
 
     let assigneeEmployeeBU: number | null = null;
     if (assignee.employeeId) {
-      const emp = await this.db.employee.findFirst({
-        where: {
-          id: assignee.employeeId,
-          ...employeeBUWhere,
-        },
+      const employeeWhere =
+        assignableOrganizationIds.length > 1
+          ? {
+              id: assignee.employeeId,
+              organizationId: { in: assignableOrganizationIds },
+              deletedAt: null,
+            }
+          : { id: assignee.employeeId, ...employeeBUWhere };
+      const employee = await this.db.employee.findFirst({
+        where: employeeWhere,
         select: { id: true, businessUnitId: true },
       });
-      if (!emp) {
+      if (!employee) {
         throw new ForbiddenException(
           'Assigned employee is not within authorized Business Unit scope',
         );
       }
-      assigneeEmployeeBU = emp.businessUnitId ?? null;
+      assigneeEmployeeBU = employee.businessUnitId ?? null;
     }
 
-    const taskBusinessUnitId: number | null =
-      project?.businessUnitId ?? assigneeEmployeeBU;
-
-    if (taskBusinessUnitId != null) {
+    const taskBusinessUnitId = project?.businessUnitId ?? assigneeEmployeeBU;
+    if (
+      taskBusinessUnitId != null &&
+      (!project || project.organizationId === organizationId)
+    ) {
       await this.businessUnitsService.assertRecordAccessible(
         callerScope,
         taskBusinessUnitId,
@@ -293,7 +372,7 @@ export class TasksService {
 
     return this.db.task.create({
       data: {
-        organizationId,
+        organizationId: project?.organizationId ?? organizationId,
         businessUnitId: taskBusinessUnitId,
         taskName: resolvedTaskName,
         project: dto.project ?? project?.projectName,
@@ -319,67 +398,18 @@ export class TasksService {
     });
   }
 
-  private async getScopedWhere(user: AuthUser): Promise<Prisma.TaskWhereInput> {
-    const organizationId = this.validateOrganization(user);
-    const accessWhere = await this.getTaskAccessWhere(user);
-    return { organizationId, ...accessWhere } as Prisma.TaskWhereInput;
-  }
-
-  async findAll(user: AuthUser) {
-    const where = await this.getScopedWhere(user);
-    return this.db.task.findMany({
-      where,
-      include: {
-        timerSessions: {
-          include: { user: { select: { id: true, name: true, email: true } } },
-          orderBy: { createdAt: 'asc' },
-        },
-        projectRef: {
-          select: { id: true, projectName: true, managerId: true },
-        },
-        assignedToUser: { select: { id: true, name: true, email: true } },
-        assignedByUser: { select: { id: true, name: true, email: true } },
-        reviewedByUser: { select: { id: true, name: true, email: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-  }
-
-  async findOne(id: number, user: AuthUser) {
-    const where = await this.getScopedWhere(user);
-    const task = await this.db.task.findFirst({
-      where: { id, ...where },
-      include: {
-        timerSessions: {
-          include: { user: { select: { id: true, name: true, email: true } } },
-          orderBy: { createdAt: 'asc' },
-        },
-        projectRef: {
-          select: { id: true, projectName: true, managerId: true },
-        },
-        assignedToUser: { select: { id: true, name: true, email: true } },
-        assignedByUser: { select: { id: true, name: true, email: true } },
-        reviewedByUser: { select: { id: true, name: true, email: true } },
-      },
-    });
-
-    if (!task) throw new NotFoundException(`Task #${id} not found`);
-    return task;
-  }
-
   private async assertTaskMessageAccess(taskId: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
-    const accessWhere = await this.getTaskAccessWhere(user);
+    const accessWhere = await this.getScopedWhere(user);
     const task = await this.db.task.findFirst({
-      where: { id: taskId, organizationId, ...accessWhere },
-      select: { id: true },
+      where: { id: taskId, ...accessWhere },
+      select: { id: true, organizationId: true },
     });
     if (!task) {
       throw new ForbiddenException(
         'You can only access messages for allowed tasks',
       );
     }
-    return organizationId;
+    return task.organizationId;
   }
 
   async getMessages(taskId: number, user: AuthUser) {
@@ -406,8 +436,12 @@ export class TasksService {
 
   private async assertTaskTimerAccess(taskId: number, user: AuthUser) {
     const organizationId = this.validateOrganization(user);
+    const accessWhere =
+      typeof this.businessUnitsService.resolveScope === 'function'
+        ? await this.getScopedWhere(user)
+        : { organizationId };
     const task = await this.db.task.findFirst({
-      where: { id: taskId, organizationId, deletedAt: null },
+      where: { id: taskId, ...accessWhere, deletedAt: null },
       select: {
         id: true,
         organizationId: true,
@@ -467,6 +501,7 @@ export class TasksService {
     return this.db.task.findFirstOrThrow({
       where: { id: taskId, organizationId },
       include: {
+        organization: { select: { id: true, name: true } },
         timerSessions: {
           include: { user: { select: { id: true, name: true, email: true } } },
           orderBy: { createdAt: 'asc' },
@@ -724,8 +759,9 @@ export class TasksService {
     const employeeBUWhere =
       this.businessUnitsService.buildEmployeeBUWhere(callerScope);
 
+    const taskScope = await this.getScopedWhere(user);
     const existingTask = await this.db.task.findFirst({
-      where: { id, organizationId },
+      where: { id, ...taskScope },
     });
     if (!existingTask) throw new NotFoundException(`Task #${id} not found`);
 
@@ -831,7 +867,7 @@ export class TasksService {
     }
 
     return this.db.task.update({
-      where: { id, organizationId },
+      where: { id, organizationId: existingTask.organizationId },
       data: {
         ...((dto.taskName !== undefined || dto.title !== undefined) && {
           taskName: dto.taskName ?? dto.title,
@@ -887,13 +923,9 @@ export class TasksService {
         'Only admin or project manager can delete this task',
       );
     }
-    const callerScope = await this.businessUnitsService.resolveScope(
-      user as any,
-    );
-    const directBUWhere =
-      this.businessUnitsService.buildDirectBUWhere(callerScope);
+    const taskScope = await this.getScopedWhere(user);
     const existing = await this.db.task.findFirst({
-      where: { id, ...directBUWhere },
+      where: { id, ...taskScope },
     });
     if (!existing) throw new NotFoundException(`Task #${id} not found`);
     return this.db.task.update({
@@ -1009,10 +1041,9 @@ export class TasksService {
   }
 
   async getByPriority(user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
     const accessWhere = await this.getTaskAccessWhere(user);
     const tasks = await this.db.task.findMany({
-      where: { organizationId, ...accessWhere },
+      where: accessWhere,
       orderBy: { createdAt: 'desc' },
     });
     const grouped: Record<string, typeof tasks> = {};
@@ -1063,16 +1094,12 @@ export class TasksService {
   }
 
   async updateStatus(id: number, status: string, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
-    const callerScope = await this.businessUnitsService.resolveScope(
-      user as any,
-    );
-    const directBUWhere =
-      this.businessUnitsService.buildDirectBUWhere(callerScope);
+    const taskScope = await this.getScopedWhere(user);
     const task = await this.db.task.findFirst({
-      where: { id, ...directBUWhere },
+      where: { id, ...taskScope },
       select: {
         id: true,
+        organizationId: true,
         status: true,
         assignedToUserId: true,
         assignedToId: true,
@@ -1106,7 +1133,7 @@ export class TasksService {
     this.ensureTransitionAllowed(task.status, normalizedStatus, user.role);
 
     return this.db.task.update({
-      where: { id, organizationId },
+      where: { id, organizationId: task.organizationId },
       data: {
         status: normalizedStatus,
       },
@@ -1122,16 +1149,11 @@ export class TasksService {
   }
 
   async submitWork(id: number, dto: SubmitTaskWorkDto, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
-    const callerScope = await this.businessUnitsService.resolveScope(
-      user as any,
-    );
-    const directBUWhere =
-      this.businessUnitsService.buildDirectBUWhere(callerScope);
+    const taskScope = await this.getScopedWhere(user);
     const task = await this.db.task.findFirst({
       where: {
         id,
-        ...directBUWhere,
+        ...taskScope,
         OR: [
           { assignedToUserId: user.userId },
           ...(user.employeeId ? [{ assignedToId: user.employeeId }] : []),
@@ -1148,23 +1170,24 @@ export class TasksService {
 
     const currentStatus = this.normalizeTaskStatus(task.status);
     this.ensureTransitionAllowed(currentStatus, 'SUBMITTED', user.role);
+    const taskOrganizationId = task.organizationId;
 
     // Check for existing workflow and delete if needed to reset
     const existingWorkflow = await this.workflowEngine.getInstanceByEntity(
       'Task',
       id,
-      organizationId,
+      taskOrganizationId,
     );
 
     if (existingWorkflow) {
       // If workflow exists and is not SUBMITTED/PENDING, we need to clean it up
       await this.db.workflowInstance.delete({
-        where: { id: existingWorkflow.id, organizationId },
+        where: { id: existingWorkflow.id, organizationId: taskOrganizationId },
       });
     }
 
     const updated = (await this.db.task.update({
-      where: { id, organizationId },
+      where: { id, organizationId: taskOrganizationId },
       data: {
         submissionLink: dto.submissionLink,
         submissionNotes: dto.note,
@@ -1192,7 +1215,7 @@ export class TasksService {
       entityType: 'Task',
       entityId: id,
       initiatedBy: user.userId,
-      organizationId,
+      organizationId: taskOrganizationId,
       context: {
         projectId: task.projectId,
         taskId: id,
@@ -1208,7 +1231,7 @@ export class TasksService {
   }
 
   async reviewTask(id: number, dto: ReviewTaskDto, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    this.validateOrganization(user);
 
     const canManage = await this.canManageTask(id, user);
     if (!canManage) {
@@ -1217,17 +1240,14 @@ export class TasksService {
       );
     }
 
-    const callerScope = await this.businessUnitsService.resolveScope(
-      user as any,
-    );
-    const directBUWhere =
-      this.businessUnitsService.buildDirectBUWhere(callerScope);
+    const taskScope = await this.getScopedWhere(user);
     const task = await this.db.task.findFirst({
-      where: { id, ...directBUWhere },
+      where: { id, ...taskScope },
     });
     if (!task) {
       throw new NotFoundException(`Task #${id} not found`);
     }
+    const taskOrganizationId = task.organizationId;
 
     const currentStatus = this.normalizeTaskStatus(task.status);
 
@@ -1257,7 +1277,7 @@ export class TasksService {
     this.ensureTransitionAllowed(currentStatus, nextStatus, user.role);
 
     const updated = (await this.db.task.update({
-      where: { id, organizationId },
+      where: { id, organizationId: taskOrganizationId },
       data: {
         status: nextStatus,
         reviewComment: remarks,
@@ -1318,7 +1338,7 @@ export class TasksService {
           entityType: 'Task',
           entityId: id,
           actionUrl: '/dashboard/tasks',
-          organizationId,
+          organizationId: taskOrganizationId,
           type: nextStatus === 'APPROVED' ? 'SUCCESS' : 'ERROR',
           priority: 'HIGH',
           category: 'TASK',
@@ -1336,7 +1356,7 @@ export class TasksService {
         businessStatus: 'APPROVED',
         approvedByLabel: `REVIEW:${user.userId}`,
         comment: remarks ?? undefined,
-        organizationId,
+        organizationId: taskOrganizationId,
       });
     } else {
       await this.workflowEngine.rejectWorkflow({
@@ -1346,10 +1366,57 @@ export class TasksService {
         userId: user.userId,
         businessStatus: 'REJECTED',
         reason: remarks ?? undefined,
-        organizationId,
+        organizationId: taskOrganizationId,
       });
     }
 
     return updated;
+  }
+
+  private async getScopedWhere(user: AuthUser): Promise<Prisma.TaskWhereInput> {
+    return this.getTaskAccessWhere(user);
+  }
+
+  async findAll(user: AuthUser) {
+    const where = await this.getScopedWhere(user);
+    return this.db.task.findMany({
+      where,
+      include: {
+        organization: { select: { id: true, name: true } },
+        timerSessions: {
+          include: { user: { select: { id: true, name: true, email: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+        projectRef: {
+          select: { id: true, projectName: true, managerId: true },
+        },
+        assignedToUser: { select: { id: true, name: true, email: true } },
+        assignedByUser: { select: { id: true, name: true, email: true } },
+        reviewedByUser: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async findOne(id: number, user: AuthUser) {
+    const where = await this.getScopedWhere(user);
+    const task = await this.db.task.findFirst({
+      where: { id, ...where },
+      include: {
+        organization: { select: { id: true, name: true } },
+        timerSessions: {
+          include: { user: { select: { id: true, name: true, email: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+        projectRef: {
+          select: { id: true, projectName: true, managerId: true },
+        },
+        assignedToUser: { select: { id: true, name: true, email: true } },
+        assignedByUser: { select: { id: true, name: true, email: true } },
+        reviewedByUser: { select: { id: true, name: true, email: true } },
+      },
+    });
+    if (!task) throw new NotFoundException(`Task #${id} not found`);
+    return task;
   }
 }

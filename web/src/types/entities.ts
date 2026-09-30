@@ -20,6 +20,7 @@ export interface Product {
 export interface Employee {
   id: number;
   name: string;
+  organization?: { id: number; name: string };
   email?: string;
   phoneNumber?: string;
   department?: string;

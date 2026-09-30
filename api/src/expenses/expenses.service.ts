@@ -26,14 +26,17 @@ import type { StorageProvider } from '../file-management/storage/storage-provide
 import { StreamableFile } from '@nestjs/common';
 import { Readable } from 'stream';
 import { sanitizeFileName } from '../file-management/utils/file-management.utils';
+import { OrganizationScopeService } from '../organizations/organization-scope.service';
 
 const expenseInclude: Prisma.ExpenseInclude = {
-  employee: true,
+  employee: { include: { organization: { select: { id: true, name: true } } } },
+  organization: { select: { id: true, name: true } },
   submittedByUser: { select: { id: true, name: true, email: true } },
 };
 
 const expenseDetailInclude: Prisma.ExpenseInclude = {
-  employee: true,
+  employee: { include: { organization: { select: { id: true, name: true } } } },
+  organization: { select: { id: true, name: true } },
   submittedByUser: {
     select: { id: true, name: true, email: true, managerId: true },
   },
@@ -46,6 +49,7 @@ export class ExpensesService {
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly workflowEngine: WorkflowEngineService,
     private readonly businessUnitsService: BusinessUnitsService,
+    private readonly organizationScopeService: OrganizationScopeService,
     @Inject(FILE_STORAGE_PROVIDER)
     private readonly storageProvider: StorageProvider,
   ) {}
@@ -82,9 +86,16 @@ export class ExpensesService {
     user: AuthUser,
   ): Promise<Prisma.ExpenseWhereInput> {
     const organizationId = this.validateOrganization(user);
+    const organizationIds =
+      user.role === Role.ADMIN || user.role === Role.HR
+        ? await this.organizationScopeService.getOrganizationIds(user)
+        : [organizationId];
     let baseWhere: Prisma.ExpenseWhereInput;
     if (user.role === Role.ADMIN || user.role === Role.HR) {
-      baseWhere = { organizationId };
+      baseWhere =
+        organizationIds === null
+          ? {}
+          : { organizationId: { in: organizationIds } };
     } else if (user.role === Role.MANAGER) {
       baseWhere = {
         organizationId,
@@ -101,6 +112,31 @@ export class ExpensesService {
 
     const scope = await this.businessUnitsService.resolveScope(user as any);
     if (scope.allUnits) return baseWhere;
+    const descendantOrganizationIds =
+      organizationIds?.filter((id) => id !== organizationId) ?? [];
+    if (
+      (user.role === Role.ADMIN || user.role === Role.HR) &&
+      descendantOrganizationIds.length > 0
+    ) {
+      return {
+        OR: [
+          {
+            AND: [
+              { organizationId },
+              {
+                OR: [
+                  { employeeId: null },
+                  { employee: { businessUnitId: { in: scope.unitIds } } },
+                ],
+              },
+            ],
+          },
+          {
+            organizationId: { in: descendantOrganizationIds },
+          },
+        ],
+      };
+    }
     return {
       ...baseWhere,
       OR: [
@@ -111,7 +147,7 @@ export class ExpensesService {
   }
 
   async create(dto: CreateExpenseDto, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    let organizationId = this.validateOrganization(user);
     const currentEmployeeId = user.employeeId ?? null;
     const employeeId = dto.employeeId ?? currentEmployeeId;
 
@@ -139,18 +175,29 @@ export class ExpensesService {
 
     if (employeeId != null) {
       const scope = await this.businessUnitsService.resolveScope(user as any);
+      const organizationIds =
+        user.role === Role.ADMIN || user.role === Role.HR
+          ? await this.organizationScopeService.getOrganizationIds(user)
+          : [organizationId];
       const employee = await this.prisma.employee.findFirst({
-        where: { id: employeeId, deletedAt: null, organizationId },
-        select: { businessUnitId: true },
+        where: {
+          id: employeeId,
+          deletedAt: null,
+          organizationId: { in: organizationIds ?? [] },
+        },
+        select: { businessUnitId: true, organizationId: true },
       });
       if (!employee) {
         throw new NotFoundException('Employee not found');
       }
-      await this.businessUnitsService.assertRecordAccessible(
-        scope,
-        employee.businessUnitId,
-        'expense:employee',
-      );
+      if (employee.organizationId === organizationId) {
+        await this.businessUnitsService.assertRecordAccessible(
+          scope,
+          employee.businessUnitId,
+          'expense:employee',
+        );
+      }
+      organizationId = employee.organizationId;
     }
 
     const expense = await this.prisma.expense.create({
@@ -214,10 +261,9 @@ export class ExpensesService {
 
   async previewReceipt(id: number, user: AuthUser): Promise<StreamableFile> {
     const expense = await this.findOne(id, user);
-    const organizationId = this.validateOrganization(user);
     const file = await this.prisma.file.findFirst({
       where: {
-        organizationId,
+        organizationId: expense.organizationId,
         entityType: 'Expense',
         entityId: expense.id,
         category: { equals: 'receipt', mode: 'insensitive' },
@@ -238,7 +284,7 @@ export class ExpensesService {
   }
 
   async update(id: number, dto: UpdateExpenseDto, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    this.validateOrganization(user);
     const expense = await this.findOne(id, user);
     if (
       user.role === Role.EMPLOYEE &&
@@ -249,24 +295,49 @@ export class ExpensesService {
       );
     }
 
+    if (
+      user.role === Role.EMPLOYEE &&
+      dto.employeeId !== undefined &&
+      dto.employeeId !== expense.employeeId
+    ) {
+      throw new ForbiddenException(
+        'Employees cannot reassign an expense to another employee',
+      );
+    }
+
     if (dto.employeeId !== undefined && dto.employeeId !== null) {
       const scope = await this.businessUnitsService.resolveScope(user as any);
+      const organizationIds =
+        user.role === Role.ADMIN || user.role === Role.HR
+          ? await this.organizationScopeService.getOrganizationIds(user)
+          : [user.organizationId!];
       const employee = await this.prisma.employee.findFirst({
-        where: { id: dto.employeeId, organizationId, deletedAt: null },
-        select: { businessUnitId: true },
+        where: {
+          id: dto.employeeId,
+          organizationId: { in: organizationIds ?? [] },
+          deletedAt: null,
+        },
+        select: { businessUnitId: true, organizationId: true },
       });
       if (!employee) {
         throw new NotFoundException('Target employee not found');
       }
-      await this.businessUnitsService.assertRecordAccessible(
-        scope,
-        employee.businessUnitId,
-        'expense:target-employee',
-      );
+      if (employee.organizationId !== expense.organizationId) {
+        throw new ForbiddenException(
+          'An expense cannot be reassigned to another organization',
+        );
+      }
+      if (employee.organizationId === user.organizationId) {
+        await this.businessUnitsService.assertRecordAccessible(
+          scope,
+          employee.businessUnitId,
+          'expense:target-employee',
+        );
+      }
     }
 
     const updated = await this.prisma.expense.update({
-      where: { id, organizationId },
+      where: { id, organizationId: expense.organizationId },
       data: {
         ...(dto.category !== undefined && { category: dto.category }),
         ...(dto.description !== undefined && { description: dto.description }),
@@ -292,7 +363,7 @@ export class ExpensesService {
       throw new ForbiddenException('Expense is not pending manager approval');
     }
 
-    const organizationId = this.validateOrganization(user);
+    const organizationId = expense.organizationId;
     const workflowState = await this.workflowEngine.approveWorkflow({
       definitionKey: 'expense-approval',
       entityType: 'Expense',
@@ -326,13 +397,8 @@ export class ExpensesService {
   }
 
   async hrApprove(id: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
-    const expense = await this.prisma.expense.findFirst({
-      where: { id, organizationId },
-    });
-    if (!expense) {
-      throw new NotFoundException(`Expense #${id} not found`);
-    }
+    const expense = await this.findOne(id, user);
+    const organizationId = expense.organizationId;
 
     if (expense.status !== 'PENDING_HR') {
       throw new ForbiddenException('Expense is not pending HR approval');
@@ -371,8 +437,8 @@ export class ExpensesService {
   }
 
   async reject(id: number, user: AuthUser, reason?: string) {
-    const organizationId = this.validateOrganization(user);
     const expense = await this.findOne(id, user);
+    const organizationId = expense.organizationId;
     if (expense.status === 'APPROVED') {
       throw new ForbiddenException('Approved expense cannot be rejected');
     }
@@ -411,13 +477,9 @@ export class ExpensesService {
   }
 
   async remove(id: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
-    const expense = await this.prisma.expense.findFirst({
-      where: { id, organizationId },
-    });
-    if (!expense) throw new NotFoundException(`Expense #${id} not found`);
+    const expense = await this.findOne(id, user);
     const deleted = await this.prisma.expense.update({
-      where: { id, organizationId },
+      where: { id, organizationId: expense.organizationId },
       data: { deletedAt: new Date() },
     });
     await this.invalidateDashboardCache();

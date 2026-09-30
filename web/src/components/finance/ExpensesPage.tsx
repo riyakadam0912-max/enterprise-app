@@ -432,7 +432,7 @@ export default function ExpensesPage() {
                           <EmployeeAvatar userId={employeeUserId(expense)} name={employeeName(expense)} />
                           <div>
                             <div className="font-medium text-slate-900">{employeeName(expense)}</div>
-                            <div className="text-xs text-slate-500">Expense #{expense.id}</div>
+                            <div className="text-xs text-slate-500">{expense.organization?.name ?? expense.employee?.organization?.name ?? `Expense #${expense.id}`}</div>
                           </div>
                         </div>
                       </td>

@@ -86,6 +86,7 @@ export default function EmployeesPage() {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Employee ID</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Name</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Organization</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Email</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Phone Number</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Department</th>
@@ -111,6 +112,7 @@ export default function EmployeesPage() {
                         <span className="text-sm font-medium text-slate-900">{emp.name}</span>
                       </div>
                     </td>
+                    <td className="px-6 py-4 text-sm text-slate-600">{emp.organization?.name ?? '—'}</td>
                     <td className="px-6 py-4 text-sm text-orange-500">{emp.email ?? '—'}</td>
                     <td className="px-6 py-4 text-sm text-slate-600">{emp.phoneNumber ?? '—'}</td>
                     <td className="px-6 py-4 text-sm text-slate-600">{emp.department ?? '—'}</td>

@@ -16,6 +16,7 @@ import {
 import { Role } from '../common/enums/role.enum';
 import { AuthUser } from '../common/types/auth';
 import { BusinessUnitsService } from '../business-units/business-units.service';
+import { OrganizationScopeService } from '../organizations/organization-scope.service';
 
 jest.mock('../users/utils/hash-password');
 import { hashPassword } from '../users/utils/hash-password';
@@ -77,6 +78,10 @@ describe('EmployeesService', () => {
             resolveScope: jest.fn(),
             buildEmployeeBUWhere: jest.fn(),
           },
+        },
+        {
+          provide: OrganizationScopeService,
+          useValue: { getOrganizationIds: jest.fn(async () => [1]) },
         },
       ],
     }).compile();
@@ -737,6 +742,47 @@ describe('EmployeesService', () => {
   });
 
   describe('multiple reporting managers', () => {
+    it('updates a descendant employee inside the employee owning organization', async () => {
+      const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 1 });
+      const employeeDelegate = getDelegate(mockPrisma, 'employee');
+      const organizationScope = (service as any).organizationScopeService;
+      const businessUnits = (service as any).businessUnitsService;
+      jest
+        .spyOn(organizationScope, 'getOrganizationIds')
+        .mockResolvedValue([1, 2]);
+      const employee = {
+        id: 80,
+        name: 'Child Employee',
+        organizationId: 2,
+        businessUnitId: null,
+        user: null,
+      };
+      businessUnits.resolveScope.mockResolvedValue({
+        organizationId: 1,
+        allUnits: true,
+        unitIds: [],
+        assignedUnitId: null,
+      });
+      businessUnits.buildEmployeeBUWhere.mockReturnValue({
+        organizationId: 1,
+        deletedAt: null,
+      });
+      employeeDelegate.findFirst.mockResolvedValue(employee);
+      employeeDelegate.update.mockResolvedValue(employee);
+      mockPrisma.$transaction.mockImplementation(
+        (callback: (tx: unknown) => Promise<unknown>) =>
+          callback(mockPrisma as unknown as Parameters<typeof callback>[0]),
+      );
+
+      await service.update(80, { department: 'Operations' }, authUser);
+
+      expect(employeeDelegate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 80, organizationId: 2 },
+        }),
+      );
+    });
+
     it.each([
       { label: 'zero', ids: [] as number[] },
       { label: 'one', ids: [10] },

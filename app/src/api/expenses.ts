@@ -2,6 +2,7 @@ import { api, unwrap } from './client';
 
 export type Expense = {
 	id: number;
+	organization?: { id: number; name: string };
 	expenseDate?: string | null;
 	category?: string | null;
 	description?: string | null;
@@ -9,7 +10,7 @@ export type Expense = {
 	currency?: string | null;
 	status?: string | null;
 	receiptImage?: string | null;
-	employee?: { name?: string | null } | null;
+	employee?: { name?: string | null; organization?: { id: number; name: string } } | null;
 };
 
 export type CreateExpensePayload = {

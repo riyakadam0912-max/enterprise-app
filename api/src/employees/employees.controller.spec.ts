@@ -6,6 +6,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { BusinessUnitsService } from '../business-units/business-units.service';
+import { OrganizationScopeService } from '../organizations/organization-scope.service';
 import { createMockPrismaService } from '../../test/helpers/mocks.helper';
 
 describe('EmployeesController', () => {
@@ -29,6 +30,10 @@ describe('EmployeesController', () => {
             }),
             buildEmployeeBUWhere: jest.fn().mockReturnValue({}),
           },
+        },
+        {
+          provide: OrganizationScopeService,
+          useValue: { getOrganizationIds: jest.fn().mockResolvedValue([1]) },
         },
       ],
     })

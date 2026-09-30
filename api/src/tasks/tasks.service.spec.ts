@@ -21,6 +21,7 @@ import { UpdateTaskDto } from './dto/update-task.dto';
 import { SubmitTaskWorkDto } from './dto/submit-task-work.dto';
 import { ReviewTaskDto } from './dto/review-task.dto';
 import { BusinessUnitsService } from '../business-units/business-units.service';
+import { OrganizationScopeService } from '../organizations/organization-scope.service';
 
 // Helper to create valid mock AuthUser
 function createMockAuthUser(
@@ -105,6 +106,13 @@ describe('TasksService', () => {
           provide: BusinessUnitsService,
           useValue: mockBusinessUnitsService,
         },
+        {
+          provide: OrganizationScopeService,
+          useValue: {
+            getOrganizationIds: jest.fn().mockResolvedValue([1]),
+            getRelatedOrganizationIds: jest.fn().mockResolvedValue([1]),
+          },
+        },
       ],
     }).compile();
 
@@ -137,6 +145,19 @@ describe('TasksService', () => {
         ),
       ).rejects.toThrow(ForbiddenException);
     });
+
+    it.each(['APPROVED', 'REJECTED'])(
+      'does not allow creating a task in %s status',
+      async (status) => {
+        await expect(
+          service.create(
+            { title: 'Reviewed task', projectId: 1, status } as CreateTaskDto,
+            mockAdminUser,
+          ),
+        ).rejects.toThrow(ForbiddenException);
+        expect(getPrismaDelegate(mockPrisma, 'task').create).not.toHaveBeenCalled();
+      },
+    );
 
     it('should throw ForbiddenException if no taskName/title provided', async () => {
       await expect(
@@ -276,6 +297,62 @@ describe('TasksService', () => {
       );
       expect(result).toEqual({ id: 1, taskName: 'Test Task' });
       expect(taskDelegate.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows a parent admin to assign a project task to a child employee', async () => {
+      const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      const organizationScope = (service as any).organizationScopeService;
+      jest
+        .spyOn(organizationScope, 'getOrganizationIds')
+        .mockResolvedValue([1, 2]);
+      jest
+        .spyOn(organizationScope, 'getRelatedOrganizationIds')
+        .mockResolvedValue([1, 2]);
+      projectDelegate.findFirst.mockResolvedValueOnce({
+        id: 9,
+        organizationId: 1,
+        projectName: 'Parent Project',
+        businessUnitId: null,
+      });
+      userDelegate.findFirst.mockResolvedValueOnce({
+        id: 22,
+        name: 'Child Employee',
+        employeeId: 102,
+        role: Role.EMPLOYEE,
+        managerId: null,
+      });
+      employeeDelegate.findFirst.mockResolvedValueOnce({
+        id: 102,
+        businessUnitId: null,
+      });
+      taskDelegate.create.mockResolvedValueOnce({
+        id: 10,
+        taskName: 'Child task',
+      });
+
+      await service.create(
+        {
+          title: 'Child task',
+          projectId: 9,
+          assignedToUserId: 22,
+          employeeId: 102,
+        } as CreateTaskDto,
+        mockAdminUser,
+      );
+
+      expect(taskDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            organizationId: 1,
+            projectId: 9,
+            assignedToId: 102,
+            assignedToUserId: 22,
+          }),
+        }),
+      );
     });
   });
 
@@ -565,18 +642,47 @@ describe('TasksService', () => {
       expect(taskDelegate.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            organizationId: mockEmployeeUser.organizationId,
             AND: expect.arrayContaining([
               expect.objectContaining({
-                OR: [
+                OR: expect.arrayContaining([
                   { assignedToUserId: mockEmployeeUser.userId },
                   { assignedByUserId: mockEmployeeUser.userId },
                   { assignedToId: mockEmployeeUser.employeeId },
-                ],
+                  {
+                    projectRef: {
+                      assignedEmployees: {
+                        some: { id: mockEmployeeUser.employeeId },
+                      },
+                    },
+                  },
+                ]),
               }),
             ]),
           }),
         }),
+      );
+    });
+
+    it('includes assigned project tasks owned by a related organization', async () => {
+      const organizationScope = (service as any).organizationScopeService;
+      jest
+        .spyOn(organizationScope, 'getRelatedOrganizationIds')
+        .mockResolvedValue([1, 2]);
+
+      const where = await (service as any).getTaskAccessWhere(
+        mockEmployeeUser,
+      );
+
+      expect(where.OR).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            organizationId: { in: [2] },
+            OR: expect.arrayContaining([
+              { assignedToUserId: mockEmployeeUser.userId },
+              { assignedToId: mockEmployeeUser.employeeId },
+            ]),
+          }),
+        ]),
       );
     });
 

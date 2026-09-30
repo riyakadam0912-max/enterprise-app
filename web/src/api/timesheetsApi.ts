@@ -11,6 +11,7 @@ export interface TimesheetRow {
   status: string;
   notes: string | null;
   employeeId: number | null;
+  organization?: { id: number; name: string };
   employee: { id: number; name: string } | null;
   createdByUser?: { id: number; name: string } | null;
 }

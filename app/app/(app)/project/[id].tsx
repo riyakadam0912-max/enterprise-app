@@ -191,6 +191,7 @@ export default function ProjectDetail() {
     email?: string | null;
     department?: string | null;
     designation?: string | null;
+    organization?: { id: number; name: string };
   }>).filter((employee) => {
     const term = employeeSearch.trim().toLowerCase();
     if (!term) return true;
@@ -207,6 +208,7 @@ export default function ProjectDetail() {
     email?: string | null;
     department?: string | null;
     designation?: string | null;
+    organization?: { id: number; name: string };
     userId?: number | null;
     user?: { id?: number | null } | null;
   }>).filter((employee) => {
@@ -664,7 +666,7 @@ export default function ProjectDetail() {
                             selected && styles.selectOptionMetaActive,
                           ]}
                         >
-                          {[employee.department, employee.designation]
+                          {[employee.organization?.name, employee.department, employee.designation]
                             .filter(Boolean)
                             .join(" · ") || employee.email || "Employee"}
                         </Text>
@@ -725,7 +727,7 @@ export default function ProjectDetail() {
                             selected && styles.selectOptionMetaActive,
                           ]}
                         >
-                          {[employee.department, employee.designation]
+                          {[employee.organization?.name, employee.department, employee.designation]
                             .filter(Boolean)
                             .join(" · ") || employee.email || "Manager"}
                         </Text>

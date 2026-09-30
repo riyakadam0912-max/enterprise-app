@@ -17,6 +17,7 @@ import { UpdateLeaveRequestDto } from './dto/update-leave-request.dto';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { BusinessUnitsService } from '../business-units/business-units.service';
+import { OrganizationScopeService } from '../organizations/organization-scope.service';
 
 // Helper to create valid mock AuthUser
 function createMockAuthUser(
@@ -90,6 +91,12 @@ describe('LeaveRequestsService', () => {
         { provide: CACHE_MANAGER, useValue: mockCacheManager },
         { provide: EventEmitter2, useValue: mockEventEmitter },
         { provide: BusinessUnitsService, useValue: mockBusinessUnitsService },
+        {
+          provide: OrganizationScopeService,
+          useValue: {
+            getOrganizationIds: jest.fn().mockResolvedValue([1]),
+          },
+        },
       ],
     }).compile();
 
@@ -292,6 +299,53 @@ describe('LeaveRequestsService', () => {
       );
     });
 
+    it('creates a child employee leave request under the child organization', async () => {
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      const leaveRequestDelegate = getPrismaDelegate(
+        mockPrisma,
+        'leaveRequest',
+      );
+      const organizationScope = (service as any).organizationScopeService;
+      jest
+        .spyOn(organizationScope, 'getOrganizationIds')
+        .mockResolvedValue([1, 2]);
+      employeeDelegate.findFirst.mockResolvedValueOnce({
+        id: 202,
+        organizationId: 2,
+        user: null,
+      });
+      leaveRequestDelegate.create.mockResolvedValueOnce({
+        id: 20,
+        organizationId: 2,
+        employeeId: 202,
+        leaveType: 'SICK',
+        startDate: new Date('2026-01-01'),
+        endDate: new Date('2026-01-02'),
+      });
+      (mockWorkflowEngine.submitWorkflow as jest.Mock).mockResolvedValueOnce(
+        {},
+      );
+
+      await service.create(
+        {
+          startDate: '2026-01-01',
+          endDate: '2026-01-02',
+          leaveType: 'SICK',
+          employeeId: 202,
+        } as CreateLeaveRequestDto,
+        mockAdminUser,
+      );
+
+      expect(leaveRequestDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ organizationId: 2 }),
+        }),
+      );
+      expect(mockWorkflowEngine.submitWorkflow).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: 2 }),
+      );
+    });
+
     it('should return the created request when workflow initialization fails', async () => {
       const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
       const leaveRequestDelegate = getPrismaDelegate(
@@ -333,6 +387,22 @@ describe('LeaveRequestsService', () => {
     });
   });
 
+  describe('update', () => {
+    it('prevents employees from reassigning a pending leave request', async () => {
+      jest.spyOn(service, 'findOne').mockResolvedValueOnce({
+        id: 8,
+        organizationId: 1,
+        employeeId: 101,
+        status: 'PENDING_MANAGER',
+      } as never);
+
+      await expect(
+        service.update(8, { employeeId: 202 } as UpdateLeaveRequestDto, mockEmployeeUser),
+      ).rejects.toThrow(ForbiddenException);
+      expect(getPrismaDelegate(mockPrisma, 'leaveRequest').update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('findAll', () => {
     it('should throw ForbiddenException if user has no organizationId', async () => {
       await expect(
@@ -352,6 +422,33 @@ describe('LeaveRequestsService', () => {
 
       const result = await service.findAll(mockAdminUser);
       expect(result).toEqual(mockRequests);
+    });
+
+    it('includes descendant employees in a parent admin leave scope', async () => {
+      const leaveRequestDelegate = getPrismaDelegate(
+        mockPrisma,
+        'leaveRequest',
+      );
+      const organizationScope = (service as any).organizationScopeService;
+      jest
+        .spyOn(organizationScope, 'getOrganizationIds')
+        .mockResolvedValue([1, 2]);
+      leaveRequestDelegate.findMany.mockResolvedValueOnce([]);
+
+      await service.findAll(mockAdminUser);
+
+      expect(leaveRequestDelegate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: { in: [1, 2] },
+            employee: expect.objectContaining({
+              OR: expect.arrayContaining([
+                expect.objectContaining({ organizationId: { in: [2] } }),
+              ]),
+            }),
+          }),
+        }),
+      );
     });
 
     it('should show an employee their own requests without a business unit', async () => {

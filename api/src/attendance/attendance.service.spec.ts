@@ -57,6 +57,7 @@ describe('AttendanceService', () => {
   let cacheManager: ReturnType<typeof createCacheManagerMock>;
   let mockUser: ReturnType<typeof createMockUser>;
   let mockBusinessUnitsService: any;
+  let mockOrganizationScopeService: any;
 
   beforeEach(() => {
     jest.useFakeTimers();
@@ -75,16 +76,39 @@ describe('AttendanceService', () => {
         .fn()
         .mockReturnValue({ organizationId: 1, deletedAt: null }),
     };
+    mockOrganizationScopeService = {
+      getOrganizationIds: jest.fn().mockResolvedValue([1]),
+    };
     service = new AttendanceService(
       prisma as unknown as PrismaService,
       cacheManager as unknown as Cache,
       mockBusinessUnitsService,
+      mockOrganizationScopeService as any,
     );
   });
 
   afterEach(() => {
     jest.useRealTimers();
     jest.clearAllMocks();
+  });
+
+  it('summarizes daily attendance after applying status filters', async () => {
+    jest.spyOn(service as any, 'buildDailySnapshot').mockResolvedValue({
+      rows: [
+        { status: AttendanceStatus.PRESENT, employee: { department: 'Sales' } },
+        { status: AttendanceStatus.ABSENT, employee: { department: 'Sales' } },
+      ],
+      summary: { present: 1, absent: 1, leave: 0, halfDay: 0 },
+    });
+
+    const result = await service.findAll(
+      { status: AttendanceStatus.PRESENT, page: 1, limit: 10 },
+      mockUser as any,
+    );
+
+    expect(result.total).toBe(1);
+    expect(result.summary.present).toBe(1);
+    expect(result.summary.absent).toBe(0);
   });
 
   it('allows an employee to check in once per day', async () => {
@@ -265,6 +289,46 @@ describe('AttendanceService', () => {
       ['Ben', AttendanceStatus.LEAVE],
       ['Cara', AttendanceStatus.NOT_SCHEDULED],
     ]);
+  });
+
+  it('includes active descendant employees in the admin attendance roster', async () => {
+    mockOrganizationScopeService.getOrganizationIds.mockResolvedValue([1, 2]);
+    prisma.employee.findMany
+      .mockResolvedValueOnce([{ id: 22 }])
+      .mockResolvedValueOnce([
+        {
+          id: 22,
+          name: 'Child Employee',
+          department: 'Operations',
+          designation: 'Coordinator',
+          organization: { id: 2, name: 'Child Organization' },
+          shift: null,
+        },
+      ]);
+    prisma.attendance.findMany.mockResolvedValue([]);
+    prisma.leaveRequest.findMany.mockResolvedValue([]);
+
+    const result = await service.getToday(mockUser, '2026-03-13');
+
+    expect(result.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          employeeId: 22,
+          employee: expect.objectContaining({
+            organization: { id: 2, name: 'Child Organization' },
+          }),
+        }),
+      ]),
+    );
+    expect(prisma.employee.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({ organizationId: { in: [2] } }),
+          ]),
+        }),
+      }),
+    );
   });
 
   it('excludes employees before their hire date from daily attendance', async () => {
@@ -507,6 +571,47 @@ describe('AttendanceService', () => {
         },
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('uses the authorized descendant employee ids for monthly attendance queries', async () => {
+    mockOrganizationScopeService.getOrganizationIds.mockResolvedValue([1, 2]);
+    prisma.employee.findMany
+      .mockResolvedValueOnce([{ id: 10 }, { id: 20 }])
+      .mockResolvedValueOnce([
+        {
+          id: 10,
+          name: 'Parent employee',
+          hireDate: null,
+          department: 'Ops',
+          organization: { id: 1, name: 'Parent' },
+          user: { role: 'EMPLOYEE' },
+        },
+        {
+          id: 20,
+          name: 'Child employee',
+          hireDate: null,
+          department: 'Ops',
+          organization: { id: 2, name: 'Child' },
+          user: { role: 'EMPLOYEE' },
+        },
+      ]);
+    prisma.attendance.findMany.mockResolvedValue([]);
+    prisma.leaveRequest.findMany.mockResolvedValue([]);
+
+    const result = await service.getMonthlyReport(
+      { year: 2026, month: 3 } as any,
+      mockUser as any,
+    );
+
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows[1]).toEqual(
+      expect.objectContaining({ organization: { id: 2, name: 'Child' } }),
+    );
+    expect(prisma.attendance.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.not.objectContaining({ organizationId: 1 }),
+      }),
+    );
   });
 
   it('returns monthly employee attendance data for calendar rendering', async () => {

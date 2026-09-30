@@ -12,6 +12,7 @@ import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { CreateProjectLinkDto } from './dto/create-project-link.dto';
 import { BusinessUnitsService } from '../business-units/business-units.service';
+import { OrganizationScopeService } from '../organizations/organization-scope.service';
 
 // Helper to create valid mock AuthUser
 function createMockAuthUser(
@@ -71,6 +72,13 @@ describe('ProjectsService', () => {
             }),
             buildDirectBUWhere: jest.fn().mockReturnValue({}),
             assertRecordAccessible: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: OrganizationScopeService,
+          useValue: {
+            getOrganizationIds: jest.fn().mockResolvedValue([1]),
+            getRelatedOrganizationIds: jest.fn().mockResolvedValue([1]),
           },
         },
       ],
@@ -474,7 +482,7 @@ describe('ProjectsService', () => {
         expect.objectContaining({
           where: {
             AND: [
-              { organizationId: 1, deletedAt: null },
+              { organizationId: { in: [1] }, deletedAt: null },
               {
                 OR: [
                   { managerId: mockManagerUser.userId },
@@ -741,8 +749,11 @@ describe('ProjectsService', () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
       const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
 
-      projectDelegate.findFirst.mockResolvedValueOnce({ id: 1 });
-      projectDelegate.findUnique.mockResolvedValueOnce({ id: 1 });
+      projectDelegate.findFirst.mockResolvedValueOnce({
+        id: 1,
+        organizationId: 1,
+        assignedEmployees: [],
+      });
       employeeDelegate.findFirst.mockResolvedValueOnce(null);
 
       await expect(
@@ -756,9 +767,9 @@ describe('ProjectsService', () => {
       const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
       const userDelegate = getPrismaDelegate(mockPrisma, 'user');
 
-      projectDelegate.findFirst.mockResolvedValueOnce({ id: 1 });
-      projectDelegate.findUnique.mockResolvedValueOnce({
+      projectDelegate.findFirst.mockResolvedValueOnce({
         id: 1,
+        organizationId: 1,
         assignedEmployees: [{ id: 101 }],
         managerId: 2,
       });
@@ -777,8 +788,11 @@ describe('ProjectsService', () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
       const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
 
-      projectDelegate.findFirst.mockResolvedValueOnce({ id: 1 });
-      projectDelegate.findUnique.mockResolvedValueOnce({ id: 1 });
+      projectDelegate.findFirst.mockResolvedValueOnce({
+        id: 1,
+        organizationId: 1,
+        assignedEmployees: [],
+      });
       employeeDelegate.findFirst.mockResolvedValueOnce({ id: 101 });
       projectDelegate.update.mockResolvedValueOnce({
         id: 1,
@@ -787,6 +801,48 @@ describe('ProjectsService', () => {
 
       await service.assignEmployee(1, 101, mockAdminUser);
       expect(projectDelegate.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows a parent admin to assign a child employee and records the admin as an owner', async () => {
+      const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      const organizationScope = (service as any).organizationScopeService;
+      jest
+        .spyOn(organizationScope, 'getOrganizationIds')
+        .mockResolvedValue([1, 2]);
+      jest
+        .spyOn(organizationScope, 'getRelatedOrganizationIds')
+        .mockResolvedValue([1, 2]);
+      projectDelegate.findFirst.mockResolvedValueOnce({
+        id: 5,
+        organizationId: 1,
+        assignedEmployees: [],
+      });
+      employeeDelegate.findFirst.mockResolvedValueOnce({
+        id: 101,
+        organizationId: 2,
+        name: 'Child Employee',
+        user: { id: 8 },
+      });
+      projectDelegate.update.mockResolvedValueOnce({ id: 5 });
+
+      await service.assignEmployee(5, 101, mockAdminUser);
+
+      expect(employeeDelegate.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: { in: [1, 2] },
+          }),
+        }),
+      );
+      expect(projectDelegate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            assignedEmployees: { connect: { id: 101 } },
+            owners: { connect: { id: mockAdminUser.userId } },
+          }),
+        }),
+      );
     });
   });
 

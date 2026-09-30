@@ -40,7 +40,7 @@ export type AttendanceRecord = {
   date: string;
   id?: number | null;
   employeeId?: number;
-  employee?: { id: number; name: string; department?: string | null; designation?: string | null };
+  employee?: { id: number; name: string; department?: string | null; designation?: string | null; organization?: { id: number; name: string } };
   status: string;
   checkIn: string | null;
   checkOut: string | null;

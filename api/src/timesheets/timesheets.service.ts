@@ -5,10 +5,68 @@ import { QueryTimesheetDto } from './dto/query-timesheet.dto';
 import { CreateTimesheetDto } from './dto/create-timesheet.dto';
 import { UpdateTimesheetDto } from './dto/update-timesheet.dto';
 import type { AuthUser } from '../common/types/auth';
+import { Role } from '../common/enums/role.enum';
+import { OrganizationScopeService } from '../organizations/organization-scope.service';
 
 @Injectable()
 export class TimesheetsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly organizationScopeService: OrganizationScopeService,
+  ) {}
+
+  private async getReadableOrganizationIds(
+    user: AuthUser,
+  ): Promise<number[]> {
+    const organizationId = await this.resolveOrganizationId(user);
+    if (
+      user.role === Role.ADMIN ||
+      user.role === Role.HR ||
+      user.role === Role.SUPER_ADMIN
+    ) {
+      return (
+        (await this.organizationScopeService.getOrganizationIds(user)) ?? [
+          organizationId,
+        ]
+      );
+    }
+    return [organizationId];
+  }
+
+  private getTimesheetOwnerFilter(user: AuthUser): Prisma.TimesheetWhereInput {
+    return user.role === Role.EMPLOYEE
+      ? { createdByUserId: user.userId ?? user.id }
+      : {};
+  }
+
+  private async validateRelatedRecords(
+    projectId: number | null | undefined,
+    taskId: number | null | undefined,
+    organizationId: number,
+  ) {
+    if (projectId != null) {
+      const project = await this.prisma.project.findFirst({
+        where: { id: projectId, organizationId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!project) {
+        throw new ForbiddenException(
+          'Project must belong to the timesheet organization',
+        );
+      }
+    }
+    if (taskId != null) {
+      const task = await this.prisma.task.findFirst({
+        where: { id: taskId, organizationId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!task) {
+        throw new ForbiddenException(
+          'Task must belong to the timesheet organization',
+        );
+      }
+    }
+  }
 
   private async resolveOrganizationId(user: AuthUser): Promise<number> {
     if (
@@ -54,8 +112,15 @@ export class TimesheetsService {
     } = query;
 
     const skip = (+page - 1) * +limit;
-    const organizationId = await this.resolveOrganizationId(user);
-    const where: Prisma.TimesheetWhereInput = { organizationId };
+    const organizationIds = await this.getReadableOrganizationIds(user);
+    const where: Prisma.TimesheetWhereInput = {
+      deletedAt: null,
+      organizationId:
+        organizationIds.length === 1
+          ? organizationIds[0]
+          : { in: organizationIds },
+      ...this.getTimesheetOwnerFilter(user),
+    };
 
     if (status) where.status = status;
 
@@ -92,6 +157,7 @@ export class TimesheetsService {
         orderBy: { date: 'desc' },
         include: {
           createdByUser: { select: { id: true, name: true } },
+          organization: { select: { id: true, name: true } },
         },
       }),
       this.prisma.timesheet.count({ where }),
@@ -110,6 +176,7 @@ export class TimesheetsService {
         notes: t.notes ?? null,
         employee: null,
         createdByUser: t.createdByUser ?? null,
+        organization: t.organization,
       })),
       total,
       page: +page,
@@ -119,25 +186,36 @@ export class TimesheetsService {
 
   async create(dto: CreateTimesheetDto, user: AuthUser) {
     const organizationId = await this.resolveOrganizationId(user);
+    await this.validateRelatedRecords(dto.projectId, dto.taskId, organizationId);
     return this.prisma.timesheet.create({
       data: {
         organizationId,
+        createdByUserId: user.userId,
         task: dto.task,
         project: dto.project,
         projectId: dto.projectId,
         taskId: dto.taskId,
         date: new Date(dto.date),
         hours: dto.hours,
-        status: dto.status ?? 'PENDING',
+        status: 'PENDING',
         notes: dto.notes,
       },
     });
   }
 
   async findOne(id: number, user: AuthUser) {
-    const organizationId = await this.resolveOrganizationId(user);
+    const organizationIds = await this.getReadableOrganizationIds(user);
     const timesheet = await this.prisma.timesheet.findFirst({
-      where: { id, organizationId, deletedAt: null },
+      where: {
+        id,
+        deletedAt: null,
+        ...this.getTimesheetOwnerFilter(user),
+        organizationId:
+          organizationIds.length === 1
+            ? organizationIds[0]
+            : { in: organizationIds },
+      },
+      include: { organization: { select: { id: true, name: true } } },
     });
     if (!timesheet)
       throw new ForbiddenException('Timesheet not found in your organization');
@@ -145,16 +223,34 @@ export class TimesheetsService {
   }
 
   async update(id: number, dto: UpdateTimesheetDto, user: AuthUser) {
-    const organizationId = await this.resolveOrganizationId(user);
-    const existing = await this.prisma.timesheet.findFirst({
-      where: { id, organizationId, deletedAt: null },
-    });
-    if (!existing)
-      throw new ForbiddenException('Timesheet not found in your organization');
+    const existing = await this.findOne(id, user);
+    await this.validateRelatedRecords(
+      dto.projectId === undefined ? existing.projectId : dto.projectId,
+      dto.taskId === undefined ? existing.taskId : dto.taskId,
+      existing.organizationId,
+    );
+    const isApprover = new Set<Role>([
+      Role.ADMIN,
+      Role.HR,
+      Role.SUPER_ADMIN,
+    ]).has(user.role);
+    if (
+      user.role === Role.EMPLOYEE &&
+      existing.createdByUserId !== (user.userId ?? user.id)
+    ) {
+      throw new ForbiddenException(
+        'Employees can only edit their own timesheets',
+      );
+    }
+    if (dto.status !== undefined && !isApprover) {
+      throw new ForbiddenException(
+        'Only administrators and HR can change timesheet status',
+      );
+    }
     if (existing.status === 'APPROVED')
       throw new ForbiddenException('Approved timesheets cannot be edited');
     return this.prisma.timesheet.update({
-      where: { id },
+      where: { id, organizationId: existing.organizationId },
       data: {
         ...(dto.task !== undefined && { task: dto.task }),
         ...(dto.project !== undefined && { project: dto.project }),
@@ -184,7 +280,6 @@ export class TimesheetsService {
       const taskId = typeof r.taskId === 'number' ? r.taskId : Number(r.taskId);
       const date = typeof r.date === 'string' ? r.date : '';
       const hours = typeof r.hours === 'number' ? r.hours : Number(r.hours);
-      const status = typeof r.status === 'string' ? r.status : 'PENDING';
       const notes = typeof r.notes === 'string' ? r.notes : undefined;
 
       if (!task) {
@@ -209,8 +304,9 @@ export class TimesheetsService {
             taskId: Number.isFinite(taskId) ? taskId : undefined,
             date: new Date(date),
             hours,
-            status,
+            status: 'PENDING',
             notes,
+            createdByUserId: user.userId,
           },
         });
         imported++;

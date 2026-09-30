@@ -6,6 +6,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export interface Task {
   id: number;
+  organization?: { id: number; name: string };
   title?: string;
   taskName: string;
   description?: string | null;

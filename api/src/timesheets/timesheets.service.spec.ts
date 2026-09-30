@@ -10,6 +10,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { AuthUser } from '../common/types/auth';
 import { CreateTimesheetDto } from './dto/create-timesheet.dto';
 import { QueryTimesheetDto } from './dto/query-timesheet.dto';
+import { OrganizationScopeService } from '../organizations/organization-scope.service';
 
 // Helper to create valid mock AuthUser
 function createMockAuthUser(
@@ -59,6 +60,10 @@ describe('TimesheetsService', () => {
       providers: [
         TimesheetsService,
         { provide: PrismaService, useValue: mockPrisma },
+        {
+          provide: OrganizationScopeService,
+          useValue: { getOrganizationIds: jest.fn().mockResolvedValue([1]) },
+        },
       ],
     }).compile();
 
@@ -218,6 +223,23 @@ describe('TimesheetsService', () => {
         }),
       );
     });
+
+    it('restricts employee reports to timesheets they created', async () => {
+      const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
+      timesheetDelegate.findMany.mockResolvedValueOnce([]);
+      timesheetDelegate.count.mockResolvedValueOnce(0);
+
+      await service.getReport(
+        {} as QueryTimesheetDto,
+        _mockEmployeeUser,
+      );
+
+      expect(timesheetDelegate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ createdByUserId: _mockEmployeeUser.userId }),
+        }),
+      );
+    });
   });
 
   describe('create', () => {
@@ -246,11 +268,72 @@ describe('TimesheetsService', () => {
           task: 'Test Task',
           date: '2026-01-01',
           hours: 8,
+          status: 'APPROVED',
         } as CreateTimesheetDto,
         mockAdminUser,
       );
       expect(result).toEqual({ id: 1, task: 'Test Task' });
-      expect(timesheetDelegate.create).toHaveBeenCalledTimes(1);
+      expect(timesheetDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            organizationId: 1,
+            createdByUserId: mockAdminUser.userId,
+            status: 'PENDING',
+          }),
+        }),
+      );
+    });
+
+    it('rejects a project from another organization', async () => {
+      const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
+      projectDelegate.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        service.create(
+          {
+            task: 'Cross organization project',
+            projectId: 22,
+            date: '2026-01-01',
+            hours: 2,
+          } as CreateTimesheetDto,
+          mockAdminUser,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(getPrismaDelegate(mockPrisma, 'timesheet').create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('update', () => {
+    it('prevents employees from editing another user\'s timesheet', async () => {
+      const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
+      timesheetDelegate.findFirst.mockResolvedValueOnce({
+        id: 5,
+        organizationId: 1,
+        createdByUserId: 9,
+        status: 'PENDING',
+        date: new Date('2026-01-01'),
+      });
+
+      await expect(
+        service.update(5, { hours: 2 }, _mockEmployeeUser),
+      ).rejects.toThrow(ForbiddenException);
+      expect(timesheetDelegate.update).not.toHaveBeenCalled();
+    });
+
+    it('prevents employees from changing timesheet status', async () => {
+      const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
+      timesheetDelegate.findFirst.mockResolvedValueOnce({
+        id: 5,
+        organizationId: 1,
+        createdByUserId: _mockEmployeeUser.userId,
+        status: 'PENDING',
+        date: new Date('2026-01-01'),
+      });
+
+      await expect(
+        service.update(5, { status: 'APPROVED' }, _mockEmployeeUser),
+      ).rejects.toThrow(ForbiddenException);
+      expect(timesheetDelegate.update).not.toHaveBeenCalled();
     });
   });
 

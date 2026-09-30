@@ -24,6 +24,7 @@ import { BusinessUnitsService } from '../business-units/business-units.service';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { UpdateLeaveRequestDto } from './dto/update-leave-request.dto';
 import { EmployeeLeaveRequestedEvent } from './events/employee-leave-requested.event';
+import { OrganizationScopeService } from '../organizations/organization-scope.service';
 
 const FINAL_LEAVE_STATUSES = ['APPROVED', 'REJECTED', 'CANCELLED'] as const;
 type FinalLeaveStatus = (typeof FINAL_LEAVE_STATUSES)[number];
@@ -42,6 +43,7 @@ export class LeaveRequestsService {
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly workflowEngine: WorkflowEngineService,
     private readonly businessUnitsService: BusinessUnitsService,
+    private readonly organizationScopeService: OrganizationScopeService,
   ) {}
 
   private async invalidateDashboardCache() {
@@ -89,34 +91,61 @@ export class LeaveRequestsService {
     return employee.id;
   }
 
-  private async findScoped(id: number, user: AuthUser) {
+  private async getScopedLeaveWhere(
+    user: AuthUser,
+  ): Promise<Prisma.LeaveRequestWhereInput> {
     const organizationId = this.getOrganizationId(user);
     const buScope = await this.businessUnitsService.resolveScope(user as any);
     const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
+    const isHierarchyAdmin = user.role === Role.ADMIN || user.role === Role.HR;
+    const organizationIds = isHierarchyAdmin
+      ? await this.organizationScopeService.getOrganizationIds(user)
+      : [organizationId];
+    const descendantIds = organizationIds?.filter(
+      (id) => id !== organizationId,
+    ) ?? [];
 
-    const where: Prisma.LeaveRequestWhereInput = {
-      id,
-      organizationId,
-      employee:
-        user.role === Role.EMPLOYEE
-          ? { organizationId, deletedAt: null }
-          : buWhere,
-    };
-
+    let employeeWhere: Prisma.EmployeeWhereInput;
+    let employeeId: number | undefined;
     if (user.role === Role.EMPLOYEE) {
-      where.employeeId = await this.resolveCurrentEmployeeId(user);
-    } else if (user.role === Role.MANAGER) {
-      where.employee = {
-        ...(where.employee as Prisma.EmployeeWhereInput),
-        user: { managerId: user.userId },
+      employeeWhere = { organizationId, deletedAt: null };
+    } else if (isHierarchyAdmin && descendantIds.length > 0) {
+      employeeWhere = {
+        OR: [
+          buWhere,
+          { organizationId: { in: descendantIds }, deletedAt: null },
+        ],
       };
+    } else {
+      employeeWhere = buWhere;
     }
 
+    if (user.role === Role.EMPLOYEE) {
+      employeeId = await this.resolveCurrentEmployeeId(user);
+    } else if (user.role === Role.MANAGER) {
+      employeeWhere = { ...employeeWhere, user: { managerId: user.userId } };
+    }
+
+    const where: Prisma.LeaveRequestWhereInput = {
+      organizationId:
+        organizationIds?.length === 1
+          ? organizationIds[0]
+          : { in: organizationIds ?? [] },
+      employee: employeeWhere,
+    };
+    if (employeeId !== undefined) where.employeeId = employeeId;
+    return where;
+  }
+
+  private async findScoped(id: number, user: AuthUser) {
+    const where = await this.getScopedLeaveWhere(user);
+
     return this.prisma.leaveRequest.findFirst({
-      where,
+      where: { id, ...where },
       include: {
         employee: {
           include: {
+            organization: { select: { id: true, name: true } },
             user: {
               select: { id: true, name: true, managerId: true },
             },
@@ -154,7 +183,7 @@ export class LeaveRequestsService {
   }
 
   async create(dto: CreateLeaveRequestDto, user: AuthUser) {
-    const organizationId = this.getOrganizationId(user);
+    let organizationId = this.getOrganizationId(user);
     const currentEmployeeId =
       user.role === Role.EMPLOYEE
         ? await this.resolveCurrentEmployeeId(user)
@@ -179,23 +208,41 @@ export class LeaveRequestsService {
 
     const buScope = await this.businessUnitsService.resolveScope(user as any);
     const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
+    const organizationIds =
+      user.role === Role.ADMIN || user.role === Role.HR
+        ? await this.organizationScopeService.getOrganizationIds(user)
+        : [organizationId];
+    const descendantIds = organizationIds?.filter(
+      (id) => id !== organizationId,
+    ) ?? [];
     const employee = await this.prisma.employee.findFirst({
       where: {
         id: employeeId,
         ...(user.role === Role.EMPLOYEE
           ? { organizationId, deletedAt: null }
-          : buWhere),
+          : user.role === Role.ADMIN || user.role === Role.HR
+            ? descendantIds.length > 0
+              ? {
+                  OR: [
+                    buWhere,
+                    { organizationId: { in: descendantIds }, deletedAt: null },
+                  ],
+                }
+              : buWhere
+            : buWhere),
       },
       include: {
         user: {
           select: { id: true, name: true, email: true, managerId: true },
         },
+        organization: { select: { id: true, name: true } },
       },
     });
 
     if (!employee) {
       throw new NotFoundException(`Employee #${employeeId} not found`);
     }
+    organizationId = employee.organizationId;
 
     const leaveRequest = await this.prisma.leaveRequest.create({
       data: {
@@ -209,7 +256,9 @@ export class LeaveRequestsService {
         appliedOn: new Date(),
         ...createSubmittedApprovalState(user.userId),
       },
-      include: { employee: true },
+      include: {
+        employee: { include: { organization: { select: { id: true, name: true } } } },
+      },
     });
 
     try {
@@ -273,32 +322,14 @@ export class LeaveRequestsService {
   }
 
   async findAll(user: AuthUser) {
-    const organizationId = this.getOrganizationId(user);
-    const buScope = await this.businessUnitsService.resolveScope(user as any);
-    const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
-
-    const where: Prisma.LeaveRequestWhereInput = {
-      organizationId,
-      employee:
-        user.role === Role.EMPLOYEE
-          ? { organizationId, deletedAt: null }
-          : buWhere,
-    };
-
-    if (user.role === Role.EMPLOYEE) {
-      where.employeeId = await this.resolveCurrentEmployeeId(user);
-    } else if (user.role === Role.MANAGER) {
-      where.employee = {
-        ...(where.employee as Prisma.EmployeeWhereInput),
-        user: { managerId: user.userId },
-      };
-    }
+    const where = await this.getScopedLeaveWhere(user);
 
     return this.prisma.leaveRequest.findMany({
       where,
       include: {
         employee: {
           include: {
+            organization: { select: { id: true, name: true } },
             user: { select: { id: true, name: true, managerId: true } },
           },
         },
@@ -314,7 +345,6 @@ export class LeaveRequestsService {
   }
 
   async update(id: number, dto: UpdateLeaveRequestDto, user: AuthUser) {
-    const organizationId = this.getOrganizationId(user);
     const existing = await this.findScoped(id, user);
     if (!existing) {
       throw new NotFoundException(`LeaveRequest #${id} not found`);
@@ -322,6 +352,16 @@ export class LeaveRequestsService {
 
     if (user.role === Role.EMPLOYEE && isFinalLeaveStatus(existing.status)) {
       throw new ForbiddenException('Finalized leave requests cannot be edited');
+    }
+
+    if (
+      user.role === Role.EMPLOYEE &&
+      dto.employeeId !== undefined &&
+      dto.employeeId !== existing.employeeId
+    ) {
+      throw new ForbiddenException(
+        'Employees cannot reassign a leave request to another employee',
+      );
     }
 
     const data: Prisma.LeaveRequestUpdateInput = {};
@@ -334,13 +374,33 @@ export class LeaveRequestsService {
     if (dto.employeeId !== undefined && dto.employeeId !== null) {
       const buScope = await this.businessUnitsService.resolveScope(user as any);
       const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
+      const organizationIds =
+        user.role === Role.ADMIN || user.role === Role.HR
+          ? await this.organizationScopeService.getOrganizationIds(user)
+          : [this.getOrganizationId(user)];
       const targetEmployee = await this.prisma.employee.findFirst({
-        where: { id: dto.employeeId, ...buWhere },
-        select: { id: true },
+        where: {
+          id: dto.employeeId,
+          organizationId: { in: organizationIds ?? [] },
+          deletedAt: null,
+        },
+        select: { id: true, organizationId: true, businessUnitId: true },
       });
       if (!targetEmployee) {
         throw new ForbiddenException(
           'Target employee is not within your authorized Business Unit scope',
+        );
+      }
+      if (targetEmployee.organizationId !== existing.organizationId) {
+        throw new ForbiddenException(
+          'A leave request cannot be reassigned to another organization',
+        );
+      }
+      if (targetEmployee.organizationId === user.organizationId) {
+        await this.businessUnitsService.assertRecordAccessible(
+          buScope,
+          targetEmployee.businessUnitId,
+          'leave:target-employee',
         );
       }
     }
@@ -350,7 +410,7 @@ export class LeaveRequestsService {
     if (dto.leaveType !== undefined) data.leaveType = dto.leaveType;
     if (dto.reason !== undefined) data.reason = dto.reason;
     const updated = await this.prisma.leaveRequest.update({
-      where: { id, organizationId },
+      where: { id, organizationId: existing.organizationId },
       data,
     });
 
@@ -359,10 +419,9 @@ export class LeaveRequestsService {
   }
 
   async remove(id: number, user: AuthUser) {
-    const organizationId = this.getOrganizationId(user);
-    await this.findOne(id, user);
+    const request = await this.findOne(id, user);
     const deleted = await this.prisma.leaveRequest.update({
-      where: { id, organizationId },
+      where: { id, organizationId: request.organizationId },
       data: { deletedAt: new Date() },
     });
     await this.invalidateDashboardCache();
@@ -370,7 +429,6 @@ export class LeaveRequestsService {
   }
 
   async managerApprove(id: number, user: AuthUser) {
-    const organizationId = this.getOrganizationId(user);
     const request = await this.findScoped(id, user);
     if (!request) {
       throw new NotFoundException(`LeaveRequest #${id} not found`);
@@ -381,6 +439,7 @@ export class LeaveRequestsService {
         'Leave request is not pending manager approval',
       );
     }
+    const organizationId = request.organizationId;
 
     const result = await this.workflowEngine.approveWorkflow({
       definitionKey: 'leave-request-approval',
@@ -407,7 +466,6 @@ export class LeaveRequestsService {
   }
 
   async hrApprove(id: number, user: AuthUser) {
-    const organizationId = this.getOrganizationId(user);
     const request = await this.findScoped(id, user);
     if (!request) {
       throw new NotFoundException(`LeaveRequest #${id} not found`);
@@ -426,6 +484,7 @@ export class LeaveRequestsService {
         'HR cannot approve their own leave request. This requires Admin or Super Admin approval.',
       );
     }
+    const organizationId = request.organizationId;
 
     const leaveDays = this.computeLeaveDays(request.startDate, request.endDate);
 
@@ -518,11 +577,11 @@ export class LeaveRequestsService {
   }
 
   async reject(id: number, user: AuthUser, reason?: string) {
-    const organizationId = this.getOrganizationId(user);
     const request = await this.findScoped(id, user);
     if (!request) {
       throw new NotFoundException(`LeaveRequest #${id} not found`);
     }
+    const organizationId = request.organizationId;
 
     const result = await this.workflowEngine.rejectWorkflow({
       definitionKey: 'leave-request-approval',

@@ -11,6 +11,7 @@ export interface Project {
   deadline?: string | null;
   manager: string | null;
   managerId: number | null;
+  organization?: { id: number; name: string };
   owners?: Array<{ id: number; name: string; email: string; role: string }>;
   createdById?: number | null;
   createdBy?: { id: number; name: string; email: string } | null;
@@ -53,6 +54,7 @@ export interface Project {
     email: string;
     department: string | null;
     designation: string | null;
+    organization?: { id: number; name: string };
   }>;
   messages?: ProjectMessage[];
   tasks?: Array<{

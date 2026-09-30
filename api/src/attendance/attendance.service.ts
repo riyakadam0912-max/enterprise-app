@@ -15,6 +15,7 @@ import { Role } from '../common/enums/role.enum';
 import { DASHBOARD_CACHE_KEY } from '../common/utils/cache-keys';
 import { PrismaService } from '../prisma/prisma.service';
 import { BusinessUnitsService } from '../business-units/business-units.service';
+import { OrganizationScopeService } from '../organizations/organization-scope.service';
 import { AssignShiftDto } from './dto/assign-shift.dto';
 import { AttendanceSummaryQueryDto } from './dto/attendance-summary.dto';
 import { CheckInDto } from './dto/check-in.dto';
@@ -51,6 +52,7 @@ type DailyAttendanceRow = {
     name: string;
     department: string | null;
     designation: string | null;
+    organization?: { id: number; name: string };
   };
   date: string;
   checkIn: string | null;
@@ -82,6 +84,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly businessUnitsService: BusinessUnitsService,
+    private readonly organizationScopeService: OrganizationScopeService,
   ) {}
 
   private async resolveOrganizationId(user: AttendanceUser): Promise<number> {
@@ -479,6 +482,52 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       return roleBasedIds;
     }
 
+    if (
+      user.role === Role.ADMIN ||
+      user.role === Role.HR ||
+      user.role === Role.SUPER_ADMIN
+    ) {
+      const organizationIds =
+        await this.organizationScopeService.getOrganizationIds(user as any);
+      if (organizationIds === null) {
+        const employees = await this.prisma.employee.findMany({
+          where: {
+            deletedAt: null,
+            ...(requestedEmployeeId ? { id: requestedEmployeeId } : {}),
+          },
+          select: { id: true },
+        });
+        return employees.map((employee) => employee.id);
+      }
+      const buScope = await this.businessUnitsService.resolveScope(user as any);
+      const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
+      const descendantIds = organizationIds?.filter(
+        (id) => id !== (buScope?.organizationId ?? user.organizationId),
+      );
+      if (!descendantIds || descendantIds.length === 0) {
+        const buEmployeeIds =
+          await this.businessUnitsService.getEmployeeScopeFilterIds(buScope);
+        if (buEmployeeIds === null) return roleBasedIds;
+        return roleBasedIds === null
+          ? buEmployeeIds
+          : roleBasedIds.filter((id) => buEmployeeIds.includes(id));
+      }
+      const employees = await this.prisma.employee.findMany({
+        where: {
+          OR: [
+            buWhere,
+            { organizationId: { in: descendantIds }, deletedAt: null },
+          ],
+          ...(requestedEmployeeId ? { id: requestedEmployeeId } : {}),
+        },
+        select: { id: true },
+      });
+      const scopedIds = (employees ?? []).map((employee) => employee.id);
+      return roleBasedIds === null
+        ? scopedIds
+        : roleBasedIds.filter((id) => scopedIds.includes(id));
+    }
+
     const buScope = await this.businessUnitsService.resolveScope(user as any);
     if (user.role === Role.EMPLOYEE) {
       return roleBasedIds;
@@ -553,6 +602,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       name: string;
       department: string | null;
       designation: string | null;
+      organization?: { id: number; name: string };
       shift: ShiftLite | null;
     },
     day: Date,
@@ -595,6 +645,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         name: employee.name,
         department: employee.department ?? null,
         designation: employee.designation ?? null,
+        organization: employee.organization,
       },
       date: day.toISOString(),
       checkIn: attendance?.checkIn?.toISOString() ?? null,
@@ -928,14 +979,42 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   ) {
     const buScope = await this.businessUnitsService.resolveScope(user as any);
     const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
+    const organizationIds =
+      user.role === Role.ADMIN ||
+      user.role === Role.HR ||
+      user.role === Role.SUPER_ADMIN
+        ? await this.organizationScopeService.getOrganizationIds(user as any)
+        : [user.organizationId];
+    const otherOrganizationIds = organizationIds?.filter(
+      (id) => id !== buScope.organizationId,
+    );
+    const employeeWhere =
+      organizationIds === null
+        ? { deletedAt: null }
+        : otherOrganizationIds && otherOrganizationIds.length > 0
+          ? {
+              OR: [
+                buWhere,
+                {
+                  organizationId: { in: otherOrganizationIds },
+                  deletedAt: null,
+                },
+              ],
+            }
+          : {
+              ...this.buildOrganizationScope(user),
+              ...buWhere,
+            };
     const employees = await this.prisma.employee.findMany({
       where: {
-        ...this.buildOrganizationScope(user),
-        ...buWhere,
+        ...employeeWhere,
         ...(employeeIds ? { id: { in: employeeIds } } : {}),
       },
       orderBy: { name: 'asc' },
-      include: { shift: true },
+      include: {
+        shift: true,
+        organization: { select: { id: true, name: true } },
+      },
     });
     const eligibleEmployees = employees.filter((employee) =>
       this.isAttendanceEligible(day, employee.hireDate),
@@ -1028,7 +1107,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       page,
       limit,
       date: day.toISOString(),
-      summary,
+      summary: this.buildSummary(filteredRows),
     };
   }
 
@@ -1294,17 +1373,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       query.employeeId,
     );
 
-    const where = {
+    const whereWithEmployee = {
       date: { gte: monthStart, lte: monthEnd },
-      ...this.buildOrganizationScope(user),
+      ...(scopedIds === null
+        ? this.buildOrganizationScope(user)
+        : { employeeId: { in: scopedIds } }),
     } as const;
-
-    const whereWithEmployee = scopedIds
-      ? {
-          ...where,
-          employeeId: { in: scopedIds },
-        }
-      : where;
 
     const attendanceRows = await this.prisma.attendance.findMany({
       where: whereWithEmployee,
@@ -1394,11 +1468,36 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     const buScope = await this.businessUnitsService.resolveScope(user as any);
     const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
+    const organizationIds =
+      user.role === Role.ADMIN ||
+      user.role === Role.HR ||
+      user.role === Role.SUPER_ADMIN
+        ? await this.organizationScopeService.getOrganizationIds(user as any)
+        : [user.organizationId];
+    const descendantIds = organizationIds?.filter(
+      (id) => id !== buScope.organizationId,
+    );
+    const employeeWhere =
+      organizationIds === null
+        ? { deletedAt: null }
+        : descendantIds && descendantIds.length > 0
+          ? {
+              OR: [
+                buWhere,
+                {
+                  organizationId: { in: descendantIds },
+                  deletedAt: null,
+                },
+              ],
+            }
+          : {
+              deletedAt: null,
+              ...this.buildOrganizationScope(user),
+              ...buWhere,
+            };
     const employees = await this.prisma.employee.findMany({
       where: {
-        deletedAt: null,
-        ...this.buildOrganizationScope(user),
-        ...buWhere,
+        ...employeeWhere,
         ...(scopedEmployeeIds ? { id: { in: scopedEmployeeIds } } : {}),
         ...(query.employeeId ? { id: query.employeeId } : {}),
         ...(query.department
@@ -1412,6 +1511,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         department: true,
         designation: true,
         position: true,
+        organization: { select: { id: true, name: true } },
         user: { select: { role: true } },
       },
       orderBy: { name: 'asc' },
@@ -1431,7 +1531,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       where: {
         employeeId: { in: employeeIds },
         date: { gte: monthStart, lte: monthEnd },
-        ...this.buildOrganizationScope(user),
       },
       include: { shift: true },
       orderBy: [{ employeeId: 'asc' }, { date: 'asc' }],
@@ -1476,6 +1575,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       {
         employeeId: number;
         employeeName: string;
+        organization: { id: number; name: string };
         hireDate: string | null;
         department: string | null;
         role: string;
@@ -1498,6 +1598,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       grouped.set(employee.id, {
         employeeId: employee.id,
         employeeName: employee.name,
+        organization: employee.organization,
         hireDate: employee.hireDate?.toISOString() ?? null,
         department: employee.department ?? null,
         role:

@@ -112,7 +112,7 @@ export default function LeavePage() {
 
   const filteredRequests = useMemo(() => {
     return requests.filter((request) => {
-      const searchMatch = !search || [request.leaveType, request.reason, request.employee?.name ?? '']
+      const searchMatch = !search || [request.leaveType, request.reason, request.employee?.name ?? '', request.employee?.organization?.name ?? '']
         .join(' ')
         .toLowerCase()
         .includes(search.toLowerCase());
@@ -125,7 +125,14 @@ export default function LeavePage() {
     {
       accessorKey: 'employee.name',
       header: 'Employee',
-      cell: ({ row }) => row.original.employee?.name ?? 'N/A',
+      cell: ({ row }) => (
+        <div>
+          <div>{row.original.employee?.name ?? 'N/A'}</div>
+          {row.original.employee?.organization?.name && (
+            <div className="text-xs text-slate-500">{row.original.employee.organization.name}</div>
+          )}
+        </div>
+      ),
     },
     {
       accessorKey: 'leaveType',
