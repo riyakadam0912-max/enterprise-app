@@ -221,7 +221,12 @@ export class DealsService {
     if (dto.stage !== undefined && dto.stage !== currentDeal.stage) {
       this.eventEmitter.emit(
         'deal.status_updated',
-        new DealStatusUpdatedEvent(id, currentDeal.stage, dto.stage),
+        new DealStatusUpdatedEvent(
+          id,
+          currentDeal.stage,
+          dto.stage,
+          user.userId,
+        ),
       );
     }
 

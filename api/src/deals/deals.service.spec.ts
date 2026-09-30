@@ -279,7 +279,12 @@ describe('DealsService', () => {
       expect(mockEventEmitter.emit).toHaveBeenCalledTimes(1);
       expect(mockEventEmitter.emit).toHaveBeenCalledWith(
         'deal.status_updated',
-        expect.any(Object),
+        expect.objectContaining({
+          dealId: 1,
+          previousStage: 'NEW',
+          newStage: 'WON',
+          triggeredByUserId: mockAdminUser.userId,
+        }),
       );
     });
   });

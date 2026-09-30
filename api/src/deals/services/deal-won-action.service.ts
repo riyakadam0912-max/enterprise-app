@@ -66,13 +66,24 @@ export class DealWonActionService {
           linkedContact: {
             select: { id: true, contactName: true, company: true, email: true },
           },
-          assignedEmployee: { select: { id: true, name: true } },
+          assignedEmployee: {
+            select: {
+              id: true,
+              name: true,
+              user: { select: { id: true, role: true } },
+            },
+          },
         },
       });
 
       if (!deal) {
         throw new NotFoundException(`Deal #${event.dealId} not found`);
       }
+
+      const assignedManager =
+        deal.assignedEmployee?.user?.role === 'MANAGER'
+          ? deal.assignedEmployee.user
+          : null;
 
       // Execute all operations within a single transaction
       const result = await this.prisma.$transaction(async (tx) => {
@@ -84,8 +95,12 @@ export class DealWonActionService {
             projectCode: `PRJ-${deal.id}-${Date.now()}`,
             startDate: new Date(),
             endDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
-            managerId: deal.assignedToId,
-            manager: deal.assignedEmployee?.name || deal.owner || 'Unassigned',
+            managerId: assignedManager?.id ?? null,
+            manager: assignedManager ? deal.assignedEmployee?.name : null,
+            managerAssignedById: assignedManager
+              ? (event.triggeredByUserId ?? null)
+              : null,
+            createdById: event.triggeredByUserId ?? null,
             status: 'PLANNED',
             budget: deal.value,
             description: `Project created from won deal: ${deal.title}`,
