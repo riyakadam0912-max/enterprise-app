@@ -418,6 +418,67 @@ describe('TasksService', () => {
         }),
       );
     });
+
+    it('records the acting admin when a task is reassigned', async () => {
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      taskDelegate.findFirst.mockResolvedValueOnce({
+        id: 1,
+        status: 'PENDING',
+        assignedToUserId: 3,
+      });
+      userDelegate.findUnique.mockResolvedValueOnce({
+        id: 4,
+        name: 'New Assignee',
+        employeeId: 104,
+        role: Role.EMPLOYEE,
+        managerId: null,
+      });
+      taskDelegate.update.mockResolvedValueOnce({ id: 1 });
+
+      await service.update(
+        1,
+        { assignedToUserId: 4 } as UpdateTaskDto,
+        mockAdminUser,
+      );
+
+      expect(taskDelegate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            assignedToUserId: 4,
+            assignedByUserId: mockAdminUser.userId,
+          }),
+        }),
+      );
+    });
+
+    it('keeps the original assigner when the assignee does not change', async () => {
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      taskDelegate.findFirst.mockResolvedValueOnce({
+        id: 1,
+        status: 'PENDING',
+        assignedToUserId: 3,
+      });
+      userDelegate.findUnique.mockResolvedValueOnce({
+        id: 3,
+        name: 'Current Assignee',
+        employeeId: 103,
+        role: Role.EMPLOYEE,
+        managerId: null,
+      });
+      taskDelegate.update.mockResolvedValueOnce({ id: 1 });
+
+      await service.update(
+        1,
+        { assignedToUserId: 3 } as UpdateTaskDto,
+        mockAdminUser,
+      );
+
+      const updateData = taskDelegate.update.mock.calls[0][0].data;
+      expect(updateData.assignedToUserId).toBe(3);
+      expect(updateData).not.toHaveProperty('assignedByUserId');
+    });
   });
 
   describe('task messages', () => {

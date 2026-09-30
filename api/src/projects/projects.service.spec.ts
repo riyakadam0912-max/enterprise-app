@@ -200,6 +200,7 @@ describe('ProjectsService', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             createdById: mockAdminUser.userId,
+            managerAssignedById: mockAdminUser.userId,
           }),
         }),
       );
@@ -284,6 +285,14 @@ describe('ProjectsService', () => {
 
       const result = await service.assignManager(1, 3, mockAdminUser);
       expect(result.managerId).toEqual(3);
+      expect(projectDelegate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            managerId: 3,
+            managerAssignedById: mockAdminUser.userId,
+          }),
+        }),
+      );
     });
   });
 
@@ -862,6 +871,13 @@ describe('ProjectsService', () => {
         mockAdminUser,
       );
       expect(result.managerId).toEqual(3);
+      expect(projectDelegate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            managerAssignedById: mockAdminUser.userId,
+          }),
+        }),
+      );
     });
   });
 

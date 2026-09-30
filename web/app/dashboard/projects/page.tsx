@@ -1512,6 +1512,11 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                 <p className="mt-2 text-sm text-slate-500">
                   Project ID {projectDetails.id} · {projectDetails.clientName ?? projectDetails.client ?? 'No client'} · Owner: {projectOwnerName ?? 'Unassigned'}
                 </p>
+                {projectDetails.managerAssignedBy?.name && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Manager assigned by {projectDetails.managerAssignedBy.name}
+                  </p>
+                )}
                 <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold">
                   <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">{projectDetails.status.replaceAll('_', ' ')}</span>
                   {projectDetails.priority && <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">{projectDetails.priority} priority</span>}
@@ -1665,6 +1670,9 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                     {projectDetails.priority && <p>Priority: {projectDetails.priority}</p>}
                     {projectDetails.specificTask && <p>Task: {projectDetails.specificTask}</p>}
                     {projectOwnerName && <p>Owner: {projectOwnerName}</p>}
+                    {projectDetails.managerAssignedBy?.name && (
+                      <p>Manager assigned by: {projectDetails.managerAssignedBy.name}</p>
+                    )}
                     {projectDetails.remarks && <p>Remarks: {projectDetails.remarks}</p>}
                     {projectDetails.finalDeliverablesLink && (
                       <p>

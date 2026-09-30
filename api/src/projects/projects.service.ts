@@ -441,6 +441,7 @@ export class ProjectsService {
             : undefined,
         manager: managerName,
         managerId: managerId,
+        managerAssignedById: managerId != null ? user.userId : null,
         ownerId: owner?.id ?? null,
         createdById: user.userId,
         status: this.normalizeProjectStatus(dto.status),
@@ -460,6 +461,7 @@ export class ProjectsService {
       include: {
         _count: { select: { tasks: true, clientAccess: true } },
         managerUser: { select: { id: true, name: true, email: true } },
+        managerAssignedBy: { select: { id: true, name: true, email: true } },
         owner: { select: { id: true, name: true, email: true, role: true } },
         createdBy: { select: { id: true, name: true, email: true } },
         coManagers: {
@@ -513,9 +515,11 @@ export class ProjectsService {
       data: {
         managerId,
         manager: manager.name,
+        managerAssignedById: user.userId,
       },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
+        managerAssignedBy: { select: { id: true, name: true, email: true } },
         owner: { select: { id: true, name: true, email: true, role: true } },
         createdBy: { select: { id: true, name: true, email: true } },
         coManagers: {
@@ -555,6 +559,7 @@ export class ProjectsService {
       include: {
         _count: { select: { tasks: true, clientAccess: true } },
         managerUser: { select: { id: true, name: true, email: true } },
+        managerAssignedBy: { select: { id: true, name: true, email: true } },
         owner: { select: { id: true, name: true, email: true, role: true } },
         createdBy: { select: { id: true, name: true, email: true } },
         coManagers: {
@@ -615,6 +620,7 @@ export class ProjectsService {
       where: organizationId == null ? { id } : { id, organizationId },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
+        managerAssignedBy: { select: { id: true, name: true, email: true } },
         coManagers: {
           where: { organizationId },
           select: { id: true, name: true, email: true },
@@ -1003,6 +1009,9 @@ export class ProjectsService {
         ...(dto.ownerId !== undefined && { ownerId: owner?.id ?? null }),
         ...(dto.projectCode !== undefined && { projectCode: dto.projectCode }),
         ...(dto.managerId !== undefined && { managerId: dto.managerId }),
+        ...(dto.managerId !== undefined && {
+          managerAssignedById: dto.managerId ? user.userId : null,
+        }),
         ...(managerName !== undefined && { manager: managerName }),
         ...(dto.status !== undefined && {
           status: this.normalizeProjectStatus(dto.status),
@@ -1026,6 +1035,7 @@ export class ProjectsService {
       },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
+        managerAssignedBy: { select: { id: true, name: true, email: true } },
         owner: { select: { id: true, name: true, email: true, role: true } },
         createdBy: { select: { id: true, name: true, email: true } },
         links: { where: { organizationId } },
@@ -1055,6 +1065,7 @@ export class ProjectsService {
       data: { status: this.normalizeProjectStatus(status) },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
+        managerAssignedBy: { select: { id: true, name: true, email: true } },
         owner: { select: { id: true, name: true, email: true, role: true } },
         createdBy: { select: { id: true, name: true, email: true } },
       },

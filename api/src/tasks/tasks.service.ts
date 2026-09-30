@@ -732,6 +732,7 @@ export class TasksService {
     let assigneeData: {
       assignedToUserId?: number;
       assignedToId?: number | null;
+      assignedByUserId?: number;
       assignee?: string;
     } = {};
     if (dto.assignedToUserId || dto.employeeId) {
@@ -763,6 +764,7 @@ export class TasksService {
       const newAssigneeData: {
         assignedToUserId?: number;
         assignedToId?: number | null;
+        assignedByUserId?: number;
         assignee?: string;
       } = {
         assignedToUserId: Number(assignee.id),
@@ -772,6 +774,9 @@ export class TasksService {
             : Number(assignee.employeeId),
         assignee: String(assignee.name),
       };
+      if (Number(assignee.id) !== existingTask.assignedToUserId) {
+        newAssigneeData.assignedByUserId = user.userId;
+      }
       assigneeData = newAssigneeData;
     }
 
