@@ -36,7 +36,7 @@ model User {
   ledgerEntries              LedgerEntry[]
   notificationsCreated       Notification[]
   managedProjects            Project[]              @relation("ProjectManager")
-  ownedProjects              Project[]              @relation("ProjectOwner")
+  ownedProjects              Project[]              @relation("ProjectOwners")
   createdProjects             Project[]              @relation("ProjectCreator")
   managerAssignmentsCreated Project[]              @relation("ProjectManagerAssignedBy")
   projectLinksCreated        ProjectLink[]
@@ -752,14 +752,13 @@ model Project {
   updatedAt             DateTime         @updatedAt
   deletedAt             DateTime?
   managerId             Int?
-  ownerId               Int?
   createdById           Int?
   managerAssignedById   Int?
   organizationId        Int
   businessUnitId        Int?
   tags                  String[]         @default([])
   managerUser           User?            @relation("ProjectManager", fields: [managerId], references: [id])
-  owner                 User?            @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  owners                User[]           @relation("ProjectOwners")
   createdBy             User?            @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: SetNull)
   managerAssignedBy     User?            @relation("ProjectManagerAssignedBy", fields: [managerAssignedById], references: [id], onDelete: SetNull)
   businessUnit          BusinessUnit?    @relation("ProjectBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
@@ -777,7 +776,6 @@ model Project {
 
   @@index([organizationId])
   @@index([businessUnitId])
-  @@index([ownerId])
   @@index([createdById])
   @@index([managerAssignedById])
 }

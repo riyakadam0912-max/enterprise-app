@@ -273,10 +273,13 @@ export class ProjectsService {
     return 'NOT_STARTED';
   }
 
-  private async validateOwner(ownerId: number, organizationId: number) {
-    const owner = await this.db.user.findFirst({
+  private async validateOwners(ownerIds: number[], organizationId: number) {
+    const uniqueOwnerIds = [...new Set(ownerIds)];
+    if (uniqueOwnerIds.length === 0) return [];
+
+    const owners = await this.db.user.findMany({
       where: {
-        id: ownerId,
+        id: { in: uniqueOwnerIds },
         isActive: true,
         OR: [{ organizationId }, { role: Role.SUPER_ADMIN }],
       },
@@ -287,12 +290,15 @@ export class ProjectsService {
       Role.ADMIN,
       Role.MANAGER,
     ];
-    if (!owner || !allowedOwnerRoles.includes(owner.role)) {
+    if (
+      owners.length !== uniqueOwnerIds.length ||
+      owners.some((owner) => !allowedOwnerRoles.includes(owner.role))
+    ) {
       throw new NotFoundException(
-        'Project owner not found or has an invalid role',
+        'One or more project owners were not found or have an invalid role',
       );
     }
-    return owner;
+    return owners;
   }
 
   private async getProjectScope(
@@ -405,10 +411,7 @@ export class ProjectsService {
       throw new ForbiddenException('Project name is required');
     }
 
-    const ownerId = dto.ownerId ?? undefined;
-    const owner = ownerId
-      ? await this.validateOwner(ownerId, organizationId)
-      : null;
+    const owners = await this.validateOwners(dto.ownerIds ?? [], organizationId);
     const managerId =
       dto.managerId ?? (user.role === Role.MANAGER ? user.userId : undefined);
     const manager = managerId
@@ -442,7 +445,10 @@ export class ProjectsService {
         manager: managerName,
         managerId: managerId,
         managerAssignedById: managerId != null ? user.userId : null,
-        ownerId: owner?.id ?? null,
+        owners: {
+          connect: [...new Set([user.userId, ...owners.map((owner) => owner.id)])]
+            .map((id) => ({ id })),
+        },
         createdById: user.userId,
         status: this.normalizeProjectStatus(dto.status),
         budget: dto.budget,
@@ -462,7 +468,7 @@ export class ProjectsService {
         _count: { select: { tasks: true, clientAccess: true } },
         managerUser: { select: { id: true, name: true, email: true } },
         managerAssignedBy: { select: { id: true, name: true, email: true } },
-        owner: { select: { id: true, name: true, email: true, role: true } },
+        owners: { select: { id: true, name: true, email: true, role: true } },
         createdBy: { select: { id: true, name: true, email: true } },
         coManagers: {
           where: { organizationId },
@@ -520,7 +526,7 @@ export class ProjectsService {
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
         managerAssignedBy: { select: { id: true, name: true, email: true } },
-        owner: { select: { id: true, name: true, email: true, role: true } },
+        owners: { select: { id: true, name: true, email: true, role: true } },
         createdBy: { select: { id: true, name: true, email: true } },
         coManagers: {
           where: { organizationId },
@@ -560,7 +566,7 @@ export class ProjectsService {
         _count: { select: { tasks: true, clientAccess: true } },
         managerUser: { select: { id: true, name: true, email: true } },
         managerAssignedBy: { select: { id: true, name: true, email: true } },
-        owner: { select: { id: true, name: true, email: true, role: true } },
+        owners: { select: { id: true, name: true, email: true, role: true } },
         createdBy: { select: { id: true, name: true, email: true } },
         coManagers: {
           where: organizationFilter,
@@ -621,6 +627,8 @@ export class ProjectsService {
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
         managerAssignedBy: { select: { id: true, name: true, email: true } },
+        owners: { select: { id: true, name: true, email: true, role: true } },
+        createdBy: { select: { id: true, name: true, email: true } },
         coManagers: {
           where: { organizationId },
           select: { id: true, name: true, email: true },
@@ -731,6 +739,8 @@ export class ProjectsService {
       data: { coManagers: { connect: { id: manager.id } } },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
+        owners: { select: { id: true, name: true, email: true, role: true } },
+        createdBy: { select: { id: true, name: true, email: true } },
         coManagers: {
           where: { organizationId },
           select: { id: true, name: true, email: true },
@@ -795,6 +805,7 @@ export class ProjectsService {
       data: { coManagers: { disconnect: { id: userId } } },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
+        owners: { select: { id: true, name: true, email: true, role: true } },
         coManagers: {
           where: { organizationId },
           select: { id: true, name: true, email: true },
@@ -867,6 +878,7 @@ export class ProjectsService {
       },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
+        owners: { select: { id: true, name: true, email: true, role: true } },
         coManagers: {
           where: { organizationId },
           select: { id: true, name: true, email: true },
@@ -921,6 +933,7 @@ export class ProjectsService {
       data: { assignedEmployees: { disconnect: { id: employeeId } } },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
+        owners: { select: { id: true, name: true, email: true, role: true } },
         coManagers: {
           where: { organizationId },
           select: { id: true, name: true, email: true },
@@ -981,10 +994,21 @@ export class ProjectsService {
       managerName = manager.name;
     }
 
-    const owner =
-      dto.ownerId === undefined || dto.ownerId === null
-        ? null
-        : await this.validateOwner(dto.ownerId, organizationId);
+    let ownersToSet: number[] | undefined;
+    if (dto.ownerIds !== undefined) {
+      const project = await this.db.project.findUnique({
+        where: { id, organizationId },
+        select: { createdById: true },
+      });
+      if (!project) throw new NotFoundException(`Project #${id} not found`);
+      const owners = await this.validateOwners(dto.ownerIds, organizationId);
+      ownersToSet = [
+        ...new Set([
+          ...(project.createdById == null ? [] : [project.createdById]),
+          ...owners.map((owner) => owner.id),
+        ]),
+      ];
+    }
 
     const updated = await this.db.project.update({
       where: { id, organizationId },
@@ -1006,7 +1030,9 @@ export class ProjectsService {
           finalDeliverablesLink: dto.finalDeliverablesLink,
         }),
         ...(dto.driveLink !== undefined && { driveLink: dto.driveLink }),
-        ...(dto.ownerId !== undefined && { ownerId: owner?.id ?? null }),
+        ...(ownersToSet !== undefined && {
+          owners: { set: ownersToSet.map((ownerId) => ({ id: ownerId })) },
+        }),
         ...(dto.projectCode !== undefined && { projectCode: dto.projectCode }),
         ...(dto.managerId !== undefined && { managerId: dto.managerId }),
         ...(dto.managerId !== undefined && {
@@ -1036,7 +1062,7 @@ export class ProjectsService {
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
         managerAssignedBy: { select: { id: true, name: true, email: true } },
-        owner: { select: { id: true, name: true, email: true, role: true } },
+        owners: { select: { id: true, name: true, email: true, role: true } },
         createdBy: { select: { id: true, name: true, email: true } },
         links: { where: { organizationId } },
       },
@@ -1066,7 +1092,7 @@ export class ProjectsService {
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
         managerAssignedBy: { select: { id: true, name: true, email: true } },
-        owner: { select: { id: true, name: true, email: true, role: true } },
+        owners: { select: { id: true, name: true, email: true, role: true } },
         createdBy: { select: { id: true, name: true, email: true } },
       },
     });
@@ -1161,6 +1187,8 @@ export class ProjectsService {
             manager: importedManager?.name ?? managerStr,
             managerId: importedManager?.id,
             managerAssignedById: importedManager ? user.userId : null,
+            createdById: user.userId,
+            owners: { connect: { id: user.userId } },
             status: statusStr,
             budget: rec.budget ? Number(rec.budget) : undefined,
             description: descriptionStr,
@@ -1197,6 +1225,12 @@ export class ProjectsService {
     const where = await this.getProjectAccessWhere(user);
     const projects = await this.db.project.findMany({
       where,
+      include: {
+        owners: { select: { id: true, name: true, email: true, role: true } },
+        createdBy: { select: { id: true, name: true, email: true } },
+        managerUser: { select: { id: true, name: true, email: true } },
+        managerAssignedBy: { select: { id: true, name: true, email: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
     const scopedProjects = projects;

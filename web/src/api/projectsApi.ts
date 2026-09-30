@@ -11,8 +11,7 @@ export interface Project {
   deadline?: string | null;
   manager: string | null;
   managerId: number | null;
-  ownerId?: number | null;
-  owner?: { id: number; name: string; email: string; role: string } | null;
+  owners?: Array<{ id: number; name: string; email: string; role: string }>;
   createdById?: number | null;
   createdBy?: { id: number; name: string; email: string } | null;
   managerAssignedById?: number | null;
@@ -140,7 +139,7 @@ export interface CreateProjectPayload {
   deadline?: string;
   manager?: string;
   managerId?: number;
-  ownerId?: number | null;
+  ownerIds?: number[];
   status?: string;
   budget?: number;
   description?: string;

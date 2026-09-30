@@ -10,7 +10,12 @@ const DEFAULT_COLUMNS: GridColumn[] = [
   { key: 'id', label: 'ID', width: 72, getValue: (project) => String(project.id) },
   { key: 'projectName', label: 'Project Name', width: 240, getValue: (project) => project.projectName },
   { key: 'customer', label: 'Customer', width: 180, getValue: (project) => project.customer?.customerName ?? project.clientName ?? project.client ?? 'Unlinked' },
-  { key: 'owner', label: 'Owner', width: 160, getValue: (project) => project.owner?.name ?? project.managerUser?.name ?? project.createdBy?.name ?? project.manager ?? 'Unassigned' },
+  { key: 'owner', label: 'Owner', width: 220, getValue: (project) => {
+    const names = project.owners?.map((owner) => owner.name) ?? [];
+    if (!project.createdBy?.name) names.unshift('Unknown (historical)');
+    return [...new Set(names)].join(', ') || 'Unknown (historical)';
+  } },
+  { key: 'manager', label: 'Managed by', width: 160, getValue: (project) => project.managerUser?.name || project.manager || 'Unassigned' },
   { key: 'managerAssignedBy', label: 'Manager assigned by', width: 190, getValue: (project) => project.managerAssignedBy?.name ?? (project.managerId ? 'Unknown (historical)' : '—') },
   { key: 'status', label: 'Status', width: 150, getValue: (project) => project.status.replaceAll('_', ' ') },
   { key: 'tasks', label: 'Tasks', width: 90, getValue: (project) => String(project.tasksCount ?? project._count?.tasks ?? project.tasks?.length ?? 0) },
@@ -98,7 +103,8 @@ export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted, 
         term.length === 0 ||
         project.projectName.toLowerCase().includes(term) ||
         (project.customer?.customerName ?? project.clientName ?? project.client ?? '').toLowerCase().includes(term) ||
-        (project.owner?.name ?? project.managerUser?.name ?? project.manager ?? '').toLowerCase().includes(term) ||
+        (project.owners ?? []).some((owner) => owner.name.toLowerCase().includes(term)) ||
+        (project.managerUser?.name ?? project.manager ?? '').toLowerCase().includes(term) ||
         (project.managerAssignedBy?.name ?? '').toLowerCase().includes(term) ||
         project.status.toLowerCase().includes(term);
 
@@ -118,7 +124,7 @@ export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted, 
 
   function exportSelected() {
     const rows = projects.filter((project) => selectedIds.includes(project.id));
-    const csv = ['ID,Project Name,Customer,Owner,Manager assigned by,Status', ...rows.map((project) => [project.id, project.projectName, columnValue('customer', project), columnValue('owner', project), columnValue('managerAssignedBy', project), project.status].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','))].join('\n');
+    const csv = ['ID,Project Name,Customer,Owner,Managed by,Manager assigned by,Status', ...rows.map((project) => [project.id, project.projectName, columnValue('customer', project), columnValue('owner', project), columnValue('manager', project), columnValue('managerAssignedBy', project), project.status].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'projects.csv'; anchor.click(); URL.revokeObjectURL(url);

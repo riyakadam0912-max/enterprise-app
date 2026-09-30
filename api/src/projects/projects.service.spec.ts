@@ -201,6 +201,29 @@ describe('ProjectsService', () => {
           data: expect.objectContaining({
             createdById: mockAdminUser.userId,
             managerAssignedById: mockAdminUser.userId,
+            owners: { connect: [{ id: mockAdminUser.userId }] },
+          }),
+        }),
+      );
+    });
+
+    it('connects the creator and deduplicated additional owners on create', async () => {
+      const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      userDelegate.findMany.mockResolvedValueOnce([
+        { id: 4, name: 'Additional Owner', role: Role.MANAGER },
+      ]);
+      projectDelegate.create.mockResolvedValueOnce({ id: 3 });
+
+      await service.create(
+        { projectName: 'Owned Project', ownerIds: [4, 4] } as CreateProjectDto,
+        mockAdminUser,
+      );
+
+      expect(projectDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            owners: { connect: [{ id: 1 }, { id: 4 }] },
           }),
         }),
       );
@@ -847,6 +870,31 @@ describe('ProjectsService', () => {
 
       const result = await service.update(1, updateProjectDto, mockAdminUser);
       expect(result.projectName).toEqual('Updated Project');
+    });
+
+    it('replaces additional owners while retaining the project creator', async () => {
+      const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+
+      projectDelegate.findUnique.mockResolvedValueOnce({ createdById: 1 });
+      userDelegate.findMany.mockResolvedValueOnce([
+        { id: 4, name: 'Additional Owner', role: Role.MANAGER },
+      ]);
+      projectDelegate.update.mockResolvedValueOnce({ id: 1 });
+
+      await service.update(
+        1,
+        { ownerIds: [4] } as UpdateProjectDto,
+        mockAdminUser,
+      );
+
+      expect(projectDelegate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            owners: { set: [{ id: 1 }, { id: 4 }] },
+          }),
+        }),
+      );
     });
 
     it('should update managerId and manager name if managerId provided', async () => {

@@ -70,9 +70,10 @@ export class CreateProjectDto {
   managerId?: number;
 
   @IsOptional()
-  @IsInt()
-  @ApiPropertyOptional({ description: 'Optional owner user ID.' })
-  ownerId?: number | null;
+  @IsArray()
+  @IsInt({ each: true })
+  @ApiPropertyOptional({ description: 'Additional project owner user IDs.' })
+  ownerIds?: number[];
 
   @IsOptional()
   @IsInt()
