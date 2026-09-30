@@ -196,6 +196,13 @@ describe('ProjectsService', () => {
 
       expect(result).toEqual(expectedProject);
       expect(projectDelegate.create).toHaveBeenCalledTimes(1);
+      expect(projectDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            createdById: mockAdminUser.userId,
+          }),
+        }),
+      );
     });
 
     it('should create project successfully for manager (auto-setting managerId)', async () => {

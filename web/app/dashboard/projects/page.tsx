@@ -358,6 +358,11 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
   const isAssignedEmployee = employeeId != null && (projectDetails?.assignedEmployees ?? []).some((employee) => employee.id === employeeId);
   const hasAssignedTask = userId != null && (projectDetails?.tasks ?? []).some((task) => task.assignedToUserId === userId);
   const canViewChat = isAdmin || isManager || isAssignedEmployee || hasAssignedTask;
+  const projectOwnerName = projectDetails?.owner?.name
+    ?? projectDetails?.managerUser?.name
+    ?? projectDetails?.createdBy?.name
+    ?? projectDetails?.manager
+    ?? null;
 
 
 
@@ -1505,7 +1510,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
               <div>
                 <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{projectDetails.projectName}</h1>
                 <p className="mt-2 text-sm text-slate-500">
-                  Project ID {projectDetails.id} · {projectDetails.clientName ?? projectDetails.client ?? 'No client'} · {projectDetails.owner?.name ?? projectDetails.manager ?? 'Unassigned'}
+                  Project ID {projectDetails.id} · {projectDetails.clientName ?? projectDetails.client ?? 'No client'} · Owner: {projectOwnerName ?? 'Unassigned'}
                 </p>
                 <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold">
                   <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">{projectDetails.status.replaceAll('_', ' ')}</span>
@@ -1659,7 +1664,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                     {projectDetails.projectType && <p>Type: {projectDetails.projectType}</p>}
                     {projectDetails.priority && <p>Priority: {projectDetails.priority}</p>}
                     {projectDetails.specificTask && <p>Task: {projectDetails.specificTask}</p>}
-                    {projectDetails.owner && <p>Owner: {projectDetails.owner.name}</p>}
+                    {projectOwnerName && <p>Owner: {projectOwnerName}</p>}
                     {projectDetails.remarks && <p>Remarks: {projectDetails.remarks}</p>}
                     {projectDetails.finalDeliverablesLink && (
                       <p>

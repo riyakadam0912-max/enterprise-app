@@ -13,6 +13,8 @@ export interface Project {
   managerId: number | null;
   ownerId?: number | null;
   owner?: { id: number; name: string; email: string; role: string } | null;
+  createdById?: number | null;
+  createdBy?: { id: number; name: string; email: string } | null;
   clientName?: string | null;
   category?: string | null;
   projectType?: string | null;

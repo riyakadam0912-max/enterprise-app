@@ -442,6 +442,7 @@ export class ProjectsService {
         manager: managerName,
         managerId: managerId,
         ownerId: owner?.id ?? null,
+        createdById: user.userId,
         status: this.normalizeProjectStatus(dto.status),
         budget: dto.budget,
         description: dto.description,
@@ -460,6 +461,7 @@ export class ProjectsService {
         _count: { select: { tasks: true, clientAccess: true } },
         managerUser: { select: { id: true, name: true, email: true } },
         owner: { select: { id: true, name: true, email: true, role: true } },
+        createdBy: { select: { id: true, name: true, email: true } },
         coManagers: {
           where: { organizationId },
           select: { id: true, name: true, email: true },
@@ -515,6 +517,7 @@ export class ProjectsService {
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
         owner: { select: { id: true, name: true, email: true, role: true } },
+        createdBy: { select: { id: true, name: true, email: true } },
         coManagers: {
           where: { organizationId },
           select: { id: true, name: true, email: true },
@@ -553,6 +556,7 @@ export class ProjectsService {
         _count: { select: { tasks: true, clientAccess: true } },
         managerUser: { select: { id: true, name: true, email: true } },
         owner: { select: { id: true, name: true, email: true, role: true } },
+        createdBy: { select: { id: true, name: true, email: true } },
         coManagers: {
           where: organizationFilter,
           select: { id: true, name: true, email: true },
@@ -1022,6 +1026,8 @@ export class ProjectsService {
       },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
+        owner: { select: { id: true, name: true, email: true, role: true } },
+        createdBy: { select: { id: true, name: true, email: true } },
         links: { where: { organizationId } },
       },
     });
@@ -1049,6 +1055,8 @@ export class ProjectsService {
       data: { status: this.normalizeProjectStatus(status) },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
+        owner: { select: { id: true, name: true, email: true, role: true } },
+        createdBy: { select: { id: true, name: true, email: true } },
       },
     });
     await this.notifyProjectChange(

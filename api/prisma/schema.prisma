@@ -37,6 +37,7 @@ model User {
   notificationsCreated       Notification[]
   managedProjects            Project[]              @relation("ProjectManager")
   ownedProjects              Project[]              @relation("ProjectOwner")
+  createdProjects             Project[]              @relation("ProjectCreator")
   projectLinksCreated        ProjectLink[]
   sentMessages               ProjectMessage[]       @relation("ProjectMessageSender")
   sentTaskMessages           TaskMessage[]          @relation("TaskMessageSender")
@@ -751,11 +752,13 @@ model Project {
   deletedAt             DateTime?
   managerId             Int?
   ownerId               Int?
+  createdById           Int?
   organizationId        Int
   businessUnitId        Int?
   tags                  String[]         @default([])
   managerUser           User?            @relation("ProjectManager", fields: [managerId], references: [id])
   owner                 User?            @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy             User?            @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: SetNull)
   businessUnit          BusinessUnit?    @relation("ProjectBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
   organization          Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   links                 ProjectLink[]
@@ -772,6 +775,7 @@ model Project {
   @@index([organizationId])
   @@index([businessUnitId])
   @@index([ownerId])
+  @@index([createdById])
 }
 
 model ProjectMessage {
