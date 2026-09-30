@@ -1160,6 +1160,7 @@ export class ProjectsService {
             endDate: endDateStr ? new Date(endDateStr) : undefined,
             manager: importedManager?.name ?? managerStr,
             managerId: importedManager?.id,
+            managerAssignedById: importedManager ? user.userId : null,
             status: statusStr,
             budget: rec.budget ? Number(rec.budget) : undefined,
             description: descriptionStr,

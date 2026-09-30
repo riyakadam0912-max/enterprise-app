@@ -972,6 +972,13 @@ describe('ProjectsService', () => {
       const result = await service.importRecords(records, mockAdminUser);
       expect(result.imported).toEqual(1);
       expect(result.errors.length).toEqual(1);
+      expect(projectDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            managerAssignedById: mockAdminUser.userId,
+          }),
+        }),
+      );
     });
   });
 
