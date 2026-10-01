@@ -305,8 +305,45 @@ export function deleteShift(id: number): Promise<unknown> {
   });
 }
 
-export function getHolidays(): Promise<HolidayRecord[]> {
-  return apiClient<HolidayRecord[]>('/attendance/holidays');
+function isDateValue(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && !Number.isNaN(Date.parse(value));
+}
+
+function normalizeHolidayRecords(payload: unknown): HolidayRecord[] {
+  if (!Array.isArray(payload)) {
+    throw new Error('The holidays response is not a list.');
+  }
+
+  return payload.flatMap((value): HolidayRecord[] => {
+    if (typeof value !== 'object' || value === null) return [];
+    const record = value as Record<string, unknown>;
+    const legacyDate = isDateValue(record.date) ? record.date : undefined;
+    const startDate = isDateValue(record.startDate) ? record.startDate : legacyDate;
+    const endDate = isDateValue(record.endDate) ? record.endDate : legacyDate ?? startDate;
+
+    if (
+      typeof record.id !== 'number' ||
+      typeof record.name !== 'string' ||
+      typeof record.organizationId !== 'number' ||
+      !startDate ||
+      !endDate
+    ) {
+      return [];
+    }
+
+    return [{
+      id: record.id,
+      startDate,
+      endDate,
+      name: record.name,
+      organizationId: record.organizationId,
+    }];
+  });
+}
+
+export async function getHolidays(): Promise<HolidayRecord[]> {
+  const payload = await apiClient<unknown>('/attendance/holidays');
+  return normalizeHolidayRecords(payload);
 }
 
 export function createHoliday(data: HolidayPayload): Promise<HolidayRecord> {

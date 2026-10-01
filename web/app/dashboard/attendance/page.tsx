@@ -86,15 +86,19 @@ function weeklyHolidayLabel(day: number | null | undefined) {
 }
 
 function formatHolidayRange(holiday: HolidayRecord) {
+  const startValue = typeof holiday.startDate === 'string' ? holiday.startDate : '';
+  const endValue = typeof holiday.endDate === 'string' ? holiday.endDate : startValue;
+  if (!startValue || !endValue) return 'Dates unavailable';
+
   const format = (value: string) => new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString('en-GB', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
   });
-  const startDate = format(holiday.startDate);
-  return holiday.startDate.slice(0, 10) === holiday.endDate.slice(0, 10)
+  const startDate = format(startValue);
+  return startValue.slice(0, 10) === endValue.slice(0, 10)
     ? startDate
-    : `${startDate} – ${format(holiday.endDate)}`;
+    : `${startDate} – ${format(endValue)}`;
 }
 
 function formatDateInput(value: string) {
