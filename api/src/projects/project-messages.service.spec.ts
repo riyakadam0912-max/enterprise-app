@@ -22,10 +22,17 @@ describe('ProjectMessagesService mentions', () => {
     user: { findUnique: jest.fn() },
   };
   let service: ProjectMessagesService;
+  const projectsService = {
+    getProjectAccessWhere: jest.fn().mockResolvedValue({
+      organizationId: { in: [organizationId, 9] },
+      deletedAt: null,
+    }),
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
     prisma.project.findFirst.mockResolvedValue({
+      organizationId: 9,
       managerUser: {
         id: 1,
         name: 'Admin',
@@ -63,11 +70,23 @@ describe('ProjectMessagesService mentions', () => {
         ? { id: admin.userId, name: 'Admin', email: 'admin@example.com' }
         : undefined,
     }));
-    service = new ProjectMessagesService(prisma as never);
+    service = new ProjectMessagesService(
+      prisma as never,
+      projectsService as never,
+    );
   });
 
   it('returns participant and task choices scoped to the project', async () => {
     const result = await service.getMentionOptions(19, admin);
+
+    expect(prisma.project.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 19,
+          organizationId: { in: [organizationId, 9] },
+        }),
+      }),
+    );
 
     expect(result.users).toEqual(
       expect.arrayContaining([
@@ -79,7 +98,7 @@ describe('ProjectMessagesService mentions', () => {
     ]);
     expect(prisma.task.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ organizationId, projectId: 19 }),
+        where: expect.objectContaining({ organizationId: 9, projectId: 19 }),
       }),
     );
   });
@@ -109,7 +128,7 @@ describe('ProjectMessagesService mentions', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           projectId: 19,
-          organizationId,
+          organizationId: 9,
           content: expect.any(String),
         }),
       }),

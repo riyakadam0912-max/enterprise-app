@@ -1266,8 +1266,7 @@ describe('ProjectsService', () => {
 
     it('should throw NotFoundException if project not found', async () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
-      projectDelegate.findFirst.mockResolvedValueOnce({ id: 1 });
-      projectDelegate.findUnique.mockResolvedValueOnce(null);
+      projectDelegate.findFirst.mockResolvedValueOnce(null);
 
       await expect(service.getProgress(1, mockAdminUser)).rejects.toThrow(
         NotFoundException,
@@ -1278,9 +1277,9 @@ describe('ProjectsService', () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
       const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
 
-      projectDelegate.findFirst.mockResolvedValueOnce({ id: 1 });
-      projectDelegate.findUnique.mockResolvedValueOnce({
+      projectDelegate.findFirst.mockResolvedValueOnce({
         id: 1,
+        organizationId: 1,
         projectName: 'Test Project',
         status: 'ACTIVE',
       });
@@ -1293,6 +1292,33 @@ describe('ProjectsService', () => {
       const result = await service.getProgress(1, mockAdminUser);
       expect(result.progressPercent).toEqual(67);
       expect(result.byStatus.APPROVED).toEqual(2);
+    });
+
+    it('loads progress tasks from an authorized related organization', async () => {
+      const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      const organizationScope = (service as any).organizationScopeService;
+      jest
+        .spyOn(organizationScope, 'getRelatedOrganizationIds')
+        .mockResolvedValue([1, 2]);
+      projectDelegate.findFirst.mockResolvedValueOnce({
+        id: 7,
+        organizationId: 2,
+        projectName: 'Related Organization Project',
+        status: 'IN_PROGRESS',
+      });
+      taskDelegate.findMany.mockResolvedValueOnce([
+        { id: 1, status: 'APPROVED' },
+      ]);
+
+      const result = await service.getProgress(7, mockAdminUser);
+
+      expect(result.completedTasks).toBe(1);
+      expect(taskDelegate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { projectId: 7, organizationId: 2 },
+        }),
+      );
     });
   });
 });

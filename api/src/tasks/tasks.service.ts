@@ -272,6 +272,8 @@ export class TasksService {
               projectName: true,
               businessUnitId: true,
               managerId: true,
+              coManagers: { select: { id: true } },
+              assignedEmployees: { select: { id: true } },
             },
           })
         : await this.db.project.findFirst({
@@ -282,11 +284,24 @@ export class TasksService {
               projectName: true,
               businessUnitId: true,
               managerId: true,
+              coManagers: { select: { id: true } },
+              assignedEmployees: { select: { id: true } },
             },
           })
       : null;
     if (dto.projectId && !project) {
       throw new NotFoundException('Project not found');
+    }
+
+    if (
+      user.role === Role.MANAGER &&
+      project &&
+      project.managerId !== user.userId &&
+      !(project.coManagers ?? []).some((manager) => manager.id === user.userId)
+    ) {
+      throw new ForbiddenException(
+        'Managers can create tasks only for projects they manage',
+      );
     }
 
     if (
@@ -329,10 +344,12 @@ export class TasksService {
       (dto.assignedToUserId || dto.employeeId) &&
       user.role === Role.MANAGER &&
       (String(assignee.role) !== String(Role.EMPLOYEE) ||
-        assignee.managerId !== user.userId)
+        !project?.assignedEmployees?.some(
+          (employee) => employee.id === assignee.employeeId,
+        ))
     ) {
       throw new ForbiddenException(
-        'Managers can assign tasks only to their employees',
+        'Managers can assign tasks only to employees assigned to the project',
       );
     }
 

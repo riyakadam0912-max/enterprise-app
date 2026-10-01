@@ -220,6 +220,85 @@ describe('TasksService', () => {
       ).rejects.toThrow(ForbiddenException);
     });
 
+    it('allows a project manager to assign a task to an assigned employee outside their reporting tree', async () => {
+      const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      projectDelegate.findUnique.mockResolvedValueOnce({
+        id: 1,
+        projectName: 'Managed Project',
+        organizationId: 1,
+        managerId: mockManagerUser.userId,
+        coManagers: [],
+        assignedEmployees: [{ id: 103 }],
+      });
+      userDelegate.findUnique.mockResolvedValueOnce({
+        id: 22,
+        name: 'Project Employee',
+        role: Role.EMPLOYEE,
+        employeeId: 103,
+        managerId: 99,
+      });
+      employeeDelegate.findFirst.mockResolvedValueOnce({
+        id: 103,
+        businessUnitId: null,
+      });
+      taskDelegate.create.mockResolvedValueOnce({ id: 10, taskName: 'Task' });
+
+      await service.create(
+        {
+          title: 'Task',
+          projectId: 1,
+          assignedToUserId: 22,
+          employeeId: 103,
+        } as CreateTaskDto,
+        mockManagerUser,
+      );
+
+      expect(taskDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            projectId: 1,
+            assignedToUserId: 22,
+            assignedToId: 103,
+          }),
+        }),
+      );
+    });
+
+    it('rejects a manager assigning a task to an employee outside the project team', async () => {
+      const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      projectDelegate.findUnique.mockResolvedValueOnce({
+        id: 1,
+        projectName: 'Managed Project',
+        organizationId: 1,
+        managerId: mockManagerUser.userId,
+        coManagers: [],
+        assignedEmployees: [],
+      });
+      userDelegate.findUnique.mockResolvedValueOnce({
+        id: 22,
+        name: 'Other Employee',
+        role: Role.EMPLOYEE,
+        employeeId: 103,
+        managerId: mockManagerUser.userId,
+      });
+
+      await expect(
+        service.create(
+          {
+            title: 'Task',
+            projectId: 1,
+            assignedToUserId: 22,
+            employeeId: 103,
+          } as CreateTaskDto,
+          mockManagerUser,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
     it('should throw NotFoundException if assigned user not found', async () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
       const userDelegate = getPrismaDelegate(mockPrisma, 'user');

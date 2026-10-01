@@ -349,6 +349,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [chatLoading, setChatLoading] = useState(false);
   const [taskSubmitting, setTaskSubmitting] = useState(false);
+  const [taskError, setTaskError] = useState('');
   const [busy, setBusy] = useState(false);
   const searchParams = useSearchParams();
   const projectRequestId = useRef(0);
@@ -622,7 +623,10 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     [selectedTaskId, visibleTasks],
   );
 
-  const taskAssigneeOptions = useMemo(() => employees, [employees]);
+  const taskAssigneeOptions = useMemo(() => {
+    const assignedEmployeeIds = new Set(assignedEmployees.map((employee) => employee.id));
+    return employees.filter((employee) => assignedEmployeeIds.has(employee.id));
+  }, [assignedEmployees, employees]);
 
   const availableCoManagerOptions = useMemo(() => {
     const existingIds = new Set(coManagers.map((manager) => manager.id));
@@ -930,11 +934,12 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
 
     const selectedEmployee = employees.find((employee) => String(employee.id) === taskForm.assignedEmployeeId);
     if (!selectedEmployee?.userId) {
-      setError('Selected employee does not have a linked user account.');
+      setTaskError('Selected employee does not have a linked user account.');
       return;
     }
 
     setTaskSubmitting(true);
+    setTaskError('');
     try {
       await createTask({
         title: taskForm.taskName.trim(),
@@ -964,6 +969,8 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
       });
       await loadProjectDetails(selectedProjectId);
       setShowTaskForm(false);
+    } catch (err) {
+      setTaskError(err instanceof Error ? err.message : 'Failed to create task.');
     } finally {
       setTaskSubmitting(false);
     }
@@ -1376,7 +1383,10 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                     </select>
                     <label className="block space-y-1.5 text-sm font-medium text-slate-700">
                       <span>Additional owners</span>
-                      <select multiple value={projectCreateForm.ownerIds} onChange={(event) => setProjectCreateForm((current) => ({ ...current, ownerIds: Array.from(event.currentTarget.selectedOptions, (option) => option.value) }))} className="min-h-24 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
+                      <select multiple value={projectCreateForm.ownerIds} onChange={(event) => {
+                        const ownerIds = Array.from(event.currentTarget.selectedOptions, (option) => option.value);
+                        setProjectCreateForm((current) => ({ ...current, ownerIds }));
+                      }} className="min-h-24 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
                         {ownerOptions.map((owner) => (
                           <option key={owner.id} value={String(owner.id)}>{owner.name}</option>
                         ))}
@@ -1774,6 +1784,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
 
               {canManageProject && showTaskForm && (
                 <form onSubmit={onAssignTask} className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                  {taskError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{taskError}</div>}
                   <div className="grid gap-3 md:grid-cols-2">
                     <input
                       required
@@ -1788,10 +1799,10 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                       onChange={(e) => setTaskForm((prev) => ({ ...prev, assignedEmployeeId: e.target.value }))}
                       className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     >
-                      <option value="">Assign to employee</option>
+                      <option value="">{taskAssigneeOptions.length ? 'Assign to employee' : 'Add team members in Users first'}</option>
                       {taskAssigneeOptions.map((employee) => (
-                        <option key={employee.id} value={employee.id}>
-                          {employee.name}{[employee.organization?.name, employee.department].filter(Boolean).length ? ` · ${[employee.organization?.name, employee.department].filter(Boolean).join(' · ')}` : ''}
+                        <option key={employee.id} value={employee.id} disabled={!employee.userId}>
+                          {employee.name}{[employee.organization?.name, employee.department].filter(Boolean).length ? ` · ${[employee.organization?.name, employee.department].filter(Boolean).join(' · ')}` : ''}{employee.userId ? '' : ' · No user account'}
                         </option>
                       ))}
                     </select>

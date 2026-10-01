@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ProjectsService } from './projects.service';
 import { Role } from '../common/enums/role.enum';
 import type { AuthUser } from '../common/types/auth';
 
@@ -19,7 +20,10 @@ export type ProjectMessageMention = {
 
 @Injectable()
 export class ProjectMessagesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly projectsService: ProjectsService,
+  ) {}
 
   private get db() {
     return this.prisma;
@@ -113,7 +117,7 @@ export class ProjectMessagesService {
   }
 
   async getMessages(projectId: number, requestingUser: AuthUser) {
-    const organizationId = this.validateOrganization(requestingUser);
+    this.validateOrganization(requestingUser);
     const allowed = await this.canAccessProjectChat(projectId, requestingUser);
     if (!allowed) {
       throw new ForbiddenException(
@@ -121,16 +125,19 @@ export class ProjectMessagesService {
       );
     }
 
-    const project = await this.db.project.findUnique({
-      where: { id: projectId, organizationId },
-      select: { id: true },
+    const projectScope = await this.projectsService.getProjectAccessWhere(
+      requestingUser,
+    );
+    const project = await this.db.project.findFirst({
+      where: { id: projectId, ...projectScope },
+      select: { id: true, organizationId: true },
     });
     if (!project) {
       throw new NotFoundException(`Project #${projectId} not found`);
     }
 
     return this.db.projectMessage.findMany({
-      where: { projectId, organizationId },
+      where: { projectId, organizationId: project.organizationId },
       include: {
         sender: { select: { id: true, name: true, email: true } },
       },
@@ -139,25 +146,26 @@ export class ProjectMessagesService {
   }
 
   async getMentionOptions(projectId: number, requestingUser: AuthUser) {
-    const organizationId = this.validateOrganization(requestingUser);
+    this.validateOrganization(requestingUser);
     if (!(await this.canAccessProjectChat(projectId, requestingUser))) {
       throw new ForbiddenException(
         'You can only access mentions for projects you belong to',
       );
     }
 
+    const projectScope = await this.projectsService.getProjectAccessWhere(requestingUser);
     const project = await this.db.project.findFirst({
-      where: { id: projectId, organizationId, deletedAt: null },
+      where: { id: projectId, ...projectScope, deletedAt: null },
       select: {
+        organizationId: true,
         managerUser: {
           select: { id: true, name: true, email: true, role: true },
         },
         coManagers: {
-          where: { organizationId },
           select: { id: true, name: true, email: true, role: true },
         },
         assignedEmployees: {
-          where: { organizationId, deletedAt: null },
+          where: { deletedAt: null },
           select: {
             user: {
               select: { id: true, name: true, email: true, role: true },
@@ -170,7 +178,7 @@ export class ProjectMessagesService {
       throw new NotFoundException(`Project #${projectId} not found`);
 
     const taskWhere: Prisma.TaskWhereInput = {
-      organizationId,
+      organizationId: project.organizationId,
       projectId,
       deletedAt: null,
       ...(requestingUser.role === Role.EMPLOYEE
@@ -250,7 +258,7 @@ export class ProjectMessagesService {
     mentions: ProjectMessageMention[] | undefined,
     requestingUser: AuthUser,
   ) {
-    const organizationId = this.validateOrganization(requestingUser);
+    this.validateOrganization(requestingUser);
     const message = content?.trim();
     if (!message) {
       throw new ForbiddenException('Message content is required');
@@ -263,9 +271,12 @@ export class ProjectMessagesService {
       );
     }
 
-    const project = await this.db.project.findUnique({
-      where: { id: projectId, organizationId },
-      select: { id: true },
+    const projectScope = await this.projectsService.getProjectAccessWhere(
+      requestingUser,
+    );
+    const project = await this.db.project.findFirst({
+      where: { id: projectId, ...projectScope },
+      select: { id: true, organizationId: true },
     });
     if (!project) {
       throw new NotFoundException(`Project #${projectId} not found`);
@@ -335,7 +346,7 @@ export class ProjectMessagesService {
         ...(validatedMentions.length > 0 && {
           mentions: validatedMentions as Prisma.InputJsonValue,
         }),
-        organizationId,
+        organizationId: project.organizationId,
       },
       include: {
         sender: { select: { id: true, name: true, email: true } },

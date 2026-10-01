@@ -139,14 +139,13 @@ export class ProjectsService {
     return employee?.id ?? null;
   }
 
-  private async getProjectAccessWhere(
+  async getProjectAccessWhere(
     user: AuthUser,
   ): Promise<Prisma.ProjectWhereInput> {
     if (this.isPlatformAdmin(user) && user.organizationId == null) {
       return { deletedAt: null };
     }
 
-    const organizationId = this.validateOrganization(user);
     const projectOrganizationIds =
       (await this.getProjectOrganizationIds(user)) ?? [];
     const scope = await this.businessUnitsService.resolveScope(user as any);
@@ -592,10 +591,11 @@ export class ProjectsService {
 
     const actorDescendantIds =
       await this.organizationScopeService.getOrganizationIds(user);
-    const assignableManagerOrganizationIds =
-      actorDescendantIds?.includes(existing.organizationId)
-        ? actorDescendantIds
-        : [user.homeOrganizationId ?? organizationId];
+    const assignableManagerOrganizationIds = actorDescendantIds?.includes(
+      existing.organizationId,
+    )
+      ? actorDescendantIds
+      : [user.homeOrganizationId ?? organizationId];
     const manager = await this.assertManager(
       managerId,
       assignableManagerOrganizationIds,
@@ -641,10 +641,11 @@ export class ProjectsService {
 
   async findAll(user: AuthUser) {
     const where = await this.getProjectScope(user);
-    const organizationId = user.organizationId;
     const organizationIds = await this.getProjectOrganizationIds(user);
     const organizationFilter =
-      organizationIds == null ? {} : { organizationId: { in: organizationIds } };
+      organizationIds == null
+        ? {}
+        : { organizationId: { in: organizationIds } };
 
     return this.db.project.findMany({
       where,
@@ -723,14 +724,22 @@ export class ProjectsService {
           where:
             organizationId == null
               ? {}
-              : { organizationId: { in: projectOrganizationIds ?? [organizationId] } },
+              : {
+                  organizationId: {
+                    in: projectOrganizationIds ?? [organizationId],
+                  },
+                },
           select: { id: true, name: true, email: true },
         },
         assignedEmployees: {
           where:
             organizationId == null
               ? {}
-              : { organizationId: { in: projectOrganizationIds ?? [organizationId] } },
+              : {
+                  organizationId: {
+                    in: projectOrganizationIds ?? [organizationId],
+                  },
+                },
           select: {
             id: true,
             name: true,
@@ -961,16 +970,16 @@ export class ProjectsService {
     const actorDescendantIds =
       await this.organizationScopeService.getOrganizationIds(requestingUser);
     const canAssignAcrossDescendants =
-      (requestingUser.role === Role.ADMIN ||
-        requestingUser.role === Role.HR) &&
+      (requestingUser.role === Role.ADMIN || requestingUser.role === Role.HR) &&
       (actorDescendantIds?.includes(project.organizationId) ?? false);
-    const assignableOrganizationIds = actorDescendantIds === null
-      ? relatedOrganizationIds
-      : canAssignAcrossDescendants
-      ? relatedOrganizationIds.filter(
-          (id) => actorDescendantIds?.includes(id) ?? false,
-        )
-      : [actorOrganizationId];
+    const assignableOrganizationIds =
+      actorDescendantIds === null
+        ? relatedOrganizationIds
+        : canAssignAcrossDescendants
+          ? relatedOrganizationIds.filter(
+              (id) => actorDescendantIds?.includes(id) ?? false,
+            )
+          : [actorOrganizationId];
     const employee = await this.db.employee.findFirst({
       where: {
         id: employeeId,
@@ -1464,7 +1473,7 @@ export class ProjectsService {
   }
 
   async getProgress(projectId: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    this.validateOrganization(user);
     const canManage = await this.canManageProject(projectId, user);
     if (!canManage) {
       throw new ForbiddenException(
@@ -1472,15 +1481,24 @@ export class ProjectsService {
       );
     }
 
-    const project = await this.db.project.findUnique({
-      where: { id: projectId, organizationId },
-      select: { id: true, projectName: true, status: true },
+    const projectScope = await this.getProjectAccessWhere(user);
+    const project = await this.db.project.findFirst({
+      where: { id: projectId, ...projectScope },
+      select: {
+        id: true,
+        organizationId: true,
+        projectName: true,
+        status: true,
+      },
     });
     if (!project)
       throw new NotFoundException(`Project #${projectId} not found`);
 
     const tasks = await this.db.task.findMany({
-      where: { projectId, organizationId },
+      where: {
+        projectId,
+        organizationId: project.organizationId,
+      },
       select: { id: true, status: true },
     });
 
