@@ -37,6 +37,7 @@
     "dashboard:test": "node scripts/dashboard-smoke-test.js",
     "verify:leave": "node scripts/verify-leave-workflow.js",
     "repair-passwords": "ts-node scripts/repair-passwords.ts",
+    "attendance:backfill-late": "ts-node scripts/backfill-attendance-late-minutes.ts",
     "email:render": "ts-node scripts/render-email-template.ts",
     "email:test": "ts-node scripts/send-test-email.ts"
   },
