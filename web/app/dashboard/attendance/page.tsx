@@ -77,6 +77,14 @@ function formatShiftRangeForDisplay(row: AttendanceRecord) {
   return formatShiftRange(details.startTime, details.endTime);
 }
 
+function formatLateDuration(totalMinutes: number) {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes}m`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h ${minutes}m`;
+}
+
 function isShiftFormComplete(shift: { name: string; startTime: string; endTime: string }) {
   return Boolean(shift.name.trim() && shift.startTime && shift.endTime);
 }
@@ -1318,7 +1326,14 @@ export default function AttendancePage() {
                     {!row.checkIn ? (
                       <span className="text-slate-400">Not checked in</span>
                     ) : row.lateMinutes > 0 ? (
-                      <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">Late by {row.lateMinutes} mins</span>
+                      <span
+                        aria-label={`Late by ${row.lateMinutes} minutes`}
+                        title={`${row.lateMinutes} minutes late`}
+                        className="inline-flex min-w-max items-center gap-1.5 whitespace-nowrap rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700"
+                      >
+                        <Clock3 aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                        Late {formatLateDuration(row.lateMinutes)}
+                      </span>
                     ) : (
                       <span className="text-slate-400">On time</span>
                     )}
