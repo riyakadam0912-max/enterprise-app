@@ -389,13 +389,19 @@ export class PayslipGenerationService {
         },
       }),
       this.prisma.holiday.findMany({
-        where: { organizationId, date: { gte: startDate, lte: endDate } },
-        select: { date: true },
+        where: {
+          organizationId,
+          startDate: { lte: endDate },
+          endDate: { gte: startDate },
+        },
+        select: { startDate: true, endDate: true },
       }),
     ]);
-    const holidayDates = new Set(holidayRows.map((holiday) => new Date(holiday.date).toISOString().slice(0, 10)));
     const isCorporateHolidayAbsence = (row: (typeof attendanceRecords)[number]) => (
-      !row.checkIn && holidayDates.has(new Date(row.date).toISOString().slice(0, 10))
+      !row.checkIn && holidayRows.some((holiday) => {
+        const day = new Date(row.date).toISOString().slice(0, 10);
+        return day >= holiday.startDate.toISOString().slice(0, 10) && day <= holiday.endDate.toISOString().slice(0, 10);
+      })
     );
 
     // Get leave records

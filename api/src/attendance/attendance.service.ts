@@ -704,18 +704,54 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   }
 
   private parseHolidayDate(value: string) {
-    const date = new Date(`${value.slice(0, 10)}T00:00:00.000Z`);
-    if (Number.isNaN(date.getTime())) {
+    const dateKey = value.slice(0, 10);
+    const date = new Date(`${dateKey}T00:00:00.000Z`);
+    if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== dateKey) {
       throw new BadRequestException('A valid holiday date is required');
     }
     return date;
+  }
+
+  private dateKey(day: Date) {
+    return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+  }
+
+  private holidayCoversDay(holiday: { startDate: Date; endDate: Date }, day: Date) {
+    const dayKey = this.dateKey(day);
+    return (
+      dayKey >= holiday.startDate.toISOString().slice(0, 10) &&
+      dayKey <= holiday.endDate.toISOString().slice(0, 10)
+    );
+  }
+
+  private async validateHolidayRange(
+    organizationId: number,
+    startDate: Date,
+    endDate: Date,
+    excludeId?: number,
+  ) {
+    if (startDate > endDate) {
+      throw new BadRequestException('Holiday end date must be on or after the start date');
+    }
+    const overlap = await this.prisma.holiday.findFirst({
+      where: {
+        organizationId,
+        ...(excludeId != null ? { id: { not: excludeId } } : {}),
+        startDate: { lte: endDate },
+        endDate: { gte: startDate },
+      },
+      select: { id: true },
+    });
+    if (overlap) {
+      throw new ConflictException('This holiday range overlaps another corporate holiday');
+    }
   }
 
   async listHolidays(user: AttendanceUser) {
     const organizationId = await this.resolveOrganizationId(user);
     return this.prisma.holiday.findMany({
       where: { organizationId },
-      orderBy: [{ date: 'asc' }, { name: 'asc' }],
+      orderBy: [{ startDate: 'asc' }, { name: 'asc' }],
     });
   }
 
@@ -723,20 +759,21 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const name = dto.name.trim();
     if (!name) throw new BadRequestException('Holiday name is required');
     const organizationId = await this.resolveOrganizationId(user);
+    const startDate = this.parseHolidayDate(dto.startDate);
+    const endDate = this.parseHolidayDate(dto.endDate);
+    await this.validateHolidayRange(organizationId, startDate, endDate);
     try {
       const holiday = await this.prisma.holiday.create({
         data: {
           organizationId,
-          date: this.parseHolidayDate(dto.date),
+          startDate,
+          endDate,
           name,
         },
       });
       await this.invalidateDashboardCache();
       return holiday;
     } catch (error) {
-      if ((error as { code?: string })?.code === 'P2002') {
-        throw new ConflictException('A holiday already exists on this date');
-      }
       throw error;
     }
   }
@@ -752,22 +789,20 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     });
     if (!existing) throw new NotFoundException('Holiday not found');
 
-    try {
-      const holiday = await this.prisma.holiday.update({
-        where: { id },
-        data: {
-          ...(dto.date ? { date: this.parseHolidayDate(dto.date) } : {}),
-          ...(name !== undefined ? { name } : {}),
-        },
-      });
-      await this.invalidateDashboardCache();
-      return holiday;
-    } catch (error) {
-      if ((error as { code?: string })?.code === 'P2002') {
-        throw new ConflictException('A holiday already exists on this date');
-      }
-      throw error;
-    }
+    const startDate = dto.startDate
+      ? this.parseHolidayDate(dto.startDate)
+      : existing.startDate;
+    const endDate = dto.endDate
+      ? this.parseHolidayDate(dto.endDate)
+      : existing.endDate;
+    await this.validateHolidayRange(organizationId, startDate, endDate, id);
+
+    const holiday = await this.prisma.holiday.update({
+      where: { id },
+      data: { startDate, endDate, ...(name !== undefined ? { name } : {}) },
+    });
+    await this.invalidateDashboardCache();
+    return holiday;
   }
 
   async deleteHoliday(id: number, user: AttendanceUser) {
@@ -1146,13 +1181,18 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     ]);
 
     const holidayOrganizationIds = [...new Set(eligibleEmployees.map((employee) => employee.organizationId))];
+    const targetHolidayDate = this.parseHolidayDate(this.dateKey(day));
     const holidays = holidayOrganizationIds.length
       ? await this.prisma.holiday.findMany({
-          where: { organizationId: { in: holidayOrganizationIds }, date: this.startOfDay(day) },
-          select: { organizationId: true, date: true, name: true },
+          where: {
+            organizationId: { in: holidayOrganizationIds },
+            startDate: { lte: targetHolidayDate },
+            endDate: { gte: targetHolidayDate },
+          },
+          select: { organizationId: true, startDate: true, endDate: true, name: true },
         })
       : [];
-    const holidayByOrganization = new Map(holidays.map((holiday) => [holiday.organizationId, holiday.name]));
+    const holidayByOrganization = new Map(holidays.map((holiday) => [holiday.organizationId, holiday]));
 
     const attendanceMap = new Map(
       attendanceRows.map((row) => [row.employeeId, row]),
@@ -1165,7 +1205,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         this.startOfDay(day),
         attendanceMap.get(employee.id) ?? null,
         leaveSet.has(employee.id),
-        holidayByOrganization.get(employee.organizationId),
+        holidayByOrganization.get(employee.organizationId)?.name,
       ),
     );
 
@@ -1335,10 +1375,13 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     ]);
 
     const holidays = await this.prisma.holiday.findMany({
-      where: { organizationId: employee.organizationId, date: { gte: monthStart, lte: monthEnd } },
-      select: { date: true, name: true },
+      where: {
+        organizationId: employee.organizationId,
+        startDate: { lte: this.parseHolidayDate(this.dateKey(monthEnd)) },
+        endDate: { gte: this.parseHolidayDate(this.dateKey(monthStart)) },
+      },
+      select: { startDate: true, endDate: true, name: true },
     });
-    const holidayByDate = new Map(holidays.map((holiday) => [this.startOfDay(holiday.date).getTime(), holiday.name]));
 
     const attendanceMap = new Map(
       attendanceRows.map((row) => [
@@ -1379,7 +1422,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           row.endDate >= this.startOfDay(day),
       );
       const shift = attendance?.shift ?? employee.shift ?? null;
-      const holidayName = holidayByDate.get(this.startOfDay(day).getTime());
+      const holidayName = holidays.find((holiday) => this.holidayCoversDay(holiday, day))?.name;
       const status = onLeave
         ? AttendanceStatus.LEAVE
         : holidayName && !attendance?.checkIn
@@ -1497,17 +1540,25 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     });
 
     const organizationIds = [...new Set(attendanceRows.map((row) => row.employee.organizationId))];
+    const monthStartHolidayDate = this.parseHolidayDate(this.dateKey(monthStart));
+    const monthEndHolidayDate = this.parseHolidayDate(this.dateKey(monthEnd));
     const holidays = organizationIds.length
       ? await this.prisma.holiday.findMany({
-          where: { organizationId: { in: organizationIds }, date: { gte: monthStart, lte: monthEnd } },
-          select: { organizationId: true, date: true },
+          where: {
+            organizationId: { in: organizationIds },
+            startDate: { lte: monthEndHolidayDate },
+            endDate: { gte: monthStartHolidayDate },
+          },
+          select: { organizationId: true, startDate: true, endDate: true },
         })
       : [];
-    const holidayKeys = new Set(holidays.map((holiday) => `${holiday.organizationId}:${this.startOfDay(holiday.date).getTime()}`));
     const statusForRow = (row: (typeof attendanceRows)[number]) => (
       row.status !== AttendanceStatus.LEAVE &&
       !row.checkIn &&
-      holidayKeys.has(`${row.employee.organizationId}:${this.startOfDay(row.date).getTime()}`)
+      holidays.some((holiday) => (
+        holiday.organizationId === row.employee.organizationId &&
+        this.holidayCoversDay(holiday, row.date)
+      ))
         ? AttendanceStatus.HOLIDAY
         : row.status
     );
@@ -1677,17 +1728,32 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       },
     });
     const holidayOrganizationIds = [...new Set(employees.map((employee) => employee.organization.id))];
+    const reportMonthStart = this.parseHolidayDate(this.dateKey(monthStart));
+    const reportMonthEnd = this.parseHolidayDate(this.dateKey(monthEnd));
     const reportHolidays = holidayOrganizationIds.length
       ? await this.prisma.holiday.findMany({
           where: {
             organizationId: { in: holidayOrganizationIds },
-            date: { gte: monthStart, lte: monthEnd },
+            startDate: { lte: reportMonthEnd },
+            endDate: { gte: reportMonthStart },
           },
-          select: { organizationId: true, date: true },
+          select: { organizationId: true, startDate: true, endDate: true },
         })
       : [];
+    const corporateHolidayDays: Array<{ organizationId: number; date: Date; dateKey: string }> = [];
+    reportHolidays.forEach((holiday) => {
+      const start = new Date(Math.max(holiday.startDate.getTime(), reportMonthStart.getTime()));
+      const end = new Date(Math.min(holiday.endDate.getTime(), reportMonthEnd.getTime()));
+      for (const date = new Date(start); date <= end; date.setUTCDate(date.getUTCDate() + 1)) {
+        corporateHolidayDays.push({
+          organizationId: holiday.organizationId,
+          date: new Date(date),
+          dateKey: date.toISOString().slice(0, 10),
+        });
+      }
+    });
     const corporateHolidayKeys = new Set(
-      reportHolidays.map((holiday) => `${holiday.organizationId}:${this.startOfDay(holiday.date).toISOString().slice(0, 10)}`),
+      corporateHolidayDays.map((holiday) => `${holiday.organizationId}:${holiday.dateKey}`),
     );
     const leaveDateKeys = new Set(
       leaveRows.flatMap((leave) => {
@@ -1757,7 +1823,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         lateCount: 0,
         halfDayCount: 0,
         leaveCount: 0,
-        holidayCount: reportHolidays.filter((holiday) => (
+        holidayCount: corporateHolidayDays.filter((holiday) => (
           holiday.organizationId === employee.organization.id &&
           this.isAttendanceEligible(holiday.date, employee.hireDate)
         )).length,
@@ -1783,7 +1849,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       }
 
       const rowDateKey = `${row.employeeId}:${this.startOfDay(row.date).toISOString().slice(0, 10)}`;
-      const corporateHolidayKey = `${employee.organization.id}:${this.startOfDay(row.date).toISOString().slice(0, 10)}`;
+      const corporateHolidayKey = `${employee.organization.id}:${row.date.toISOString().slice(0, 10)}`;
       const effectiveStatus = leaveDateKeys.has(rowDateKey)
         ? AttendanceStatus.LEAVE
         : corporateHolidayKeys.has(corporateHolidayKey) && !row.checkIn
@@ -2012,9 +2078,14 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     });
 
     const organizationIds = [...new Set(employees.map((employee) => employee.organizationId))];
+    const targetHolidayDate = this.parseHolidayDate(this.dateKey(target));
     const holidayRows = organizationIds.length
       ? await this.prisma.holiday.findMany({
-          where: { organizationId: { in: organizationIds }, date: target },
+          where: {
+            organizationId: { in: organizationIds },
+            startDate: { lte: targetHolidayDate },
+            endDate: { gte: targetHolidayDate },
+          },
           select: { organizationId: true },
         })
       : [];

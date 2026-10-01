@@ -144,13 +144,15 @@ export interface ShiftRecord extends ShiftPayload {
 
 export interface HolidayRecord {
   id: number;
-  date: string;
+  startDate: string;
+  endDate: string;
   name: string;
   organizationId: number;
 }
 
 export interface HolidayPayload {
-  date: string;
+  startDate: string;
+  endDate: string;
   name: string;
 }
 

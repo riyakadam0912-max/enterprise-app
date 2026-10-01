@@ -4,7 +4,11 @@ import { ApiProperty } from '@nestjs/swagger';
 export class CreateHolidayDto {
   @IsDateString()
   @ApiProperty({ example: '2026-10-02' })
-  date!: string;
+  startDate!: string;
+
+  @IsDateString()
+  @ApiProperty({ example: '2026-10-03' })
+  endDate!: string;
 
   @IsString()
   @IsNotEmpty()

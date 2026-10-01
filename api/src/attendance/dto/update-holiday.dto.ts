@@ -5,7 +5,12 @@ export class UpdateHolidayDto {
   @IsOptional()
   @IsDateString()
   @ApiPropertyOptional({ example: '2026-10-02' })
-  date?: string;
+  startDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  @ApiPropertyOptional({ example: '2026-10-03' })
+  endDate?: string;
 
   @IsOptional()
   @IsString()

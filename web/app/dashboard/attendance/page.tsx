@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Pencil, Plus, Trash2, UserRound, X } from 'lucide-react';
+import { ArrowRight, CalendarDays, CalendarRange, Clock3, Pencil, Plus, Trash2, UsersRound, X } from 'lucide-react';
 import { assignShift, AttendanceRecord, AttendanceStatus, createHoliday, createShift, deleteHoliday, deleteShift, getHolidays, getMonthlyAttendanceReport, getShifts, HolidayRecord, ShiftRecord, updateHoliday, updateShift } from '@/api/attendanceApi';
 import { useAttendance, useCheckIn, useCheckOut, useTodayAttendance, useUpdateAttendance } from '@/hooks/useAttendance';
 import { useEmployees } from '@/hooks/useEmployees';
@@ -83,6 +83,18 @@ function isShiftFormComplete(shift: { name: string; startTime: string; endTime: 
 
 function weeklyHolidayLabel(day: number | null | undefined) {
   return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day ?? 0] ?? 'Sunday';
+}
+
+function formatHolidayRange(holiday: HolidayRecord) {
+  const format = (value: string) => new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+  const startDate = format(holiday.startDate);
+  return holiday.startDate.slice(0, 10) === holiday.endDate.slice(0, 10)
+    ? startDate
+    : `${startDate} – ${format(holiday.endDate)}`;
 }
 
 function formatDateInput(value: string) {
@@ -322,9 +334,12 @@ export default function AttendancePage() {
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
   const [shifts, setShifts] = useState<ShiftRecord[]>([]);
   const [holidays, setHolidays] = useState<HolidayRecord[]>([]);
-  const [holidayDate, setHolidayDate] = useState('');
+  const [holidayStartDate, setHolidayStartDate] = useState('');
+  const [holidayEndDate, setHolidayEndDate] = useState('');
   const [holidayName, setHolidayName] = useState('');
   const [editingHolidayId, setEditingHolidayId] = useState<number | null>(null);
+  const [showHolidayForm, setShowHolidayForm] = useState(false);
+  const [holidaySaving, setHolidaySaving] = useState(false);
   const [holidayError, setHolidayError] = useState<string | null>(null);
   const [holidaySuccess, setHolidaySuccess] = useState<string | null>(null);
   const [editingShift, setEditingShift] = useState<ShiftRecord | null>(null);
@@ -603,21 +618,32 @@ export default function AttendancePage() {
   }
 
   function resetHolidayForm() {
-    setHolidayDate('');
+    setHolidayStartDate('');
+    setHolidayEndDate('');
     setHolidayName('');
     setEditingHolidayId(null);
+    setShowHolidayForm(false);
   }
 
   async function handleSaveHoliday() {
-    if (!holidayDate || !holidayName.trim()) return;
+    if (!holidayStartDate || !holidayEndDate || !holidayName.trim()) return;
+    setHolidaySaving(true);
     try {
       setHolidayError(null);
       setHolidaySuccess(null);
       if (editingHolidayId != null) {
-        await updateHoliday(editingHolidayId, { date: holidayDate, name: holidayName.trim() });
+        await updateHoliday(editingHolidayId, {
+          startDate: holidayStartDate,
+          endDate: holidayEndDate,
+          name: holidayName.trim(),
+        });
         setHolidaySuccess('Holiday updated successfully.');
       } else {
-        await createHoliday({ date: holidayDate, name: holidayName.trim() });
+        await createHoliday({
+          startDate: holidayStartDate,
+          endDate: holidayEndDate,
+          name: holidayName.trim(),
+        });
         setHolidaySuccess('Holiday added successfully.');
       }
       setHolidays(await getHolidays());
@@ -626,13 +652,24 @@ export default function AttendancePage() {
       setReportRefreshKey((current) => current + 1);
     } catch (error) {
       setHolidayError(error instanceof Error ? error.message : 'Unable to save holiday.');
+    } finally {
+      setHolidaySaving(false);
     }
   }
 
   function handleEditHoliday(holiday: HolidayRecord) {
     setEditingHolidayId(holiday.id);
-    setHolidayDate(holiday.date.slice(0, 10));
+    setHolidayStartDate(holiday.startDate.slice(0, 10));
+    setHolidayEndDate(holiday.endDate.slice(0, 10));
     setHolidayName(holiday.name);
+    setShowHolidayForm(true);
+    setHolidayError(null);
+    setHolidaySuccess(null);
+  }
+
+  function handleStartAddHoliday() {
+    resetHolidayForm();
+    setShowHolidayForm(true);
     setHolidayError(null);
     setHolidaySuccess(null);
   }
@@ -808,11 +845,13 @@ export default function AttendancePage() {
         <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-orange-50 text-orange-600">
+                <Clock3 aria-hidden="true" className="h-4 w-4" />
+              </span>
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Shifts</h3>
                 <p className="text-xs text-slate-500">{shifts.length} configured {shifts.length === 1 ? 'shift' : 'shifts'}</p>
               </div>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">Schedule setup</span>
             </div>
             <button onClick={() => setShowCreateShift(true)} className="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600">
               <Plus aria-hidden="true" className="h-4 w-4" /> New shift
@@ -821,7 +860,7 @@ export default function AttendancePage() {
 
           <div className="mt-3 flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 sm:flex-row">
             <div className="flex min-w-0 flex-1 items-center gap-2">
-              <UserRound aria-hidden="true" className="ml-2 h-4 w-4 shrink-0 text-slate-400" />
+              <UsersRound aria-hidden="true" className="ml-2 h-4 w-4 shrink-0 text-slate-400" />
               <select value={assignEmployeeId} onChange={(e) => setAssignEmployeeId(e.target.value)} aria-label="Select employee" className="min-w-0 flex-1 bg-transparent px-1 py-2 text-sm text-slate-700 outline-none">
                 <option value="">Select employee</option>
                 {employeeOptions.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
@@ -831,7 +870,7 @@ export default function AttendancePage() {
               <option value="">Select shift</option>
               {shifts.map((shift) => <option key={shift.id} value={shift.id}>{shift.name}</option>)}
             </select>
-            <button onClick={handleAssignShift} disabled={!assignEmployeeId || !assignShiftId} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-white disabled:opacity-50">Assign</button>
+            <button onClick={handleAssignShift} disabled={!assignEmployeeId || !assignShiftId} className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-white disabled:opacity-50"><ArrowRight aria-hidden="true" className="h-4 w-4" />Assign</button>
           </div>
 
           <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
@@ -874,54 +913,95 @@ export default function AttendancePage() {
       {canManageShifts && (
         <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-base font-semibold text-slate-900">Corporate Holidays</h3>
-              <p className="text-xs text-slate-500">{holidays.length} scheduled {holidays.length === 1 ? 'holiday' : 'holidays'}</p>
+            <div className="flex items-center gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-50 text-teal-700">
+                <CalendarDays aria-hidden="true" className="h-4 w-4" />
+              </span>
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">Corporate Holidays</h3>
+                <p className="text-xs text-slate-500">{holidays.length} scheduled {holidays.length === 1 ? 'holiday' : 'holidays'}</p>
+              </div>
             </div>
-            <span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700">Attendance calendar</span>
-          </div>
-
-          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(130px,0.8fr)_minmax(150px,1fr)_auto_auto]">
-            <input
-              type="date"
-              value={holidayDate}
-              onChange={(event) => setHolidayDate(event.target.value)}
-              aria-label="Holiday date"
-              className="min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-            <input
-              value={holidayName}
-              onChange={(event) => setHolidayName(event.target.value)}
-              onKeyDown={(event) => { if (event.key === 'Enter') void handleSaveHoliday(); }}
-              maxLength={100}
-              placeholder="Holiday name"
-              aria-label="Holiday name"
-              className="min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-            <button
-              type="button"
-              onClick={() => void handleSaveHoliday()}
-              disabled={!holidayDate || !holidayName.trim()}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {editingHolidayId == null ? <Plus aria-hidden="true" className="h-4 w-4" /> : null}
-              {editingHolidayId == null ? 'Add holiday' : 'Save changes'}
-            </button>
-            {editingHolidayId != null && (
-              <button type="button" onClick={resetHolidayForm} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
-                Cancel
+            {!showHolidayForm && (
+              <button type="button" onClick={handleStartAddHoliday} className="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600">
+                <Plus aria-hidden="true" className="h-4 w-4" />Add holiday
               </button>
             )}
           </div>
 
+          {showHolidayForm && (
+            <div className="mt-3 rounded-lg border border-teal-200 bg-teal-50/40 p-3">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                  <CalendarRange aria-hidden="true" className="h-4 w-4 text-teal-700" />
+                  {editingHolidayId == null ? 'New holiday' : 'Edit holiday'}
+                </div>
+                <button type="button" onClick={resetHolidayForm} aria-label="Close holiday form" title="Close" className="rounded-md p-1.5 text-slate-500 hover:bg-white hover:text-slate-900">
+                  <X aria-hidden="true" className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1.5 text-xs font-medium text-slate-600">
+                  <span>Holiday name</span>
+                  <input
+                    value={holidayName}
+                    onChange={(event) => setHolidayName(event.target.value)}
+                    maxLength={100}
+                    placeholder="e.g. Founders Day"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800"
+                  />
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="space-y-1.5 text-xs font-medium text-slate-600">
+                    <span>Start date</span>
+                    <input
+                      type="date"
+                      value={holidayStartDate}
+                      onChange={(event) => setHolidayStartDate(event.target.value)}
+                      max={holidayEndDate || undefined}
+                      className="w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-800"
+                    />
+                  </label>
+                  <label className="space-y-1.5 text-xs font-medium text-slate-600">
+                    <span>End date</span>
+                    <input
+                      type="date"
+                      value={holidayEndDate}
+                      onChange={(event) => setHolidayEndDate(event.target.value)}
+                      min={holidayStartDate || undefined}
+                      className="w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-800"
+                    />
+                  </label>
+                </div>
+              </div>
+              <div className="mt-3 flex justify-end gap-2">
+                <button type="button" onClick={resetHolidayForm} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveHoliday()}
+                  disabled={!holidayStartDate || !holidayEndDate || !holidayName.trim() || holidaySaving}
+                  className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {holidaySaving ? 'Saving…' : editingHolidayId == null ? 'Save holiday' : 'Save changes'}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="mt-3 divide-y divide-slate-100 rounded-lg border border-slate-200">
             {holidays.length === 0 ? (
-              <p className="px-3 py-7 text-center text-sm text-slate-500">No corporate holidays added.</p>
+              <div className="px-3 py-7 text-center">
+                <CalendarDays aria-hidden="true" className="mx-auto h-5 w-5 text-slate-400" />
+                <p className="mt-2 text-sm text-slate-500">No corporate holidays added.</p>
+              </div>
             ) : holidays.map((holiday) => (
               <div key={holiday.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-900">{holiday.name}</p>
-                  <p className="text-xs text-slate-500">{new Date(`${holiday.date.slice(0, 10)}T00:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+                <div className="flex min-w-0 items-center gap-3">
+                  <CalendarRange aria-hidden="true" className="h-4 w-4 shrink-0 text-teal-700" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-900">{holiday.name}</p>
+                    <p className="text-xs text-slate-500">{formatHolidayRange(holiday)}</p>
+                  </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <button type="button" onClick={() => handleEditHoliday(holiday)} aria-label={`Edit ${holiday.name}`} title="Edit holiday" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900">

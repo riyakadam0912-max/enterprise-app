@@ -24,7 +24,7 @@ function createPrismaMock() {
     },
     holiday: {
       findMany: jest.fn().mockResolvedValue([]),
-      findFirst: jest.fn(),
+      findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
@@ -122,23 +122,43 @@ describe('AttendanceService', () => {
     prisma.holiday.create.mockResolvedValue({
       id: 3,
       organizationId: 42,
-      date: new Date('2026-10-02T00:00:00.000Z'),
+      startDate: new Date('2026-10-02T00:00:00.000Z'),
+      endDate: new Date('2026-10-03T00:00:00.000Z'),
       name: 'Founders Day',
     });
 
     const result = await service.createHoliday(
-      { date: '2026-10-02', name: ' Founders Day ' },
+      { startDate: '2026-10-02', endDate: '2026-10-03', name: ' Founders Day ' },
       { ...mockUser, role: Role.SUPER_ADMIN, organizationId: 42 },
     );
 
+    expect(prisma.holiday.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        organizationId: 42,
+        startDate: { lte: new Date('2026-10-03T00:00:00.000Z') },
+        endDate: { gte: new Date('2026-10-02T00:00:00.000Z') },
+      }),
+    }));
     expect(prisma.holiday.create).toHaveBeenCalledWith({
       data: {
         organizationId: 42,
-        date: new Date('2026-10-02T00:00:00.000Z'),
+        startDate: new Date('2026-10-02T00:00:00.000Z'),
+        endDate: new Date('2026-10-03T00:00:00.000Z'),
         name: 'Founders Day',
       },
     });
     expect(result.name).toBe('Founders Day');
+  });
+
+  it('rejects overlapping corporate holiday ranges', async () => {
+    prisma.holiday.findFirst.mockResolvedValue({ id: 8 });
+
+    await expect(service.createHoliday(
+      { startDate: '2026-10-03', endDate: '2026-10-05', name: 'Festival break' },
+      { ...mockUser, role: Role.ADMIN },
+    )).rejects.toThrow('This holiday range overlaps another corporate holiday');
+
+    expect(prisma.holiday.create).not.toHaveBeenCalled();
   });
 
   it('allows an employee to check in once per day', async () => {
@@ -693,7 +713,8 @@ describe('AttendanceService', () => {
     prisma.leaveRequest.findMany.mockResolvedValue([]);
     prisma.holiday.findMany.mockResolvedValue([{
       organizationId: 1,
-      date: new Date('2026-03-13T00:00:00.000Z'),
+      startDate: new Date('2026-03-13T00:00:00.000Z'),
+      endDate: new Date('2026-03-14T00:00:00.000Z'),
       name: 'Founders Day',
     }]);
 
@@ -704,7 +725,7 @@ describe('AttendanceService', () => {
 
     expect(result.rows[0]).toEqual(expect.objectContaining({
       absentCount: 0,
-      holidayCount: 1,
+      holidayCount: 2,
       workingDays: 0,
       attendancePercent: 0,
     }));
@@ -763,7 +784,8 @@ describe('AttendanceService', () => {
     prisma.attendance.findMany.mockResolvedValue([]);
     prisma.leaveRequest.findMany.mockResolvedValue([]);
     prisma.holiday.findMany.mockResolvedValue([{
-      date: new Date('2026-03-13T00:00:00.000Z'),
+      startDate: new Date('2026-03-13T00:00:00.000Z'),
+      endDate: new Date('2026-03-14T00:00:00.000Z'),
       name: 'Founders Day',
     }]);
 
@@ -773,8 +795,12 @@ describe('AttendanceService', () => {
       status: AttendanceStatus.HOLIDAY,
       holidayName: 'Founders Day',
     }));
+    expect(result.days[13]).toEqual(expect.objectContaining({
+      status: AttendanceStatus.HOLIDAY,
+      holidayName: 'Founders Day',
+    }));
     expect(result.summary.absent).toBe(0);
-    expect(result.summary.holiday).toBe(1);
+    expect(result.summary.holiday).toBe(2);
   });
 
   it('omits pre-hire dates from the monthly calendar', async () => {
