@@ -32,6 +32,17 @@ describe('attendance time utilities', () => {
     ).toBe(1);
   });
 
+  it('counts the production 1:32 PM check-in as late for an 11:00 AM Kolkata shift', () => {
+    expect(
+      calculateLateMinutesInTimezone(
+        new Date('2026-10-01T08:02:08.019Z'),
+        '2026-10-01',
+        { type: 'FIXED', startTime: '11:00', gracePeriodMinutes: 0 },
+        'Asia/Kolkata',
+      ),
+    ).toBe(152);
+  });
+
   it('derives organization-local dates across UTC date boundaries', () => {
     const instant = new Date('2026-03-12T19:00:00.000Z');
     const dateKey = dateKeyInTimezone(instant, 'Asia/Kolkata');
