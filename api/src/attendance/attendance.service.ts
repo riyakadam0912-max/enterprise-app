@@ -26,6 +26,11 @@ import { QueryAttendanceDto } from './dto/query-attendance.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
 import { UpdateShiftDto } from './dto/update-shift.dto';
 import { UpdateHolidayDto } from './dto/update-holiday.dto';
+import {
+  attendanceDateFromKey,
+  calculateLateMinutesInTimezone,
+  dateKeyInTimezone,
+} from './attendance-time.utils';
 
 type AttendanceUser = {
   userId: number;
@@ -219,19 +224,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
   private calculateLateMinutes(
     checkIn: Date,
-    day: Date,
+    dateKey: string,
     shift: ShiftLite | null,
+    timezone: string,
   ) {
-    if (!shift || !shift.startTime || shift.type === 'FLEXIBLE') return 0;
-
-    const { shiftStart } = this.getShiftWindow(day, shift);
-    if (!shiftStart) return 0;
-
-    const graceMs = (shift.gracePeriodMinutes || 0) * 60 * 1000;
-    const effectiveStart = shiftStart.getTime() + graceMs;
-    if (checkIn.getTime() <= effectiveStart) return 0;
-
-    return Math.floor((checkIn.getTime() - effectiveStart) / 60000);
+    return calculateLateMinutesInTimezone(checkIn, dateKey, shift, timezone);
   }
 
   private calculateOvertimeHours(
@@ -937,7 +934,16 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     }
 
     const checkInTime = dto.timestamp ? new Date(dto.timestamp) : new Date();
-    const day = this.parseTargetDay(dto.date, checkInTime);
+    const organizationId = employee.organizationId ?? user.organizationId;
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { timezone: true },
+    });
+    const timezone = organization?.timezone ?? 'UTC';
+    const dateKey = dto.date
+      ? dto.date.slice(0, 10)
+      : dateKeyInTimezone(checkInTime, timezone);
+    const day = attendanceDateFromKey(dateKey);
     this.assertAttendanceEligible(day, employee.hireDate);
 
     const existing = await this.prisma.attendance.findUnique({
@@ -956,26 +962,19 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    if (employee.shift.weeklyHolidayDay === day.getDay()) {
+    if (employee.shift.weeklyHolidayDay === day.getUTCDay()) {
       throw new ConflictException('This date is the employee weekly holiday');
     }
 
     const lateMinutes = this.calculateLateMinutes(
       checkInTime,
-      day,
+      dateKey,
       employee.shift,
+      timezone,
     );
 
     // Calculate status based on late check-in
-    const status = this.calculateStatus({
-      day,
-      checkIn: checkInTime,
-      checkOut: null,
-      workingHours: null,
-      onLeave: false,
-      shift: employee.shift,
-      lateMinutes,
-    });
+    const status = AttendanceStatus.PRESENT;
 
     if (existing) {
       const result = await this.prisma.attendance.update({
@@ -1970,7 +1969,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     }
 
     const nextDate = dto.date
-      ? this.parseTargetDay(dto.date)
+      ? attendanceDateFromKey(dto.date.slice(0, 10))
       : new Date(record.date);
     this.assertAttendanceEligible(nextDate, record.employee.hireDate);
 
@@ -2017,6 +2016,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const shift = (record.shift ??
       record.employee?.shift ??
       null) as ShiftLite | null;
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: record.organizationId },
+      select: { timezone: true },
+    });
+    const timezone = organization?.timezone ?? 'UTC';
 
     const workingHours =
       checkIn && checkOut
@@ -2028,7 +2032,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         : 0;
     const shortfallHours = this.calculateShortfallHours(workingHours, shift);
     const lateMinutes = checkIn
-      ? this.calculateLateMinutes(checkIn, nextDate, shift)
+      ? this.calculateLateMinutes(
+          checkIn,
+          dto.date?.slice(0, 10) ?? nextDate.toISOString().slice(0, 10),
+          shift,
+          timezone,
+        )
       : 0;
 
     const leave = await this.findApprovedLeaveForDay(

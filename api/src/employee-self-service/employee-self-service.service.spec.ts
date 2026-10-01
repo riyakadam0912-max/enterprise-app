@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { beforeEach, describe, expect, it } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { EmployeeSelfServiceService } from './employee-self-service.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role } from '../common/enums/role.enum';
@@ -42,6 +42,10 @@ describe('EmployeeSelfServiceService', () => {
     );
   });
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('resolves a linked employee only within the current organization and active records', async () => {
     const user = createUser();
     const userDelegate = getMockPrismaDelegate(mockPrisma, 'user');
@@ -79,5 +83,83 @@ describe('EmployeeSelfServiceService', () => {
       where: { id: user.userId || user.id },
       data: { employeeId: 22 },
     });
+  });
+
+  it('records ESS check-ins late according to the organization timezone', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-03-13T03:46:00.000Z'));
+    const user = createUser({ employeeId: 22 });
+    const employeeDelegate = getMockPrismaDelegate(mockPrisma, 'employee');
+    const organizationDelegate = getMockPrismaDelegate(mockPrisma, 'organization');
+    const shiftDelegate = getMockPrismaDelegate(mockPrisma, 'shift');
+    const attendanceDelegate = getMockPrismaDelegate(mockPrisma, 'attendance');
+
+    employeeDelegate.findFirst.mockResolvedValue({ id: 22 });
+    employeeDelegate.findUnique.mockResolvedValue({ id: 22, shiftId: 5 });
+    organizationDelegate.findUnique.mockResolvedValue({ timezone: 'Asia/Kolkata' });
+    attendanceDelegate.findUnique.mockResolvedValue(null);
+    shiftDelegate.findUnique.mockResolvedValue({
+      type: 'FIXED',
+      name: 'Day',
+      startTime: '09:00',
+      endTime: '17:00',
+      gracePeriodMinutes: 15,
+      weeklyHolidayDay: 0,
+    });
+    attendanceDelegate.upsert.mockResolvedValue({
+      checkIn: new Date('2026-03-13T03:46:00.000Z'),
+      lateMinutes: 1,
+    });
+
+    const result = await service.checkIn(user);
+
+    expect(attendanceDelegate.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          date: new Date('2026-03-13T00:00:00.000Z'),
+          lateMinutes: 1,
+          status: 'PRESENT',
+        }),
+      }),
+    );
+    expect(result.data.lateMinutes).toBe(1);
+  });
+
+  it('sets ESS half-day status from hours worked at checkout', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-03-13T06:46:00.000Z'));
+    const user = createUser({ employeeId: 22 });
+    const employeeDelegate = getMockPrismaDelegate(mockPrisma, 'employee');
+    const organizationDelegate = getMockPrismaDelegate(mockPrisma, 'organization');
+    const attendanceDelegate = getMockPrismaDelegate(mockPrisma, 'attendance');
+
+    employeeDelegate.findFirst.mockResolvedValue({ id: 22 });
+    employeeDelegate.findUnique.mockResolvedValue({ id: 22 });
+    organizationDelegate.findUnique.mockResolvedValue({ timezone: 'Asia/Kolkata' });
+    attendanceDelegate.findUnique.mockResolvedValue({
+      id: 4,
+      checkIn: new Date('2026-03-13T03:46:00.000Z'),
+      checkOut: null,
+      shift: { requiredHours: 8, minPresentHours: 5 },
+    });
+    attendanceDelegate.update.mockResolvedValue({
+      checkIn: new Date('2026-03-13T03:46:00.000Z'),
+      checkOut: new Date('2026-03-13T06:46:00.000Z'),
+      workingHours: 3,
+      overtimeHours: 0,
+      lateMinutes: 1,
+    });
+
+    await service.checkOut(user);
+
+    expect(attendanceDelegate.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          workingHours: 3,
+          status: 'HALF_DAY',
+          shortfallHours: 5,
+        }),
+      }),
+    );
   });
 });

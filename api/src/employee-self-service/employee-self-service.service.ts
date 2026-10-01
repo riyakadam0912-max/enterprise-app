@@ -10,6 +10,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ApplyLeaveDto } from './dto/apply-leave.dto';
 import { SubmitExpenseDto } from './dto/submit-expense.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import {
+  attendanceDateFromKey,
+  attendanceStatusForWorkedHours,
+  calculateLateMinutesInTimezone,
+  dateKeyInTimezone,
+} from '../attendance/attendance-time.utils';
 
 @Injectable()
 export class EmployeeSelfServiceService {
@@ -107,10 +113,14 @@ export class EmployeeSelfServiceService {
       throw new NotFoundException('Employee not found');
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const organizationId = await this.resolveOrganizationId(user);
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { timezone: true },
+    });
+    const timezone = organization?.timezone ?? 'UTC';
+    const now = new Date();
+    const today = attendanceDateFromKey(dateKeyInTimezone(now, timezone));
 
     // Check if already checked in today
     const existingAttendance = await this.prisma.attendance.findUnique({
@@ -126,9 +136,9 @@ export class EmployeeSelfServiceService {
       throw new BadRequestException('Already checked in today');
     }
 
-    const now = new Date();
     let lateMinutes = 0;
     let shift: {
+      type: string;
       name: string | null;
       startTime: string | null;
       endTime: string | null;
@@ -141,6 +151,7 @@ export class EmployeeSelfServiceService {
       shift = await this.prisma.shift.findUnique({
         where: { id: employee.shiftId },
         select: {
+          type: true,
           name: true,
           startTime: true,
           endTime: true,
@@ -149,31 +160,19 @@ export class EmployeeSelfServiceService {
         },
       });
 
-      if (shift && shift.weeklyHolidayDay === today.getDay()) {
+      if (shift && shift.weeklyHolidayDay === today.getUTCDay()) {
         throw new BadRequestException('Today is the employee weekly holiday');
       }
 
-      if (shift && shift.startTime) {
-        const [hours, minutes] = shift.startTime.split(':');
-        const shiftStart = new Date(today);
-        shiftStart.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-
-        const gracePeriod = shift.gracePeriodMinutes || 0;
-        const actualStartWithGrace = new Date(
-          shiftStart.getTime() + gracePeriod * 60 * 1000,
-        );
-
-        if (now > actualStartWithGrace) {
-          lateMinutes = Math.floor(
-            (now.getTime() - actualStartWithGrace.getTime()) / (60 * 1000),
-          );
-        }
-      }
+      lateMinutes = calculateLateMinutesInTimezone(
+        now,
+        today.toISOString().slice(0, 10),
+        shift,
+        timezone,
+      );
     }
 
     // Upsert attendance record
-    const organizationId = await this.resolveOrganizationId(user);
-    const status = lateMinutes > 0 ? 'HALF_DAY' : 'PRESENT';
     const attendance = await this.prisma.attendance.upsert({
       where: {
         employeeId_date: {
@@ -184,7 +183,7 @@ export class EmployeeSelfServiceService {
       update: {
         checkIn: now,
         lateMinutes,
-        status,
+        status: 'PRESENT',
         shiftId: employee.shiftId || undefined,
       },
       create: {
@@ -193,7 +192,7 @@ export class EmployeeSelfServiceService {
         date: today,
         checkIn: now,
         lateMinutes,
-        status,
+        status: 'PRESENT',
         shiftId: employee.shiftId || undefined,
       },
       include: {
@@ -230,8 +229,14 @@ export class EmployeeSelfServiceService {
       throw new NotFoundException('Employee not found');
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const organizationId = await this.resolveOrganizationId(user);
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { timezone: true },
+    });
+    const timezone = organization?.timezone ?? 'UTC';
+    const now = new Date();
+    const today = attendanceDateFromKey(dateKeyInTimezone(now, timezone));
 
     const attendance = await this.prisma.attendance.findUnique({
       where: {
@@ -255,7 +260,6 @@ export class EmployeeSelfServiceService {
       throw new BadRequestException('Already checked out today');
     }
 
-    const now = new Date();
     const checkInTime = new Date(attendance.checkIn);
 
     // Calculate working hours
@@ -265,6 +269,11 @@ export class EmployeeSelfServiceService {
 
     let overtimeHours = 0;
     const requiredHours = attendance.shift?.requiredHours || 8;
+    const minPresentHours = attendance.shift?.minPresentHours ?? 5;
+    const status = attendanceStatusForWorkedHours(
+      workingHours,
+      minPresentHours,
+    );
 
     if (workingHours > requiredHours) {
       overtimeHours = parseFloat((workingHours - requiredHours).toFixed(2));
@@ -282,6 +291,10 @@ export class EmployeeSelfServiceService {
         checkOut: now,
         workingHours,
         overtimeHours,
+        shortfallHours: parseFloat(
+          Math.max(0, requiredHours - workingHours).toFixed(2),
+        ),
+        status,
       },
       include: {
         employee: true,

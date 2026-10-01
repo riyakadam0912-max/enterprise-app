@@ -38,6 +38,9 @@ function createPrismaMock() {
       findUnique: jest.fn(),
       findMany: jest.fn(),
     },
+    organization: {
+      findUnique: jest.fn(),
+    },
   };
 }
 
@@ -203,6 +206,58 @@ describe('AttendanceService', () => {
       shift: mockEmployee.shift,
     });
     expect(prisma.attendance.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('records late minutes using the organization timezone and includes them in the late count', async () => {
+    const employee = {
+      id: 7,
+      name: 'Ava',
+      organizationId: 1,
+      shift: {
+        id: 1,
+        name: 'Day',
+        type: 'FIXED',
+        startTime: '09:00',
+        endTime: '17:00',
+        requiredHours: 8,
+        minPresentHours: 5,
+        gracePeriodMinutes: 15,
+        weeklyHolidayDay: 0,
+      },
+    };
+    prisma.employee.findFirst.mockResolvedValue(employee);
+    prisma.organization.findUnique.mockResolvedValue({ timezone: 'Asia/Kolkata' });
+    prisma.attendance.findUnique.mockResolvedValue(null);
+    prisma.leaveRequest.findFirst.mockResolvedValue(null);
+    prisma.attendance.create.mockResolvedValue({
+      id: 11,
+      employeeId: 7,
+      lateMinutes: 1,
+      status: AttendanceStatus.PRESENT,
+    });
+
+    const result = await service.checkIn(
+      {
+        employeeId: 7,
+        date: '2026-03-13',
+        timestamp: '2026-03-13T03:46:00.000Z',
+      },
+      mockUser,
+    );
+
+    expect(prisma.attendance.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          date: new Date('2026-03-13T00:00:00.000Z'),
+          lateMinutes: 1,
+        }),
+      }),
+    );
+    expect(
+      (service as any).buildSummary([
+        { status: AttendanceStatus.PRESENT, lateMinutes: result.lateMinutes },
+      ]).lateCount,
+    ).toBe(1);
   });
 
   it('rejects duplicate check-in attempts on the same day', async () => {
