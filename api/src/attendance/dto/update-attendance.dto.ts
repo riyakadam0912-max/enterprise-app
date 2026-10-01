@@ -6,6 +6,7 @@ const STATUSES = [
   'ABSENT',
   'HALF_DAY',
   'LEAVE',
+  'HOLIDAY',
   'WEEKLY_OFF',
 ] as const;
 

@@ -21,9 +21,11 @@ import { AttendanceSummaryQueryDto } from './dto/attendance-summary.dto';
 import { CheckInDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
 import { CreateShiftDto } from './dto/create-shift.dto';
+import { CreateHolidayDto } from './dto/create-holiday.dto';
 import { QueryAttendanceDto } from './dto/query-attendance.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
 import { UpdateShiftDto } from './dto/update-shift.dto';
+import { UpdateHolidayDto } from './dto/update-holiday.dto';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -37,6 +39,46 @@ import {
 @Controller('attendance')
 export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
+
+  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'GET corporate holidays' })
+  @Get('holidays')
+  listHolidays(@Req() req: { organizationId?: number | null; user: { userId: number; role: Role; employeeId?: number | null; organizationId: number } }) {
+    return this.attendanceService.listHolidays({ ...req.user, organizationId: req.organizationId ?? req.user.organizationId });
+  }
+
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'POST corporate holiday' })
+  @ApiBody({ type: CreateHolidayDto })
+  @Post('holidays')
+  createHoliday(
+    @Body() dto: CreateHolidayDto,
+    @Req() req: { organizationId?: number | null; user: { userId: number; role: Role; employeeId?: number | null; organizationId: number } },
+  ) {
+    return this.attendanceService.createHoliday(dto, { ...req.user, organizationId: req.organizationId ?? req.user.organizationId });
+  }
+
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'PATCH corporate holiday' })
+  @ApiBody({ type: UpdateHolidayDto })
+  @Patch('holidays/:id')
+  updateHoliday(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateHolidayDto,
+    @Req() req: { organizationId?: number | null; user: { userId: number; role: Role; employeeId?: number | null; organizationId: number } },
+  ) {
+    return this.attendanceService.updateHoliday(id, dto, { ...req.user, organizationId: req.organizationId ?? req.user.organizationId });
+  }
+
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'DELETE corporate holiday' })
+  @Delete('holidays/:id')
+  deleteHoliday(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: { organizationId?: number | null; user: { userId: number; role: Role; employeeId?: number | null; organizationId: number } },
+  ) {
+    return this.attendanceService.deleteHoliday(id, { ...req.user, organizationId: req.organizationId ?? req.user.organizationId });
+  }
 
   @Roles(Role.ADMIN, Role.MANAGER, Role.EMPLOYEE, Role.HR, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'POST check-in' })

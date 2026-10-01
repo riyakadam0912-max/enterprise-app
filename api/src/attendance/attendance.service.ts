@@ -21,9 +21,11 @@ import { AttendanceSummaryQueryDto } from './dto/attendance-summary.dto';
 import { CheckInDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
 import { CreateShiftDto } from './dto/create-shift.dto';
+import { CreateHolidayDto } from './dto/create-holiday.dto';
 import { QueryAttendanceDto } from './dto/query-attendance.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
 import { UpdateShiftDto } from './dto/update-shift.dto';
+import { UpdateHolidayDto } from './dto/update-holiday.dto';
 
 type AttendanceUser = {
   userId: number;
@@ -62,6 +64,7 @@ type DailyAttendanceRow = {
   lateMinutes: number;
   overtimeHours: number;
   status: AttendanceStatus;
+  holidayName?: string | null;
   shiftDetails: {
     id: number | null;
     name: string;
@@ -258,6 +261,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         if (row.status === AttendanceStatus.PRESENT) acc.present += 1;
         if (row.status === AttendanceStatus.ABSENT) acc.absent += 1;
         if (row.status === AttendanceStatus.LEAVE) acc.leave += 1;
+        if (row.status === AttendanceStatus.HOLIDAY) acc.holiday += 1;
         if (row.status === AttendanceStatus.HALF_DAY) acc.halfDay += 1;
         if (row.lateMinutes > 0) acc.lateCount += 1;
         acc.overtimeHours += row.overtimeHours ?? 0;
@@ -279,6 +283,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         present: 0,
         absent: 0,
         leave: 0,
+        holiday: 0,
         halfDay: 0,
         lateCount: 0,
         overtimeHours: 0,
@@ -293,9 +298,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       presentDays: summary.present,
       absentDays: summary.absent,
       leaveDays: summary.leave,
+      holidayDays: summary.holiday,
       halfDays: summary.halfDay,
       totalWorkingDays: rows.filter(
-        (row) => row.status !== AttendanceStatus.WEEKLY_OFF,
+        (row) => row.status !== AttendanceStatus.WEEKLY_OFF && row.status !== AttendanceStatus.HOLIDAY,
       ).length,
       overtimeHours: Number(summary.overtimeHours.toFixed(2)),
       shortfallHours: Number(summary.shortfallHours.toFixed(2)),
@@ -620,11 +626,14 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         } & { shortfallHours?: number })
       | null,
     onLeave: boolean,
+    holidayName?: string | null,
   ): DailyAttendanceRow {
     const shift = attendance?.shift ?? employee.shift ?? null;
     const computedStatus = onLeave
       ? AttendanceStatus.LEAVE
-      : (attendance?.status ??
+      : holidayName && !attendance?.checkIn
+        ? AttendanceStatus.HOLIDAY
+        : (attendance?.status ??
         this.calculateStatus({
           day,
           checkIn: null,
@@ -655,6 +664,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       lateMinutes: attendance?.lateMinutes ?? 0,
       overtimeHours: attendance?.overtimeHours ?? 0,
       status: computedStatus,
+      holidayName: computedStatus === AttendanceStatus.HOLIDAY ? holidayName : null,
       shiftDetails: shift
         ? {
             id: shift.id,
@@ -691,6 +701,85 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     await this.invalidateDashboardCache();
     return result;
+  }
+
+  private parseHolidayDate(value: string) {
+    const date = new Date(`${value.slice(0, 10)}T00:00:00.000Z`);
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException('A valid holiday date is required');
+    }
+    return date;
+  }
+
+  async listHolidays(user: AttendanceUser) {
+    const organizationId = await this.resolveOrganizationId(user);
+    return this.prisma.holiday.findMany({
+      where: { organizationId },
+      orderBy: [{ date: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  async createHoliday(dto: CreateHolidayDto, user: AttendanceUser) {
+    const name = dto.name.trim();
+    if (!name) throw new BadRequestException('Holiday name is required');
+    const organizationId = await this.resolveOrganizationId(user);
+    try {
+      const holiday = await this.prisma.holiday.create({
+        data: {
+          organizationId,
+          date: this.parseHolidayDate(dto.date),
+          name,
+        },
+      });
+      await this.invalidateDashboardCache();
+      return holiday;
+    } catch (error) {
+      if ((error as { code?: string })?.code === 'P2002') {
+        throw new ConflictException('A holiday already exists on this date');
+      }
+      throw error;
+    }
+  }
+
+  async updateHoliday(id: number, dto: UpdateHolidayDto, user: AttendanceUser) {
+    const name = dto.name?.trim();
+    if (dto.name !== undefined && !name) {
+      throw new BadRequestException('Holiday name is required');
+    }
+    const organizationId = await this.resolveOrganizationId(user);
+    const existing = await this.prisma.holiday.findFirst({
+      where: { id, organizationId },
+    });
+    if (!existing) throw new NotFoundException('Holiday not found');
+
+    try {
+      const holiday = await this.prisma.holiday.update({
+        where: { id },
+        data: {
+          ...(dto.date ? { date: this.parseHolidayDate(dto.date) } : {}),
+          ...(name !== undefined ? { name } : {}),
+        },
+      });
+      await this.invalidateDashboardCache();
+      return holiday;
+    } catch (error) {
+      if ((error as { code?: string })?.code === 'P2002') {
+        throw new ConflictException('A holiday already exists on this date');
+      }
+      throw error;
+    }
+  }
+
+  async deleteHoliday(id: number, user: AttendanceUser) {
+    const organizationId = await this.resolveOrganizationId(user);
+    const existing = await this.prisma.holiday.findFirst({
+      where: { id, organizationId },
+      select: { id: true },
+    });
+    if (!existing) throw new NotFoundException('Holiday not found');
+    const holiday = await this.prisma.holiday.delete({ where: { id } });
+    await this.invalidateDashboardCache();
+    return holiday;
   }
 
   async listShifts(user: AttendanceUser) {
@@ -1025,6 +1114,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         present: 0,
         absent: 0,
         leave: 0,
+        holiday: 0,
         halfDay: 0,
         presentDays: 0,
         absentDays: 0,
@@ -1055,6 +1145,15 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       }),
     ]);
 
+    const holidayOrganizationIds = [...new Set(eligibleEmployees.map((employee) => employee.organizationId))];
+    const holidays = holidayOrganizationIds.length
+      ? await this.prisma.holiday.findMany({
+          where: { organizationId: { in: holidayOrganizationIds }, date: this.startOfDay(day) },
+          select: { organizationId: true, date: true, name: true },
+        })
+      : [];
+    const holidayByOrganization = new Map(holidays.map((holiday) => [holiday.organizationId, holiday.name]));
+
     const attendanceMap = new Map(
       attendanceRows.map((row) => [row.employeeId, row]),
     );
@@ -1066,6 +1165,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         this.startOfDay(day),
         attendanceMap.get(employee.id) ?? null,
         leaveSet.has(employee.id),
+        holidayByOrganization.get(employee.organizationId),
       ),
     );
 
@@ -1234,6 +1334,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       }),
     ]);
 
+    const holidays = await this.prisma.holiday.findMany({
+      where: { organizationId: employee.organizationId, date: { gte: monthStart, lte: monthEnd } },
+      select: { date: true, name: true },
+    });
+    const holidayByDate = new Map(holidays.map((holiday) => [this.startOfDay(holiday.date).getTime(), holiday.name]));
+
     const attendanceMap = new Map(
       attendanceRows.map((row) => [
         this.startOfDay(new Date(row.date)).getTime(),
@@ -1250,6 +1356,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       date: string;
       day: number;
       status: AttendanceStatus;
+      holidayName: string | null;
       checkIn: string | null;
       checkOut: string | null;
       workingHours: number | null;
@@ -1272,8 +1379,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           row.endDate >= this.startOfDay(day),
       );
       const shift = attendance?.shift ?? employee.shift ?? null;
+      const holidayName = holidayByDate.get(this.startOfDay(day).getTime());
       const status = onLeave
         ? AttendanceStatus.LEAVE
+        : holidayName && !attendance?.checkIn
+          ? AttendanceStatus.HOLIDAY
         : (attendance?.status ??
           this.calculateStatus({
             day,
@@ -1307,6 +1417,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         date: this.startOfDay(day).toISOString(),
         day: dayNumber,
         status,
+        holidayName: status === AttendanceStatus.HOLIDAY ? holidayName ?? null : null,
         checkIn: attendance?.checkIn?.toISOString() ?? null,
         checkOut: attendance?.checkOut?.toISOString() ?? null,
         workingHours: attendance?.workingHours ?? null,
@@ -1382,23 +1493,42 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     const attendanceRows = await this.prisma.attendance.findMany({
       where: whereWithEmployee,
-      include: { shift: true, employee: { select: { hireDate: true } } },
+      include: { shift: true, employee: { select: { hireDate: true, organizationId: true } } },
     });
+
+    const organizationIds = [...new Set(attendanceRows.map((row) => row.employee.organizationId))];
+    const holidays = organizationIds.length
+      ? await this.prisma.holiday.findMany({
+          where: { organizationId: { in: organizationIds }, date: { gte: monthStart, lte: monthEnd } },
+          select: { organizationId: true, date: true },
+        })
+      : [];
+    const holidayKeys = new Set(holidays.map((holiday) => `${holiday.organizationId}:${this.startOfDay(holiday.date).getTime()}`));
+    const statusForRow = (row: (typeof attendanceRows)[number]) => (
+      row.status !== AttendanceStatus.LEAVE &&
+      !row.checkIn &&
+      holidayKeys.has(`${row.employee.organizationId}:${this.startOfDay(row.date).getTime()}`)
+        ? AttendanceStatus.HOLIDAY
+        : row.status
+    );
 
     const eligibleAttendanceRows = attendanceRows.filter((row) =>
       this.isAttendanceEligible(row.date, row.employee.hireDate),
     );
     const presentDays = eligibleAttendanceRows.filter(
-      (row) => row.status === 'PRESENT',
+      (row) => statusForRow(row) === AttendanceStatus.PRESENT,
     ).length;
     const absentDays = eligibleAttendanceRows.filter(
-      (row) => row.status === 'ABSENT',
+      (row) => statusForRow(row) === AttendanceStatus.ABSENT,
     ).length;
     const leaveDays = eligibleAttendanceRows.filter(
-      (row) => row.status === 'LEAVE',
+      (row) => statusForRow(row) === AttendanceStatus.LEAVE,
+    ).length;
+    const holidayDays = eligibleAttendanceRows.filter(
+      (row) => statusForRow(row) === AttendanceStatus.HOLIDAY,
     ).length;
     const halfDays = eligibleAttendanceRows.filter(
-      (row) => row.status === 'HALF_DAY',
+      (row) => statusForRow(row) === AttendanceStatus.HALF_DAY,
     ).length;
     const lateCount = eligibleAttendanceRows.filter(
       (row) => (row.lateMinutes ?? 0) > 0,
@@ -1427,8 +1557,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       eligibleAttendanceRows
         .reduce((sum: number, row) => {
           const required = row.requiredHours ?? row.shift?.requiredHours ?? 8;
-          if (row.status === 'PRESENT' || row.status === 'HALF_DAY') {
-            return sum + (row.status === 'HALF_DAY' ? required / 2 : required);
+          const status = statusForRow(row);
+          if (status === 'PRESENT' || status === 'HALF_DAY') {
+            return sum + (status === 'HALF_DAY' ? required / 2 : required);
           }
           return sum;
         }, 0)
@@ -1436,13 +1567,14 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     );
 
     const totalWorkingDays = eligibleAttendanceRows.filter(
-      (row) => row.status !== AttendanceStatus.WEEKLY_OFF,
+      (row) => statusForRow(row) !== AttendanceStatus.WEEKLY_OFF && statusForRow(row) !== AttendanceStatus.HOLIDAY,
     ).length;
 
     return {
       presentDays,
       absentDays,
       leaveDays,
+      holidayDays,
       halfDays,
       lateCount,
       overtimeHours,
@@ -1544,6 +1676,19 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         endDate: { gte: monthStart },
       },
     });
+    const holidayOrganizationIds = [...new Set(employees.map((employee) => employee.organization.id))];
+    const reportHolidays = holidayOrganizationIds.length
+      ? await this.prisma.holiday.findMany({
+          where: {
+            organizationId: { in: holidayOrganizationIds },
+            date: { gte: monthStart, lte: monthEnd },
+          },
+          select: { organizationId: true, date: true },
+        })
+      : [];
+    const corporateHolidayKeys = new Set(
+      reportHolidays.map((holiday) => `${holiday.organizationId}:${this.startOfDay(holiday.date).toISOString().slice(0, 10)}`),
+    );
     const leaveDateKeys = new Set(
       leaveRows.flatMap((leave) => {
         const dates: string[] = [];
@@ -1584,6 +1729,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         lateCount: number;
         halfDayCount: number;
         leaveCount: number;
+        holidayCount: number;
         weeklyOffCount: number;
         workingDays: number;
         attendancePercent: number;
@@ -1611,6 +1757,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         lateCount: 0,
         halfDayCount: 0,
         leaveCount: 0,
+        holidayCount: reportHolidays.filter((holiday) => (
+          holiday.organizationId === employee.organization.id &&
+          this.isAttendanceEligible(holiday.date, employee.hireDate)
+        )).length,
         weeklyOffCount: 0,
         workingDays: 0,
         attendancePercent: 0,
@@ -1633,9 +1783,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       }
 
       const rowDateKey = `${row.employeeId}:${this.startOfDay(row.date).toISOString().slice(0, 10)}`;
+      const corporateHolidayKey = `${employee.organization.id}:${this.startOfDay(row.date).toISOString().slice(0, 10)}`;
       const effectiveStatus = leaveDateKeys.has(rowDateKey)
         ? AttendanceStatus.LEAVE
-        : row.status;
+        : corporateHolidayKeys.has(corporateHolidayKey) && !row.checkIn
+          ? AttendanceStatus.HOLIDAY
+          : row.status;
       const matchesStatus =
         query.status === 'LATE'
           ? (row.lateMinutes ?? 0) > 0
@@ -1649,6 +1802,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         entry.weeklyOffCount += 1;
         continue;
       }
+
+      if (effectiveStatus === AttendanceStatus.HOLIDAY) continue;
 
       entry.workingDays += 1;
 
@@ -1856,6 +2011,15 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       include: { shift: true },
     });
 
+    const organizationIds = [...new Set(employees.map((employee) => employee.organizationId))];
+    const holidayRows = organizationIds.length
+      ? await this.prisma.holiday.findMany({
+          where: { organizationId: { in: organizationIds }, date: target },
+          select: { organizationId: true },
+        })
+      : [];
+    const holidayOrganizationIds = new Set(holidayRows.map((holiday) => holiday.organizationId));
+
     for (const employee of employees) {
       if (!this.isAttendanceEligible(target, employee.hireDate)) {
         continue;
@@ -1885,6 +2049,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             date: target,
             status: leave
               ? AttendanceStatus.LEAVE
+              : holidayOrganizationIds.has(employee.organizationId)
+                ? AttendanceStatus.HOLIDAY
               : this.isWeeklyHoliday(target, employee.shift)
                 ? AttendanceStatus.WEEKLY_OFF
                 : AttendanceStatus.ABSENT,
@@ -1896,6 +2062,16 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       }
 
       if (existing.status === AttendanceStatus.LEAVE || leave) {
+        continue;
+      }
+
+      if (holidayOrganizationIds.has(employee.organizationId) && !existing.checkIn) {
+        if (existing.status !== AttendanceStatus.HOLIDAY) {
+          await this.prisma.attendance.update({
+            where: { id: existing.id },
+            data: { status: AttendanceStatus.HOLIDAY },
+          });
+        }
         continue;
       }
 

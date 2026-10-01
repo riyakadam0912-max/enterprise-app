@@ -1,11 +1,13 @@
 import { apiClient } from './apiClient';
 
-export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'HALF_DAY' | 'LEAVE' | 'WEEKLY_OFF' | 'UPCOMING' | 'NOT_STARTED' | 'NOT_SCHEDULED';
+export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'HALF_DAY' | 'LEAVE' | 'HOLIDAY' | 'WEEKLY_OFF' | 'UPCOMING' | 'NOT_STARTED' | 'NOT_SCHEDULED';
 
 export interface AttendanceSummary {
   present: number;
   absent: number;
   leave: number;
+  holiday?: number;
+  holidayDays?: number;
   halfDay: number;
   presentDays?: number;
   absentDays?: number;
@@ -51,6 +53,7 @@ export interface AttendanceRecord {
   lateMinutes: number;
   overtimeHours: number;
   status: AttendanceStatus;
+  holidayName?: string | null;
   shiftDetails: ShiftDetails | null;
 }
 
@@ -73,6 +76,7 @@ export interface EmployeeAttendanceDay {
   date: string;
   day: number;
   status: AttendanceStatus;
+  holidayName?: string | null;
   checkIn: string | null;
   checkOut: string | null;
   workingHours: number | null;
@@ -138,6 +142,18 @@ export interface ShiftRecord extends ShiftPayload {
   isActive?: boolean;
 }
 
+export interface HolidayRecord {
+  id: number;
+  date: string;
+  name: string;
+  organizationId: number;
+}
+
+export interface HolidayPayload {
+  date: string;
+  name: string;
+}
+
 export interface AttendanceFilters {
   page?: number;
   limit?: number;
@@ -159,6 +175,7 @@ export interface MonthlyAttendanceReportRow {
   lateCount: number;
   halfDayCount: number;
   leaveCount: number;
+  holidayCount: number;
   weeklyOffCount: number;
   workingDays: number;
   attendancePercent: number;
@@ -284,6 +301,28 @@ export function deleteShift(id: number): Promise<unknown> {
   return apiClient(`/attendance/shifts/${id}`, {
     method: 'DELETE',
   });
+}
+
+export function getHolidays(): Promise<HolidayRecord[]> {
+  return apiClient<HolidayRecord[]>('/attendance/holidays');
+}
+
+export function createHoliday(data: HolidayPayload): Promise<HolidayRecord> {
+  return apiClient<HolidayRecord>('/attendance/holidays', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateHoliday(id: number, data: Partial<HolidayPayload>): Promise<HolidayRecord> {
+  return apiClient<HolidayRecord>(`/attendance/holidays/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteHoliday(id: number): Promise<unknown> {
+  return apiClient(`/attendance/holidays/${id}`, { method: 'DELETE' });
 }
 
 export function checkIn(data: AttendanceActionPayload): Promise<AttendanceRecord> {

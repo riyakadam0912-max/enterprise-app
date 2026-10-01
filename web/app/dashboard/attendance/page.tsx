@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Pencil, Plus, Trash2, UserRound, X } from 'lucide-react';
-import { assignShift, AttendanceRecord, AttendanceStatus, createShift, deleteShift, getMonthlyAttendanceReport, getShifts, ShiftRecord, updateShift } from '@/api/attendanceApi';
+import { assignShift, AttendanceRecord, AttendanceStatus, createHoliday, createShift, deleteHoliday, deleteShift, getHolidays, getMonthlyAttendanceReport, getShifts, HolidayRecord, ShiftRecord, updateHoliday, updateShift } from '@/api/attendanceApi';
 import { useAttendance, useCheckIn, useCheckOut, useTodayAttendance, useUpdateAttendance } from '@/hooks/useAttendance';
 import { useEmployees } from '@/hooks/useEmployees';
 import TableActions from '@/components/common/TableActions';
@@ -16,6 +16,7 @@ const STATUS_STYLES: Record<AttendanceStatus, string> = {
   PRESENT: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   ABSENT: 'bg-red-50 text-red-700 border-red-200',
   LEAVE: 'bg-sky-50 text-sky-700 border-sky-200',
+  HOLIDAY: 'bg-teal-50 text-teal-700 border-teal-200',
   HALF_DAY: 'bg-amber-50 text-amber-700 border-amber-200',
   WEEKLY_OFF: 'bg-violet-50 text-violet-700 border-violet-200',
   UPCOMING: 'bg-slate-50 text-slate-600 border-slate-200',
@@ -37,6 +38,7 @@ interface MonthlyAttendanceReportRow {
   lateCount: number;
   halfDayCount: number;
   leaveCount: number;
+  holidayCount: number;
   weeklyOffCount: number;
   workingDays: number;
   attendancePercent: number;
@@ -113,7 +115,7 @@ function StatCard({ label, value, tone, icon }: { label: string; value: number; 
 function StatusBadge({ status }: { status: AttendanceStatus }) {
   return (
     <span className={`inline-flex items-center px-2.5 py-1 rounded-full border text-xs font-semibold ${STATUS_STYLES[status]}`}>
-      {status === 'HALF_DAY' ? 'Half Day' : status === 'WEEKLY_OFF' ? 'Weekly Holiday' : status.replace('_', ' ')}
+      {status === 'HALF_DAY' ? 'Half Day' : status === 'WEEKLY_OFF' ? 'Weekly Holiday' : status === 'HOLIDAY' ? 'Corporate Holiday' : status.replace('_', ' ')}
     </span>
   );
 }
@@ -272,6 +274,7 @@ function EditAttendanceModal(props: {
               <option value="ABSENT">Absent</option>
               <option value="HALF_DAY">Half Day</option>
               <option value="LEAVE">Leave</option>
+              <option value="HOLIDAY">Corporate Holiday</option>
               <option value="WEEKLY_OFF">Weekly Holiday</option>
             </select>
           </div>
@@ -318,6 +321,12 @@ export default function AttendancePage() {
   const [status, setStatus] = useState(searchParams.get('status') || '');
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
   const [shifts, setShifts] = useState<ShiftRecord[]>([]);
+  const [holidays, setHolidays] = useState<HolidayRecord[]>([]);
+  const [holidayDate, setHolidayDate] = useState('');
+  const [holidayName, setHolidayName] = useState('');
+  const [editingHolidayId, setEditingHolidayId] = useState<number | null>(null);
+  const [holidayError, setHolidayError] = useState<string | null>(null);
+  const [holidaySuccess, setHolidaySuccess] = useState<string | null>(null);
   const [editingShift, setEditingShift] = useState<ShiftRecord | null>(null);
   const [showCreateShift, setShowCreateShift] = useState(false);
   const [newShift, setNewShift] = useState({
@@ -362,7 +371,17 @@ export default function AttendancePage() {
       }
     }
 
+    async function loadHolidays() {
+      try {
+        setHolidays(await getHolidays());
+      } catch (error) {
+        reportError(error, 'Unable to load corporate holidays');
+        setHolidays([]);
+      }
+    }
+
     loadShifts();
+    loadHolidays();
   }, []);
 
   const employeeOptions = useMemo(
@@ -423,6 +442,7 @@ export default function AttendancePage() {
   const [reportEmployeeId, setReportEmployeeId] = useState('');
   const [reportDepartment, setReportDepartment] = useState('');
   const [reportStatus, setReportStatus] = useState<MonthlyReportStatus>('');
+  const [reportRefreshKey, setReportRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!canViewAdminAttendance) {
@@ -461,13 +481,13 @@ export default function AttendancePage() {
     return () => {
       cancelled = true;
     };
-  }, [canViewAdminAttendance, reportDepartment, reportEmployeeId, reportMonth, reportStatus, reportYear]);
+  }, [canViewAdminAttendance, reportDepartment, reportEmployeeId, reportMonth, reportRefreshKey, reportStatus, reportYear]);
 
   function exportMonthlyReport() {
     const rows = monthlyReport?.rows ?? [];
     if (rows.length === 0) return;
 
-    const headers = ['Employee Name', 'Organization', 'Employee ID', 'Department', 'Role', 'Total Present', 'Total Absent', 'Late Count', 'Half Days', 'Leaves', 'Working Days', 'Attendance %', 'Overtime (hrs)', 'Worked (hrs)', 'Expected (hrs)', 'Shortfall (hrs)'];
+    const headers = ['Employee Name', 'Organization', 'Employee ID', 'Department', 'Role', 'Total Present', 'Total Absent', 'Late Count', 'Half Days', 'Leaves', 'Holidays', 'Working Days', 'Attendance %', 'Overtime (hrs)', 'Worked (hrs)', 'Expected (hrs)', 'Shortfall (hrs)'];
     const body = rows.map((row) => [
       row.employeeName,
       row.organization?.name ?? '',
@@ -479,6 +499,7 @@ export default function AttendancePage() {
       row.lateCount,
       row.halfDayCount,
       row.leaveCount,
+      row.holidayCount,
       row.workingDays,
       `${row.attendancePercent}%`,
       row.overtimeHours?.toFixed(2) ?? '0.00',
@@ -581,6 +602,57 @@ export default function AttendancePage() {
     }
   }
 
+  function resetHolidayForm() {
+    setHolidayDate('');
+    setHolidayName('');
+    setEditingHolidayId(null);
+  }
+
+  async function handleSaveHoliday() {
+    if (!holidayDate || !holidayName.trim()) return;
+    try {
+      setHolidayError(null);
+      setHolidaySuccess(null);
+      if (editingHolidayId != null) {
+        await updateHoliday(editingHolidayId, { date: holidayDate, name: holidayName.trim() });
+        setHolidaySuccess('Holiday updated successfully.');
+      } else {
+        await createHoliday({ date: holidayDate, name: holidayName.trim() });
+        setHolidaySuccess('Holiday added successfully.');
+      }
+      setHolidays(await getHolidays());
+      resetHolidayForm();
+      await Promise.all([refetch(), today.refetch()]);
+      setReportRefreshKey((current) => current + 1);
+    } catch (error) {
+      setHolidayError(error instanceof Error ? error.message : 'Unable to save holiday.');
+    }
+  }
+
+  function handleEditHoliday(holiday: HolidayRecord) {
+    setEditingHolidayId(holiday.id);
+    setHolidayDate(holiday.date.slice(0, 10));
+    setHolidayName(holiday.name);
+    setHolidayError(null);
+    setHolidaySuccess(null);
+  }
+
+  async function handleDeleteHoliday(holiday: HolidayRecord) {
+    if (!window.confirm(`Delete the "${holiday.name}" holiday?`)) return;
+    try {
+      setHolidayError(null);
+      setHolidaySuccess(null);
+      await deleteHoliday(holiday.id);
+      setHolidays(await getHolidays());
+      if (editingHolidayId === holiday.id) resetHolidayForm();
+      setHolidaySuccess('Holiday deleted successfully.');
+      await Promise.all([refetch(), today.refetch()]);
+      setReportRefreshKey((current) => current + 1);
+    } catch (error) {
+      setHolidayError(error instanceof Error ? error.message : 'Unable to delete holiday.');
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -619,10 +691,11 @@ export default function AttendancePage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
         <StatCard label="Present Today" value={today.data?.summary.present ?? 0} tone="bg-emerald-100 text-emerald-700" icon="✓" />
         <StatCard label="Absent" value={today.data?.summary.absent ?? 0} tone="bg-red-100 text-red-700" icon="×" />
         <StatCard label="On Leave" value={today.data?.summary.leave ?? 0} tone="bg-sky-100 text-sky-700" icon="☼" />
+        <StatCard label="Holiday" value={today.data?.summary.holiday ?? 0} tone="bg-teal-100 text-teal-700" icon="◆" />
         <StatCard label="Half Day" value={today.data?.summary.halfDay ?? 0} tone="bg-amber-100 text-amber-700" icon="◐" />
       </div>
 
@@ -659,6 +732,7 @@ export default function AttendancePage() {
                 <option value="LATE">Late</option>
                 <option value="HALF_DAY">Half Day</option>
                 <option value="LEAVE">Leave</option>
+                <option value="HOLIDAY">Corporate Holiday</option>
                 <option value="WEEKLY_OFF">Weekly Holiday</option>
               </select>
             </div>
@@ -683,6 +757,7 @@ export default function AttendancePage() {
                     <th className="px-4 py-3">Late Count</th>
                     <th className="px-4 py-3">Half Days</th>
                     <th className="px-4 py-3">Leaves</th>
+                    <th className="px-4 py-3">Holidays</th>
                     <th className="px-4 py-3">Working Days</th>
                     <th className="px-4 py-3">Attendance %</th>
                   </tr>
@@ -705,6 +780,7 @@ export default function AttendancePage() {
                       <td className="px-4 py-3 text-slate-600">{row.lateCount}</td>
                       <td className="px-4 py-3 text-slate-600">{row.halfDayCount}</td>
                       <td className="px-4 py-3 text-slate-600">{row.leaveCount}</td>
+                      <td className="px-4 py-3 text-slate-600">{row.holidayCount}</td>
                       <td className="px-4 py-3 text-slate-600">{row.workingDays}</td>
                       <td className="px-4 py-3 text-slate-600">
                         <div className="flex min-w-28 items-center gap-2">
@@ -717,7 +793,7 @@ export default function AttendancePage() {
                     </tr>
                   )) : (
                     <tr>
-                      <td colSpan={12} className="px-4 py-10 text-center text-sm text-slate-500">No monthly report rows match the current filters.</td>
+                      <td colSpan={13} className="px-4 py-10 text-center text-sm text-slate-500">No monthly report rows match the current filters.</td>
                     </tr>
                   )}
                 </tbody>
@@ -727,6 +803,7 @@ export default function AttendancePage() {
         </div>
       )}
 
+      <div className="grid gap-4 xl:grid-cols-2">
       {canManageShifts && (
         <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -794,6 +871,74 @@ export default function AttendancePage() {
           {shiftSuccess && <p className="mt-2 text-sm text-emerald-600">{shiftSuccess}</p>}
         </div>
       )}
+      {canManageShifts && (
+        <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-semibold text-slate-900">Corporate Holidays</h3>
+              <p className="text-xs text-slate-500">{holidays.length} scheduled {holidays.length === 1 ? 'holiday' : 'holidays'}</p>
+            </div>
+            <span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700">Attendance calendar</span>
+          </div>
+
+          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(130px,0.8fr)_minmax(150px,1fr)_auto_auto]">
+            <input
+              type="date"
+              value={holidayDate}
+              onChange={(event) => setHolidayDate(event.target.value)}
+              aria-label="Holiday date"
+              className="min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <input
+              value={holidayName}
+              onChange={(event) => setHolidayName(event.target.value)}
+              onKeyDown={(event) => { if (event.key === 'Enter') void handleSaveHoliday(); }}
+              maxLength={100}
+              placeholder="Holiday name"
+              aria-label="Holiday name"
+              className="min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => void handleSaveHoliday()}
+              disabled={!holidayDate || !holidayName.trim()}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {editingHolidayId == null ? <Plus aria-hidden="true" className="h-4 w-4" /> : null}
+              {editingHolidayId == null ? 'Add holiday' : 'Save changes'}
+            </button>
+            {editingHolidayId != null && (
+              <button type="button" onClick={resetHolidayForm} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+                Cancel
+              </button>
+            )}
+          </div>
+
+          <div className="mt-3 divide-y divide-slate-100 rounded-lg border border-slate-200">
+            {holidays.length === 0 ? (
+              <p className="px-3 py-7 text-center text-sm text-slate-500">No corporate holidays added.</p>
+            ) : holidays.map((holiday) => (
+              <div key={holiday.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-900">{holiday.name}</p>
+                  <p className="text-xs text-slate-500">{new Date(`${holiday.date.slice(0, 10)}T00:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button type="button" onClick={() => handleEditHoliday(holiday)} aria-label={`Edit ${holiday.name}`} title="Edit holiday" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900">
+                    <Pencil aria-hidden="true" className="h-4 w-4" />
+                  </button>
+                  <button type="button" onClick={() => void handleDeleteHoliday(holiday)} aria-label={`Delete ${holiday.name}`} title="Delete holiday" className="rounded-lg p-2 text-rose-500 hover:bg-rose-50 hover:text-rose-700">
+                    <Trash2 aria-hidden="true" className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          {holidayError && <p role="alert" className="mt-2 text-sm text-red-600">{holidayError}</p>}
+          {holidaySuccess && <p role="status" className="mt-2 text-sm text-emerald-600">{holidaySuccess}</p>}
+        </section>
+      )}
+      </div>
 
       {showCreateShift && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-[2px]">

@@ -73,7 +73,7 @@ export class PayrollService {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59, 999);
 
-    const [attendanceRows, leaveRows] = await Promise.all([
+    const [attendanceRows, leaveRows, holidayRows] = await Promise.all([
       this.prisma.attendance.findMany({
         where: {
           deletedAt: null,
@@ -95,7 +95,16 @@ export class PayrollService {
           endDate: { gte: startDate },
         },
       }),
+      this.prisma.holiday.findMany({
+        where: { organizationId, date: { gte: startDate, lte: endDate } },
+        select: { date: true },
+      }),
     ]);
+
+    const holidayDates = new Set(holidayRows.map((holiday) => new Date(holiday.date).toISOString().slice(0, 10)));
+    const isCorporateHolidayAbsence = (row: (typeof attendanceRows)[number]) => (
+      !row.checkIn && holidayDates.has(new Date(row.date).toISOString().slice(0, 10))
+    );
 
     const presentDays = attendanceRows.filter(
       (row) => row.status === 'PRESENT',
@@ -104,7 +113,7 @@ export class PayrollService {
       (row) => row.status === 'HALF_DAY',
     ).length;
     const absentDays = attendanceRows.filter(
-      (row) => row.status === 'ABSENT',
+      (row) => row.status === 'ABSENT' && !isCorporateHolidayAbsence(row),
     ).length;
     const lateCount = attendanceRows.filter(
       (row) => (row.lateMinutes || 0) > 0,

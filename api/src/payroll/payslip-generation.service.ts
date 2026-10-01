@@ -47,6 +47,7 @@ export class PayslipGenerationService {
       payrollEntry.employeeId,
       payrollEntry.payrollCycle.month,
       payrollEntry.payrollCycle.year,
+      payrollEntry.employee.organizationId,
     );
 
     // Get tax declaration
@@ -364,6 +365,7 @@ export class PayslipGenerationService {
     employeeId: number,
     month: number,
     year: number,
+    organizationId: number,
   ): Promise<{
     presentDays: number;
     absentDays: number;
@@ -376,15 +378,25 @@ export class PayslipGenerationService {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0);
 
-    const attendanceRecords = await this.prisma.attendance.findMany({
-      where: {
-        employeeId,
-        date: {
-          gte: startDate,
-          lte: endDate,
+    const [attendanceRecords, holidayRows] = await Promise.all([
+      this.prisma.attendance.findMany({
+        where: {
+          employeeId,
+          date: {
+            gte: startDate,
+            lte: endDate,
+          },
         },
-      },
-    });
+      }),
+      this.prisma.holiday.findMany({
+        where: { organizationId, date: { gte: startDate, lte: endDate } },
+        select: { date: true },
+      }),
+    ]);
+    const holidayDates = new Set(holidayRows.map((holiday) => new Date(holiday.date).toISOString().slice(0, 10)));
+    const isCorporateHolidayAbsence = (row: (typeof attendanceRecords)[number]) => (
+      !row.checkIn && holidayDates.has(new Date(row.date).toISOString().slice(0, 10))
+    );
 
     // Get leave records
     const leaveRecords = await this.prisma.leaveRequest.findMany({
@@ -401,7 +413,7 @@ export class PayslipGenerationService {
       (a) => a.status === 'PRESENT',
     ).length;
     const absentDays = attendanceRecords.filter(
-      (a) => a.status === 'ABSENT',
+      (a) => a.status === 'ABSENT' && !isCorporateHolidayAbsence(a),
     ).length;
     const halfDays = attendanceRecords.filter(
       (a) => a.status === 'HALF_DAY',

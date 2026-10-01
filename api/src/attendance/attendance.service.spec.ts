@@ -22,6 +22,13 @@ function createPrismaMock() {
       create: jest.fn(),
       update: jest.fn(),
     },
+    holiday: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    },
     leaveRequest: {
       count: jest.fn(),
       findMany: jest.fn(),
@@ -109,6 +116,29 @@ describe('AttendanceService', () => {
     expect(result.total).toBe(1);
     expect(result.summary.present).toBe(1);
     expect(result.summary.absent).toBe(0);
+  });
+
+  it('allows a super admin to create a holiday for the active organization', async () => {
+    prisma.holiday.create.mockResolvedValue({
+      id: 3,
+      organizationId: 42,
+      date: new Date('2026-10-02T00:00:00.000Z'),
+      name: 'Founders Day',
+    });
+
+    const result = await service.createHoliday(
+      { date: '2026-10-02', name: ' Founders Day ' },
+      { ...mockUser, role: Role.SUPER_ADMIN, organizationId: 42 },
+    );
+
+    expect(prisma.holiday.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: 42,
+        date: new Date('2026-10-02T00:00:00.000Z'),
+        name: 'Founders Day',
+      },
+    });
+    expect(result.name).toBe('Founders Day');
   });
 
   it('allows an employee to check in once per day', async () => {
@@ -401,6 +431,31 @@ describe('AttendanceService', () => {
     ).toBe(AttendanceStatus.PRESENT);
   });
 
+  it('treats a corporate holiday as non-absence unless the employee worked or is on leave', () => {
+    const day = new Date('2026-03-13T00:00:00.000Z');
+    const employee = {
+      id: 7,
+      name: 'Ava',
+      department: 'Sales',
+      designation: 'Associate',
+      shift: null,
+    };
+
+    const holidayRow = (service as any).toDailyRow(employee, day, null, false, 'Founders Day');
+    const workedRow = (service as any).toDailyRow(
+      employee,
+      day,
+      { id: 1, checkIn: new Date('2026-03-13T09:00:00.000Z'), checkOut: null, workingHours: null, lateMinutes: 0, overtimeHours: 0, shortfallHours: 0, status: AttendanceStatus.PRESENT },
+      false,
+      'Founders Day',
+    );
+    const leaveRow = (service as any).toDailyRow(employee, day, null, true, 'Founders Day');
+
+    expect(holidayRow).toEqual(expect.objectContaining({ status: AttendanceStatus.HOLIDAY, holidayName: 'Founders Day' }));
+    expect(workedRow.status).toBe(AttendanceStatus.PRESENT);
+    expect(leaveRow.status).toBe(AttendanceStatus.LEAVE);
+  });
+
   it('uses planning statuses for future and before-shift days', () => {
     jest.setSystemTime(new Date('2026-03-13T08:00:00.000Z'));
     const shift = {
@@ -614,6 +669,47 @@ describe('AttendanceService', () => {
     );
   });
 
+  it('excludes corporate holidays from monthly absent and working-day totals', async () => {
+    prisma.employee.findMany.mockResolvedValueOnce([{
+        id: 7,
+        name: 'Ava',
+        hireDate: null,
+        department: 'Sales',
+        designation: 'Associate',
+        organization: { id: 1, name: 'Main' },
+        user: { role: 'EMPLOYEE' },
+      }]);
+    prisma.attendance.findMany.mockResolvedValue([{
+      id: 11,
+      employeeId: 7,
+      date: new Date('2026-03-13T00:00:00.000Z'),
+      checkIn: null,
+      status: AttendanceStatus.ABSENT,
+      lateMinutes: 0,
+      overtimeHours: 0,
+      workingHours: null,
+      shift: null,
+    }]);
+    prisma.leaveRequest.findMany.mockResolvedValue([]);
+    prisma.holiday.findMany.mockResolvedValue([{
+      organizationId: 1,
+      date: new Date('2026-03-13T00:00:00.000Z'),
+      name: 'Founders Day',
+    }]);
+
+    const result = await service.getMonthlyReport(
+      { year: 2026, month: 3 } as any,
+      mockUser as any,
+    );
+
+    expect(result.rows[0]).toEqual(expect.objectContaining({
+      absentCount: 0,
+      holidayCount: 1,
+      workingDays: 0,
+      attendancePercent: 0,
+    }));
+  });
+
   it('returns monthly employee attendance data for calendar rendering', async () => {
     const mockEmployee = {
       id: 4,
@@ -651,6 +747,34 @@ describe('AttendanceService', () => {
     expect(result.days[2].status).toBe(AttendanceStatus.LEAVE);
     expect(result.summary.present).toBeGreaterThanOrEqual(1);
     expect(result.summary.leave).toBeGreaterThanOrEqual(1);
+  });
+
+  it('shows a corporate holiday in the employee calendar without marking the day absent', async () => {
+    const mockEmployee = {
+      id: 4,
+      name: 'Dina',
+      department: 'Finance',
+      designation: 'Lead',
+      organizationId: 1,
+      shift: null,
+    };
+    prisma.employee.findUnique.mockResolvedValue(mockEmployee);
+    prisma.employee.findFirst.mockResolvedValue(mockEmployee);
+    prisma.attendance.findMany.mockResolvedValue([]);
+    prisma.leaveRequest.findMany.mockResolvedValue([]);
+    prisma.holiday.findMany.mockResolvedValue([{
+      date: new Date('2026-03-13T00:00:00.000Z'),
+      name: 'Founders Day',
+    }]);
+
+    const result = await service.getEmployeeAttendance(4, mockUser, '2026-03');
+
+    expect(result.days[12]).toEqual(expect.objectContaining({
+      status: AttendanceStatus.HOLIDAY,
+      holidayName: 'Founders Day',
+    }));
+    expect(result.summary.absent).toBe(0);
+    expect(result.summary.holiday).toBe(1);
   });
 
   it('omits pre-hire dates from the monthly calendar', async () => {

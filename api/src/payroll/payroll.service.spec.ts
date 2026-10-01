@@ -107,6 +107,7 @@ describe('PayrollService', () => {
       },
     ]);
     mockPrisma.leaveRequest.findMany.mockResolvedValue([]);
+    mockPrisma.holiday.findMany.mockResolvedValue([]);
 
     const metrics = await (service as any).getAttendanceMetricsForCycle(
       7,

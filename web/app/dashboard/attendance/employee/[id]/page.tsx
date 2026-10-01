@@ -16,6 +16,7 @@ const STATUS_CELL: Record<AttendanceStatus, string> = {
   ABSENT: 'bg-red-100 text-red-800 border-red-200',
   HALF_DAY: 'bg-amber-100 text-amber-800 border-amber-200',
   LEAVE: 'bg-sky-100 text-sky-800 border-sky-200',
+  HOLIDAY: 'bg-teal-100 text-teal-800 border-teal-200',
   WEEKLY_OFF: 'bg-violet-100 text-violet-800 border-violet-200',
   UPCOMING: 'bg-slate-100 text-slate-600 border-slate-200',
   NOT_STARTED: 'bg-slate-100 text-slate-600 border-slate-200',
@@ -24,6 +25,7 @@ const STATUS_CELL: Record<AttendanceStatus, string> = {
 
 function statusLabel(status: AttendanceStatus) {
   if (status === 'HALF_DAY') return 'Half Day';
+  if (status === 'HOLIDAY') return 'Corporate Holiday';
   if (status === 'WEEKLY_OFF') return 'Weekly Holiday';
   if (status === 'NOT_STARTED') return 'Not Started';
   if (status === 'NOT_SCHEDULED') return 'Not Scheduled';
@@ -89,10 +91,11 @@ export default function EmployeeAttendancePage() {
         <EmptyPanel title="You can only view your own attendance" description="Open your own attendance history from the main attendance page." />
       ) : (
         <>
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 xl:grid-cols-5 gap-4">
             <SummaryMini label="Days Present" value={data?.summary.present ?? 0} />
             <SummaryMini label="Days Absent" value={data?.summary.absent ?? 0} />
             <SummaryMini label="Leaves" value={data?.summary.leave ?? 0} />
+            <SummaryMini label="Holidays" value={data?.summary.holiday ?? 0} />
             <SummaryMini label="Half Days" value={data?.summary.halfDay ?? 0} />
           </div>
 
@@ -176,12 +179,13 @@ export default function EmployeeAttendancePage() {
                         {day.lateMinutes > 0 && <p className="font-semibold">Late by {day.lateMinutes} mins</p>}
                         {!day.checkIn && day.status === 'ABSENT' && <p>No attendance</p>}
                         {day.status === 'LEAVE' && <p>Approved leave</p>}
+                        {day.status === 'HOLIDAY' && <p>{day.holidayName ?? 'Corporate holiday'}</p>}
                       </div>
                     </div>
                   ))}
                 </div>
                 <div className="flex flex-wrap gap-3 pt-2">
-                  {(['PRESENT', 'ABSENT', 'HALF_DAY', 'LEAVE', 'WEEKLY_OFF', 'UPCOMING', 'NOT_STARTED', 'NOT_SCHEDULED'] as AttendanceStatus[]).map((status) => (
+                  {(['PRESENT', 'ABSENT', 'HALF_DAY', 'LEAVE', 'HOLIDAY', 'WEEKLY_OFF', 'UPCOMING', 'NOT_STARTED', 'NOT_SCHEDULED'] as AttendanceStatus[]).map((status) => (
                     <div key={status} className="flex items-center gap-2 text-xs text-slate-600">
                       <span className={`w-3 h-3 rounded-full border ${STATUS_CELL[status]}`} />
                       <span>{statusLabel(status)}</span>
