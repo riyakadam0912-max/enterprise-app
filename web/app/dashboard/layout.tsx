@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import Topbar from '@/components/Topbar';
@@ -63,6 +63,40 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { authenticated, loading, session } = useAuth();
   const [checked, setChecked] = useState(false);
   const [, startTransition] = useTransition();
+  const mainRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.shiftKey || event.deltaY === 0 || !(event.target instanceof Element)) return;
+
+      let candidate = event.target instanceof HTMLElement ? event.target : event.target.parentElement;
+      let horizontalScroller: HTMLElement | null = null;
+
+      while (candidate && candidate !== main) {
+        const overflowX = window.getComputedStyle(candidate).overflowX;
+        if ((overflowX === 'auto' || overflowX === 'scroll') && candidate.scrollWidth > candidate.clientWidth) {
+          horizontalScroller = candidate;
+          break;
+        }
+        candidate = candidate.parentElement;
+      }
+
+      if (!horizontalScroller && main.scrollWidth > main.clientWidth) {
+        horizontalScroller = main;
+      }
+
+      if (!horizontalScroller) return;
+
+      event.preventDefault();
+      horizontalScroller.scrollLeft += event.deltaY;
+    };
+
+    main.addEventListener('wheel', handleWheel, { passive: false });
+    return () => main.removeEventListener('wheel', handleWheel);
+  }, []);
 
   useEffect(() => {
     if (loading) {
@@ -109,7 +143,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <Sidebar currentPath={pathname} />
       <div className="flex flex-col flex-1 overflow-hidden">
         <Topbar />
-        <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-5">
+        <main ref={mainRef} className="flex-1 overscroll-contain overflow-y-auto p-3 sm:p-4 lg:p-5">
           {children}
         </main>
       </div>

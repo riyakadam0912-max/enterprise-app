@@ -25,14 +25,18 @@
 
 * {
   box-sizing: border-box;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 body * {
   font-family: inherit;
-}
-
-html {
-  scroll-behavior: smooth;
 }
 
 body {
@@ -54,12 +58,8 @@ textarea {
 }
 
 .scrollbar-hide {
-  -ms-overflow-style: none;  /* IE & Edge */
-  scrollbar-width: none;     /* Firefox */
-}
-
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;             /* Chrome, Safari */
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 @layer components {
