@@ -1315,7 +1315,9 @@ export default function AttendancePage() {
                   <td className="px-5 py-4 text-slate-700">{row.workingHours != null ? `${row.workingHours.toFixed(2)} hrs` : '—'}</td>
                   <td className="px-5 py-4 text-slate-700">{formatShiftRangeForDisplay(row)}</td>
                   <td className="px-5 py-4">
-                    {row.lateMinutes > 0 ? (
+                    {!row.checkIn ? (
+                      <span className="text-slate-400">Not checked in</span>
+                    ) : row.lateMinutes > 0 ? (
                       <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">Late by {row.lateMinutes} mins</span>
                     ) : (
                       <span className="text-slate-400">On time</span>
