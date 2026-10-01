@@ -20,7 +20,7 @@ export interface Customer {
 }
 
 export type CustomerInput = Omit<Customer, 'id' | 'status' | '_count' | 'webAddress'> & {
-  webAddress: string;
+  webAddress?: string | null;
 };
 
 export type CustomerUpdateInput = Partial<Omit<CustomerInput, 'webAddress'>> & {
@@ -32,7 +32,8 @@ export function getCustomers(): Promise<Customer[]> {
 }
 
 export function createCustomer(data: CustomerInput): Promise<Customer> {
-  return apiClient<Customer>('/customers', { method: 'POST', body: JSON.stringify(data) });
+  const payload = { ...data, webAddress: data.webAddress?.trim() || null };
+  return apiClient<Customer>('/customers', { method: 'POST', body: JSON.stringify(payload) });
 }
 
 export function updateCustomer(id: number, data: CustomerUpdateInput): Promise<Customer> {
