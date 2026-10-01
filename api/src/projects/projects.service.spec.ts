@@ -71,6 +71,10 @@ describe('ProjectsService', () => {
               assignedUnitId: null,
             }),
             buildDirectBUWhere: jest.fn().mockReturnValue({}),
+            buildEmployeeBUWhere: jest.fn().mockReturnValue({
+              organizationId: 1,
+              deletedAt: null,
+            }),
             assertRecordAccessible: jest.fn().mockResolvedValue(undefined),
           },
         },
@@ -279,7 +283,7 @@ describe('ProjectsService', () => {
 
     it('should throw NotFoundException if project not found', async () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
-      projectDelegate.findUnique.mockResolvedValueOnce(null);
+      projectDelegate.findFirst.mockResolvedValueOnce(null);
 
       await expect(
         service.assignManager(999, 2, mockAdminUser),
@@ -588,8 +592,9 @@ describe('ProjectsService', () => {
 
     it('should throw ForbiddenException if user is not admin or primary manager', async () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
-      projectDelegate.findUnique.mockResolvedValueOnce({
+      projectDelegate.findFirst.mockResolvedValueOnce({
         id: 1,
+        organizationId: 1,
         managerId: 999,
       });
       projectDelegate.findFirst.mockResolvedValueOnce(null);
@@ -601,8 +606,11 @@ describe('ProjectsService', () => {
 
     it('should throw ForbiddenException if trying to add primary manager as co-manager', async () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
-      projectDelegate.findUnique.mockResolvedValueOnce({ id: 1, managerId: 2 });
-      projectDelegate.findFirst.mockResolvedValueOnce({ id: 1 });
+      projectDelegate.findFirst.mockResolvedValueOnce({
+        id: 1,
+        organizationId: 1,
+        managerId: 2,
+      });
 
       await expect(service.addCoManager(1, 2, mockAdminUser)).rejects.toThrow(
         ForbiddenException,
@@ -611,21 +619,15 @@ describe('ProjectsService', () => {
 
     it('should return project without changes if co-manager already assigned', async () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
-      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
 
       const mockProject = {
         id: 1,
+        organizationId: 1,
         managerId: 2,
         coManagers: [{ id: 3 }],
       };
 
-      projectDelegate.findUnique.mockResolvedValueOnce(mockProject);
-      projectDelegate.findFirst.mockResolvedValueOnce({ id: 1 });
-      userDelegate.findUnique.mockResolvedValueOnce({
-        id: 3,
-        name: 'Co-Manager',
-        role: Role.MANAGER,
-      });
+      projectDelegate.findFirst.mockResolvedValueOnce(mockProject);
       projectDelegate.findFirst.mockResolvedValueOnce({ id: 1 });
       projectDelegate.findUnique.mockResolvedValueOnce(mockProject);
 
@@ -637,8 +639,11 @@ describe('ProjectsService', () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
       const userDelegate = getPrismaDelegate(mockPrisma, 'user');
 
-      projectDelegate.findUnique.mockResolvedValueOnce({ id: 1, managerId: 2 });
-      projectDelegate.findFirst.mockResolvedValueOnce({ id: 1 });
+      projectDelegate.findFirst.mockResolvedValueOnce({
+        id: 1,
+        organizationId: 1,
+        managerId: 2,
+      });
       userDelegate.findUnique.mockResolvedValueOnce({
         id: 3,
         name: 'Co-Manager',
@@ -652,6 +657,46 @@ describe('ProjectsService', () => {
 
       const _result = await service.addCoManager(1, 3, mockAdminUser);
       expect(projectDelegate.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows a parent admin to add a co-manager from an authorized descendant organization', async () => {
+      const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      const organizationScope = (service as any).organizationScopeService;
+      jest
+        .spyOn(organizationScope, 'getOrganizationIds')
+        .mockResolvedValue([1, 2]);
+      jest
+        .spyOn(organizationScope, 'getRelatedOrganizationIds')
+        .mockResolvedValue([1, 2]);
+      projectDelegate.findFirst.mockResolvedValueOnce({
+        id: 5,
+        organizationId: 1,
+        managerId: 2,
+        coManagers: [],
+      });
+      userDelegate.findFirst.mockResolvedValueOnce({
+        id: 22,
+        name: 'Child Manager',
+        role: Role.MANAGER,
+      });
+      projectDelegate.update.mockResolvedValueOnce({ id: 5 });
+
+      await service.addCoManager(5, 22, mockAdminUser);
+
+      expect(userDelegate.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: { in: [1, 2] },
+          }),
+        }),
+      );
+      expect(projectDelegate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 5, organizationId: 1 },
+          data: { coManagers: { connect: { id: 22 } } },
+        }),
+      );
     });
   });
 
@@ -668,7 +713,7 @@ describe('ProjectsService', () => {
 
     it('should throw NotFoundException if project not found', async () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
-      projectDelegate.findUnique.mockResolvedValueOnce(null);
+      projectDelegate.findFirst.mockResolvedValueOnce(null);
 
       await expect(
         service.removeCoManager(999, 3, mockAdminUser),
@@ -677,8 +722,9 @@ describe('ProjectsService', () => {
 
     it('should throw ForbiddenException if user is not admin or primary manager', async () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
-      projectDelegate.findUnique.mockResolvedValueOnce({
+      projectDelegate.findFirst.mockResolvedValueOnce({
         id: 1,
+        organizationId: 1,
         managerId: 999,
       });
       projectDelegate.findFirst.mockResolvedValueOnce(null);
@@ -690,8 +736,11 @@ describe('ProjectsService', () => {
 
     it('should throw ForbiddenException if trying to remove primary manager', async () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
-      projectDelegate.findUnique.mockResolvedValueOnce({ id: 1, managerId: 2 });
-      projectDelegate.findFirst.mockResolvedValueOnce({ id: 1 });
+      projectDelegate.findFirst.mockResolvedValueOnce({
+        id: 1,
+        organizationId: 1,
+        managerId: 2,
+      });
 
       await expect(
         service.removeCoManager(1, 2, mockAdminUser),
@@ -702,8 +751,11 @@ describe('ProjectsService', () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
       const userDelegate = getPrismaDelegate(mockPrisma, 'user');
 
-      projectDelegate.findUnique.mockResolvedValueOnce({ id: 1, managerId: 2 });
-      projectDelegate.findFirst.mockResolvedValueOnce({ id: 1 });
+      projectDelegate.findFirst.mockResolvedValueOnce({
+        id: 1,
+        organizationId: 1,
+        managerId: 2,
+      });
       userDelegate.findUnique.mockResolvedValueOnce({
         id: 3,
         role: Role.MANAGER,
@@ -831,7 +883,16 @@ describe('ProjectsService', () => {
       expect(employeeDelegate.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            organizationId: { in: [1, 2] },
+            OR: expect.arrayContaining([
+              expect.objectContaining({
+                organizationId: 1,
+                id: 101,
+              }),
+              expect.objectContaining({
+                id: 101,
+                organizationId: { in: [2] },
+              }),
+            ]),
           }),
         }),
       );
@@ -843,6 +904,135 @@ describe('ProjectsService', () => {
           }),
         }),
       );
+    });
+
+    it('allows an organization-scoped super admin to assign a descendant employee', async () => {
+      const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      const organizationScope = (service as any).organizationScopeService;
+      jest
+        .spyOn(organizationScope, 'getOrganizationIds')
+        .mockResolvedValue([1, 2]);
+      jest
+        .spyOn(organizationScope, 'getRelatedOrganizationIds')
+        .mockResolvedValue([1, 2]);
+      projectDelegate.findFirst.mockResolvedValueOnce({
+        id: 8,
+        organizationId: 1,
+        assignedEmployees: [],
+      });
+      employeeDelegate.findFirst.mockResolvedValueOnce({
+        id: 101,
+        organizationId: 2,
+        name: 'Child Employee',
+        user: { id: 8 },
+      });
+      projectDelegate.update.mockResolvedValueOnce({ id: 8 });
+
+      const superAdmin = createMockAuthUser(Role.SUPER_ADMIN, {
+        userId: 10,
+        organizationId: 1,
+      });
+      await service.assignEmployee(8, 101, superAdmin);
+
+      expect(employeeDelegate.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: expect.arrayContaining([
+              expect.objectContaining({
+                organizationId: 1,
+                id: 101,
+              }),
+              expect.objectContaining({
+                id: 101,
+                organizationId: { in: [2] },
+              }),
+            ]),
+          }),
+        }),
+      );
+      expect(projectDelegate.update).toHaveBeenCalled();
+    });
+
+    it('does not allow assigning an employee outside the requester organization scope', async () => {
+      const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      const organizationScope = (service as any).organizationScopeService;
+      jest
+        .spyOn(organizationScope, 'getOrganizationIds')
+        .mockResolvedValue([1, 2]);
+      jest
+        .spyOn(organizationScope, 'getRelatedOrganizationIds')
+        .mockResolvedValue([1, 2, 3]);
+      projectDelegate.findFirst.mockResolvedValueOnce({
+        id: 8,
+        organizationId: 1,
+        assignedEmployees: [],
+      });
+      employeeDelegate.findFirst.mockResolvedValueOnce(null);
+
+      const admin = createMockAuthUser(Role.ADMIN, { organizationId: 1 });
+      await expect(service.assignEmployee(8, 303, admin)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(employeeDelegate.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: expect.arrayContaining([
+              expect.objectContaining({
+                id: 303,
+                organizationId: 1,
+              }),
+              expect.objectContaining({
+                id: 303,
+                organizationId: { in: [2] },
+              }),
+            ]),
+          }),
+        }),
+      );
+      expect(projectDelegate.update).not.toHaveBeenCalled();
+    });
+
+    it('does not allow assigning a same-organization employee outside the active business unit', async () => {
+      const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      const businessUnits = (service as any).businessUnitsService;
+      jest.spyOn(businessUnits, 'resolveScope').mockResolvedValue({
+        organizationId: 1,
+        allUnits: false,
+        unitIds: [10],
+        assignedUnitId: 10,
+      });
+      jest.spyOn(businessUnits, 'buildEmployeeBUWhere').mockReturnValue({
+        organizationId: 1,
+        businessUnitId: { in: [10] },
+        deletedAt: null,
+      });
+      projectDelegate.findFirst.mockResolvedValueOnce({
+        id: 8,
+        organizationId: 1,
+        assignedEmployees: [],
+      });
+      employeeDelegate.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        service.assignEmployee(8, 110, mockAdminUser),
+      ).rejects.toThrow(NotFoundException);
+      expect(employeeDelegate.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: expect.arrayContaining([
+              expect.objectContaining({
+                id: 110,
+                organizationId: 1,
+                businessUnitId: { in: [10] },
+              }),
+            ]),
+          }),
+        }),
+      );
+      expect(projectDelegate.update).not.toHaveBeenCalled();
     });
   });
 

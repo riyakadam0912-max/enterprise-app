@@ -422,6 +422,22 @@ export class ProjectsService {
     return Boolean(project);
   }
 
+  private async getAssignableProjectOrganizationIds(
+    projectOrganizationId: number,
+    user: AuthUser,
+  ): Promise<number[]> {
+    const relatedOrganizationIds =
+      await this.organizationScopeService.getRelatedOrganizationIds(
+        projectOrganizationId,
+      );
+    const accessibleOrganizationIds =
+      await this.organizationScopeService.getOrganizationIds(user);
+    if (accessibleOrganizationIds === null) return relatedOrganizationIds;
+    return relatedOrganizationIds.filter((id) =>
+      accessibleOrganizationIds.includes(id),
+    );
+  }
+
   private async assertManager(
     managerId: number,
     organizationIds: number | number[],
@@ -803,9 +819,10 @@ export class ProjectsService {
     userId: number,
     requestingUser: AuthUser,
   ) {
-    const organizationId = this.validateOrganization(requestingUser);
-    const project = await this.db.project.findUnique({
-      where: { id: projectId, organizationId },
+    this.validateOrganization(requestingUser);
+    const projectScope = await this.getProjectAccessWhere(requestingUser);
+    const project = await this.db.project.findFirst({
+      where: { id: projectId, ...projectScope },
       include: { coManagers: { select: { id: true } } },
     });
     if (!project) {
@@ -828,7 +845,6 @@ export class ProjectsService {
       );
     }
 
-    const manager = await this.assertManager(userId, organizationId);
     const coManagersArray = Array.isArray(project.coManagers)
       ? project.coManagers
       : [];
@@ -839,19 +855,26 @@ export class ProjectsService {
       return this.findOne(projectId, requestingUser);
     }
 
+    const assignableOrganizationIds =
+      await this.getAssignableProjectOrganizationIds(
+        project.organizationId,
+        requestingUser,
+      );
+    const manager = await this.assertManager(userId, assignableOrganizationIds);
+
     const updated = await this.db.project.update({
-      where: { id: projectId, organizationId },
+      where: { id: projectId, organizationId: project.organizationId },
       data: { coManagers: { connect: { id: manager.id } } },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
         owners: { select: { id: true, name: true, email: true, role: true } },
         createdBy: { select: { id: true, name: true, email: true } },
         coManagers: {
-          where: { organizationId },
+          where: { organizationId: { in: assignableOrganizationIds } },
           select: { id: true, name: true, email: true },
         },
         assignedEmployees: {
-          where: { organizationId },
+          where: { organizationId: { in: assignableOrganizationIds } },
           select: {
             id: true,
             name: true,
@@ -860,12 +883,12 @@ export class ProjectsService {
             designation: true,
           },
         },
-        links: { where: { organizationId } },
+        links: { where: { organizationId: project.organizationId } },
       },
     });
     await this.notifyProjectChange(
       updated.id,
-      organizationId,
+      project.organizationId,
       requestingUser.userId,
       'team updated',
       `Co-manager ${manager.name} added to the project.`,
@@ -878,9 +901,10 @@ export class ProjectsService {
     userId: number,
     requestingUser: AuthUser,
   ) {
-    const organizationId = this.validateOrganization(requestingUser);
-    const project = await this.db.project.findUnique({
-      where: { id: projectId, organizationId },
+    this.validateOrganization(requestingUser);
+    const projectScope = await this.getProjectAccessWhere(requestingUser);
+    const project = await this.db.project.findFirst({
+      where: { id: projectId, ...projectScope },
       include: { coManagers: { select: { id: true } } },
     });
     if (!project) {
@@ -903,20 +927,28 @@ export class ProjectsService {
       );
     }
 
-    const coManager = await this.assertManager(userId, organizationId);
+    const assignableOrganizationIds =
+      await this.getAssignableProjectOrganizationIds(
+        project.organizationId,
+        requestingUser,
+      );
+    const coManager = await this.assertManager(
+      userId,
+      assignableOrganizationIds,
+    );
 
     const updated = await this.db.project.update({
-      where: { id: projectId, organizationId },
+      where: { id: projectId, organizationId: project.organizationId },
       data: { coManagers: { disconnect: { id: userId } } },
       include: {
         managerUser: { select: { id: true, name: true, email: true } },
         owners: { select: { id: true, name: true, email: true, role: true } },
         coManagers: {
-          where: { organizationId },
+          where: { organizationId: { in: assignableOrganizationIds } },
           select: { id: true, name: true, email: true },
         },
         assignedEmployees: {
-          where: { organizationId },
+          where: { organizationId: { in: assignableOrganizationIds } },
           select: {
             id: true,
             name: true,
@@ -925,12 +957,12 @@ export class ProjectsService {
             designation: true,
           },
         },
-        links: { where: { organizationId } },
+        links: { where: { organizationId: project.organizationId } },
       },
     });
     await this.notifyProjectChange(
       updated.id,
-      organizationId,
+      project.organizationId,
       requestingUser.userId,
       'team updated',
       `Co-manager ${coManager.name} removed from the project.`,
@@ -944,7 +976,7 @@ export class ProjectsService {
     requestingUser: AuthUser,
     driveLink?: string,
   ) {
-    const organizationId = this.validateOrganization(requestingUser);
+    this.validateOrganization(requestingUser);
     const allowed = await this.canManageProject(projectId, requestingUser);
     if (!allowed) {
       throw new ForbiddenException(
@@ -961,31 +993,41 @@ export class ProjectsService {
       throw new NotFoundException(`Project #${projectId} not found`);
     }
 
-    const relatedOrganizationIds =
-      await this.organizationScopeService.getRelatedOrganizationIds(
-        project.organizationId,
-      );
-    const actorOrganizationId =
-      requestingUser.homeOrganizationId ?? organizationId;
-    const actorDescendantIds =
-      await this.organizationScopeService.getOrganizationIds(requestingUser);
-    const canAssignAcrossDescendants =
-      (requestingUser.role === Role.ADMIN || requestingUser.role === Role.HR) &&
-      (actorDescendantIds?.includes(project.organizationId) ?? false);
     const assignableOrganizationIds =
-      actorDescendantIds === null
-        ? relatedOrganizationIds
-        : canAssignAcrossDescendants
-          ? relatedOrganizationIds.filter(
-              (id) => actorDescendantIds?.includes(id) ?? false,
-            )
-          : [actorOrganizationId];
+      await this.getAssignableProjectOrganizationIds(
+        project.organizationId,
+        requestingUser,
+      );
+    if (assignableOrganizationIds.length === 0) {
+      throw new NotFoundException('Employee not found');
+    }
+    const employeeScope = await this.businessUnitsService.resolveScope(
+      requestingUser as any,
+    );
+    const sameOrganizationEmployeeWhere = {
+      ...this.businessUnitsService.buildEmployeeBUWhere(employeeScope),
+      id: employeeId,
+      organizationId: employeeScope.organizationId,
+    };
+    const otherAssignableOrganizationIds = assignableOrganizationIds.filter(
+      (id) => id !== employeeScope.organizationId,
+    );
+    const employeeWhere: Prisma.EmployeeWhereInput = {
+      OR: [
+        sameOrganizationEmployeeWhere,
+        ...(otherAssignableOrganizationIds.length > 0
+          ? [
+              {
+                id: employeeId,
+                organizationId: { in: otherAssignableOrganizationIds },
+                deletedAt: null,
+              },
+            ]
+          : []),
+      ],
+    };
     const employee = await this.db.employee.findFirst({
-      where: {
-        id: employeeId,
-        organizationId: { in: assignableOrganizationIds },
-        deletedAt: null,
-      },
+      where: employeeWhere,
       include: { user: { select: { id: true } } },
     });
     if (!employee) {
@@ -1010,11 +1052,11 @@ export class ProjectsService {
         managerUser: { select: { id: true, name: true, email: true } },
         owners: { select: { id: true, name: true, email: true, role: true } },
         coManagers: {
-          where: { organizationId: { in: relatedOrganizationIds } },
+          where: { organizationId: { in: assignableOrganizationIds } },
           select: { id: true, name: true, email: true },
         },
         assignedEmployees: {
-          where: { organizationId: { in: relatedOrganizationIds } },
+          where: { organizationId: { in: assignableOrganizationIds } },
           select: {
             id: true,
             name: true,
