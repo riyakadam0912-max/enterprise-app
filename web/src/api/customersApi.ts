@@ -19,7 +19,13 @@ export interface Customer {
   _count?: { projects: number; clientProfiles: number };
 }
 
-export type CustomerInput = Omit<Customer, 'id' | 'status' | '_count'>;
+export type CustomerInput = Omit<Customer, 'id' | 'status' | '_count' | 'webAddress'> & {
+  webAddress: string;
+};
+
+export type CustomerUpdateInput = Partial<Omit<CustomerInput, 'webAddress'>> & {
+  webAddress?: string | null;
+};
 
 export function getCustomers(): Promise<Customer[]> {
   return apiClient<Customer[]>('/customers');
@@ -29,7 +35,7 @@ export function createCustomer(data: CustomerInput): Promise<Customer> {
   return apiClient<Customer>('/customers', { method: 'POST', body: JSON.stringify(data) });
 }
 
-export function updateCustomer(id: number, data: Partial<CustomerInput>): Promise<Customer> {
+export function updateCustomer(id: number, data: CustomerUpdateInput): Promise<Customer> {
   return apiClient<Customer>(`/customers/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 }
 

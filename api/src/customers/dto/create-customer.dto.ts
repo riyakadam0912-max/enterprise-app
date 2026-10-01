@@ -36,10 +36,9 @@ export class CreateCustomerDto {
   @ApiProperty({ example: '400001' })
   zipCode!: string;
 
-  @IsOptional()
   @IsUrl({ require_protocol: true })
-  @ApiPropertyOptional({ example: 'https://acme.example.com' })
-  webAddress?: string;
+  @ApiProperty({ example: 'https://acme.example.com' })
+  webAddress!: string;
 
   @IsOptional()
   @IsEmail()

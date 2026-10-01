@@ -57,6 +57,7 @@ describe('CustomersService', () => {
         state: ' MH ',
         country: ' India ',
         zipCode: ' 400001 ',
+        webAddress: ' https://acme.test ',
         email: ' SALES@ACME.TEST ',
       },
       admin,
@@ -65,6 +66,7 @@ describe('CustomersService', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           customerName: 'Acme',
+          webAddress: 'https://acme.test',
           email: 'sales@acme.test',
           organizationId: 10,
         }),
