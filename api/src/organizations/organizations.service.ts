@@ -123,7 +123,8 @@ export class OrganizationsService {
         'Platform administrators use the platform organization selector',
       );
     }
-    const isOrganizationAdmin = this.isOrganizationAdmin(user);
+    const isOrganizationAdmin =
+      user.role === Role.ADMIN || user.roles?.includes(Role.ADMIN) === true;
     const userId = user.userId ?? user.id;
     const assignedOrganizationIds = isOrganizationAdmin
       ? null
@@ -162,44 +163,15 @@ export class OrganizationsService {
       orderBy: { name: 'asc' },
     });
 
+    if (isOrganizationAdmin) return organizations;
+
     if (assignedOrganizationIds != null) {
       const accessibleIds = new Set(assignedOrganizationIds);
       return organizations.filter((organization) =>
         accessibleIds.has(organization.id),
       );
     }
-
-    const rootOrganizationId =
-      user.homeOrganizationId ?? user.organizationId;
-    if (rootOrganizationId == null) return [];
-    if (
-      !organizations.some(
-        (organization) => organization.id === rootOrganizationId,
-      )
-    ) {
-      return [];
-    }
-
-    const childrenByParent = new Map<number, number[]>();
-    for (const organization of organizations) {
-      if (organization.parentId == null) continue;
-      const children = childrenByParent.get(organization.parentId) ?? [];
-      children.push(organization.id);
-      childrenByParent.set(organization.parentId, children);
-    }
-
-    const accessibleIds = new Set<number>();
-    const pending = [rootOrganizationId];
-    while (pending.length > 0) {
-      const organizationId = pending.pop()!;
-      if (accessibleIds.has(organizationId)) continue;
-      accessibleIds.add(organizationId);
-      pending.push(...(childrenByParent.get(organizationId) ?? []));
-    }
-
-    return organizations.filter((organization) =>
-      accessibleIds.has(organization.id),
-    );
+    return [];
   }
 
   async getPlatformStats(user: AuthUser) {

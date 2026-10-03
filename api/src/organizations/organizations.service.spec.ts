@@ -1,7 +1,7 @@
 import { OrganizationsService } from './organizations.service';
 
 describe('OrganizationsService', () => {
-  it('limits selectable organizations to the admin home organization subtree', async () => {
+  it('allows organization admins to select any active organization', async () => {
     const organizations = [
       { id: 1, name: 'Parent', parentId: null },
       { id: 2, name: 'Home', parentId: 1 },
@@ -21,12 +21,28 @@ describe('OrganizationsService', () => {
       organizationId: 2,
     } as any);
 
-    expect(result.map((organization) => organization.id)).toEqual([2, 4]);
+    expect(result.map((organization) => organization.id)).toEqual([
+      1, 2, 3, 4, 5,
+    ]);
     expect(prisma.organization.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { status: 'ACTIVE', deletedAt: null },
       }),
     );
+  });
+
+  it('allows an organization admin without a home organization to list active organizations', async () => {
+    const organizations = [{ id: 1, name: 'Active Org', parentId: null }];
+    const prisma = {
+      organization: {
+        findMany: jest.fn().mockResolvedValue(organizations),
+      },
+    } as any;
+    const service = new OrganizationsService(prisma);
+
+    await expect(
+      service.getAccessibleOrganizations({ role: 'ADMIN' } as any),
+    ).resolves.toEqual(organizations);
   });
 
   it('limits a business unit admin to organizations with active assignments', async () => {

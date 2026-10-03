@@ -36,7 +36,7 @@ describe('TenantContextMiddleware organization selection', () => {
     ).resolves.toBe(2);
   });
 
-  it('rejects sibling and ancestor organization selection for a child admin', async () => {
+  it('allows organization admins to select parent, sibling, and child organizations', async () => {
     const middleware = createMiddleware();
 
     await expect(
@@ -47,7 +47,7 @@ describe('TenantContextMiddleware organization selection', () => {
         },
         3,
       ),
-    ).resolves.toBeNull();
+    ).resolves.toBe(3);
     await expect(
       (middleware as any).resolveOrganizationAdminOrganization(
         {
@@ -55,6 +55,37 @@ describe('TenantContextMiddleware organization selection', () => {
           organizationId: 2,
         },
         1,
+      ),
+    ).resolves.toBe(1);
+    await expect(
+      (middleware as any).resolveOrganizationAdminOrganization(
+        {
+          role: Role.ADMIN,
+          organizationId: 2,
+        },
+        4,
+      ),
+    ).resolves.toBe(4);
+  });
+
+  it('allows an organization admin without a home organization to select any active organization', async () => {
+    const middleware = createMiddleware();
+
+    await expect(
+      (middleware as any).resolveOrganizationAdminOrganization(
+        { role: Role.ADMIN },
+        3,
+      ),
+    ).resolves.toBe(3);
+  });
+
+  it('keeps HR organization selection limited to its home subtree', async () => {
+    const middleware = createMiddleware();
+
+    await expect(
+      (middleware as any).resolveOrganizationAdminOrganization(
+        { role: Role.HR, organizationId: 2 },
+        3,
       ),
     ).resolves.toBeNull();
   });
@@ -87,7 +118,7 @@ describe('TenantContextMiddleware organization selection', () => {
     );
   });
 
-  it('returns 403 instead of falling back when an admin selects a sibling org', async () => {
+  it('resolves a sibling organization in middleware for an organization admin', async () => {
     const prisma = {
       organization: {
         findMany: jest.fn().mockResolvedValue(organizations),
@@ -120,12 +151,8 @@ describe('TenantContextMiddleware organization selection', () => {
 
     await middleware.use(request as any, response as any, next);
 
-    expect(response.status).toHaveBeenCalledWith(403);
-    expect(json).toHaveBeenCalledWith(
-      expect.objectContaining({
-        message: expect.stringContaining('outside your authorized'),
-      }),
-    );
-    expect(next).not.toHaveBeenCalled();
+    expect(response.status).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalled();
+    expect(request).toHaveProperty('organizationId', 3);
   });
 });
