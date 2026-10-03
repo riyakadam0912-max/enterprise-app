@@ -176,6 +176,18 @@ export default function EmployeeAttendancePage() {
                           <p>{new Date(day.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })} - {day.checkOut ? new Date(day.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : 'In progress'}</p>
                         )}
                         {day.workingHours != null && <p>{day.workingHours.toFixed(2)} hrs</p>}
+                        {day.breaks?.map((interval) => {
+                          const start = new Date(interval.startedAt);
+                          const end = interval.endedAt ? new Date(interval.endedAt) : null;
+                          const durationHours = end ? Math.max(0, end.getTime() - start.getTime()) / 3600000 : null;
+                          return (
+                            <p key={interval.startedAt} className="text-[11px]">
+                              Break {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {' - '}{end?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) ?? 'In progress'}
+                              {durationHours !== null && <> · {durationHours.toFixed(2)} hrs</>}
+                            </p>
+                          );
+                        })}
                         {day.lateMinutes > 0 && <p className="font-semibold">Late by {day.lateMinutes} mins</p>}
                         {!day.checkIn && day.status === 'ABSENT' && <p>No attendance</p>}
                         {day.status === 'LEAVE' && <p>Approved leave</p>}

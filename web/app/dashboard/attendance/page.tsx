@@ -159,15 +159,26 @@ function EmptyState({ title, description }: { title: string; description: string
 function WorkHourProgress({ label, balance }: { label: string; balance: WorkHourBalances['week'] | undefined }) {
   if (!balance) return null;
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3">
-      <div className="flex items-center justify-between gap-3">
+    <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white/90 px-4 py-3">
+      <div
+        className="relative grid h-[4.5rem] w-[4.5rem] shrink-0 place-items-center rounded-full"
+        style={{ background: `conic-gradient(#10b981 ${balance.progressPercent}%, #e2e8f0 ${balance.progressPercent}% 100%)` }}
+        role="progressbar"
+        aria-label={`${label} hours completed`}
+        aria-valuenow={balance.progressPercent}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
+        <div className="grid h-[3.25rem] w-[3.25rem] place-items-center rounded-full bg-white text-sm font-bold text-slate-900">
+          {balance.completedHours.toFixed(1)}
+        </div>
+      </div>
+      <div className="min-w-0">
         <p className="text-sm font-semibold text-slate-800">{label}</p>
-        <p className="text-xs font-medium text-slate-600">{balance.completedHours.toFixed(2)} / {balance.requiredHours.toFixed(2)} hrs</p>
+        <p className="mt-1 text-xs font-medium text-slate-600">of {balance.requiredHours.toFixed(2)} hrs scheduled</p>
+        <p className="mt-1 text-xs text-slate-500">{balance.remainingHours > 0 ? `${balance.remainingHours.toFixed(2)} hrs remaining` : 'Hours target complete'}</p>
+        <p className="mt-1 text-xs text-slate-500">Breaks: {balance.breakHours.toFixed(2)} hrs</p>
       </div>
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200" role="progressbar" aria-label={`${label} hours completed`} aria-valuenow={balance.progressPercent} aria-valuemin={0} aria-valuemax={100}>
-        <div className="h-full rounded-full bg-emerald-500 transition-[width]" style={{ width: `${balance.progressPercent}%` }} />
-      </div>
-      <p className="mt-1.5 text-xs text-slate-500">{balance.remainingHours > 0 ? `${balance.remainingHours.toFixed(2)} hrs remaining` : 'Hours target complete'}</p>
     </div>
   );
 }
@@ -255,6 +266,27 @@ function EmployeeAttendancePanel(props: {
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <WorkHourProgress label="This week" balance={workBalances?.week} />
           <WorkHourProgress label="This month" balance={workBalances?.month} />
+        </div>
+      )}
+
+      {row?.breaks && row.breaks.length > 0 && (
+        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">Today&apos;s breaks</p>
+          <ul className="mt-2 space-y-1 text-sm text-amber-900">
+            {row.breaks.map((interval) => {
+              const start = new Date(interval.startedAt);
+              const end = interval.endedAt ? new Date(interval.endedAt) : null;
+              const durationHours = end ? Math.max(0, end.getTime() - start.getTime()) / 3600000 : null;
+              return (
+                <li key={interval.startedAt}>
+                  {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {' - '}
+                  {end?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) ?? 'In progress'}
+                  {durationHours !== null && <> · {durationHours.toFixed(2)} hrs</>}
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 

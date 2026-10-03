@@ -818,6 +818,60 @@ describe('AttendanceService', () => {
     );
   });
 
+  it('includes absent scheduled hours and live work in monthly totals', async () => {
+    jest.setSystemTime(new Date('2026-03-04T12:00:00.000Z'));
+    const shift = {
+      requiredHours: 8,
+      weeklyHolidayDay: 0,
+    };
+    const employee = { hireDate: null, organizationId: 1 };
+    prisma.attendance.findMany.mockResolvedValue([
+      {
+        date: new Date('2026-03-02T00:00:00.000Z'),
+        checkIn: new Date('2026-03-02T09:00:00.000Z'),
+        checkOut: new Date('2026-03-02T16:00:00.000Z'),
+        workingHours: 6,
+        breaks: [],
+        shift,
+        employee,
+        status: AttendanceStatus.PRESENT,
+      },
+      {
+        date: new Date('2026-03-03T00:00:00.000Z'),
+        checkIn: null,
+        checkOut: null,
+        workingHours: null,
+        breaks: [],
+        shift,
+        employee,
+        status: AttendanceStatus.ABSENT,
+      },
+      {
+        date: new Date('2026-03-04T00:00:00.000Z'),
+        checkIn: new Date('2026-03-04T09:00:00.000Z'),
+        checkOut: null,
+        workingHours: null,
+        breaks: [
+          {
+            startedAt: new Date('2026-03-04T10:00:00.000Z'),
+            endedAt: new Date('2026-03-04T10:30:00.000Z'),
+          },
+        ],
+        shift,
+        employee,
+        status: AttendanceStatus.PRESENT,
+      },
+    ] as any);
+
+    const result = await service.getSummary(
+      { month: '2026-03' },
+      mockUser as any,
+    );
+
+    expect(result.totalExpectedHours).toBe(24);
+    expect(result.totalWorkedHours).toBe(8.5);
+  });
+
   it("blocks employees from requesting another employee's monthly report", async () => {
     await expect(
       service.getMonthlyReport(
@@ -932,6 +986,12 @@ describe('AttendanceService', () => {
         checkIn: new Date('2026-03-02T09:00:00.000Z'),
         checkOut: new Date('2026-03-02T18:00:00.000Z'),
         workingHours: 9,
+        breaks: [
+          {
+            startedAt: new Date('2026-03-02T12:00:00.000Z'),
+            endedAt: new Date('2026-03-02T12:30:00.000Z'),
+          },
+        ],
         status: AttendanceStatus.PRESENT,
         createdAt: new Date('2026-03-02T09:00:00.000Z'),
       },
@@ -948,9 +1008,77 @@ describe('AttendanceService', () => {
 
     expect(result.month).toBe('2026-03');
     expect(result.days[1].status).toBe(AttendanceStatus.PRESENT);
+    expect(result.days[1].breaks).toEqual([
+      {
+        startedAt: '2026-03-02T12:00:00.000Z',
+        endedAt: '2026-03-02T12:30:00.000Z',
+      },
+    ]);
     expect(result.days[2].status).toBe(AttendanceStatus.LEAVE);
     expect(result.summary.present).toBeGreaterThanOrEqual(1);
     expect(result.summary.leave).toBeGreaterThanOrEqual(1);
+  });
+
+  it('counts scheduled absences and live work across a week-month boundary', async () => {
+    jest.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
+    const shift = {
+      id: 2,
+      name: 'Day',
+      type: 'FIXED',
+      startTime: '09:00',
+      endTime: '17:00',
+      requiredHours: 8,
+      minPresentHours: 5,
+      gracePeriodMinutes: 15,
+      weeklyHolidayDay: 0,
+    };
+    prisma.attendance.findMany.mockResolvedValue([
+      {
+        date: new Date('2026-03-30T00:00:00.000Z'),
+        workingHours: 6,
+        shift,
+        breaks: [],
+      },
+      {
+        date: new Date('2026-04-01T00:00:00.000Z'),
+        checkIn: new Date('2026-04-01T09:00:00.000Z'),
+        checkOut: null,
+        workingHours: null,
+        shift,
+        breaks: [
+          {
+            startedAt: new Date('2026-04-01T10:00:00.000Z'),
+            endedAt: new Date('2026-04-01T10:30:00.000Z'),
+          },
+        ],
+      },
+    ]);
+    prisma.holiday.findMany.mockResolvedValue([]);
+    prisma.leaveRequest.findMany.mockResolvedValue([]);
+
+    const balances = await (service as any).getWorkHourBalancesForEmployee(
+      7,
+      { id: 7, organizationId: 1, hireDate: null, shift },
+      new Date('2026-04-01T12:00:00.000Z'),
+      'UTC',
+    );
+
+    expect(balances.week).toEqual(
+      expect.objectContaining({
+        requiredHours: 24,
+        completedHours: 8.5,
+        breakHours: 0.5,
+        remainingHours: 15.5,
+      }),
+    );
+    expect(balances.month).toEqual(
+      expect.objectContaining({
+        requiredHours: 8,
+        completedHours: 2.5,
+        breakHours: 0.5,
+        remainingHours: 5.5,
+      }),
+    );
   });
 
   it('shows a corporate holiday in the employee calendar without marking the day absent', async () => {

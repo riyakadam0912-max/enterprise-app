@@ -136,6 +136,7 @@ export interface WorkHourPeriodBalance {
   endDate: string;
   requiredHours: number;
   completedHours: number;
+  breakHours: number;
   remainingHours: number;
   progressPercent: number;
 }

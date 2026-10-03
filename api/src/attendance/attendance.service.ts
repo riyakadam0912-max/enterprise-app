@@ -1450,7 +1450,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           employeeId,
           date: { gte: monthStart, lte: monthEnd },
         },
-        include: { shift: true },
+        include: { shift: true, breaks: true },
         orderBy: { date: 'asc' },
       }),
       this.prisma.leaveRequest.findMany({
@@ -1492,6 +1492,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       checkIn: string | null;
       checkOut: string | null;
       workingHours: number | null;
+      breaks: { startedAt: string; endedAt: string | null }[];
       shortfallHours: number;
       lateMinutes: number;
       overtimeHours: number;
@@ -1553,6 +1554,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         checkIn: attendance?.checkIn?.toISOString() ?? null,
         checkOut: attendance?.checkOut?.toISOString() ?? null,
         workingHours: attendance?.workingHours ?? null,
+        breaks: (attendance?.breaks ?? []).map((interval) => ({
+          startedAt: interval.startedAt.toISOString(),
+          endedAt: interval.endedAt?.toISOString() ?? null,
+        })),
         shortfallHours,
         lateMinutes: attendance?.lateMinutes ?? 0,
         overtimeHours: attendance?.overtimeHours ?? 0,
@@ -1574,7 +1579,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         checkIn: d.checkIn,
         checkOut: d.checkOut,
         workingHours: d.workingHours,
-        breaks: [],
+        breaks: d.breaks,
         onBreak: false,
         shortfallHours: d.shortfallHours,
         lateMinutes: d.lateMinutes,
@@ -1646,7 +1651,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const aggregatePeriod = (periodStart: Date) => {
       let requiredHours = 0;
       let completedHours = 0;
-      for (const day = new Date(periodStart); day <= today; day.setUTCDate(day.getUTCDate() + 1)) {
+      let breakHours = 0;
+      for (
+        const day = new Date(periodStart);
+        day <= today;
+        day.setUTCDate(day.getUTCDate() + 1)
+      ) {
         const dayKey = this.dateKey(day);
         const row = attendanceByDate.get(dayKey);
         const shift = row?.shift ?? employee.shift;
@@ -1659,11 +1669,24 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             row.breaks,
           );
         }
+        if (row?.breaks) {
+          breakHours += row.breaks.reduce((total, interval) => {
+            const startedAt = interval.startedAt.getTime();
+            const endedAt = Math.min(
+              interval.endedAt?.getTime() ?? now.getTime(),
+              now.getTime(),
+            );
+            return total + Math.max(0, endedAt - startedAt) / 36e5;
+          }, 0);
+        }
 
         if (
           !shift ||
           shift.weeklyHolidayDay === day.getUTCDay() ||
           !this.isAttendanceEligible(day, employee.hireDate) ||
+          row?.status === AttendanceStatus.LEAVE ||
+          row?.status === AttendanceStatus.HOLIDAY ||
+          row?.status === AttendanceStatus.WEEKLY_OFF ||
           holidays.some((holiday) => isCovered(holiday, dayKey)) ||
           leaves.some((leave) => isCovered(leave, dayKey))
         ) {
@@ -1673,16 +1696,24 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       }
       requiredHours = Number(requiredHours.toFixed(2));
       completedHours = Number(completedHours.toFixed(2));
-      const remainingHours = Number(Math.max(0, requiredHours - completedHours).toFixed(2));
+      breakHours = Number(breakHours.toFixed(2));
+      const remainingHours = Number(
+        Math.max(0, requiredHours - completedHours).toFixed(2),
+      );
       return {
         startDate: periodStart.toISOString(),
         endDate: today.toISOString(),
         requiredHours,
         completedHours,
+        breakHours,
         remainingHours,
-        progressPercent: requiredHours > 0
-          ? Math.min(100, Number(((completedHours / requiredHours) * 100).toFixed(1)))
-          : 100,
+        progressPercent:
+          requiredHours > 0
+            ? Math.min(
+                100,
+                Number(((completedHours / requiredHours) * 100).toFixed(1)),
+              )
+            : 100,
       };
     };
 
@@ -1742,7 +1773,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     const attendanceRows = await this.prisma.attendance.findMany({
       where: whereWithEmployee,
-      include: { shift: true, employee: { select: { hireDate: true, organizationId: true } } },
+      include: {
+        shift: true,
+        breaks: true,
+        employee: { select: { hireDate: true, organizationId: true } },
+      },
     });
 
     const organizationIds = [...new Set(attendanceRows.map((row) => row.employee.organizationId))];
@@ -1805,20 +1840,47 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         }, 0)
         .toFixed(2),
     );
+    const summaryNow = new Date();
+    const summaryCutoff = this.endOfDay(
+      new Date(Math.min(monthEnd.getTime(), summaryNow.getTime())),
+    );
+    const periodAttendanceRows = eligibleAttendanceRows.filter(
+      (row) => row.date <= summaryCutoff,
+    );
     const totalWorkedHours = Number(
-      eligibleAttendanceRows
-        .reduce((sum: number, row) => sum + (row.workingHours ?? 0), 0)
+      periodAttendanceRows
+        .reduce((sum: number, row) => {
+          if (row.workingHours != null) return sum + row.workingHours;
+          if (!row.checkIn) return sum;
+          return (
+            sum +
+            calculateNetWorkingHours(
+              row.checkIn,
+              row.checkOut ?? summaryNow,
+              row.breaks,
+            )
+          );
+        }, 0)
         .toFixed(2),
     );
     const totalExpectedHours = Number(
-      eligibleAttendanceRows
+      periodAttendanceRows
         .reduce((sum: number, row) => {
           const required = row.requiredHours ?? row.shift?.requiredHours ?? 8;
           const status = statusForRow(row);
-          if (status === 'PRESENT' || status === 'HALF_DAY') {
-            return sum + (status === 'HALF_DAY' ? required / 2 : required);
+          if (!row.shift && row.requiredHours == null) return sum;
+          if (
+            status === AttendanceStatus.WEEKLY_OFF ||
+            status === AttendanceStatus.HOLIDAY ||
+            status === AttendanceStatus.LEAVE ||
+            (row.shift && this.isWeeklyHoliday(row.date, row.shift))
+          ) {
+            return sum;
           }
-          return sum;
+          return (
+            sum +
+            (status === AttendanceStatus.HALF_DAY ? required / 2 : required)
+          );
         }, 0)
         .toFixed(2),
     );

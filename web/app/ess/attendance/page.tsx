@@ -186,6 +186,26 @@ export default function ESSAttendancePage() {
               </div>
             )}
 
+            {today?.breaks && today.breaks.length > 0 && (
+              <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <p className="text-xs font-semibold uppercase text-amber-900">Today&apos;s breaks</p>
+                <ul className="mt-2 space-y-1 text-sm text-amber-900">
+                  {today.breaks.map((interval) => {
+                    const start = new Date(interval.startedAt);
+                    const end = interval.endedAt ? new Date(interval.endedAt) : null;
+                    const durationHours = end ? Math.max(0, end.getTime() - start.getTime()) / 3600000 : null;
+                    return (
+                      <li key={interval.startedAt}>
+                        {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {' - '}{end?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) ?? 'In progress'}
+                        {durationHours !== null && <> · {durationHours.toFixed(2)} hrs</>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
             {/* Action Buttons */}
             <div className="flex gap-3">
               <button
@@ -222,15 +242,26 @@ export default function ESSAttendancePage() {
             if (!balance) return null;
             const label = period === 'week' ? 'This week' : 'This month';
             return (
-              <div key={period} className="rounded-lg border border-gray-200 bg-white p-5">
-                <div className="flex items-center justify-between gap-3">
+              <div key={period} className="flex items-center gap-4 rounded-lg border border-gray-200 bg-white p-5">
+                <div
+                  className="relative grid h-[4.5rem] w-[4.5rem] shrink-0 place-items-center rounded-full"
+                  style={{ background: `conic-gradient(#059669 ${balance.progressPercent}%, #e5e7eb ${balance.progressPercent}% 100%)` }}
+                  role="progressbar"
+                  aria-label={`${label} hours completed`}
+                  aria-valuenow={balance.progressPercent}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                >
+                  <div className="grid h-[3.25rem] w-[3.25rem] place-items-center rounded-full bg-white text-sm font-bold text-gray-900">
+                    {balance.completedHours.toFixed(1)}
+                  </div>
+                </div>
+                <div className="min-w-0">
                   <h2 className="font-semibold text-gray-900">{label}</h2>
-                  <span className="text-sm text-gray-600">{balance.completedHours.toFixed(2)} / {balance.requiredHours.toFixed(2)} hrs</span>
+                  <p className="mt-1 text-sm text-gray-600">of {balance.requiredHours.toFixed(2)} hrs scheduled</p>
+                  <p className="mt-1 text-sm text-gray-600">{balance.remainingHours > 0 ? `${balance.remainingHours.toFixed(2)} hrs remaining` : 'Hours target complete'}</p>
+                  <p className="mt-1 text-sm text-gray-600">Breaks: {balance.breakHours.toFixed(2)} hrs</p>
                 </div>
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-label={`${label} hours completed`} aria-valuenow={balance.progressPercent} aria-valuemin={0} aria-valuemax={100}>
-                  <div className="h-full rounded-full bg-emerald-600" style={{ width: `${balance.progressPercent}%` }} />
-                </div>
-                <p className="mt-2 text-sm text-gray-600">{balance.remainingHours > 0 ? `${balance.remainingHours.toFixed(2)} hrs remaining` : 'Hours target complete'}</p>
               </div>
             );
           })}
