@@ -6,6 +6,7 @@ import {
   type AccessibleOrganization,
 } from '@/api/organizationsApi';
 import {
+  clearActiveOrganization,
   getActiveOrganizationId,
   setActiveOrganization,
   setActiveOrganizationDetails,
@@ -37,7 +38,29 @@ export function OrganizationSwitcher() {
       .then((accessible) => {
         setOrganizations(accessible);
         const activeId = getActiveOrganizationId() ?? session.organizationId;
-        const activeOrganization = accessible.find((item) => item.id === activeId);
+        let activeOrganization = accessible.find((item) => item.id === activeId);
+
+        if (!activeOrganization && accessible.length > 0) {
+          activeOrganization =
+            accessible.find((item) => item.id === session.organizationId) ??
+            accessible[0];
+          setActiveOrganization(activeOrganization.id);
+          setActiveOrganizationDetails({
+            name: activeOrganization.name,
+            logoUrl: activeOrganization.logoUrl,
+            slug: activeOrganization.slug,
+          });
+          window.location.reload();
+          return;
+        }
+
+        if (!activeOrganization) {
+          if (activeId != null) {
+            clearActiveOrganization();
+            window.location.reload();
+          }
+          return;
+        }
 
         if (activeOrganization) {
           setActiveOrganizationDetails({

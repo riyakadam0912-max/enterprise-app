@@ -129,7 +129,7 @@ export class OrganizationsService {
       );
     }
 
-    return this.prisma.organization.findMany({
+    const organizations = await this.prisma.organization.findMany({
       where: { status: 'ACTIVE', deletedAt: null },
       select: {
         id: true,
@@ -140,6 +140,38 @@ export class OrganizationsService {
       },
       orderBy: { name: 'asc' },
     });
+
+    const rootOrganizationId =
+      user.homeOrganizationId ?? user.organizationId;
+    if (rootOrganizationId == null) return [];
+    if (
+      !organizations.some(
+        (organization) => organization.id === rootOrganizationId,
+      )
+    ) {
+      return [];
+    }
+
+    const childrenByParent = new Map<number, number[]>();
+    for (const organization of organizations) {
+      if (organization.parentId == null) continue;
+      const children = childrenByParent.get(organization.parentId) ?? [];
+      children.push(organization.id);
+      childrenByParent.set(organization.parentId, children);
+    }
+
+    const accessibleIds = new Set<number>();
+    const pending = [rootOrganizationId];
+    while (pending.length > 0) {
+      const organizationId = pending.pop()!;
+      if (accessibleIds.has(organizationId)) continue;
+      accessibleIds.add(organizationId);
+      pending.push(...(childrenByParent.get(organizationId) ?? []));
+    }
+
+    return organizations.filter((organization) =>
+      accessibleIds.has(organization.id),
+    );
   }
 
   async getPlatformStats(user: AuthUser) {

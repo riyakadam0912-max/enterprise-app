@@ -75,6 +75,9 @@ axiosClient.interceptors.request.use(
           session.isSuperAdmin || session.isPlatformAdmin || session.role === 'ADMIN';
         const requestUrl = config.url ?? '';
         const isAuthRequest = requestUrl.includes('/auth/');
+        const isOrganizationDiscoveryRequest = requestUrl
+          .split('?')[0]
+          .endsWith('/organizations/accessible');
 
         config.headers = config.headers ?? {};
 
@@ -89,7 +92,11 @@ axiosClient.interceptors.request.use(
         }
 
         // Add X-Organization-Id for privileged users when explicitly selected
-        if (isPrivilegedTenantContext && !isAuthRequest) {
+        if (
+          isPrivilegedTenantContext &&
+          !isAuthRequest &&
+          !isOrganizationDiscoveryRequest
+        ) {
           const activeOrgId = getActiveOrganizationId();
           if (activeOrgId != null) {
             config.headers['X-Organization-Id'] = String(activeOrgId);
