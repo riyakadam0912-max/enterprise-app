@@ -240,7 +240,7 @@ export default function ESSAttendancePage() {
           {(['week', 'month'] as const).map((period) => {
             const balance = balances?.[period];
             if (!balance) return null;
-            const label = period === 'week' ? 'This week' : 'This month';
+            const label = period === 'week' ? 'This week' : 'Month to date';
             return (
               <div key={period} className="flex items-center gap-4 rounded-lg border border-gray-200 bg-white p-5">
                 <div
@@ -261,6 +261,7 @@ export default function ESSAttendancePage() {
                   <p className="mt-1 text-sm text-gray-600">of {balance.requiredHours.toFixed(2)} hrs scheduled</p>
                   <p className="mt-1 text-sm text-gray-600">{balance.remainingHours > 0 ? `${balance.remainingHours.toFixed(2)} hrs remaining` : 'Hours target complete'}</p>
                   <p className="mt-1 text-sm text-gray-600">Breaks: {balance.breakHours.toFixed(2)} hrs</p>
+                                  {balance.fullPeriodRequiredHours !== undefined && <p className="mt-1 text-sm text-gray-600">Full month: {balance.fullPeriodRequiredHours.toFixed(2)} hrs</p>}
                 </div>
               </div>
             );

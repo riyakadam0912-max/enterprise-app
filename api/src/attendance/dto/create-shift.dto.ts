@@ -1,5 +1,9 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  ArrayUnique,
+  IsArray,
   IsIn,
   IsInt,
   IsNumber,
@@ -51,6 +55,17 @@ export class CreateShiftDto {
   @Min(0)
   @Max(6)
   weeklyHolidayDay?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(7)
+  @ArrayUnique()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(0, { each: true })
+  @Max(6, { each: true })
+  workingDays?: number[];
 
   @IsOptional()
   @IsString()

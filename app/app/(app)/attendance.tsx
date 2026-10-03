@@ -60,6 +60,7 @@ function WorkHourProgress({ label, balance }: { label: string; balance: WorkHour
 				<Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 4 }}>of {balance.requiredHours.toFixed(2)} h scheduled</Text>
 				<Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 3 }}>{balance.remainingHours > 0 ? `${balance.remainingHours.toFixed(2)} h remaining` : 'Hours target complete'}</Text>
 				<Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 3 }}>Breaks: {balance.breakHours.toFixed(2)} h</Text>
+							{balance.fullPeriodRequiredHours !== undefined ? <Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 3 }}>Full month: {balance.fullPeriodRequiredHours.toFixed(2)} h</Text> : null}
 			</View>
 		</View>
 	);
@@ -114,7 +115,7 @@ export default function Attendance() {
 		{(['week', 'month'] as const).map((period) => {
 			const balance = balances.data?.[period];
 			if (!balance) return null;
-			const label = period === 'week' ? 'This week' : 'This month';
+			const label = period === 'week' ? 'This week' : 'Month to date';
 			return <WorkHourProgress key={period} label={label} balance={balance} />;
 		})}
 		<Text style={{ fontSize: 20, fontWeight: '800', color: '#172033', marginTop: 24, marginBottom: 10 }}>This month</Text>

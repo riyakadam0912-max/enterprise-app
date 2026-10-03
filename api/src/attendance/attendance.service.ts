@@ -50,6 +50,7 @@ type ShiftLite = {
   minPresentHours: number;
   gracePeriodMinutes: number;
   weeklyHolidayDay: number;
+  workingDays?: number[];
 };
 
 type DailyAttendanceRow = {
@@ -67,6 +68,7 @@ type DailyAttendanceRow = {
   checkOut: string | null;
   workingHours: number | null;
   breaks: { startedAt: string; endedAt: string | null }[];
+  breakHours: number;
   onBreak: boolean;
   shortfallHours: number;
   lateMinutes: number;
@@ -83,6 +85,7 @@ type DailyAttendanceRow = {
     minPresentHours: number | null;
     gracePeriodMinutes: number | null;
     weeklyHolidayDay: number;
+    workingDays?: number[];
   } | null;
 };
 
@@ -254,7 +257,13 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   }
 
   private isWeeklyHoliday(day: Date, shift: ShiftLite | null | undefined) {
-    return shift?.weeklyHolidayDay === day.getDay();
+    return Boolean(shift && !this.isScheduledWorkday(day, shift));
+  }
+
+  private isScheduledWorkday(day: Date, shift: ShiftLite) {
+    const workingDays = shift.workingDays ??
+      [0, 1, 2, 3, 4, 5, 6].filter((weekday) => weekday !== shift.weeklyHolidayDay);
+    return workingDays.includes(day.getDay());
   }
 
   private buildSummary(rows: DailyAttendanceRow[]) {
@@ -675,6 +684,15 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         startedAt: interval.startedAt.toISOString(),
         endedAt: interval.endedAt?.toISOString() ?? null,
       })),
+      breakHours: Number(
+        (attendance?.breaks ?? []).reduce((total, interval) => {
+          const end = Math.min(
+            interval.endedAt?.getTime() ?? Date.now(),
+            attendance?.checkOut?.getTime() ?? Date.now(),
+          );
+          return total + Math.max(0, end - interval.startedAt.getTime()) / 36e5;
+        }, 0).toFixed(2),
+      ),
       onBreak: (attendance?.breaks ?? []).some((interval) => !interval.endedAt),
       shortfallHours,
       lateMinutes: attendance?.lateMinutes ?? 0,
@@ -692,6 +710,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             minPresentHours: shift.minPresentHours,
             gracePeriodMinutes: shift.gracePeriodMinutes,
             weeklyHolidayDay: shift.weeklyHolidayDay,
+            workingDays: shift.workingDays ?? [0, 1, 2, 3, 4, 5, 6].filter((weekday) => weekday !== shift.weeklyHolidayDay),
           }
         : null,
     };
@@ -710,6 +729,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         minPresentHours: Math.min(minPresentHours, requiredHours),
         gracePeriodMinutes: dto.gracePeriodMinutes ?? 15,
         weeklyHolidayDay: dto.weeklyHolidayDay ?? 0,
+        workingDays: dto.workingDays ?? (dto.weeklyHolidayDay !== undefined
+          ? [0, 1, 2, 3, 4, 5, 6].filter((weekday) => weekday !== dto.weeklyHolidayDay)
+          : [1, 2, 3, 4, 5]),
         rotationPattern: dto.rotationPattern,
         organizationId: user.organizationId,
       },
@@ -899,6 +921,13 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       updateData.gracePeriodMinutes = dto.gracePeriodMinutes;
     if (dto.weeklyHolidayDay !== undefined)
       updateData.weeklyHolidayDay = dto.weeklyHolidayDay;
+    if (dto.workingDays !== undefined) {
+      updateData.workingDays = dto.workingDays;
+    } else if (dto.weeklyHolidayDay !== undefined) {
+      updateData.workingDays = [0, 1, 2, 3, 4, 5, 6].filter(
+        (weekday) => weekday !== dto.weeklyHolidayDay,
+      );
+    }
     if (dto.rotationPattern !== undefined)
       updateData.rotationPattern = dto.rotationPattern;
 
@@ -981,10 +1010,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    if (employee.shift.weeklyHolidayDay === day.getUTCDay()) {
-      if (day.getUTCDay() !== 0) {
-        throw new ConflictException('This date is the employee weekly holiday');
-      }
+    if (this.isWeeklyHoliday(day, employee.shift)) {
       const balances = await this.getWorkHourBalancesForEmployee(
         employeeId,
         employee,
@@ -993,7 +1019,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       );
       if (balances.week.remainingHours <= 0 && balances.month.remainingHours <= 0) {
         throw new ConflictException(
-          'This date is the employee weekly holiday; Sunday catch-up is available only when scheduled hours are outstanding',
+          'This date is not a scheduled workday; catch-up is available only when scheduled hours are outstanding',
         );
       }
     }
@@ -1543,6 +1569,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             minPresentHours,
             gracePeriodMinutes,
             weeklyHolidayDay: shift.weeklyHolidayDay,
+            workingDays: shift.workingDays ?? [0, 1, 2, 3, 4, 5, 6].filter((weekday) => weekday !== shift.weeklyHolidayDay),
           }
         : null;
 
@@ -1580,6 +1607,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         checkOut: d.checkOut,
         workingHours: d.workingHours,
         breaks: d.breaks,
+        breakHours: d.breaks.reduce((total, interval) => {
+          const start = new Date(interval.startedAt).getTime();
+          const end = interval.endedAt ? new Date(interval.endedAt).getTime() : start;
+          return total + Math.max(0, end - start) / 36e5;
+        }, 0),
         onBreak: false,
         shortfallHours: d.shortfallHours,
         lateMinutes: d.lateMinutes,
@@ -1611,9 +1643,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const todayKey = dateKeyInTimezone(now, timezone);
     const today = attendanceDateFromKey(todayKey);
     const monthStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+    const monthEnd = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0));
     const weekStart = new Date(today);
     const daysFromMonday = (weekStart.getUTCDay() + 6) % 7;
     weekStart.setUTCDate(weekStart.getUTCDate() - daysFromMonday);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
     const queryStart = weekStart < monthStart ? weekStart : monthStart;
 
     const [attendanceRows, holidays, leaves] = await Promise.all([
@@ -1624,7 +1659,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       this.prisma.holiday.findMany({
         where: {
           organizationId: employee.organizationId,
-          startDate: { lte: today },
+          startDate: { lte: monthEnd },
           endDate: { gte: queryStart },
         },
         select: { startDate: true, endDate: true },
@@ -1633,7 +1668,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         where: {
           employeeId,
           status: 'APPROVED',
-          startDate: { lte: this.endOfDay(today) },
+          startDate: { lte: this.endOfDay(monthEnd) },
           endDate: { gte: queryStart },
           deletedAt: null,
         },
@@ -1648,28 +1683,26 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       dayKey >= range.startDate.toISOString().slice(0, 10) &&
       dayKey <= range.endDate.toISOString().slice(0, 10);
 
-    const aggregatePeriod = (periodStart: Date) => {
+    const aggregatePeriod = (periodStart: Date, scheduledThrough: Date) => {
       let requiredHours = 0;
       let completedHours = 0;
       let breakHours = 0;
+      let scheduledDays = 0;
       for (
         const day = new Date(periodStart);
-        day <= today;
+        day <= scheduledThrough;
         day.setUTCDate(day.getUTCDate() + 1)
       ) {
         const dayKey = this.dateKey(day);
         const row = attendanceByDate.get(dayKey);
         const shift = row?.shift ?? employee.shift;
-        if (row?.workingHours != null) {
+        const isElapsedDay = day <= today;
+        if (isElapsedDay && row?.workingHours != null) {
           completedHours += row.workingHours;
-        } else if (row?.checkIn) {
-          completedHours += calculateNetWorkingHours(
-            row.checkIn,
-            row.checkOut ?? now,
-            row.breaks,
-          );
+        } else if (isElapsedDay && row?.checkIn) {
+          completedHours += calculateNetWorkingHours(row.checkIn, row.checkOut ?? now, row.breaks);
         }
-        if (row?.breaks) {
+        if (isElapsedDay && row?.breaks) {
           breakHours += row.breaks.reduce((total, interval) => {
             const startedAt = interval.startedAt.getTime();
             const endedAt = Math.min(
@@ -1682,7 +1715,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
         if (
           !shift ||
-          shift.weeklyHolidayDay === day.getUTCDay() ||
+          !this.isScheduledWorkday(day, shift) ||
           !this.isAttendanceEligible(day, employee.hireDate) ||
           row?.status === AttendanceStatus.LEAVE ||
           row?.status === AttendanceStatus.HOLIDAY ||
@@ -1693,6 +1726,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           continue;
         }
         requiredHours += row?.requiredHours ?? shift.requiredHours;
+        scheduledDays += 1;
       }
       requiredHours = Number(requiredHours.toFixed(2));
       completedHours = Number(completedHours.toFixed(2));
@@ -1702,10 +1736,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       );
       return {
         startDate: periodStart.toISOString(),
-        endDate: today.toISOString(),
+        endDate: scheduledThrough.toISOString(),
         requiredHours,
         completedHours,
         breakHours,
+        scheduledDays,
         remainingHours,
         progressPercent:
           requiredHours > 0
@@ -1717,9 +1752,15 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       };
     };
 
+    const monthToDate = aggregatePeriod(monthStart, today);
+    const fullMonth = aggregatePeriod(monthStart, monthEnd);
     return {
-      week: aggregatePeriod(weekStart),
-      month: aggregatePeriod(monthStart),
+      week: aggregatePeriod(weekStart, weekEnd),
+      month: {
+        ...monthToDate,
+        fullPeriodRequiredHours: fullMonth.requiredHours,
+        fullPeriodScheduledDays: fullMonth.scheduledDays,
+      },
     };
   }
 
@@ -1736,6 +1777,60 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       new Date(),
       organization?.timezone ?? 'UTC',
     );
+  }
+
+  async getTeamWeeklyWorkHours(user: AttendanceUser) {
+    const scopedIds = await this.getScopedEmployeeFilter(user);
+    const employees = await this.prisma.employee.findMany({
+      where: {
+        ...this.buildOrganizationScope(user),
+        deletedAt: null,
+        ...(scopedIds ? { id: { in: scopedIds } } : {}),
+      },
+      include: { shift: true },
+      orderBy: { name: 'asc' },
+    });
+
+    const now = new Date();
+    const organizations = await Promise.all(
+      [...new Set(employees.map((employee) => employee.organizationId))].map(
+        async (organizationId) => {
+          const organization = await this.prisma.organization.findUnique({
+            where: { id: organizationId },
+            select: { timezone: true },
+          });
+          return [organizationId, organization?.timezone ?? 'UTC'] as const;
+        },
+      ),
+    );
+    const timezoneByOrganization = new Map(organizations);
+    const rows: Array<{
+      employeeId: number;
+      employeeName: string;
+      department: string | null;
+      week: Awaited<ReturnType<typeof this.getWorkHourBalancesForEmployee>>['week'];
+    }> = [];
+    for (let offset = 0; offset < employees.length; offset += 10) {
+      const batch = await Promise.all(
+        employees.slice(offset, offset + 10).map(async (employee) => {
+          const balances = await this.getWorkHourBalancesForEmployee(
+            employee.id,
+            employee,
+            now,
+            timezoneByOrganization.get(employee.organizationId) ?? 'UTC',
+          );
+          return {
+            employeeId: employee.id,
+            employeeName: employee.name,
+            department: employee.department ?? null,
+            week: balances.week,
+          };
+        }),
+      );
+      rows.push(...batch);
+    }
+
+    return { employees: rows };
   }
 
   async getSummary(query: AttendanceSummaryQueryDto, user: AttendanceUser) {

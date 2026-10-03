@@ -31,6 +31,7 @@ export interface ShiftDetails {
   minPresentHours?: number | null;
   gracePeriodMinutes: number | null;
   weeklyHolidayDay?: number;
+  workingDays?: number[];
 }
 
 export interface AttendanceEmployee {
@@ -50,6 +51,7 @@ export interface AttendanceRecord {
   checkOut: string | null;
   workingHours: number | null;
   breaks?: { startedAt: string; endedAt: string | null }[];
+  breakHours?: number;
   onBreak?: boolean;
   shortfallHours?: number;
   lateMinutes: number;
@@ -139,6 +141,9 @@ export interface WorkHourPeriodBalance {
   breakHours: number;
   remainingHours: number;
   progressPercent: number;
+  scheduledDays: number;
+  fullPeriodRequiredHours?: number;
+  fullPeriodScheduledDays?: number;
 }
 
 export interface WorkHourBalances {
@@ -155,12 +160,22 @@ export interface ShiftPayload {
   minPresentHours?: number;
   gracePeriodMinutes?: number;
   weeklyHolidayDay?: number;
+  workingDays?: number[];
   rotationPattern?: string;
 }
 
 export interface ShiftRecord extends ShiftPayload {
   id: number;
   isActive?: boolean;
+}
+
+export interface TeamWeeklyWorkHours {
+  employees: Array<{
+    employeeId: number;
+    employeeName: string;
+    department: string | null;
+    week: WorkHourPeriodBalance;
+  }>;
 }
 
 export interface HolidayRecord {
@@ -275,6 +290,10 @@ export function getMyAttendanceSnapshot(): Promise<MyAttendanceResponse> {
 
 export function getWorkHourBalances(): Promise<WorkHourBalances> {
   return apiClient<WorkHourBalances>('/attendance/work-hours');
+}
+
+export function getTeamWeeklyWorkHours(): Promise<TeamWeeklyWorkHours> {
+  return apiClient<TeamWeeklyWorkHours>('/attendance/work-hours/team');
 }
 
 export function startAttendanceBreak(): Promise<unknown> {

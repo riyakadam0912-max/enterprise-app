@@ -359,6 +359,25 @@ export class AttendanceController {
     return this.attendanceService.getMyWorkHourBalances(req.user);
   }
 
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'GET current weekly work-hour balances for the team',
+  })
+  @Get('work-hours/team')
+  getTeamWeeklyWorkHours(
+    @Req()
+    req: {
+      user: {
+        userId: number;
+        role: Role;
+        employeeId?: number | null;
+        organizationId: number;
+      };
+    },
+  ) {
+    return this.attendanceService.getTeamWeeklyWorkHours(req.user);
+  }
+
   @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'GET summary' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })

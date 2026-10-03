@@ -48,6 +48,7 @@ export type AttendanceRecord = {
   checkOut: string | null;
   workingHours: number | null;
   breaks?: { startedAt: string; endedAt: string | null }[];
+  breakHours?: number;
   onBreak?: boolean;
   shortfallHours?: number;
   lateMinutes: number;

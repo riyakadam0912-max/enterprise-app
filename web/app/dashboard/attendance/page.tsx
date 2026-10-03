@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArrowRight, CalendarDays, CalendarRange, Clock3, Pencil, Plus, Trash2, UsersRound, X } from 'lucide-react';
-import { assignShift, AttendanceRecord, AttendanceStatus, createHoliday, createShift, deleteHoliday, deleteShift, getHolidays, getMonthlyAttendanceReport, getShifts, getWorkHourBalances, HolidayRecord, ShiftRecord, startAttendanceBreak, stopAttendanceBreak, updateHoliday, updateShift, WorkHourBalances } from '@/api/attendanceApi';
+import { assignShift, AttendanceRecord, AttendanceStatus, createHoliday, createShift, deleteHoliday, deleteShift, getHolidays, getMonthlyAttendanceReport, getShifts, getTeamWeeklyWorkHours, getWorkHourBalances, HolidayRecord, ShiftRecord, startAttendanceBreak, stopAttendanceBreak, TeamWeeklyWorkHours, updateHoliday, updateShift, WorkHourBalances } from '@/api/attendanceApi';
 import { useAttendance, useCheckIn, useCheckOut, useTodayAttendance, useUpdateAttendance } from '@/hooks/useAttendance';
 import { useEmployees } from '@/hooks/useEmployees';
 import TableActions from '@/components/common/TableActions';
@@ -89,8 +89,14 @@ function isShiftFormComplete(shift: { name: string; startTime: string; endTime: 
   return Boolean(shift.name.trim() && shift.startTime && shift.endTime);
 }
 
-function weeklyHolidayLabel(day: number | null | undefined) {
-  return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day ?? 0] ?? 'Sunday';
+const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function workingDaysForShift(shift: { workingDays?: number[]; weeklyHolidayDay?: number }) {
+  return shift.workingDays ?? [0, 1, 2, 3, 4, 5, 6].filter((day) => day !== (shift.weeklyHolidayDay ?? 0));
+}
+
+function formatWorkingDays(days: number[]) {
+  return days.map((day) => WEEKDAY_LABELS[day]).join(', ');
 }
 
 function formatHolidayRange(holiday: HolidayRecord) {
@@ -178,6 +184,9 @@ function WorkHourProgress({ label, balance }: { label: string; balance: WorkHour
         <p className="mt-1 text-xs font-medium text-slate-600">of {balance.requiredHours.toFixed(2)} hrs scheduled</p>
         <p className="mt-1 text-xs text-slate-500">{balance.remainingHours > 0 ? `${balance.remainingHours.toFixed(2)} hrs remaining` : 'Hours target complete'}</p>
         <p className="mt-1 text-xs text-slate-500">Breaks: {balance.breakHours.toFixed(2)} hrs</p>
+              {balance.fullPeriodRequiredHours !== undefined && (
+                <p className="mt-1 text-xs text-slate-500">Full month: {balance.fullPeriodRequiredHours.toFixed(2)} hrs</p>
+              )}
       </div>
     </div>
   );
@@ -265,7 +274,7 @@ function EmployeeAttendancePanel(props: {
       {accountLinked && (
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <WorkHourProgress label="This week" balance={workBalances?.week} />
-          <WorkHourProgress label="This month" balance={workBalances?.month} />
+          <WorkHourProgress label="Month to date" balance={workBalances?.month} />
         </div>
       )}
 
@@ -429,7 +438,7 @@ export default function AttendancePage() {
     requiredHours: '8',
     minPresentHours: '5',
     gracePeriodMinutes: '15',
-    weeklyHolidayDay: '0',
+    workingDays: [1, 2, 3, 4, 5],
   });
   const [assignEmployeeId, setAssignEmployeeId] = useState('');
   const [assignShiftId, setAssignShiftId] = useState('');
@@ -454,6 +463,7 @@ export default function AttendancePage() {
   const updateAttendanceMutation = useUpdateAttendance();
   const [breakActionLoading, setBreakActionLoading] = useState(false);
   const [workBalances, setWorkBalances] = useState<WorkHourBalances | null>(null);
+  const [teamWeeklyHours, setTeamWeeklyHours] = useState<TeamWeeklyWorkHours | null>(null);
 
   useEffect(() => {
     async function loadShifts() {
@@ -486,6 +496,18 @@ export default function AttendancePage() {
       .catch(() => { if (!cancelled) setWorkBalances(null); });
     return () => { cancelled = true; };
   }, [session.employeeId]);
+
+  useEffect(() => {
+    if (!canViewAdminAttendance) return;
+    let cancelled = false;
+    getTeamWeeklyWorkHours()
+      .then((result) => { if (!cancelled) setTeamWeeklyHours(result); })
+      .catch((error) => {
+        reportError(error, 'Unable to load team weekly work hours');
+        if (!cancelled) setTeamWeeklyHours(null);
+      });
+    return () => { cancelled = true; };
+  }, [canViewAdminAttendance]);
 
   const employeeOptions = useMemo(
     () => employees.map((employee) => ({ id: employee.id, name: employee.name, email: employee.email ?? null })),
@@ -643,7 +665,7 @@ export default function AttendancePage() {
         requiredHours: Number(newShift.requiredHours) || 8,
         minPresentHours: Number(newShift.minPresentHours) || 5,
         gracePeriodMinutes: Number(newShift.gracePeriodMinutes) || 15,
-        weeklyHolidayDay: Number(newShift.weeklyHolidayDay),
+        workingDays: newShift.workingDays,
       });
       const rows = await getShifts();
       setShifts(rows);
@@ -681,7 +703,7 @@ export default function AttendancePage() {
         requiredHours: editingShift.requiredHours,
         minPresentHours: editingShift.minPresentHours,
         gracePeriodMinutes: editingShift.gracePeriodMinutes,
-        weeklyHolidayDay: editingShift.weeklyHolidayDay,
+        workingDays: workingDaysForShift(editingShift),
       });
       const rows = await getShifts();
       setShifts(rows);
@@ -977,7 +999,7 @@ export default function AttendancePage() {
                   <tr>
                     <th className="px-3 py-2">Shift</th>
                     <th className="px-3 py-2">Schedule</th>
-                    <th className="px-3 py-2">Weekly off</th>
+                    <th className="px-3 py-2">Working days</th>
                     <th className="px-3 py-2 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -991,7 +1013,7 @@ export default function AttendancePage() {
                         <span className="text-xs text-slate-500">{shift.type} · {shift.requiredHours ?? '—'} hrs</span>
                       </td>
                       <td className="px-3 py-2.5 text-slate-600">{shift.startTime && shift.endTime ? `${formatShiftTime(shift.startTime)}–${formatShiftTime(shift.endTime)}` : 'Flexible'}</td>
-                      <td className="px-3 py-2.5"><span className="inline-flex rounded-full bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">{weeklyHolidayLabel(shift.weeklyHolidayDay)}</span></td>
+                      <td className="px-3 py-2.5 text-xs text-slate-600">{formatWorkingDays(workingDaysForShift(shift))}</td>
                       <td className="px-3 py-2.5"><div className="flex justify-end gap-1">
                         <button type="button" onClick={() => setEditingShift(shift)} aria-label={`Edit ${shift.name}`} title="Edit shift" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"><Pencil aria-hidden="true" className="h-4 w-4" /></button>
                         <button type="button" onClick={() => handleDeleteShift(shift.id)} aria-label={`Delete ${shift.name}`} title="Delete shift" className="rounded-lg p-2 text-rose-500 hover:bg-rose-50 hover:text-rose-700"><Trash2 aria-hidden="true" className="h-4 w-4" /></button>
@@ -1132,11 +1154,31 @@ export default function AttendancePage() {
               <input type="time" value={newShift.endTime} onChange={(e) => setNewShift((prev) => ({ ...prev, endTime: e.target.value }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
               <input type="number" value={newShift.minPresentHours} onChange={(e) => setNewShift((prev) => ({ ...prev, minPresentHours: e.target.value }))} placeholder="Minimum present hours" className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
               <input type="number" value={newShift.gracePeriodMinutes} onChange={(e) => setNewShift((prev) => ({ ...prev, gracePeriodMinutes: e.target.value }))} placeholder="Grace period (min)" className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
-              <select value={newShift.weeklyHolidayDay} onChange={(e) => setNewShift((prev) => ({ ...prev, weeklyHolidayDay: e.target.value }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm sm:col-span-2"><option value="0">Sunday holiday</option><option value="1">Monday holiday</option><option value="2">Tuesday holiday</option><option value="3">Wednesday holiday</option><option value="4">Thursday holiday</option><option value="5">Friday holiday</option><option value="6">Saturday holiday</option></select>
+              <fieldset className="sm:col-span-2">
+                <legend className="mb-2 text-sm font-medium text-slate-700">Scheduled workdays</legend>
+                <div className="flex flex-wrap gap-2">
+                  {WEEKDAY_LABELS.map((label, day) => (
+                    <label key={day} className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-2.5 py-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={newShift.workingDays.includes(day)}
+                        onChange={() => setNewShift((current) => ({
+                          ...current,
+                          workingDays: current.workingDays.includes(day)
+                            ? current.workingDays.filter((value) => value !== day)
+                            : [...current.workingDays, day].sort(),
+                        }))}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+                {newShift.workingDays.length === 0 && <p className="mt-1 text-xs text-red-600">Choose at least one workday.</p>}
+              </fieldset>
             </div>
             <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
               <button type="button" onClick={() => setShowCreateShift(false)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Cancel</button>
-              <button type="button" onClick={handleCreateShift} disabled={!newShift.name.trim()} className="rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">Create shift</button>
+              <button type="button" onClick={handleCreateShift} disabled={!newShift.name.trim() || newShift.workingDays.length === 0} className="rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">Create shift</button>
             </div>
           </div>
         </div>
@@ -1249,22 +1291,21 @@ export default function AttendancePage() {
                   />
                 </div>
 
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">Weekly holiday</label>
-                  <select
-                    value={editingShift.weeklyHolidayDay ?? 0}
-                    onChange={(event) => setEditingShift((current) => current ? { ...current, weeklyHolidayDay: Number(event.target.value) } : current)}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-orange-400 focus:outline-none focus:ring-4 focus:ring-orange-100"
-                  >
-                    <option value={0}>Sunday</option>
-                    <option value={1}>Monday</option>
-                    <option value={2}>Tuesday</option>
-                    <option value={3}>Wednesday</option>
-                    <option value={4}>Thursday</option>
-                    <option value={5}>Friday</option>
-                    <option value={6}>Saturday</option>
-                  </select>
-                </div>
+                <fieldset className="md:col-span-2">
+                  <legend className="mb-2 block text-sm font-medium text-slate-700">Scheduled workdays</legend>
+                  <div className="flex flex-wrap gap-2">
+                    {WEEKDAY_LABELS.map((label, day) => {
+                      const selectedDays = workingDaysForShift(editingShift);
+                      return (
+                        <label key={day} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                          <input type="checkbox" checked={selectedDays.includes(day)} onChange={() => setEditingShift((current) => current ? { ...current, workingDays: selectedDays.includes(day) ? selectedDays.filter((value) => value !== day) : [...selectedDays, day].sort() } : current)} />
+                          {label}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {workingDaysForShift(editingShift).length === 0 && <p className="mt-1 text-xs text-red-600">Choose at least one workday.</p>}
+                </fieldset>
               </div>
             </div>
 
@@ -1282,7 +1323,7 @@ export default function AttendancePage() {
                   name: editingShift.name,
                   startTime: editingShift.startTime ?? '',
                   endTime: editingShift.endTime ?? '',
-                })}
+                }) || workingDaysForShift(editingShift).length === 0}
               >
                 Save Changes
               </button>
@@ -1364,6 +1405,45 @@ export default function AttendancePage() {
         </div>
       </div>
 
+      {canViewAdminAttendance && (
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-label="Team weekly work hours">
+          <div className="border-b border-slate-200 px-5 py-3">
+            <h2 className="text-sm font-semibold text-slate-900">Team work hours this week</h2>
+            <p className="mt-1 text-xs text-slate-500">Full scheduled target, net hours worked, and break time by employee.</p>
+          </div>
+          <div className="max-h-80 overflow-auto">
+            <table className="min-w-full text-sm">
+              <thead className="sticky top-0 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+                <tr>
+                  <th className="px-4 py-2">Employee</th>
+                  <th className="px-4 py-2">Scheduled</th>
+                  <th className="px-4 py-2">Worked</th>
+                  <th className="px-4 py-2">Breaks</th>
+                  <th className="px-4 py-2">Remaining</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {teamWeeklyHours?.employees.map((employee) => (
+                  <tr key={employee.employeeId}>
+                    <td className="px-4 py-2 font-medium text-slate-800">
+                      {employee.employeeName}
+                      <span className="ml-2 text-xs text-slate-400">{employee.department ?? ''}</span>
+                    </td>
+                    <td className="px-4 py-2 text-slate-600">{employee.week.requiredHours.toFixed(2)} hrs · {employee.week.scheduledDays} days</td>
+                    <td className="px-4 py-2 font-medium text-slate-800">{employee.week.completedHours.toFixed(2)} hrs</td>
+                    <td className="px-4 py-2 text-slate-600">{employee.week.breakHours.toFixed(2)} hrs</td>
+                    <td className="px-4 py-2 text-slate-600">{employee.week.remainingHours.toFixed(2)} hrs</td>
+                  </tr>
+                ))}
+                {teamWeeklyHours?.employees.length === 0 && (
+                  <tr><td colSpan={5} className="px-4 py-6 text-center text-slate-500">No employees in this scope.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="max-h-128 overflow-auto">
           <table className="min-w-full text-sm">
@@ -1374,6 +1454,7 @@ export default function AttendancePage() {
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Check In</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Check Out</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Working Hours</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Breaks</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Shift</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Late</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Overtime</th>
@@ -1384,11 +1465,11 @@ export default function AttendancePage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={canViewAdminAttendance ? 10 : 8} className="px-5 py-12 text-center text-slate-400">Loading attendance…</td>
+                  <td colSpan={canViewAdminAttendance ? 11 : 9} className="px-5 py-12 text-center text-slate-400">Loading attendance…</td>
                 </tr>
               ) : showEmptyState ? (
                 <tr>
-                  <td colSpan={canViewAdminAttendance ? 10 : 8} className="p-0">
+                  <td colSpan={canViewAdminAttendance ? 11 : 9} className="p-0">
                     <EmptyState title="No attendance records found" description="Try changing date or filters." />
                   </td>
                 </tr>
@@ -1406,6 +1487,22 @@ export default function AttendancePage() {
                   <td className="px-5 py-4 text-slate-600">{formatTime(row.checkIn)}</td>
                   <td className="px-5 py-4 text-slate-600">{formatTime(row.checkOut)}</td>
                   <td className="px-5 py-4 text-slate-700">{row.workingHours != null ? `${row.workingHours.toFixed(2)} hrs` : '—'}</td>
+                  <td className="px-5 py-4 text-slate-700">
+                    <details className="min-w-24">
+                      <summary className="cursor-pointer text-xs font-medium">{(row.breakHours ?? 0).toFixed(2)} hrs · timeline</summary>
+                      <ul className="mt-2 space-y-1 text-xs text-slate-500">
+                        {row.checkIn && <li>Check in · {formatTime(row.checkIn)}</li>}
+                        {(row.breaks ?? []).map((interval) => (
+                          <li key={interval.startedAt}>
+                            Break · {new Date(interval.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {' - '}{interval.endedAt ? new Date(interval.endedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'In progress'}
+                          </li>
+                        ))}
+                        {(row.breaks ?? []).length === 0 && <li>No breaks</li>}
+                        {row.checkOut && <li>Check out · {formatTime(row.checkOut)}</li>}
+                      </ul>
+                    </details>
+                  </td>
                   <td className="px-5 py-4 text-slate-700">{formatShiftRangeForDisplay(row)}</td>
                   <td className="px-5 py-4">
                     {!row.checkIn ? (

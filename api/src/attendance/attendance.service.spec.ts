@@ -279,7 +279,7 @@ describe('AttendanceService', () => {
       employeeId: 7,
       date: '2026-03-15',
       timestamp: '2026-03-15T09:00:00.000Z',
-    }, mockUser)).rejects.toThrow('Sunday catch-up is available only when scheduled hours are outstanding');
+    }, mockUser)).rejects.toThrow('catch-up is available only when scheduled hours are outstanding');
 
     expect(prisma.attendance.create).not.toHaveBeenCalled();
   });
@@ -1065,10 +1065,10 @@ describe('AttendanceService', () => {
 
     expect(balances.week).toEqual(
       expect.objectContaining({
-        requiredHours: 24,
+        requiredHours: 48,
         completedHours: 8.5,
         breakHours: 0.5,
-        remainingHours: 15.5,
+        remainingHours: 39.5,
       }),
     );
     expect(balances.month).toEqual(
@@ -1079,6 +1079,83 @@ describe('AttendanceService', () => {
         remainingHours: 5.5,
       }),
     );
+  });
+
+  it('uses five scheduled days for week and month targets', async () => {
+    const now = new Date('2026-10-03T12:00:00.000Z');
+    const shift = {
+      id: 3,
+      name: 'Weekday',
+      type: 'FIXED',
+      startTime: '09:00',
+      endTime: '18:00',
+      requiredHours: 8,
+      minPresentHours: 5,
+      gracePeriodMinutes: 15,
+      weeklyHolidayDay: 0,
+      workingDays: [1, 2, 3, 4, 5],
+    };
+    prisma.attendance.findMany.mockResolvedValue([]);
+    prisma.holiday.findMany.mockResolvedValue([]);
+    prisma.leaveRequest.findMany.mockResolvedValue([]);
+
+    const balances = await (service as any).getWorkHourBalancesForEmployee(
+      7,
+      { id: 7, organizationId: 1, hireDate: null, shift },
+      now,
+      'UTC',
+    );
+
+    expect(balances.week).toEqual(expect.objectContaining({
+      requiredHours: 40,
+      scheduledDays: 5,
+      completedHours: 0,
+    }));
+    expect(balances.month).toEqual(expect.objectContaining({
+      requiredHours: 16,
+      scheduledDays: 2,
+      fullPeriodRequiredHours: 176,
+      fullPeriodScheduledDays: 22,
+    }));
+  });
+
+  it('returns weekly balances for employees within the admin scope', async () => {
+    const shift = {
+      id: 3,
+      name: 'Weekday',
+      type: 'FIXED',
+      startTime: '09:00',
+      endTime: '18:00',
+      requiredHours: 8,
+      minPresentHours: 5,
+      gracePeriodMinutes: 15,
+      weeklyHolidayDay: 0,
+      workingDays: [1, 2, 3, 4, 5],
+    };
+    prisma.employee.findMany.mockResolvedValue([{
+      id: 7,
+      name: 'Ava',
+      department: 'Ops',
+      organizationId: 1,
+      hireDate: null,
+      shift,
+    }]);
+    prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
+    prisma.attendance.findMany.mockResolvedValue([]);
+    prisma.holiday.findMany.mockResolvedValue([]);
+    prisma.leaveRequest.findMany.mockResolvedValue([]);
+
+    const result = await service.getTeamWeeklyWorkHours(mockUser);
+
+    expect(result.employees).toHaveLength(1);
+    expect(result.employees[0]).toEqual(expect.objectContaining({
+      employeeId: 7,
+      employeeName: 'Ava',
+      week: expect.objectContaining({ requiredHours: 40, scheduledDays: 5 }),
+    }));
+    expect(prisma.employee.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ organizationId: 1, deletedAt: null }),
+    }));
   });
 
   it('shows a corporate holiday in the employee calendar without marking the day absent', async () => {
