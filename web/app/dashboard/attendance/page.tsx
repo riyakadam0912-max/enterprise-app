@@ -164,14 +164,23 @@ function EmptyState({ title, description }: { title: string; description: string
 
 function WorkHourProgress({ label, balance }: { label: string; balance: WorkHourBalances['week'] | undefined }) {
   if (!balance) return null;
+  const monthlyTarget = balance.fullPeriodRequiredHours;
+  const targetHours = monthlyTarget ?? balance.requiredHours;
+  const progressPercent =
+    targetHours > 0
+      ? Math.min(100, Math.max(0, (balance.completedHours / targetHours) * 100))
+      : 100;
+  const remainingHours = Math.max(0, targetHours - balance.completedHours);
+  const isFullMonthTarget = monthlyTarget !== undefined;
+
   return (
     <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white/90 px-4 py-3">
       <div
         className="relative grid h-[4.5rem] w-[4.5rem] shrink-0 place-items-center rounded-full"
-        style={{ background: `conic-gradient(#10b981 ${balance.progressPercent}%, #e2e8f0 ${balance.progressPercent}% 100%)` }}
+        style={{ background: `conic-gradient(#10b981 ${progressPercent}%, #e2e8f0 ${progressPercent}% 100%)` }}
         role="progressbar"
-        aria-label={`${label} hours completed`}
-        aria-valuenow={balance.progressPercent}
+        aria-label={`${label} hours completed against ${targetHours.toFixed(2)} hour target`}
+        aria-valuenow={progressPercent}
         aria-valuemin={0}
         aria-valuemax={100}
       >
@@ -181,12 +190,20 @@ function WorkHourProgress({ label, balance }: { label: string; balance: WorkHour
       </div>
       <div className="min-w-0">
         <p className="text-sm font-semibold text-slate-800">{label}</p>
-        <p className="mt-1 text-xs font-medium text-slate-600">of {balance.requiredHours.toFixed(2)} hrs scheduled</p>
-        <p className="mt-1 text-xs text-slate-500">{balance.remainingHours > 0 ? `${balance.remainingHours.toFixed(2)} hrs remaining` : 'Hours target complete'}</p>
+        <p className="mt-1 text-xs font-medium text-slate-600">
+          of {targetHours.toFixed(2)} hrs {isFullMonthTarget ? 'full-month target' : 'scheduled'}
+        </p>
+        <p className="mt-1 text-xs text-slate-500">
+          {remainingHours > 0
+            ? `${remainingHours.toFixed(2)} hrs remaining`
+            : 'Hours target complete'}
+        </p>
         <p className="mt-1 text-xs text-slate-500">Breaks: {balance.breakHours.toFixed(2)} hrs</p>
-              {balance.fullPeriodRequiredHours !== undefined && (
-                <p className="mt-1 text-xs text-slate-500">Full month: {balance.fullPeriodRequiredHours.toFixed(2)} hrs</p>
-              )}
+        {isFullMonthTarget && (
+          <p className="mt-1 text-xs text-slate-500">
+            {balance.requiredHours.toFixed(2)} hrs scheduled through today
+          </p>
+        )}
       </div>
     </div>
   );
