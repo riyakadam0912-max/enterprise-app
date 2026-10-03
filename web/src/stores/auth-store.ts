@@ -309,6 +309,11 @@ export function setAuthSession(session: AuthSessionInput): void {
       : session.user?.id != null && session.user.id === cachedSession.user?.id
         ? cachedSession.avatarFileId
         : null;
+  const isBusinessUnitAdmin =
+    session.isBusinessUnitAdmin ??
+    (session.user?.id != null && session.user.id === cachedSession.user?.id
+      ? cachedSession.isBusinessUnitAdmin
+      : false);
 
   cachedSession = {
     role: resolved.role,
@@ -326,7 +331,7 @@ export function setAuthSession(session: AuthSessionInput): void {
     availableBusinessUnits: parseBusinessUnits(session.availableBusinessUnits),
     activeBusinessUnitId: parseBusinessUnitId(session.activeBusinessUnitId == null ? null : String(session.activeBusinessUnitId)),
     canSelectAllBusinessUnits: session.canSelectAllBusinessUnits === true,
-    isBusinessUnitAdmin: session.isBusinessUnitAdmin === true,
+    isBusinessUnitAdmin,
   };
 
   saveSessionToStorage(cachedSession);
@@ -357,7 +362,10 @@ export function setActiveOrganization(organizationId: number): void {
 
   const session = getAuthSessionSnapshot();
   const isPrivilegedTenantContext =
-    session.isSuperAdmin || session.isPlatformAdmin || session.role === 'ADMIN';
+    session.isSuperAdmin ||
+    session.isPlatformAdmin ||
+    session.role === 'ADMIN' ||
+    session.isBusinessUnitAdmin;
 
   if (!isPrivilegedTenantContext) {
     try {
@@ -407,7 +415,14 @@ export function setActiveOrganizationDetails(details: {
   }
 
   const session = getAuthSessionSnapshot();
-  if (!(session.isSuperAdmin || session.isPlatformAdmin || session.role === 'ADMIN')) {
+  if (
+    !(
+      session.isSuperAdmin ||
+      session.isPlatformAdmin ||
+      session.role === 'ADMIN' ||
+      session.isBusinessUnitAdmin
+    )
+  ) {
     return;
   }
 
@@ -448,7 +463,10 @@ export function clearActiveOrganization(): void {
 export function getActiveOrganizationId(): number | null {
   const session = getAuthSessionSnapshot();
   const isPrivilegedTenantContext =
-    session.isSuperAdmin || session.isPlatformAdmin || session.role === 'ADMIN';
+    session.isSuperAdmin ||
+    session.isPlatformAdmin ||
+    session.role === 'ADMIN' ||
+    session.isBusinessUnitAdmin;
 
   if (!isPrivilegedTenantContext) {
     return null;

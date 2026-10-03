@@ -243,6 +243,25 @@ export class TenantContextMiddleware implements NestMiddleware {
     return null;
   }
 
+  private async resolveBusinessUnitAdminOrganization(
+    payload: JwtPayload,
+    requestedOrganizationId: number,
+  ): Promise<number | null> {
+    const userId = payload.userId ?? payload.sub;
+    if (userId == null) return null;
+
+    const assignment = await this.prisma.businessUnitAdmin.findFirst({
+      where: {
+        userId,
+        organizationId: requestedOrganizationId,
+        businessUnit: { status: 'ACTIVE' },
+        organization: { status: 'ACTIVE', deletedAt: null },
+      },
+      select: { organizationId: true },
+    });
+    return assignment?.organizationId ?? null;
+  }
+
   async use(req: Request, res: Response, next: NextFunction) {
     try {
       const cookieToken = (req.cookies as Record<string, string | undefined>)
@@ -295,7 +314,11 @@ export class TenantContextMiddleware implements NestMiddleware {
           ? await this.resolveOrganizationAdminOrganization(
               payload,
               requestedOrganizationId,
-            )
+            ) ??
+            (await this.resolveBusinessUnitAdminOrganization(
+              payload,
+              requestedOrganizationId,
+            ))
           : null;
         if (accessibleOrganizationId != null) {
           resolvedOrganizationId = accessibleOrganizationId;

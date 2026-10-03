@@ -123,9 +123,30 @@ export class OrganizationsService {
         'Platform administrators use the platform organization selector',
       );
     }
-    if (!this.isOrganizationAdmin(user)) {
+    const isOrganizationAdmin = this.isOrganizationAdmin(user);
+    const userId = user.userId ?? user.id;
+    const assignedOrganizationIds = isOrganizationAdmin
+      ? null
+      : userId == null
+        ? []
+        : Array.from(
+            new Set(
+              (
+                await this.prisma.businessUnitAdmin.findMany({
+                  where: {
+                    userId,
+                    businessUnit: { status: 'ACTIVE' },
+                    organization: { status: 'ACTIVE', deletedAt: null },
+                  },
+                  select: { organizationId: true },
+                })
+              ).map((assignment) => assignment.organizationId),
+            ),
+          );
+
+    if (!isOrganizationAdmin && assignedOrganizationIds?.length === 0) {
       throw new ForbiddenException(
-        'Only organization admins can switch organizations',
+        'Only organization admins and business unit admins can switch organizations',
       );
     }
 
@@ -140,6 +161,13 @@ export class OrganizationsService {
       },
       orderBy: { name: 'asc' },
     });
+
+    if (assignedOrganizationIds != null) {
+      const accessibleIds = new Set(assignedOrganizationIds);
+      return organizations.filter((organization) =>
+        accessibleIds.has(organization.id),
+      );
+    }
 
     const rootOrganizationId =
       user.homeOrganizationId ?? user.organizationId;

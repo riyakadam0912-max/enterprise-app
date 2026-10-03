@@ -25,12 +25,14 @@ function getInitials(value: string): string {
 
 export function OrganizationSwitcher() {
   const session = useAuthSession();
+  const canSwitchOrganizations =
+    session.role === 'ADMIN' || session.isBusinessUnitAdmin;
   const [organizations, setOrganizations] = useState<AccessibleOrganization[]>([]);
   const [switching, setSwitching] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
-    if (session.role !== 'ADMIN') {
+    if (!canSwitchOrganizations) {
       return;
     }
 
@@ -71,11 +73,11 @@ export function OrganizationSwitcher() {
         }
       })
       .catch(() => setOrganizations([]));
-  }, [session.role, session.user?.id, session.organizationId]);
+  }, [canSwitchOrganizations, session.role, session.user?.id, session.organizationId]);
 
-  const visibleOrganizations = session.role === 'ADMIN' ? organizations : [];
+  const visibleOrganizations = canSwitchOrganizations ? organizations : [];
 
-  if (session.role !== 'ADMIN' || visibleOrganizations.length <= 1) return null;
+  if (!canSwitchOrganizations || visibleOrganizations.length <= 1) return null;
 
   const activeOrganizationId = getActiveOrganizationId() ?? session.organizationId ?? '';
   const activeOrganization =

@@ -29,6 +29,39 @@ describe('OrganizationsService', () => {
     );
   });
 
+  it('limits a business unit admin to organizations with active assignments', async () => {
+    const organizations = [
+      { id: 2, name: 'Assigned', parentId: null },
+      { id: 3, name: 'Unassigned', parentId: null },
+    ];
+    const prisma = {
+      businessUnitAdmin: {
+        findMany: jest.fn().mockResolvedValue([{ organizationId: 2 }]),
+      },
+      organization: {
+        findMany: jest.fn().mockResolvedValue(organizations),
+      },
+    } as any;
+    const service = new OrganizationsService(prisma);
+
+    const result = await service.getAccessibleOrganizations({
+      id: 10,
+      userId: 10,
+      role: 'EMPLOYEE',
+      organizationId: 3,
+    } as any);
+
+    expect(result.map((organization) => organization.id)).toEqual([2]);
+    expect(prisma.businessUnitAdmin.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          userId: 10,
+          businessUnit: { status: 'ACTIVE' },
+        }),
+      }),
+    );
+  });
+
   it('returns the global org list for platform admins even when an active organization is set', async () => {
     const orgs = [
       {

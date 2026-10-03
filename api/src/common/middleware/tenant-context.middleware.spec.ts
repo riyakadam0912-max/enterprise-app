@@ -15,6 +15,9 @@ describe('TenantContextMiddleware organization selection', () => {
       organization: {
         findMany: jest.fn().mockResolvedValue(organizations),
       },
+      businessUnitAdmin: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
     };
     return new TenantContextMiddleware({} as any, prisma as any);
   }
@@ -56,10 +59,41 @@ describe('TenantContextMiddleware organization selection', () => {
     ).resolves.toBeNull();
   });
 
+  it('allows a BU admin to select only an organization with an active assignment', async () => {
+    const prisma = {
+      organization: {
+        findMany: jest.fn().mockResolvedValue(organizations),
+      },
+      businessUnitAdmin: {
+        findFirst: jest.fn().mockResolvedValue({ organizationId: 4 }),
+      },
+    };
+    const middleware = new TenantContextMiddleware({} as any, prisma as any);
+
+    await expect(
+      (middleware as any).resolveBusinessUnitAdminOrganization(
+        { userId: 10 },
+        4,
+      ),
+    ).resolves.toBe(4);
+    expect(prisma.businessUnitAdmin.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          userId: 10,
+          organizationId: 4,
+          businessUnit: { status: 'ACTIVE' },
+        }),
+      }),
+    );
+  });
+
   it('returns 403 instead of falling back when an admin selects a sibling org', async () => {
     const prisma = {
       organization: {
         findMany: jest.fn().mockResolvedValue(organizations),
+      },
+      businessUnitAdmin: {
+        findFirst: jest.fn().mockResolvedValue(null),
       },
     };
     const jwtService = {

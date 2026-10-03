@@ -501,9 +501,22 @@ export class BusinessUnitsService {
   }> {
     const orgId = await this.resolveOrganizationId(scopedOrganizationId, user);
     const assignedUnitId = this.resolveAssignedUnitId(user);
-    const isBusinessUnitAdmin =
+    const isBusinessUnitAdminForOrganization =
       (await this.getActiveAdministratorUnitIds(user, orgId)).length > 0;
-    if (this.isOrganizationWideBUAdmin(user) || isBusinessUnitAdmin) {
+    const hasBusinessUnitAdminAssignment =
+      isBusinessUnitAdminForOrganization ||
+      (await this.prisma.businessUnitAdmin.findMany({
+        where: {
+          userId: user.userId,
+          businessUnit: { status: 'ACTIVE' },
+          organization: { status: 'ACTIVE', deletedAt: null },
+        },
+        select: { organizationId: true },
+      })).length > 0;
+    if (
+      this.isOrganizationWideBUAdmin(user) ||
+      isBusinessUnitAdminForOrganization
+    ) {
       const allUnits = await this.prisma.businessUnit.findMany({
         where: { organizationId: orgId, status: 'ACTIVE' },
         select: {
@@ -519,7 +532,7 @@ export class BusinessUnitsService {
         units: allUnits,
         canSelectAll: true,
         assignedUnitId,
-        isBusinessUnitAdmin,
+        isBusinessUnitAdmin: hasBusinessUnitAdminAssignment,
       };
     }
     const scope = await this.resolveScope(
@@ -547,7 +560,7 @@ export class BusinessUnitsService {
       units,
       canSelectAll: scope.unitIds.length > 1,
       assignedUnitId,
-      isBusinessUnitAdmin,
+      isBusinessUnitAdmin: hasBusinessUnitAdminAssignment,
     };
   }
 
