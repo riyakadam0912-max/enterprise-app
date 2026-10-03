@@ -126,6 +126,40 @@ export class AttendanceController {
     return this.attendanceService.checkOut(dto, req.user);
   }
 
+  @Roles(Role.ADMIN, Role.MANAGER, Role.EMPLOYEE, Role.HR, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'POST start attendance break' })
+  @Post('break/start')
+  startBreak(
+    @Req()
+    req: {
+      user: {
+        userId: number;
+        role: Role;
+        employeeId?: number | null;
+        organizationId: number;
+      };
+    },
+  ) {
+    return this.attendanceService.startBreak(req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.MANAGER, Role.EMPLOYEE, Role.HR, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'POST stop attendance break' })
+  @Post('break/stop')
+  stopBreak(
+    @Req()
+    req: {
+      user: {
+        userId: number;
+        role: Role;
+        employeeId?: number | null;
+        organizationId: number;
+      };
+    },
+  ) {
+    return this.attendanceService.stopBreak(req.user);
+  }
+
   @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'POST shifts' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
@@ -306,6 +340,23 @@ export class AttendanceController {
     },
   ) {
     return this.attendanceService.getMySnapshot(req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'GET my weekly and monthly work-hour balances' })
+  @Get('work-hours')
+  getMyWorkHourBalances(
+    @Req()
+    req: {
+      user: {
+        userId: number;
+        role: Role;
+        employeeId?: number | null;
+        organizationId: number;
+      };
+    },
+  ) {
+    return this.attendanceService.getMyWorkHourBalances(req.user);
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)

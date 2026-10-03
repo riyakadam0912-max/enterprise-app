@@ -362,10 +362,21 @@ model Attendance {
   employee       Employee         @relation(fields: [employeeId], references: [id])
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   shift          Shift?           @relation(fields: [shiftId], references: [id])
+  breaks         AttendanceBreak[]
 
   @@unique([employeeId, date])
   @@index([date])
   @@index([organizationId])
+}
+
+model AttendanceBreak {
+  id           Int        @id @default(autoincrement())
+  attendanceId Int
+  startedAt    DateTime   @default(now())
+  endedAt      DateTime?
+  attendance   Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+
+  @@index([attendanceId, startedAt])
 }
 
 model Holiday {

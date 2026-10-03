@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArrowRight, CalendarDays, CalendarRange, Clock3, Pencil, Plus, Trash2, UsersRound, X } from 'lucide-react';
-import { assignShift, AttendanceRecord, AttendanceStatus, createHoliday, createShift, deleteHoliday, deleteShift, getHolidays, getMonthlyAttendanceReport, getShifts, HolidayRecord, ShiftRecord, updateHoliday, updateShift } from '@/api/attendanceApi';
+import { assignShift, AttendanceRecord, AttendanceStatus, createHoliday, createShift, deleteHoliday, deleteShift, getHolidays, getMonthlyAttendanceReport, getShifts, getWorkHourBalances, HolidayRecord, ShiftRecord, startAttendanceBreak, stopAttendanceBreak, updateHoliday, updateShift, WorkHourBalances } from '@/api/attendanceApi';
 import { useAttendance, useCheckIn, useCheckOut, useTodayAttendance, useUpdateAttendance } from '@/hooks/useAttendance';
 import { useEmployees } from '@/hooks/useEmployees';
 import TableActions from '@/components/common/TableActions';
@@ -156,6 +156,22 @@ function EmptyState({ title, description }: { title: string; description: string
   );
 }
 
+function WorkHourProgress({ label, balance }: { label: string; balance: WorkHourBalances['week'] | undefined }) {
+  if (!balance) return null;
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-slate-800">{label}</p>
+        <p className="text-xs font-medium text-slate-600">{balance.completedHours.toFixed(2)} / {balance.requiredHours.toFixed(2)} hrs</p>
+      </div>
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200" role="progressbar" aria-label={`${label} hours completed`} aria-valuenow={balance.progressPercent} aria-valuemin={0} aria-valuemax={100}>
+        <div className="h-full rounded-full bg-emerald-500 transition-[width]" style={{ width: `${balance.progressPercent}%` }} />
+      </div>
+      <p className="mt-1.5 text-xs text-slate-500">{balance.remainingHours > 0 ? `${balance.remainingHours.toFixed(2)} hrs remaining` : 'Hours target complete'}</p>
+    </div>
+  );
+}
+
 function EmployeeAttendancePanel(props: {
   name: string;
   employeeId: number | null;
@@ -164,10 +180,13 @@ function EmployeeAttendancePanel(props: {
   row: AttendanceRecord | null;
   checkInLoading: boolean;
   checkOutLoading: boolean;
+  breakActionLoading: boolean;
+  workBalances: WorkHourBalances | null;
   onCheckIn: () => void;
   onCheckOut: () => void;
+  onBreakAction: () => void;
 }) {
-  const { name, employeeId, accountLinked, helperError, row, checkInLoading, checkOutLoading, onCheckIn, onCheckOut } = props;
+  const { name, employeeId, accountLinked, helperError, row, checkInLoading, checkOutLoading, breakActionLoading, workBalances, onCheckIn, onCheckOut, onBreakAction } = props;
   const hasCheckedIn = Boolean(row?.checkIn);
   const hasCheckedOut = Boolean(row?.checkOut);
 
@@ -182,7 +201,7 @@ function EmployeeAttendancePanel(props: {
           </p>
         </div>
 
-        <div className="grid min-w-[18rem] gap-3 sm:grid-cols-2 lg:w-md">
+        <div className="grid min-w-[18rem] gap-3 sm:grid-cols-3 lg:w-xl">
             <button
               onClick={onCheckIn}
               disabled={!accountLinked || hasCheckedIn || checkInLoading}
@@ -196,6 +215,13 @@ function EmployeeAttendancePanel(props: {
               className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {checkOutLoading ? 'Checking Out…' : hasCheckedOut ? 'Already Checked Out' : 'Mark Check Out'}
+            </button>
+            <button
+              onClick={onBreakAction}
+              disabled={!accountLinked || !hasCheckedIn || hasCheckedOut || breakActionLoading}
+              className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 shadow-sm hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {breakActionLoading ? 'Updating…' : row?.onBreak ? 'End Break' : 'Start Break'}
             </button>
           </div>
       </div>
@@ -222,6 +248,13 @@ function EmployeeAttendancePanel(props: {
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Check Out</p>
             <p className="mt-2 text-lg font-semibold text-slate-900">{formatTime(row?.checkOut ?? null)}</p>
           </div>
+        </div>
+      )}
+
+      {accountLinked && (
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <WorkHourProgress label="This week" balance={workBalances?.week} />
+          <WorkHourProgress label="This month" balance={workBalances?.month} />
         </div>
       )}
 
@@ -387,6 +420,8 @@ export default function AttendancePage() {
   const checkInMutation = useCheckIn();
   const checkOutMutation = useCheckOut();
   const updateAttendanceMutation = useUpdateAttendance();
+  const [breakActionLoading, setBreakActionLoading] = useState(false);
+  const [workBalances, setWorkBalances] = useState<WorkHourBalances | null>(null);
 
   useEffect(() => {
     async function loadShifts() {
@@ -411,6 +446,15 @@ export default function AttendancePage() {
     loadHolidays();
   }, []);
 
+  useEffect(() => {
+    if (!session.employeeId) return;
+    let cancelled = false;
+    getWorkHourBalances()
+      .then((balances) => { if (!cancelled) setWorkBalances(balances); })
+      .catch(() => { if (!cancelled) setWorkBalances(null); });
+    return () => { cancelled = true; };
+  }, [session.employeeId]);
+
   const employeeOptions = useMemo(
     () => employees.map((employee) => ({ id: employee.id, name: employee.name, email: employee.email ?? null })),
     [employees],
@@ -422,17 +466,23 @@ export default function AttendancePage() {
   const resolvedEmployeeId = myTodayRow?.employeeId ?? session.employeeId;
   const accountLinked = Boolean(resolvedEmployeeId) || (!canViewAdminAttendance && today.error !== 'Your login is not linked to an employee profile yet.');
 
-  async function handleEmployeeAction(mode: 'in' | 'out') {
+  async function handleEmployeeAction(mode: 'in' | 'out' | 'break') {
     try {
       if (mode === 'in') {
         await checkInMutation.mutate({});
-      } else {
+      } else if (mode === 'out') {
         await checkOutMutation.mutate({});
+      } else {
+        setBreakActionLoading(true);
+        if (myTodayRow?.onBreak) await stopAttendanceBreak();
+        else await startAttendanceBreak();
       }
 
-      await Promise.all([refetch(), today.refetch()]);
+      await Promise.all([refetch(), today.refetch(), getWorkHourBalances().then(setWorkBalances)]);
     } catch {
       // Errors are mapped in the hooks and shown in the UI.
+    } finally {
+      setBreakActionLoading(false);
     }
   }
 
@@ -729,8 +779,11 @@ export default function AttendancePage() {
           row={myTodayRow}
           checkInLoading={checkInMutation.loading}
           checkOutLoading={checkOutMutation.loading}
+          breakActionLoading={breakActionLoading}
+          workBalances={workBalances}
           onCheckIn={() => handleEmployeeAction('in')}
           onCheckOut={() => handleEmployeeAction('out')}
+          onBreakAction={() => handleEmployeeAction('break')}
         />
       )}
 

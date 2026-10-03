@@ -30,6 +30,8 @@ export type AttendanceToday = {
   checkIn: string | null;
   checkOut: string | null;
   workingHours?: number | null;
+  breaks?: { startedAt: string; endedAt: string | null }[];
+  onBreak?: boolean;
   lateMinutes: number;
   overtimeHours: number;
   shortfallHours?: number;
@@ -45,6 +47,8 @@ export type AttendanceRecord = {
   checkIn: string | null;
   checkOut: string | null;
   workingHours: number | null;
+  breaks?: { startedAt: string; endedAt: string | null }[];
+  onBreak?: boolean;
   shortfallHours?: number;
   lateMinutes: number;
   overtimeHours: number;

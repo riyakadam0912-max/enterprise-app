@@ -18,7 +18,12 @@ function createPrismaMock() {
     },
     attendance: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+    },
+    attendanceBreak: {
       create: jest.fn(),
       update: jest.fn(),
     },
@@ -208,6 +213,77 @@ describe('AttendanceService', () => {
     expect(prisma.attendance.create).toHaveBeenCalledTimes(1);
   });
 
+  it('allows Sunday catch-up check-in while work hours remain outstanding', async () => {
+    const employee = {
+      id: 7,
+      organizationId: 1,
+      name: 'Ava',
+      shift: {
+        id: 1,
+        name: 'Day',
+        type: 'FIXED',
+        startTime: '09:00',
+        endTime: '18:00',
+        requiredHours: 8,
+        minPresentHours: 5,
+        gracePeriodMinutes: 15,
+        weeklyHolidayDay: 0,
+      },
+    };
+    prisma.employee.findFirst.mockResolvedValue(employee);
+    prisma.attendance.findUnique.mockResolvedValue(null);
+    prisma.leaveRequest.findFirst.mockResolvedValue(null);
+    prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
+    prisma.attendance.create.mockResolvedValue({ id: 3, status: AttendanceStatus.PRESENT });
+    jest.spyOn(service as any, 'getWorkHourBalancesForEmployee').mockResolvedValue({
+      week: { remainingHours: 2 },
+      month: { remainingHours: 4 },
+    });
+
+    await service.checkIn({
+      employeeId: 7,
+      date: '2026-03-15',
+      timestamp: '2026-03-15T09:00:00.000Z',
+    }, mockUser);
+
+    expect(prisma.attendance.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects Sunday catch-up check-in when weekly and monthly targets are complete', async () => {
+    const employee = {
+      id: 7,
+      organizationId: 1,
+      name: 'Ava',
+      shift: {
+        id: 1,
+        name: 'Day',
+        type: 'FIXED',
+        startTime: '09:00',
+        endTime: '18:00',
+        requiredHours: 8,
+        minPresentHours: 5,
+        gracePeriodMinutes: 15,
+        weeklyHolidayDay: 0,
+      },
+    };
+    prisma.employee.findFirst.mockResolvedValue(employee);
+    prisma.attendance.findUnique.mockResolvedValue(null);
+    prisma.leaveRequest.findFirst.mockResolvedValue(null);
+    prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
+    jest.spyOn(service as any, 'getWorkHourBalancesForEmployee').mockResolvedValue({
+      week: { remainingHours: 0 },
+      month: { remainingHours: 0 },
+    });
+
+    await expect(service.checkIn({
+      employeeId: 7,
+      date: '2026-03-15',
+      timestamp: '2026-03-15T09:00:00.000Z',
+    }, mockUser)).rejects.toThrow('Sunday catch-up is available only when scheduled hours are outstanding');
+
+    expect(prisma.attendance.create).not.toHaveBeenCalled();
+  });
+
   it('records late minutes using the organization timezone and includes them in the late count', async () => {
     const employee = {
       id: 7,
@@ -346,6 +422,58 @@ describe('AttendanceService', () => {
       employee: mockEmployee,
       shift: mockEmployee.shift,
     });
+  });
+
+  it('starts a break for an active attendance record', async () => {
+    prisma.employee.findFirst.mockResolvedValue({ id: 7 });
+    prisma.attendance.findFirst.mockResolvedValue({ id: 10, breaks: [] });
+    prisma.attendanceBreak.create.mockResolvedValue({
+      id: 1,
+      attendanceId: 10,
+      startedAt: new Date('2026-03-13T12:00:00.000Z'),
+      endedAt: null,
+    });
+
+    const result = await service.startBreak(mockUser);
+
+    expect(prisma.attendanceBreak.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ attendanceId: 10 }),
+    });
+    expect(result.onBreak).toBe(true);
+  });
+
+  it('rejects starting a second active break', async () => {
+    prisma.employee.findFirst.mockResolvedValue({ id: 7 });
+    prisma.attendance.findFirst.mockResolvedValue({
+      id: 10,
+      breaks: [{ id: 1, startedAt: new Date(), endedAt: null }],
+    });
+
+    await expect(service.startBreak(mockUser)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(prisma.attendanceBreak.create).not.toHaveBeenCalled();
+  });
+
+  it('stops the active break', async () => {
+    prisma.employee.findFirst.mockResolvedValue({ id: 7 });
+    prisma.attendance.findFirst.mockResolvedValue({
+      id: 10,
+      breaks: [{ id: 1, startedAt: new Date(), endedAt: null }],
+    });
+    prisma.attendanceBreak.update.mockResolvedValue({
+      id: 1,
+      attendanceId: 10,
+      startedAt: new Date('2026-03-13T12:00:00.000Z'),
+      endedAt: new Date('2026-03-13T12:30:00.000Z'),
+    });
+
+    const result = await service.stopBreak(mockUser);
+
+    expect(prisma.attendanceBreak.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 1 }, data: { endedAt: expect.any(Date) } }),
+    );
+    expect(result.onBreak).toBe(false);
   });
 
   it('builds the daily attendance table with unscheduled and leave statuses', async () => {

@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useAttendanceToday, useAttendanceHistory, useCheckIn, useCheckOut } from '@/hooks/useEss';
+import { getWorkHourBalances, startAttendanceBreak, stopAttendanceBreak, WorkHourBalances } from '@/api/attendanceApi';
 import { formatDate } from '@/utils/dateUtils';
 import { AlertCircle, Clock } from 'lucide-react';
 
@@ -10,9 +11,19 @@ export default function ESSAttendancePage() {
   const { data: history, loading: historyLoading } = useAttendanceHistory();
   const { checkIn, loading: checkInLoading } = useCheckIn();
   const { checkOut, loading: checkOutLoading } = useCheckOut();
+  const [breakLoading, setBreakLoading] = useState(false);
+  const [balances, setBalances] = useState<WorkHourBalances | null>(null);
 
   const [showError, setShowError] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  React.useEffect(() => {
+    let cancelled = false;
+    getWorkHourBalances()
+      .then((value) => { if (!cancelled) setBalances(value); })
+      .catch(() => { if (!cancelled) setBalances(null); });
+    return () => { cancelled = true; };
+  }, []);
 
   const getErrorMessage = (error: unknown): string => {
     if (error instanceof Error) {
@@ -26,7 +37,8 @@ export default function ESSAttendancePage() {
     try {
       await checkIn();
       setShowError(false);
-      refetchToday();
+      await refetchToday();
+      setBalances(await getWorkHourBalances());
     } catch (err: unknown) {
       setErrorMsg(getErrorMessage(err));
       setShowError(true);
@@ -37,10 +49,27 @@ export default function ESSAttendancePage() {
     try {
       await checkOut();
       setShowError(false);
-      refetchToday();
+      await refetchToday();
+      setBalances(await getWorkHourBalances());
     } catch (err: unknown) {
       setErrorMsg(getErrorMessage(err));
       setShowError(true);
+    }
+  };
+
+  const handleBreak = async () => {
+    setBreakLoading(true);
+    try {
+      if (today?.onBreak) await stopAttendanceBreak();
+      else await startAttendanceBreak();
+      setShowError(false);
+      await refetchToday();
+      setBalances(await getWorkHourBalances());
+    } catch (err: unknown) {
+      setErrorMsg(getErrorMessage(err));
+      setShowError(true);
+    } finally {
+      setBreakLoading(false);
     }
   };
 
@@ -175,9 +204,37 @@ export default function ESSAttendancePage() {
                 <Clock className="w-5 h-5" />
                 {checkOutLoading ? 'Checking Out...' : 'Check Out'}
               </button>
+              <button
+                onClick={handleBreak}
+                disabled={!isCheckedIn || today?.status === 'CHECKED_OUT' || breakLoading}
+                className="flex-1 bg-amber-500 text-white py-3 px-4 rounded-lg font-medium disabled:bg-gray-300 hover:bg-amber-600 flex items-center justify-center gap-2"
+              >
+                <Clock className="w-5 h-5" />
+                {breakLoading ? 'Updating...' : today?.onBreak ? 'End Break' : 'Start Break'}
+              </button>
             </div>
           </div>
         )}
+
+        <section className="mb-8 grid gap-4 sm:grid-cols-2" aria-label="Work-hour progress">
+          {(['week', 'month'] as const).map((period) => {
+            const balance = balances?.[period];
+            if (!balance) return null;
+            const label = period === 'week' ? 'This week' : 'This month';
+            return (
+              <div key={period} className="rounded-lg border border-gray-200 bg-white p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="font-semibold text-gray-900">{label}</h2>
+                  <span className="text-sm text-gray-600">{balance.completedHours.toFixed(2)} / {balance.requiredHours.toFixed(2)} hrs</span>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-label={`${label} hours completed`} aria-valuenow={balance.progressPercent} aria-valuemin={0} aria-valuemax={100}>
+                  <div className="h-full rounded-full bg-emerald-600" style={{ width: `${balance.progressPercent}%` }} />
+                </div>
+                <p className="mt-2 text-sm text-gray-600">{balance.remainingHours > 0 ? `${balance.remainingHours.toFixed(2)} hrs remaining` : 'Hours target complete'}</p>
+              </div>
+            );
+          })}
+        </section>
 
         {/* Attendance History */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">

@@ -31,6 +31,7 @@ import {
   calculateLateMinutesInTimezone,
   dateKeyInTimezone,
 } from './attendance-time.utils';
+import { calculateNetWorkingHours } from './attendance-work-time.utils';
 
 type AttendanceUser = {
   userId: number;
@@ -65,6 +66,8 @@ type DailyAttendanceRow = {
   checkIn: string | null;
   checkOut: string | null;
   workingHours: number | null;
+  breaks: { startedAt: string; endedAt: string | null }[];
+  onBreak: boolean;
   shortfallHours: number;
   lateMinutes: number;
   overtimeHours: number;
@@ -163,6 +166,14 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     return day;
   }
 
+  private calculateWorkingHours(
+    checkIn: Date,
+    checkOut: Date,
+    breaks: { startedAt: Date; endedAt: Date | null }[] = [],
+  ) {
+    return calculateNetWorkingHours(checkIn, checkOut, breaks);
+  }
+
   private isAttendanceEligible(day: Date, hireDate?: Date | null) {
     if (!hireDate) return true;
     return (
@@ -180,12 +191,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
   private parseTargetDay(date?: string, fallback?: Date) {
     return this.startOfDay(date ? new Date(date) : (fallback ?? new Date()));
-  }
-
-  private calculateWorkingHours(checkIn: Date, checkOut: Date) {
-    return Number(
-      Math.max(0, (checkOut.getTime() - checkIn.getTime()) / 36e5).toFixed(2),
-    );
   }
 
   private parseShiftTime(day: Date, time: string | null | undefined) {
@@ -615,6 +620,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           checkIn: Date | null;
           checkOut: Date | null;
           workingHours: number | null;
+          breaks?: { startedAt: Date; endedAt: Date | null }[];
           lateMinutes: number;
           overtimeHours: number;
           shortfallHours: number;
@@ -656,7 +662,20 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       date: day.toISOString(),
       checkIn: attendance?.checkIn?.toISOString() ?? null,
       checkOut: attendance?.checkOut?.toISOString() ?? null,
-      workingHours: attendance?.workingHours ?? null,
+      workingHours:
+        attendance?.workingHours ??
+        (attendance?.checkIn
+          ? calculateNetWorkingHours(
+              attendance.checkIn,
+              new Date(),
+              attendance.breaks ?? [],
+            )
+          : null),
+      breaks: (attendance?.breaks ?? []).map((interval) => ({
+        startedAt: interval.startedAt.toISOString(),
+        endedAt: interval.endedAt?.toISOString() ?? null,
+      })),
+      onBreak: (attendance?.breaks ?? []).some((interval) => !interval.endedAt),
       shortfallHours,
       lateMinutes: attendance?.lateMinutes ?? 0,
       overtimeHours: attendance?.overtimeHours ?? 0,
@@ -963,7 +982,20 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (employee.shift.weeklyHolidayDay === day.getUTCDay()) {
-      throw new ConflictException('This date is the employee weekly holiday');
+      if (day.getUTCDay() !== 0) {
+        throw new ConflictException('This date is the employee weekly holiday');
+      }
+      const balances = await this.getWorkHourBalancesForEmployee(
+        employeeId,
+        employee,
+        checkInTime,
+        timezone,
+      );
+      if (balances.week.remainingHours <= 0 && balances.month.remainingHours <= 0) {
+        throw new ConflictException(
+          'This date is the employee weekly holiday; Sunday catch-up is available only when scheduled hours are outstanding',
+        );
+      }
     }
 
     const lateMinutes = this.calculateLateMinutes(
@@ -1025,13 +1057,14 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       date: Date;
       employeeId: number;
       shift: ShiftLite | null;
+      breaks: { id: number; startedAt: Date; endedAt: Date | null }[];
     } | null = null;
 
     if (dto.date) {
       const day = this.parseTargetDay(dto.date, checkOutTime);
       record = await this.prisma.attendance.findUnique({
         where: { employeeId_date: { employeeId, date: day } },
-        include: { shift: true },
+        include: { shift: true, breaks: true },
       });
     } else {
       // Supports night shifts: close the latest open attendance row.
@@ -1042,7 +1075,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           checkOut: null,
         },
         orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-        include: { shift: true },
+        include: { shift: true, breaks: true },
       });
     }
 
@@ -1061,9 +1094,19 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     }
 
     const shift = record.shift ?? employee.shift ?? null;
-    const workingHours = this.calculateWorkingHours(
+    const breakIntervals = record.breaks ?? [];
+    const openBreak = breakIntervals.find((item) => item.endedAt === null);
+    if (openBreak) {
+      await this.prisma.attendanceBreak.update({
+        where: { id: openBreak.id },
+        data: { endedAt: checkOutTime },
+      });
+      openBreak.endedAt = checkOutTime;
+    }
+    const workingHours = calculateNetWorkingHours(
       new Date(record.checkIn),
       checkOutTime,
+      breakIntervals,
     );
     const overtimeHours = this.calculateOvertimeHours(workingHours, shift);
     const shortfallHours = this.calculateShortfallHours(workingHours, shift);
@@ -1093,6 +1136,47 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     await this.invalidateDashboardCache();
     return result;
+  }
+
+  async startBreak(user: AttendanceUser) {
+    const employeeId = await this.resolveScopedEmployeeId(user);
+    const record = await this.prisma.attendance.findFirst({
+      where: { employeeId, checkIn: { not: null }, checkOut: null },
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      include: { breaks: true },
+    });
+    if (!record) throw new BadRequestException('Check in before starting a break');
+    if (record.checkIn && new Date(record.checkIn).getTime() > Date.now()) {
+      throw new BadRequestException('A break cannot start before check-in');
+    }
+    if (record.breaks.some((interval) => interval.endedAt === null)) {
+      throw new ConflictException('A break is already in progress');
+    }
+    const startedAt = new Date();
+    const created = await this.prisma.attendanceBreak.create({
+      data: { attendanceId: record.id, startedAt },
+    });
+    await this.invalidateDashboardCache();
+    return { break: created, onBreak: true };
+  }
+
+  async stopBreak(user: AttendanceUser) {
+    const employeeId = await this.resolveScopedEmployeeId(user);
+    const record = await this.prisma.attendance.findFirst({
+      where: { employeeId, checkIn: { not: null }, checkOut: null },
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      include: { breaks: true },
+    });
+    if (!record) throw new BadRequestException('No active check-in record found');
+    const openBreak = record.breaks.find((interval) => interval.endedAt === null);
+    if (!openBreak) throw new BadRequestException('There is no break in progress');
+    const endedAt = new Date();
+    const updated = await this.prisma.attendanceBreak.update({
+      where: { id: openBreak.id },
+      data: { endedAt },
+    });
+    await this.invalidateDashboardCache();
+    return { break: updated, onBreak: false };
   }
 
   private async buildDailySnapshot(
@@ -1166,7 +1250,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const [attendanceRows, leaveRows] = await Promise.all([
       this.prisma.attendance.findMany({
         where: { employeeId: { in: ids }, date: this.startOfDay(day) },
-        include: { shift: true },
+        include: { shift: true, breaks: true },
       }),
       this.prisma.leaveRequest.findMany({
         where: {
@@ -1289,6 +1373,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         date: today.date,
         checkIn: null,
         checkOut: null,
+        workingHours: null,
+        breaks: [],
+        onBreak: false,
         lateMinutes: 0,
         overtimeHours: 0,
         status: AttendanceStatus.NOT_SCHEDULED,
@@ -1300,6 +1387,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       date: today.date,
       checkIn: row.checkIn,
       checkOut: row.checkOut,
+      workingHours: row.workingHours,
+      breaks: row.breaks,
+      onBreak: row.onBreak,
       lateMinutes: row.lateMinutes,
       overtimeHours: row.overtimeHours,
       status: row.status,
@@ -1484,6 +1574,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         checkIn: d.checkIn,
         checkOut: d.checkOut,
         workingHours: d.workingHours,
+        breaks: [],
+        onBreak: false,
         shortfallHours: d.shortfallHours,
         lateMinutes: d.lateMinutes,
         overtimeHours: d.overtimeHours,
@@ -1498,6 +1590,121 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       summary,
       days,
     };
+  }
+
+  private async getWorkHourBalancesForEmployee(
+    employeeId: number,
+    employee: {
+      id: number;
+      organizationId: number;
+      hireDate: Date | null;
+      shift: ShiftLite | null;
+    },
+    now: Date,
+    timezone: string,
+  ) {
+    const todayKey = dateKeyInTimezone(now, timezone);
+    const today = attendanceDateFromKey(todayKey);
+    const monthStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+    const weekStart = new Date(today);
+    const daysFromMonday = (weekStart.getUTCDay() + 6) % 7;
+    weekStart.setUTCDate(weekStart.getUTCDate() - daysFromMonday);
+    const queryStart = weekStart < monthStart ? weekStart : monthStart;
+
+    const [attendanceRows, holidays, leaves] = await Promise.all([
+      this.prisma.attendance.findMany({
+        where: { employeeId, date: { gte: queryStart, lte: today } },
+        include: { shift: true, breaks: true },
+      }),
+      this.prisma.holiday.findMany({
+        where: {
+          organizationId: employee.organizationId,
+          startDate: { lte: today },
+          endDate: { gte: queryStart },
+        },
+        select: { startDate: true, endDate: true },
+      }),
+      this.prisma.leaveRequest.findMany({
+        where: {
+          employeeId,
+          status: 'APPROVED',
+          startDate: { lte: this.endOfDay(today) },
+          endDate: { gte: queryStart },
+          deletedAt: null,
+        },
+        select: { startDate: true, endDate: true },
+      }),
+    ]);
+
+    const attendanceByDate = new Map(
+      attendanceRows.map((row) => [this.dateKey(row.date), row]),
+    );
+    const isCovered = (range: { startDate: Date; endDate: Date }, dayKey: string) =>
+      dayKey >= range.startDate.toISOString().slice(0, 10) &&
+      dayKey <= range.endDate.toISOString().slice(0, 10);
+
+    const aggregatePeriod = (periodStart: Date) => {
+      let requiredHours = 0;
+      let completedHours = 0;
+      for (const day = new Date(periodStart); day <= today; day.setUTCDate(day.getUTCDate() + 1)) {
+        const dayKey = this.dateKey(day);
+        const row = attendanceByDate.get(dayKey);
+        const shift = row?.shift ?? employee.shift;
+        if (row?.workingHours != null) {
+          completedHours += row.workingHours;
+        } else if (row?.checkIn) {
+          completedHours += calculateNetWorkingHours(
+            row.checkIn,
+            row.checkOut ?? now,
+            row.breaks,
+          );
+        }
+
+        if (
+          !shift ||
+          shift.weeklyHolidayDay === day.getUTCDay() ||
+          !this.isAttendanceEligible(day, employee.hireDate) ||
+          holidays.some((holiday) => isCovered(holiday, dayKey)) ||
+          leaves.some((leave) => isCovered(leave, dayKey))
+        ) {
+          continue;
+        }
+        requiredHours += row?.requiredHours ?? shift.requiredHours;
+      }
+      requiredHours = Number(requiredHours.toFixed(2));
+      completedHours = Number(completedHours.toFixed(2));
+      const remainingHours = Number(Math.max(0, requiredHours - completedHours).toFixed(2));
+      return {
+        startDate: periodStart.toISOString(),
+        endDate: today.toISOString(),
+        requiredHours,
+        completedHours,
+        remainingHours,
+        progressPercent: requiredHours > 0
+          ? Math.min(100, Number(((completedHours / requiredHours) * 100).toFixed(1)))
+          : 100,
+      };
+    };
+
+    return {
+      week: aggregatePeriod(weekStart),
+      month: aggregatePeriod(monthStart),
+    };
+  }
+
+  async getMyWorkHourBalances(user: AttendanceUser) {
+    const employeeId = await this.resolveCurrentEmployeeId(user);
+    const employee = await this.ensureEmployee(employeeId, user);
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: employee.organizationId },
+      select: { timezone: true },
+    });
+    return this.getWorkHourBalancesForEmployee(
+      employeeId,
+      employee,
+      new Date(),
+      organization?.timezone ?? 'UTC',
+    );
   }
 
   async getSummary(query: AttendanceSummaryQueryDto, user: AttendanceUser) {

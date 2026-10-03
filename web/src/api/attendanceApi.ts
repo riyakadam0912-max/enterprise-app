@@ -49,6 +49,8 @@ export interface AttendanceRecord {
   checkIn: string | null;
   checkOut: string | null;
   workingHours: number | null;
+  breaks?: { startedAt: string; endedAt: string | null }[];
+  onBreak?: boolean;
   shortfallHours?: number;
   lateMinutes: number;
   overtimeHours: number;
@@ -80,6 +82,8 @@ export interface EmployeeAttendanceDay {
   checkIn: string | null;
   checkOut: string | null;
   workingHours: number | null;
+  breaks?: { startedAt: string; endedAt: string | null }[];
+  onBreak?: boolean;
   shortfallHours?: number;
   lateMinutes: number;
   overtimeHours: number;
@@ -108,6 +112,8 @@ export interface MyAttendanceResponse {
   overtimeHours: number;
   shortfallHours?: number;
   workingHours?: number | null;
+  breaks?: { startedAt: string; endedAt: string | null }[];
+  onBreak?: boolean;
   status: AttendanceStatus;
   shiftDetails: ShiftDetails | null;
 }
@@ -123,6 +129,20 @@ export interface AttendanceMonthlySummary {
   totalWorkedHours?: number;
   totalExpectedHours?: number;
   totalWorkingDays: number;
+}
+
+export interface WorkHourPeriodBalance {
+  startDate: string;
+  endDate: string;
+  requiredHours: number;
+  completedHours: number;
+  remainingHours: number;
+  progressPercent: number;
+}
+
+export interface WorkHourBalances {
+  week: WorkHourPeriodBalance;
+  month: WorkHourPeriodBalance;
 }
 
 export interface ShiftPayload {
@@ -250,6 +270,18 @@ export function getMyAttendance(filters: AttendanceFilters = {}): Promise<Attend
 
 export function getMyAttendanceSnapshot(): Promise<MyAttendanceResponse> {
   return apiClient<MyAttendanceResponse>('/attendance/my');
+}
+
+export function getWorkHourBalances(): Promise<WorkHourBalances> {
+  return apiClient<WorkHourBalances>('/attendance/work-hours');
+}
+
+export function startAttendanceBreak(): Promise<unknown> {
+  return apiClient('/attendance/break/start', { method: 'POST' });
+}
+
+export function stopAttendanceBreak(): Promise<unknown> {
+  return apiClient('/attendance/break/stop', { method: 'POST' });
 }
 
 export function getTodayAttendance(date?: string): Promise<TodayAttendanceResponse> {

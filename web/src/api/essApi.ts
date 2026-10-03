@@ -25,6 +25,8 @@ export interface AttendanceStatus {
   checkIn: string | null;
   checkOut: string | null;
   workingHours: number;
+  breaks?: { startedAt: string; endedAt: string | null }[];
+  onBreak?: boolean;
   lateMinutes?: number;
   overtimeHours?: number;
   shift: {
@@ -269,6 +271,14 @@ export async function checkOut(): Promise<CheckOutResponse> {
   };
 }
 
+export async function startAttendanceBreak() {
+  return apiClient<unknown>('/attendance/break/start', { method: 'POST' });
+}
+
+export async function stopAttendanceBreak() {
+  return apiClient<unknown>('/attendance/break/stop', { method: 'POST' });
+}
+
 export async function getAttendanceToday(): Promise<AttendanceStatus> {
   const result = await apiClient<unknown>('/attendance/today');
   if (!isRecord(result) || !Array.isArray(result.rows)) {
@@ -277,6 +287,8 @@ export async function getAttendanceToday(): Promise<AttendanceStatus> {
       checkIn: null,
       checkOut: null,
       workingHours: 0,
+      breaks: [],
+      onBreak: false,
       lateMinutes: 0,
       overtimeHours: 0,
       shift: null,
@@ -290,6 +302,8 @@ export async function getAttendanceToday(): Promise<AttendanceStatus> {
       checkIn: null,
       checkOut: null,
       workingHours: 0,
+      breaks: [],
+      onBreak: false,
       lateMinutes: 0,
       overtimeHours: 0,
       shift: null,
@@ -302,12 +316,19 @@ export async function getAttendanceToday(): Promise<AttendanceStatus> {
   const lateMinutes = getNumber(first.lateMinutes) ?? 0;
   const overtimeHours = getNumber(first.overtimeHours) ?? 0;
   const shift = normalizeShift(first.shiftDetails ?? first.shift);
+  const breaks = Array.isArray(first.breaks)
+    ? first.breaks.flatMap((item) => isRecord(item) && getString(item.startedAt)
+      ? [{ startedAt: getString(item.startedAt)!, endedAt: getString(item.endedAt) ?? null }]
+      : [])
+    : [];
 
   return {
     status: deriveEssStatus(checkInValue, checkOutValue),
     checkIn: checkInValue,
     checkOut: checkOutValue,
     workingHours,
+    breaks,
+    onBreak: first.onBreak === true,
     lateMinutes,
     overtimeHours,
     shift,
