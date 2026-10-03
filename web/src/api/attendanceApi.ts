@@ -184,12 +184,15 @@ export interface HolidayRecord {
   endDate: string;
   name: string;
   organizationId: number;
+  familyRootOrganizationId?: number | null;
+  canManage?: boolean;
 }
 
 export interface HolidayPayload {
   startDate: string;
   endDate: string;
   name: string;
+  familyWide?: boolean;
 }
 
 export interface AttendanceFilters {

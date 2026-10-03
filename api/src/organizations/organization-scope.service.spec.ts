@@ -4,11 +4,11 @@ import { Role } from '../common/enums/role.enum';
 describe('OrganizationScopeService', () => {
   it('returns the organization and all active descendants for an admin', async () => {
     const organization = {
-      findMany: jest
-        .fn()
-        .mockResolvedValueOnce([{ id: 2 }])
-        .mockResolvedValueOnce([{ id: 3 }])
-        .mockResolvedValueOnce([]),
+      findMany: jest.fn().mockResolvedValue([
+        { id: 1, parentId: null },
+        { id: 2, parentId: 1 },
+        { id: 3, parentId: 2 },
+      ]),
     };
     const service = new OrganizationScopeService({ organization } as any);
 
@@ -56,6 +56,24 @@ describe('OrganizationScopeService', () => {
     await expect(service.getRelatedOrganizationIds(2)).resolves.toEqual([
       1, 2, 3, 4,
     ]);
+  });
+
+  it('returns only the selected organization subtree for attendance context', async () => {
+    const organization = {
+      findMany: jest.fn().mockResolvedValue([
+        { id: 1, parentId: null },
+        { id: 2, parentId: 1 },
+        { id: 3, parentId: 1 },
+        { id: 4, parentId: 2 },
+        { id: 5, parentId: null },
+      ]),
+    };
+    const service = new OrganizationScopeService({ organization } as any);
+
+    await expect(service.getDescendantOrganizationIds(2)).resolves.toEqual([
+      2, 4,
+    ]);
+    await expect(service.getOrganizationFamilyRootId(4)).resolves.toBe(1);
   });
 
   it('returns global scope only for an unscoped platform admin', async () => {

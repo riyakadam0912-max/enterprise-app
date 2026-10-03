@@ -183,7 +183,8 @@ model Organization {
   workflowNotifications    WorkflowNotification[]
   workflowSteps            WorkflowStep[]
   businessUnits            BusinessUnit[]
-  holidays                 Holiday[]
+  holidays                 Holiday[]              @relation("HolidayOrganization")
+  familyHolidays           Holiday[]              @relation("HolidayFamilyRoot")
   clientProfiles            ClientProfile[]
   clientInvitations         ClientInvitation[]
   customers                 Customer[]
@@ -383,14 +384,17 @@ model AttendanceBreak {
 model Holiday {
   id             Int          @id @default(autoincrement())
   organizationId Int
+  familyRootOrganizationId Int?
   startDate      DateTime     @db.Date
   endDate        DateTime     @db.Date
   name           String
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization @relation("HolidayOrganization", fields: [organizationId], references: [id], onDelete: Cascade)
+  familyRoot     Organization? @relation("HolidayFamilyRoot", fields: [familyRootOrganizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, startDate, endDate])
+  @@index([familyRootOrganizationId, startDate, endDate])
 }
 
 model Invoice {

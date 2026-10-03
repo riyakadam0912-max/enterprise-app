@@ -423,6 +423,7 @@ export default function AttendancePage() {
   const [holidayStartDate, setHolidayStartDate] = useState('');
   const [holidayEndDate, setHolidayEndDate] = useState('');
   const [holidayName, setHolidayName] = useState('');
+  const [holidayFamilyWide, setHolidayFamilyWide] = useState(false);
   const [editingHolidayId, setEditingHolidayId] = useState<number | null>(null);
   const [showHolidayForm, setShowHolidayForm] = useState(false);
   const [holidaySaving, setHolidaySaving] = useState(false);
@@ -737,6 +738,7 @@ export default function AttendancePage() {
     setHolidayStartDate('');
     setHolidayEndDate('');
     setHolidayName('');
+    setHolidayFamilyWide(false);
     setEditingHolidayId(null);
     setShowHolidayForm(false);
   }
@@ -752,6 +754,7 @@ export default function AttendancePage() {
           startDate: holidayStartDate,
           endDate: holidayEndDate,
           name: holidayName.trim(),
+          familyWide: holidayFamilyWide,
         });
         setHolidaySuccess('Holiday updated successfully.');
       } else {
@@ -759,6 +762,7 @@ export default function AttendancePage() {
           startDate: holidayStartDate,
           endDate: holidayEndDate,
           name: holidayName.trim(),
+          familyWide: holidayFamilyWide,
         });
         setHolidaySuccess('Holiday added successfully.');
       }
@@ -778,6 +782,7 @@ export default function AttendancePage() {
     setHolidayStartDate(holiday.startDate.slice(0, 10));
     setHolidayEndDate(holiday.endDate.slice(0, 10));
     setHolidayName(holiday.name);
+    setHolidayFamilyWide(holiday.familyRootOrganizationId != null);
     setShowHolidayForm(true);
     setHolidayError(null);
     setHolidaySuccess(null);
@@ -786,6 +791,7 @@ export default function AttendancePage() {
   function handleStartAddHoliday() {
     resetHolidayForm();
     setShowHolidayForm(true);
+    setHolidayFamilyWide(false);
     setHolidayError(null);
     setHolidaySuccess(null);
   }
@@ -1038,7 +1044,7 @@ export default function AttendancePage() {
               </span>
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Corporate Holidays</h3>
-                <p className="text-xs text-slate-500">{holidays.length} scheduled {holidays.length === 1 ? 'holiday' : 'holidays'}</p>
+                <p className="text-xs text-slate-500">Organization-local and shared family holidays</p>
               </div>
             </div>
             {!showHolidayForm && (
@@ -1093,6 +1099,18 @@ export default function AttendancePage() {
                   </label>
                 </div>
               </div>
+              <label className="mt-3 inline-flex items-start gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={holidayFamilyWide}
+                  onChange={(event) => setHolidayFamilyWide(event.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Apply to the organization family
+                  <span className="block text-xs text-slate-500">Available when managing the parent organization. Existing local holidays stay local unless explicitly promoted.</span>
+                </span>
+              </label>
               <div className="mt-3 flex justify-end gap-2">
                 <button type="button" onClick={resetHolidayForm} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
                 <button
@@ -1119,17 +1137,17 @@ export default function AttendancePage() {
                   <CalendarRange aria-hidden="true" className="h-4 w-4 shrink-0 text-teal-700" />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-slate-900">{holiday.name}</p>
-                    <p className="text-xs text-slate-500">{formatHolidayRange(holiday)}</p>
+                    <p className="text-xs text-slate-500">{formatHolidayRange(holiday)} · {holiday.familyRootOrganizationId != null ? 'Organization family' : 'This organization'}</p>
                   </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-1">
+                {holiday.canManage !== false && <div className="flex shrink-0 items-center gap-1">
                   <button type="button" onClick={() => handleEditHoliday(holiday)} aria-label={`Edit ${holiday.name}`} title="Edit holiday" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900">
                     <Pencil aria-hidden="true" className="h-4 w-4" />
                   </button>
                   <button type="button" onClick={() => void handleDeleteHoliday(holiday)} aria-label={`Delete ${holiday.name}`} title="Delete holiday" className="rounded-lg p-2 text-rose-500 hover:bg-rose-50 hover:text-rose-700">
                     <Trash2 aria-hidden="true" className="h-4 w-4" />
                   </button>
-                </div>
+                </div>}
               </div>
             ))}
           </div>

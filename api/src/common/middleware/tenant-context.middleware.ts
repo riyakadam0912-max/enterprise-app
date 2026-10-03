@@ -211,32 +211,39 @@ export class TenantContextMiddleware implements NestMiddleware {
     payload: JwtPayload,
     requestedOrganizationId: number,
   ): Promise<number | null> {
-    const isAdmin = payload.role === Role.ADMIN;
+    const isAdmin =
+      payload.role === Role.ADMIN ||
+      payload.role === Role.HR ||
+      payload.roles?.includes(Role.ADMIN) === true ||
+      payload.roles?.includes(Role.HR) === true;
     const homeOrganizationId =
       payload.homeOrganizationId ?? payload.organizationId;
     if (!isAdmin || homeOrganizationId == null) return null;
 
-    const [homeOrganization, requestedOrganization] = await Promise.all([
-      this.prisma.organization.findFirst({
-        where: { id: homeOrganizationId, status: 'ACTIVE', deletedAt: null },
-        select: { id: true },
-      }),
-      this.prisma.organization.findFirst({
-        where: {
-          id: requestedOrganizationId,
-          status: 'ACTIVE',
-          deletedAt: null,
-        },
-        select: { id: true },
-      }),
-    ]);
+    const organizations = await this.prisma.organization.findMany({
+      where: { status: 'ACTIVE', deletedAt: null },
+      select: { id: true, parentId: true },
+    });
+    const byId = new Map(
+      organizations.map((organization) => [organization.id, organization]),
+    );
+    if (!byId.has(homeOrganizationId) || !byId.has(requestedOrganizationId)) {
+      return null;
+    }
 
-    return homeOrganization && requestedOrganization
-      ? requestedOrganization.id
-      : null;
+    let currentId = requestedOrganizationId;
+    const visited = new Set<number>();
+    while (!visited.has(currentId)) {
+      if (currentId === homeOrganizationId) return requestedOrganizationId;
+      visited.add(currentId);
+      const parentId = byId.get(currentId)?.parentId;
+      if (parentId == null || !byId.has(parentId)) return null;
+      currentId = parentId;
+    }
+    return null;
   }
 
-  async use(req: Request, _res: Response, next: NextFunction) {
+  async use(req: Request, res: Response, next: NextFunction) {
     try {
       const cookieToken = (req.cookies as Record<string, string | undefined>)
         ?.enterprise_access_token;
@@ -294,8 +301,15 @@ export class TenantContextMiddleware implements NestMiddleware {
           resolvedOrganizationId = accessibleOrganizationId;
         } else {
           this.logger.warn(
-            `Ignoring unauthorized X-Organization-Id for user ${payload.sub ?? payload.userId}: ${headerOrg}`,
+            `Rejecting unauthorized X-Organization-Id for user ${payload.sub ?? payload.userId}: ${headerOrg}`,
           );
+          res.status(403).json({
+            statusCode: 403,
+            message:
+              'Selected organization is outside your authorized organization hierarchy',
+            error: 'Forbidden',
+          });
+          return;
         }
       }
 
@@ -317,15 +331,33 @@ export class TenantContextMiddleware implements NestMiddleware {
               this.logger.warn(
                 `SUPER_ADMIN requested organization ${orgId} which does not exist`,
               );
+              res.status(403).json({
+                statusCode: 403,
+                message: 'Selected organization is unavailable',
+                error: 'Forbidden',
+              });
+              return;
             } else {
               this.logger.warn(
                 `SUPER_ADMIN requested organization ${orgId} which is not ACTIVE (status=${org.status})`,
               );
+              res.status(403).json({
+                statusCode: 403,
+                message: 'Selected organization is unavailable',
+                error: 'Forbidden',
+              });
+              return;
             }
           } else {
             this.logger.warn(
               `Invalid X-Organization-Id header value: ${headerOrg}`,
             );
+            res.status(403).json({
+              statusCode: 403,
+              message: 'Selected organization is invalid',
+              error: 'Forbidden',
+            });
+            return;
           }
         }
 

@@ -38,6 +38,12 @@ type AttendanceUser = {
   role: Role;
   employeeId?: number | null;
   organizationId: number;
+  homeOrganizationId?: number | null;
+  roles?: string[];
+  isPlatformAdmin?: boolean;
+  isSuperAdmin?: boolean;
+  businessUnitId?: number | null;
+  allBusinessUnits?: boolean;
 };
 
 type ShiftLite = {
@@ -431,6 +437,44 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     return { organizationId: user.organizationId };
   }
 
+  private async getAttendanceOrganizationIds(
+    user: AttendanceUser,
+  ): Promise<number[] | null> {
+    if (user.role === Role.SUPER_ADMIN) {
+      if (user.organizationId == null) return null;
+      return this.organizationScopeService.getDescendantOrganizationIds(
+        user.organizationId,
+      );
+    }
+    if (user.role !== Role.ADMIN && user.role !== Role.HR) {
+      return [user.organizationId];
+    }
+
+    const homeOrganizationId = user.homeOrganizationId ?? user.organizationId;
+    const authorizationUser = {
+      ...user,
+      organizationId: homeOrganizationId,
+    };
+    const authorizedOrganizationIds =
+      await this.organizationScopeService.getOrganizationIds(authorizationUser as any);
+    if (authorizedOrganizationIds === null) {
+      if (user.organizationId == null) return null;
+      return this.organizationScopeService.getDescendantOrganizationIds(
+        user.organizationId,
+      );
+    }
+
+    if (!authorizedOrganizationIds.includes(user.organizationId)) {
+      throw new ForbiddenException('Selected organization is outside your attendance scope');
+    }
+
+    const selectedDescendants =
+      await this.organizationScopeService.getDescendantOrganizationIds(
+        user.organizationId,
+      );
+    return selectedDescendants.filter((id) => authorizedOrganizationIds.includes(id));
+  }
+
   private async resolveScopedEmployeeId(
     user: AttendanceUser,
     requestedEmployeeId?: number | null,
@@ -504,8 +548,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       user.role === Role.HR ||
       user.role === Role.SUPER_ADMIN
     ) {
-      const organizationIds =
-        await this.organizationScopeService.getOrganizationIds(user as any);
+      const organizationIds = await this.getAttendanceOrganizationIds(user);
       if (organizationIds === null) {
         const employees = await this.prisma.employee.findMany({
           where: {
@@ -518,8 +561,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       }
       const buScope = await this.businessUnitsService.resolveScope(user as any);
       const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
-      const descendantIds = organizationIds?.filter(
-        (id) => id !== (buScope?.organizationId ?? user.organizationId),
+      const descendantIds = organizationIds.filter(
+        (id) => id !== buScope.organizationId,
       );
       if (!descendantIds || descendantIds.length === 0) {
         const buEmployeeIds =
@@ -762,21 +805,76 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  private async getOrganizationFamilyRootMap(organizationIds: number[]) {
+    return this.organizationScopeService.getOrganizationFamilyRootMap(
+      organizationIds,
+    );
+  }
+
+  private async findApplicableHolidays(
+    organizationIds: number[],
+    startDate: Date,
+    endDate: Date,
+  ) {
+    if (organizationIds.length === 0) {
+      return {
+        holidays: [],
+        familyRootByOrganization: new Map<number, number | null>(),
+      };
+    }
+    const familyRootByOrganization =
+      await this.getOrganizationFamilyRootMap(organizationIds);
+    const familyRootIds = [
+      ...new Set([...familyRootByOrganization.values()].filter((id): id is number => id != null)),
+    ];
+    const holidays = await this.prisma.holiday.findMany({
+      where: {
+        startDate: { lte: endDate },
+        endDate: { gte: startDate },
+        OR: [
+          { organizationId: { in: organizationIds } },
+          ...(familyRootIds.length > 0
+            ? [{ familyRootOrganizationId: { in: familyRootIds } }]
+            : []),
+        ],
+      },
+    });
+    return { holidays, familyRootByOrganization };
+  }
+
+  private holidayAppliesToOrganization(
+    holiday: { organizationId: number; familyRootOrganizationId: number | null },
+    organizationId: number,
+    familyRootByOrganization: Map<number, number | null>,
+  ) {
+    if (holiday.familyRootOrganizationId != null) {
+      return holiday.familyRootOrganizationId === familyRootByOrganization.get(organizationId);
+    }
+    return holiday.organizationId === organizationId;
+  }
+
   private async validateHolidayRange(
     organizationId: number,
     startDate: Date,
     endDate: Date,
     excludeId?: number,
+    organizationIds: number[] = [organizationId],
+    familyRootOrganizationId?: number | null,
   ) {
     if (startDate > endDate) {
       throw new BadRequestException('Holiday end date must be on or after the start date');
     }
     const overlap = await this.prisma.holiday.findFirst({
       where: {
-        organizationId,
         ...(excludeId != null ? { id: { not: excludeId } } : {}),
         startDate: { lte: endDate },
         endDate: { gte: startDate },
+        OR: [
+          { organizationId: { in: organizationIds } },
+          ...(familyRootOrganizationId != null
+            ? [{ familyRootOrganizationId }]
+            : []),
+        ],
       },
       select: { id: true },
     });
@@ -787,23 +885,73 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
   async listHolidays(user: AttendanceUser) {
     const organizationId = await this.resolveOrganizationId(user);
-    return this.prisma.holiday.findMany({
-      where: { organizationId },
+    const familyRootOrganizationId =
+      await this.organizationScopeService.getOrganizationFamilyRootId(organizationId);
+    const holidays = await this.prisma.holiday.findMany({
+      where: {
+        OR: [
+          { organizationId },
+          ...(familyRootOrganizationId != null
+            ? [{ familyRootOrganizationId }]
+            : []),
+        ],
+      },
       orderBy: [{ startDate: 'asc' }, { name: 'asc' }],
     });
+    return holidays.map((holiday) => ({
+      ...holiday,
+      canManage:
+        holiday.familyRootOrganizationId == null
+          ? holiday.organizationId === organizationId
+          : holiday.familyRootOrganizationId === organizationId,
+    }));
   }
 
   async createHoliday(dto: CreateHolidayDto, user: AttendanceUser) {
     const name = dto.name.trim();
     if (!name) throw new BadRequestException('Holiday name is required');
     const organizationId = await this.resolveOrganizationId(user);
+    const familyWide = dto.familyWide === true;
+    const familyRootOrganizationId =
+      await this.organizationScopeService.getOrganizationFamilyRootId(organizationId);
+    let holidayOrganizationIds = [organizationId];
+    if (familyWide) {
+      if (familyRootOrganizationId !== organizationId) {
+        throw new ForbiddenException(
+          'Select the parent organization to create a family-wide holiday',
+        );
+      }
+      holidayOrganizationIds =
+        await this.organizationScopeService.getDescendantOrganizationIds(
+          organizationId,
+        );
+      const authorizedIds = await this.getAttendanceOrganizationIds(user);
+      if (
+        authorizedIds !== null &&
+        holidayOrganizationIds.some((id) => !authorizedIds.includes(id))
+      ) {
+        throw new ForbiddenException(
+          'You are not authorized to apply holidays to the entire organization family',
+        );
+      }
+    }
     const startDate = this.parseHolidayDate(dto.startDate);
     const endDate = this.parseHolidayDate(dto.endDate);
-    await this.validateHolidayRange(organizationId, startDate, endDate);
+    await this.validateHolidayRange(
+      organizationId,
+      startDate,
+      endDate,
+      undefined,
+      holidayOrganizationIds,
+      familyRootOrganizationId,
+    );
     try {
       const holiday = await this.prisma.holiday.create({
         data: {
           organizationId,
+          familyRootOrganizationId: familyWide
+            ? organizationId
+            : null,
           startDate,
           endDate,
           name,
@@ -822,10 +970,48 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('Holiday name is required');
     }
     const organizationId = await this.resolveOrganizationId(user);
+    const familyRootOrganizationId =
+      await this.organizationScopeService.getOrganizationFamilyRootId(organizationId);
     const existing = await this.prisma.holiday.findFirst({
-      where: { id, organizationId },
+      where: {
+        id,
+        OR: [
+          { organizationId },
+          ...(familyRootOrganizationId != null
+            ? [{ familyRootOrganizationId }]
+            : []),
+        ],
+      },
     });
     if (!existing) throw new NotFoundException('Holiday not found');
+    const currentlyFamilyWide = existing.familyRootOrganizationId != null;
+    if (currentlyFamilyWide && familyRootOrganizationId !== organizationId) {
+      throw new ForbiddenException(
+        'Only the parent organization can edit a family-wide holiday',
+      );
+    }
+    const familyWide = dto.familyWide ?? currentlyFamilyWide;
+    if (familyWide && familyRootOrganizationId !== organizationId) {
+      throw new ForbiddenException(
+        'Select the parent organization to apply a family-wide holiday',
+      );
+    }
+    const affectedOrganizationIds = familyWide
+      ? await this.organizationScopeService.getDescendantOrganizationIds(
+          organizationId,
+        )
+      : [organizationId];
+    const authorizedIds = familyWide
+      ? await this.getAttendanceOrganizationIds(user)
+      : null;
+    if (
+      authorizedIds !== null &&
+      affectedOrganizationIds.some((id) => !authorizedIds.includes(id))
+    ) {
+      throw new ForbiddenException(
+        'You are not authorized to apply holidays to the entire organization family',
+      );
+    }
 
     const startDate = dto.startDate
       ? this.parseHolidayDate(dto.startDate)
@@ -833,11 +1019,24 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const endDate = dto.endDate
       ? this.parseHolidayDate(dto.endDate)
       : existing.endDate;
-    await this.validateHolidayRange(organizationId, startDate, endDate, id);
+    await this.validateHolidayRange(
+      organizationId,
+      startDate,
+      endDate,
+      id,
+      affectedOrganizationIds,
+      familyRootOrganizationId,
+    );
 
     const holiday = await this.prisma.holiday.update({
       where: { id },
-      data: { startDate, endDate, ...(name !== undefined ? { name } : {}) },
+      data: {
+        organizationId,
+        familyRootOrganizationId: familyWide ? organizationId : null,
+        startDate,
+        endDate,
+        ...(name !== undefined ? { name } : {}),
+      },
     });
     await this.invalidateDashboardCache();
     return holiday;
@@ -845,11 +1044,29 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
   async deleteHoliday(id: number, user: AttendanceUser) {
     const organizationId = await this.resolveOrganizationId(user);
+    const familyRootOrganizationId =
+      await this.organizationScopeService.getOrganizationFamilyRootId(organizationId);
     const existing = await this.prisma.holiday.findFirst({
-      where: { id, organizationId },
-      select: { id: true },
+      where: {
+        id,
+        OR: [
+          { organizationId },
+          ...(familyRootOrganizationId != null
+            ? [{ familyRootOrganizationId }]
+            : []),
+        ],
+      },
+      select: { id: true, familyRootOrganizationId: true },
     });
     if (!existing) throw new NotFoundException('Holiday not found');
+    if (
+      existing.familyRootOrganizationId != null &&
+      familyRootOrganizationId !== organizationId
+    ) {
+      throw new ForbiddenException(
+        'Only the parent organization can delete a family-wide holiday',
+      );
+    }
     const holiday = await this.prisma.holiday.delete({ where: { id } });
     await this.invalidateDashboardCache();
     return holiday;
@@ -1212,12 +1429,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   ) {
     const buScope = await this.businessUnitsService.resolveScope(user as any);
     const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
-    const organizationIds =
-      user.role === Role.ADMIN ||
-      user.role === Role.HR ||
-      user.role === Role.SUPER_ADMIN
-        ? await this.organizationScopeService.getOrganizationIds(user as any)
-        : [user.organizationId];
+    const organizationIds = await this.getAttendanceOrganizationIds(user);
     const otherOrganizationIds = organizationIds?.filter(
       (id) => id !== buScope.organizationId,
     );
@@ -1291,17 +1503,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     const holidayOrganizationIds = [...new Set(eligibleEmployees.map((employee) => employee.organizationId))];
     const targetHolidayDate = this.parseHolidayDate(this.dateKey(day));
-    const holidays = holidayOrganizationIds.length
-      ? await this.prisma.holiday.findMany({
-          where: {
-            organizationId: { in: holidayOrganizationIds },
-            startDate: { lte: targetHolidayDate },
-            endDate: { gte: targetHolidayDate },
-          },
-          select: { organizationId: true, startDate: true, endDate: true, name: true },
-        })
-      : [];
-    const holidayByOrganization = new Map(holidays.map((holiday) => [holiday.organizationId, holiday]));
+    const { holidays, familyRootByOrganization } =
+      await this.findApplicableHolidays(
+        holidayOrganizationIds,
+        targetHolidayDate,
+        targetHolidayDate,
+      );
 
     const attendanceMap = new Map(
       attendanceRows.map((row) => [row.employeeId, row]),
@@ -1314,7 +1521,13 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         this.startOfDay(day),
         attendanceMap.get(employee.id) ?? null,
         leaveSet.has(employee.id),
-        holidayByOrganization.get(employee.organizationId)?.name,
+        holidays.find((holiday) =>
+          this.holidayAppliesToOrganization(
+            holiday,
+            employee.organizationId,
+            familyRootByOrganization,
+          ) && this.holidayCoversDay(holiday, day),
+        )?.name,
       ),
     );
 
@@ -1435,8 +1648,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    const buScope = await this.businessUnitsService.resolveScope(user as any);
-    const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
     const employeeWhere =
       user.role === Role.EMPLOYEE
         ? {
@@ -1444,11 +1655,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             organizationId: user.organizationId,
             deletedAt: null,
           }
-        : {
-            id: employeeId,
-            ...this.buildOrganizationScope(user),
-            ...buWhere,
-          };
+        : { id: employeeId, deletedAt: null };
     const employee = await this.prisma.employee.findFirst({
       where: employeeWhere,
       include: { shift: true },
@@ -1489,14 +1696,14 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       }),
     ]);
 
-    const holidays = await this.prisma.holiday.findMany({
-      where: {
-        organizationId: employee.organizationId,
-        startDate: { lte: this.parseHolidayDate(this.dateKey(monthEnd)) },
-        endDate: { gte: this.parseHolidayDate(this.dateKey(monthStart)) },
-      },
-      select: { startDate: true, endDate: true, name: true },
-    });
+    const monthStartHolidayDate = this.parseHolidayDate(this.dateKey(monthStart));
+    const monthEndHolidayDate = this.parseHolidayDate(this.dateKey(monthEnd));
+    const { holidays, familyRootByOrganization } =
+      await this.findApplicableHolidays(
+        [employee.organizationId],
+        monthStartHolidayDate,
+        monthEndHolidayDate,
+      );
 
     const attendanceMap = new Map(
       attendanceRows.map((row) => [
@@ -1538,7 +1745,13 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           row.endDate >= this.startOfDay(day),
       );
       const shift = attendance?.shift ?? employee.shift ?? null;
-      const holidayName = holidays.find((holiday) => this.holidayCoversDay(holiday, day))?.name;
+      const holidayName = holidays.find((holiday) =>
+        this.holidayAppliesToOrganization(
+          holiday,
+          employee.organizationId,
+          familyRootByOrganization,
+        ) && this.holidayCoversDay(holiday, day),
+      )?.name;
       const status = onLeave
         ? AttendanceStatus.LEAVE
         : holidayName && !attendance?.checkIn
@@ -1651,18 +1864,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
     const queryStart = weekStart < monthStart ? weekStart : monthStart;
 
-    const [attendanceRows, holidays, leaves] = await Promise.all([
+    const [attendanceRows, leaves] = await Promise.all([
       this.prisma.attendance.findMany({
         where: { employeeId, date: { gte: queryStart, lte: today } },
         include: { shift: true, breaks: true },
-      }),
-      this.prisma.holiday.findMany({
-        where: {
-          organizationId: employee.organizationId,
-          startDate: { lte: monthEnd },
-          endDate: { gte: queryStart },
-        },
-        select: { startDate: true, endDate: true },
       }),
       this.prisma.leaveRequest.findMany({
         where: {
@@ -1675,6 +1880,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         select: { startDate: true, endDate: true },
       }),
     ]);
+    const { holidays, familyRootByOrganization } =
+      await this.findApplicableHolidays(
+        [employee.organizationId],
+        queryStart,
+        monthEnd,
+      );
 
     const attendanceByDate = new Map(
       attendanceRows.map((row) => [this.dateKey(row.date), row]),
@@ -1720,7 +1931,13 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           row?.status === AttendanceStatus.LEAVE ||
           row?.status === AttendanceStatus.HOLIDAY ||
           row?.status === AttendanceStatus.WEEKLY_OFF ||
-          holidays.some((holiday) => isCovered(holiday, dayKey)) ||
+          holidays.some((holiday) =>
+            this.holidayAppliesToOrganization(
+              holiday,
+              employee.organizationId,
+              familyRootByOrganization,
+            ) && isCovered(holiday, dayKey),
+          ) ||
           leaves.some((leave) => isCovered(leave, dayKey))
         ) {
           continue;
@@ -1781,9 +1998,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
   async getTeamWeeklyWorkHours(user: AttendanceUser) {
     const scopedIds = await this.getScopedEmployeeFilter(user);
+    const organizationIds = await this.getAttendanceOrganizationIds(user);
     const employees = await this.prisma.employee.findMany({
       where: {
-        ...this.buildOrganizationScope(user),
+        ...(organizationIds === null ? {} : { organizationId: { in: organizationIds } }),
         deletedAt: null,
         ...(scopedIds ? { id: { in: scopedIds } } : {}),
       },
@@ -1878,23 +2096,22 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const organizationIds = [...new Set(attendanceRows.map((row) => row.employee.organizationId))];
     const monthStartHolidayDate = this.parseHolidayDate(this.dateKey(monthStart));
     const monthEndHolidayDate = this.parseHolidayDate(this.dateKey(monthEnd));
-    const holidays = organizationIds.length
-      ? await this.prisma.holiday.findMany({
-          where: {
-            organizationId: { in: organizationIds },
-            startDate: { lte: monthEndHolidayDate },
-            endDate: { gte: monthStartHolidayDate },
-          },
-          select: { organizationId: true, startDate: true, endDate: true },
-        })
-      : [];
+    const { holidays, familyRootByOrganization } =
+      await this.findApplicableHolidays(
+        organizationIds,
+        monthStartHolidayDate,
+        monthEndHolidayDate,
+      );
     const statusForRow = (row: (typeof attendanceRows)[number]) => (
       row.status !== AttendanceStatus.LEAVE &&
       !row.checkIn &&
-      holidays.some((holiday) => (
-        holiday.organizationId === row.employee.organizationId &&
-        this.holidayCoversDay(holiday, row.date)
-      ))
+      holidays.some((holiday) =>
+        this.holidayAppliesToOrganization(
+          holiday,
+          row.employee.organizationId,
+          familyRootByOrganization,
+        ) && this.holidayCoversDay(holiday, row.date),
+      )
         ? AttendanceStatus.HOLIDAY
         : row.status
     );
@@ -2014,12 +2231,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     const buScope = await this.businessUnitsService.resolveScope(user as any);
     const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
-    const organizationIds =
-      user.role === Role.ADMIN ||
-      user.role === Role.HR ||
-      user.role === Role.SUPER_ADMIN
-        ? await this.organizationScopeService.getOrganizationIds(user as any)
-        : [user.organizationId];
+    const organizationIds = await this.getAttendanceOrganizationIds(user);
     const descendantIds = organizationIds?.filter(
       (id) => id !== buScope.organizationId,
     );
@@ -2093,28 +2305,33 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const holidayOrganizationIds = [...new Set(employees.map((employee) => employee.organization.id))];
     const reportMonthStart = this.parseHolidayDate(this.dateKey(monthStart));
     const reportMonthEnd = this.parseHolidayDate(this.dateKey(monthEnd));
-    const reportHolidays = holidayOrganizationIds.length
-      ? await this.prisma.holiday.findMany({
-          where: {
-            organizationId: { in: holidayOrganizationIds },
-            startDate: { lte: reportMonthEnd },
-            endDate: { gte: reportMonthStart },
-          },
-          select: { organizationId: true, startDate: true, endDate: true },
-        })
-      : [];
+    const { holidays: reportHolidays, familyRootByOrganization } =
+      await this.findApplicableHolidays(
+        holidayOrganizationIds,
+        reportMonthStart,
+        reportMonthEnd,
+      );
     const corporateHolidayDays: Array<{ organizationId: number; date: Date; dateKey: string }> = [];
-    reportHolidays.forEach((holiday) => {
-      const start = new Date(Math.max(holiday.startDate.getTime(), reportMonthStart.getTime()));
-      const end = new Date(Math.min(holiday.endDate.getTime(), reportMonthEnd.getTime()));
-      for (const date = new Date(start); date <= end; date.setUTCDate(date.getUTCDate() + 1)) {
-        corporateHolidayDays.push({
-          organizationId: holiday.organizationId,
-          date: new Date(date),
-          dateKey: date.toISOString().slice(0, 10),
-        });
+    for (const organizationId of holidayOrganizationIds) {
+      for (const holiday of reportHolidays) {
+        if (
+          !this.holidayAppliesToOrganization(
+            holiday,
+            organizationId,
+            familyRootByOrganization,
+          )
+        ) continue;
+        const start = new Date(Math.max(holiday.startDate.getTime(), reportMonthStart.getTime()));
+        const end = new Date(Math.min(holiday.endDate.getTime(), reportMonthEnd.getTime()));
+        for (const date = new Date(start); date <= end; date.setUTCDate(date.getUTCDate() + 1)) {
+          corporateHolidayDays.push({
+            organizationId,
+            date: new Date(date),
+            dateKey: date.toISOString().slice(0, 10),
+          });
+        }
       }
-    });
+    }
     const corporateHolidayKeys = new Set(
       corporateHolidayDays.map((holiday) => `${holiday.organizationId}:${holiday.dateKey}`),
     );
@@ -2452,17 +2669,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     const organizationIds = [...new Set(employees.map((employee) => employee.organizationId))];
     const targetHolidayDate = this.parseHolidayDate(this.dateKey(target));
-    const holidayRows = organizationIds.length
-      ? await this.prisma.holiday.findMany({
-          where: {
-            organizationId: { in: organizationIds },
-            startDate: { lte: targetHolidayDate },
-            endDate: { gte: targetHolidayDate },
-          },
-          select: { organizationId: true },
-        })
-      : [];
-    const holidayOrganizationIds = new Set(holidayRows.map((holiday) => holiday.organizationId));
+    const { holidays: holidayRows, familyRootByOrganization } =
+      await this.findApplicableHolidays(
+        organizationIds,
+        targetHolidayDate,
+        targetHolidayDate,
+      );
 
     for (const employee of employees) {
       if (!this.isAttendanceEligible(target, employee.hireDate)) {
@@ -2471,6 +2683,13 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       if (!employee.shift) {
         continue;
       }
+      const isCorporateHoliday = holidayRows.some((holiday) =>
+        this.holidayAppliesToOrganization(
+          holiday,
+          employee.organizationId,
+          familyRootByOrganization,
+        ) && this.holidayCoversDay(holiday, target),
+      );
 
       const leave = await this.findApprovedLeaveForDay(employee.id, target);
 
@@ -2493,7 +2712,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             date: target,
             status: leave
               ? AttendanceStatus.LEAVE
-              : holidayOrganizationIds.has(employee.organizationId)
+              : isCorporateHoliday
                 ? AttendanceStatus.HOLIDAY
               : this.isWeeklyHoliday(target, employee.shift)
                 ? AttendanceStatus.WEEKLY_OFF
@@ -2509,7 +2728,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         continue;
       }
 
-      if (holidayOrganizationIds.has(employee.organizationId) && !existing.checkIn) {
+      if (isCorporateHoliday && !existing.checkIn) {
         if (existing.status !== AttendanceStatus.HOLIDAY) {
           await this.prisma.attendance.update({
             where: { id: existing.id },

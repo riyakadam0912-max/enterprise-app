@@ -1,4 +1,11 @@
-import { IsDateString, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsDateString,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateHolidayDto {
@@ -18,4 +25,11 @@ export class UpdateHolidayDto {
   @MaxLength(100)
   @ApiPropertyOptional({ example: 'Founders Day' })
   name?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  @ApiPropertyOptional({
+    description: 'Apply this holiday across the organization family',
+  })
+  familyWide?: boolean;
 }

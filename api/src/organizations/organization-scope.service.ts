@@ -7,12 +7,103 @@ import { PrismaService } from '../prisma/prisma.service';
 export class OrganizationScopeService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async getDescendantOrganizationIds(
+    organizationId: number,
+    includeRoot = true,
+  ): Promise<number[]> {
+    const organizations = await this.prisma.organization.findMany({
+      where: { status: 'ACTIVE', deletedAt: null },
+      select: { id: true, parentId: true },
+    });
+    const byParent = new Map<number, number[]>();
+    for (const organization of organizations) {
+      if (organization.parentId == null) continue;
+      const children = byParent.get(organization.parentId) ?? [];
+      children.push(organization.id);
+      byParent.set(organization.parentId, children);
+    }
+    if (
+      !organizations.some((organization) => organization.id === organizationId)
+    ) {
+      return [];
+    }
+
+    const descendants = new Set<number>(includeRoot ? [organizationId] : []);
+    const visited = new Set<number>([organizationId]);
+    const frontier = [organizationId];
+    while (frontier.length > 0) {
+      const children = (byParent.get(frontier.shift()!) ?? []).filter(
+        (childId) => !visited.has(childId),
+      );
+      children.forEach((childId) => {
+        visited.add(childId);
+        descendants.add(childId);
+        frontier.push(childId);
+      });
+    }
+    return [...descendants];
+  }
+
+  async getOrganizationFamilyRootId(
+    organizationId: number,
+  ): Promise<number | null> {
+    const organizations = await this.prisma.organization.findMany({
+      where: { status: 'ACTIVE', deletedAt: null },
+      select: { id: true, parentId: true },
+    });
+    const byId = new Map(
+      organizations.map((organization) => [organization.id, organization]),
+    );
+    if (!byId.has(organizationId)) return null;
+
+    let rootId = organizationId;
+    const visited = new Set<number>([rootId]);
+    while (byId.get(rootId)?.parentId != null) {
+      const parentId = byId.get(rootId)!.parentId!;
+      if (visited.has(parentId) || !byId.has(parentId)) break;
+      visited.add(parentId);
+      rootId = parentId;
+    }
+    return rootId;
+  }
+
+  async getOrganizationFamilyRootMap(organizationIds: number[]) {
+    if (organizationIds.length === 0) return new Map<number, number | null>();
+    const organizations = await this.prisma.organization.findMany({
+      where: { status: 'ACTIVE', deletedAt: null },
+      select: { id: true, parentId: true },
+    });
+    const byId = new Map(
+      organizations.map((organization) => [organization.id, organization]),
+    );
+    const roots = new Map<number, number | null>();
+
+    for (const organizationId of new Set(organizationIds)) {
+      if (!byId.has(organizationId)) {
+        roots.set(organizationId, null);
+        continue;
+      }
+      let rootId = organizationId;
+      const visited = new Set<number>([rootId]);
+      while (byId.get(rootId)?.parentId != null) {
+        const parentId = byId.get(rootId)!.parentId!;
+        if (visited.has(parentId) || !byId.has(parentId)) break;
+        visited.add(parentId);
+        rootId = parentId;
+      }
+      roots.set(organizationId, rootId);
+    }
+    return roots;
+  }
+
   async getRelatedOrganizationIds(organizationId: number): Promise<number[]> {
     const organizations = await this.prisma.organization.findMany({
       where: { status: 'ACTIVE', deletedAt: null },
       select: { id: true, parentId: true },
     });
-    const byId = new Map(organizations.map((organization) => [organization.id, organization]));
+    const byId = new Map(
+      organizations.map((organization) => [organization.id, organization]),
+    );
     if (!byId.has(organizationId)) return [];
 
     let rootId = organizationId;
@@ -52,8 +143,7 @@ export class OrganizationScopeService {
       return null;
     }
 
-    const rootOrganizationId =
-      user.homeOrganizationId ?? user.organizationId;
+    const rootOrganizationId = user.homeOrganizationId ?? user.organizationId;
     if (rootOrganizationId == null) {
       return [];
     }
@@ -68,24 +158,6 @@ export class OrganizationScopeService {
       return [user.organizationId ?? rootOrganizationId];
     }
 
-    const accessibleOrganizations = new Set([rootOrganizationId]);
-    let frontier = [rootOrganizationId];
-
-    while (frontier.length > 0) {
-      const children = await this.prisma.organization.findMany({
-        where: {
-          parentId: { in: frontier },
-          status: 'ACTIVE',
-          deletedAt: null,
-        },
-        select: { id: true },
-      });
-      frontier = children
-        .map((organization) => organization.id)
-        .filter((id) => !accessibleOrganizations.has(id));
-      frontier.forEach((id) => accessibleOrganizations.add(id));
-    }
-
-    return [...accessibleOrganizations];
+    return this.getDescendantOrganizationIds(rootOrganizationId);
   }
 }

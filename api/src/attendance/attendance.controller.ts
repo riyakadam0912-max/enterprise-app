@@ -15,6 +15,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '../common/enums/role.enum';
+import type { AuthenticatedRequest } from '../common/types/request';
 import { AttendanceService } from './attendance.service';
 import { AssignShiftDto } from './dto/assign-shift.dto';
 import { AttendanceSummaryQueryDto } from './dto/attendance-summary.dto';
@@ -40,11 +41,22 @@ import {
 export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
 
+  private scopedUser(req: AuthenticatedRequest) {
+    return {
+      ...req.user,
+      organizationId: req.organizationId ?? req.user.organizationId ?? 0,
+      homeOrganizationId:
+        req.homeOrganizationId ?? req.user.homeOrganizationId ?? null,
+      businessUnitId: req.businessUnitId ?? req.user.businessUnitId,
+      allBusinessUnits: req.allBusinessUnits ?? req.user.allBusinessUnits,
+    };
+  }
+
   @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'GET corporate holidays' })
   @Get('holidays')
-  listHolidays(@Req() req: { organizationId?: number | null; user: { userId: number; role: Role; employeeId?: number | null; organizationId: number } }) {
-    return this.attendanceService.listHolidays({ ...req.user, organizationId: req.organizationId ?? req.user.organizationId });
+  listHolidays(@Req() req: AuthenticatedRequest) {
+    return this.attendanceService.listHolidays(this.scopedUser(req));
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
@@ -53,9 +65,9 @@ export class AttendanceController {
   @Post('holidays')
   createHoliday(
     @Body() dto: CreateHolidayDto,
-    @Req() req: { organizationId?: number | null; user: { userId: number; role: Role; employeeId?: number | null; organizationId: number } },
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.attendanceService.createHoliday(dto, { ...req.user, organizationId: req.organizationId ?? req.user.organizationId });
+    return this.attendanceService.createHoliday(dto, this.scopedUser(req));
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
@@ -65,9 +77,9 @@ export class AttendanceController {
   updateHoliday(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateHolidayDto,
-    @Req() req: { organizationId?: number | null; user: { userId: number; role: Role; employeeId?: number | null; organizationId: number } },
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.attendanceService.updateHoliday(id, dto, { ...req.user, organizationId: req.organizationId ?? req.user.organizationId });
+    return this.attendanceService.updateHoliday(id, dto, this.scopedUser(req));
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
@@ -75,9 +87,9 @@ export class AttendanceController {
   @Delete('holidays/:id')
   deleteHoliday(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: { organizationId?: number | null; user: { userId: number; role: Role; employeeId?: number | null; organizationId: number } },
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.attendanceService.deleteHoliday(id, { ...req.user, organizationId: req.organizationId ?? req.user.organizationId });
+    return this.attendanceService.deleteHoliday(id, this.scopedUser(req));
   }
 
   @Roles(Role.ADMIN, Role.MANAGER, Role.EMPLOYEE, Role.HR, Role.SUPER_ADMIN)
@@ -190,22 +202,8 @@ export class AttendanceController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Get('shifts')
-  listShifts(
-    @Req()
-    req: {
-      organizationId?: number | null;
-      user: {
-        userId: number;
-        role: Role;
-        employeeId?: number | null;
-        organizationId: number;
-      };
-    },
-  ) {
-    return this.attendanceService.listShifts({
-      ...req.user,
-      organizationId: req.organizationId ?? req.user.organizationId,
-    });
+  listShifts(@Req() req: AuthenticatedRequest) {
+    return this.attendanceService.listShifts(this.scopedUser(req));
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
@@ -286,17 +284,9 @@ export class AttendanceController {
   @Get()
   findAll(
     @Query() query: QueryAttendanceDto,
-    @Req()
-    req: {
-      user: {
-        userId: number;
-        role: Role;
-        employeeId?: number | null;
-        organizationId: number;
-      };
-    },
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.attendanceService.findAll(query, req.user);
+    return this.attendanceService.findAll(query, this.scopedUser(req));
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)
@@ -364,18 +354,8 @@ export class AttendanceController {
     summary: 'GET current weekly work-hour balances for the team',
   })
   @Get('work-hours/team')
-  getTeamWeeklyWorkHours(
-    @Req()
-    req: {
-      user: {
-        userId: number;
-        role: Role;
-        employeeId?: number | null;
-        organizationId: number;
-      };
-    },
-  ) {
-    return this.attendanceService.getTeamWeeklyWorkHours(req.user);
+  getTeamWeeklyWorkHours(@Req() req: AuthenticatedRequest) {
+    return this.attendanceService.getTeamWeeklyWorkHours(this.scopedUser(req));
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)
@@ -387,17 +367,9 @@ export class AttendanceController {
   @Get('summary')
   summary(
     @Query() query: AttendanceSummaryQueryDto,
-    @Req()
-    req: {
-      user: {
-        userId: number;
-        role: Role;
-        employeeId?: number | null;
-        organizationId: number;
-      };
-    },
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.attendanceService.getSummary(query, req.user);
+    return this.attendanceService.getSummary(query, this.scopedUser(req));
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)
@@ -409,17 +381,9 @@ export class AttendanceController {
   @Get('today')
   findToday(
     @Query('date') date: string | undefined,
-    @Req()
-    req: {
-      user: {
-        userId: number;
-        role: Role;
-        employeeId?: number | null;
-        organizationId: number;
-      };
-    },
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.attendanceService.getToday(req.user, date);
+    return this.attendanceService.getToday(this.scopedUser(req), date);
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
@@ -431,34 +395,22 @@ export class AttendanceController {
   @Get('monthly-report')
   monthlyReport(
     @Query() query: QueryAttendanceDto,
-    @Req()
-    req: {
-      user: {
-        userId: number;
-        role: Role;
-        employeeId?: number | null;
-        organizationId: number;
-      };
-    },
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.attendanceService.getMonthlyReport(query, req.user);
+    return this.attendanceService.getMonthlyReport(query, this.scopedUser(req));
   }
 
   @Get('employee/:id')
   findByEmployee(
     @Param('id', ParseIntPipe) id: number,
     @Query('month') month: string | undefined,
-    @Req()
-    req: {
-      user: {
-        userId: number;
-        role: Role;
-        employeeId?: number | null;
-        organizationId: number;
-      };
-    },
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.attendanceService.getEmployeeAttendance(id, req.user, month);
+    return this.attendanceService.getEmployeeAttendance(
+      id,
+      this.scopedUser(req),
+      month,
+    );
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
