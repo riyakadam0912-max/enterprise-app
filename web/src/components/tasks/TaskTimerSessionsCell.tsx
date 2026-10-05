@@ -1,6 +1,7 @@
 'use client';
+'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Clock3, Pause, Play, Square } from 'lucide-react';
 import { getTask, updateTaskTimer, type Task, type TaskTimerSession } from '@/api/tasksApi';
 
@@ -16,11 +17,11 @@ function formatDuration(totalSeconds: number) {
     .join(':');
 }
 
-function remainingTime(session: TaskTimerSession, now: number) {
-  if (session.status !== 'RUNNING' || !session.startedAt) return session.remainingSeconds;
-  return Math.max(
+function elapsedTime(session: TaskTimerSession, now: number) {
+  if (session.status !== 'RUNNING' || !session.startedAt) return session.totalSeconds;
+  return session.totalSeconds + Math.max(
     0,
-    session.remainingSeconds - Math.floor((now - new Date(session.startedAt).getTime()) / 1000),
+    Math.floor((now - new Date(session.startedAt).getTime()) / 1000),
   );
 }
 
@@ -49,8 +50,6 @@ export function TaskTimerSessionsCell({
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const automaticStopStarted = useRef(false);
-
   useEffect(() => setTimerSessions(sessions), [sessions]);
 
   const ownSession = timerSessions.find((session) => (
@@ -61,7 +60,7 @@ export function TaskTimerSessionsCell({
   const pausedSessions = timerSessions.filter((session) => session.status === 'PAUSED');
   const participantTotals = timerSessions.reduce<Map<number, { name: string; seconds: number }>>((totals, session) => {
     const participant = totals.get(session.userId) ?? { name: session.user.name, seconds: 0 };
-    participant.seconds += session.totalSeconds;
+    participant.seconds += elapsedTime(session, now);
     totals.set(session.userId, participant);
     return totals;
   }, new Map());
@@ -71,38 +70,6 @@ export function TaskTimerSessionsCell({
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(interval);
   }, [runningSessions.length]);
-
-  useEffect(() => {
-    if (ownSession?.status !== 'RUNNING') {
-      automaticStopStarted.current = false;
-      return undefined;
-    }
-    if (remainingTime(ownSession, now) > 0 || automaticStopStarted.current || !canControl) {
-      return undefined;
-    }
-
-    automaticStopStarted.current = true;
-    void updateTaskTimer(taskId, 'stop')
-      .then((updated) => setTimerSessions(updated.timerSessions ?? []))
-      .catch(async (reason: unknown) => {
-        if (isConflictError(reason)) {
-          try {
-            const freshTask = await getTask(taskId);
-            setTimerSessions(freshTask.timerSessions ?? []);
-            setNow(Date.now());
-            const refreshedSession = freshTask.timerSessions?.find((session) => session.userId === currentUserId);
-            if (refreshedSession?.status === 'RUNNING' || refreshedSession?.status === 'PAUSED') {
-              setError(reason instanceof Error ? reason.message : 'Timer changed; state refreshed');
-            }
-          } catch {
-            setError('Unable to refresh timer state');
-          }
-          return;
-        }
-        setError(reason instanceof Error ? reason.message : 'Unable to stop timer');
-      });
-    return undefined;
-  }, [canControl, currentUserId, now, ownSession, taskId]);
 
   async function act(action: TimerAction) {
     setBusy(true);
@@ -137,15 +104,14 @@ export function TaskTimerSessionsCell({
     }
   }
 
-  const hasEstimate = Boolean(estimateHours && estimateHours > 0);
-  const ownRemaining = ownSession ? remainingTime(ownSession, now) : null;
+  const ownElapsed = ownSession ? elapsedTime(ownSession, now) : null;
 
   return (
     <div className="flex min-w-44 flex-col items-start gap-1.5" onClick={(event) => event.stopPropagation()}>
       {ownSession?.status === 'RUNNING' ? (
         <div className="flex items-center gap-2">
-          <span className={`font-mono text-sm font-semibold tabular-nums ${ownRemaining === 0 ? 'text-rose-700' : 'text-slate-900'}`}>
-            {formatDuration(ownRemaining ?? 0)}
+          <span className="font-mono text-sm font-semibold tabular-nums text-slate-900">
+            {formatDuration(ownElapsed ?? 0)}
           </span>
           <button type="button" title="Pause my timer" aria-label="Pause my timer" disabled={busy} onClick={() => void act('pause')} className="rounded border border-slate-200 p-1 text-slate-600 hover:bg-slate-100 disabled:opacity-50">
             <Pause className="h-3.5 w-3.5" />
@@ -157,7 +123,7 @@ export function TaskTimerSessionsCell({
       ) : ownSession?.status === 'PAUSED' ? (
         <div className="flex items-center gap-2">
           <span className="font-mono text-sm font-semibold tabular-nums text-slate-700">
-            {formatDuration(ownRemaining ?? 0)}
+            {formatDuration(ownElapsed ?? 0)}
           </span>
           <button type="button" title="Resume my timer" aria-label="Resume my timer" disabled={busy} onClick={() => void act('resume')} className="rounded border border-slate-200 p-1 text-slate-600 hover:bg-slate-100 disabled:opacity-50">
             <Play className="h-3.5 w-3.5" />
@@ -170,29 +136,29 @@ export function TaskTimerSessionsCell({
         <>
           <button
             type="button"
-            title={hasEstimate ? 'Start your task countdown' : 'Set an estimate to start the countdown'}
-            aria-label={hasEstimate ? 'Start your task countdown' : 'Set an estimate to start the countdown'}
-            disabled={!canControl || !hasEstimate || busy}
+            title="Start your task timer"
+            aria-label="Start your task timer"
+            disabled={!canControl || busy}
             onClick={() => void act('start')}
             className="inline-flex items-center gap-1.5 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Clock3 className="h-3.5 w-3.5" />
             {canControl ? 'Start mine' : 'Timer'}
           </button>
-          {!hasEstimate && canControl && <span className="text-[10px] text-slate-400">Set task estimate first</span>}
+          {estimateHours != null && estimateHours > 0 && canControl && <span className="text-[10px] text-slate-400">Estimate: {estimateHours}h</span>}
         </>
       )}
 
       {runningSessions.filter((session) => session.userId !== currentUserId).map((session) => (
         <div key={session.id} className="text-xs text-slate-600">
           <span className="font-medium">{session.user.name}</span>{' '}
-          <span className="font-mono tabular-nums">{formatDuration(remainingTime(session, now))}</span>
+          <span className="font-mono tabular-nums">{formatDuration(elapsedTime(session, now))}</span>
         </div>
       ))}
       {pausedSessions.filter((session) => session.userId !== currentUserId).map((session) => (
         <div key={session.id} className="text-xs text-slate-500">
           <span className="font-medium">{session.user.name}</span>{' '}
-          <span className="font-mono tabular-nums">{formatDuration(session.remainingSeconds)} paused</span>
+          <span className="font-mono tabular-nums">{formatDuration(session.totalSeconds)} paused</span>
         </div>
       ))}
       {[...participantTotals.entries()].map(([participantId, participant]) => (
@@ -200,9 +166,6 @@ export function TaskTimerSessionsCell({
           {participantId === currentUserId ? 'You' : participant.name}: {(participant.seconds / 3600).toFixed(2)}h tracked
         </div>
       ))}
-      {ownSession?.status === 'RUNNING' && ownRemaining === 0 && (
-        <span className="text-[10px] font-medium text-rose-600">Estimate reached</span>
-      )}
       {legacyTimerTotalSeconds > 0 && (
         <span className="text-[10px] text-slate-500">Previously tracked: {(legacyTimerTotalSeconds / 3600).toFixed(2)}h</span>
       )}

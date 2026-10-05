@@ -1916,7 +1916,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                                 sessions={task.timerSessions}
                                 legacyTimerTotalSeconds={task.legacyTimerTotalSeconds}
                                 currentUserId={userId}
-                                canControl={role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER' || role === 'EMPLOYEE'}
+                                canControl={role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'HR' || role === 'MANAGER' || role === 'EMPLOYEE'}
                               />
                             </td>
                             <td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${taskStatusClass[status] ?? 'bg-slate-200 text-slate-700'}`}>{status.replace('_', ' ')}</span></td>

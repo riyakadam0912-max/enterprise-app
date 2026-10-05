@@ -10,7 +10,7 @@ import { Role } from '../common/enums/role.enum';
 import type { PrismaService } from '../prisma/prisma.service';
 
 function createPrismaMock() {
-  return {
+  const prisma: any = {
     employee: {
       findUnique: jest.fn(),
       findMany: jest.fn(),
@@ -27,6 +27,7 @@ function createPrismaMock() {
       create: jest.fn(),
       update: jest.fn(),
     },
+    taskTimerSession: { findFirst: jest.fn().mockResolvedValue(null) },
     holiday: {
       findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue(null),
@@ -41,12 +42,17 @@ function createPrismaMock() {
     },
     user: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
     },
     organization: {
       findUnique: jest.fn(),
     },
+    $transaction: jest.fn((callback: (transaction: any) => unknown) =>
+      callback(prisma),
+    ),
   };
+  return prisma;
 }
 
 function createCacheManagerMock() {
@@ -73,6 +79,7 @@ describe('AttendanceService', () => {
   let mockUser: ReturnType<typeof createMockUser>;
   let mockBusinessUnitsService: any;
   let mockOrganizationScopeService: any;
+  let mockTasksService: { pauseActiveTimerForUser: jest.Mock; stopActiveTimerForEmployee: jest.Mock };
 
   beforeEach(() => {
     jest.useFakeTimers();
@@ -99,11 +106,16 @@ describe('AttendanceService', () => {
         async (ids: number[]) => new Map(ids.map((id) => [id, id])),
       ),
     };
+    mockTasksService = {
+      pauseActiveTimerForUser: jest.fn().mockResolvedValue(null),
+      stopActiveTimerForEmployee: jest.fn().mockResolvedValue(null),
+    };
     service = new AttendanceService(
       prisma as unknown as PrismaService,
       cacheManager as unknown as Cache,
       mockBusinessUnitsService,
       mockOrganizationScopeService as any,
+      mockTasksService as any,
     );
   });
 
@@ -454,6 +466,12 @@ describe('AttendanceService', () => {
         }),
       }),
     );
+    expect(mockTasksService.stopActiveTimerForEmployee).toHaveBeenCalledWith(
+      7,
+      1,
+      new Date('2026-03-13T14:00:00.000Z'),
+      prisma,
+    );
     expect(result).toEqual({
       id: 10,
       employeeId: 7,
@@ -462,6 +480,50 @@ describe('AttendanceService', () => {
       employee: mockEmployee,
       shift: mockEmployee.shift,
     });
+  });
+
+  it('does not write checkout when the timer cannot be finalized', async () => {
+    const mockEmployee = {
+      id: 7,
+      organizationId: 1,
+      name: 'Ava',
+      shift: {
+        id: 1,
+        name: 'Day',
+        type: 'FIXED',
+        startTime: '09:00',
+        endTime: '17:00',
+        requiredHours: 8,
+        gracePeriodMinutes: 15,
+      },
+    };
+    prisma.employee.findFirst.mockResolvedValue(mockEmployee);
+    prisma.attendance.findUnique.mockResolvedValue({
+      id: 10,
+      employeeId: 7,
+      date: new Date('2026-03-13T00:00:00.000Z'),
+      checkIn: new Date('2026-03-13T09:00:00.000Z'),
+      checkOut: null,
+      status: AttendanceStatus.PRESENT,
+      shift: mockEmployee.shift,
+      breaks: [],
+    });
+    mockTasksService.stopActiveTimerForEmployee.mockRejectedValueOnce(
+      new Error('timer write failed'),
+    );
+
+    await expect(
+      service.checkOut(
+        {
+          employeeId: 7,
+          date: '2026-03-13',
+          timestamp: '2026-03-13T14:00:00.000Z',
+        },
+        mockUser,
+      ),
+    ).rejects.toThrow('timer write failed');
+    expect(prisma.attendance.update).not.toHaveBeenCalled();
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it('starts a break for an active attendance record', async () => {
@@ -479,7 +541,24 @@ describe('AttendanceService', () => {
     expect(prisma.attendanceBreak.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ attendanceId: 10 }),
     });
+    expect(mockTasksService.pauseActiveTimerForUser).toHaveBeenCalledWith(
+      mockUser,
+      expect.any(Date),
+      prisma,
+    );
     expect(result.onBreak).toBe(true);
+  });
+
+  it('does not create a break when pausing the task timer fails', async () => {
+    prisma.employee.findFirst.mockResolvedValue({ id: 7 });
+    prisma.attendance.findFirst.mockResolvedValue({ id: 10, breaks: [] });
+    mockTasksService.pauseActiveTimerForUser.mockRejectedValueOnce(
+      new Error('timer write failed'),
+    );
+
+    await expect(service.startBreak(mockUser)).rejects.toThrow('timer write failed');
+    expect(prisma.attendanceBreak.create).not.toHaveBeenCalled();
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it('rejects starting a second active break', async () => {
@@ -1636,5 +1715,116 @@ describe('AttendanceService', () => {
 
     expect(prisma.attendance.create).not.toHaveBeenCalled();
     expect(prisma.attendance.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('auto-closes missed checkout and its timer at shift end, closing an open break', async () => {
+    const now = new Date(2026, 2, 14, 12, 0, 0);
+    jest.setSystemTime(now);
+    const shift = {
+      id: 2,
+      name: 'Night',
+      type: 'FIXED',
+      startTime: '21:00',
+      endTime: '05:00',
+      requiredHours: 8,
+      minPresentHours: 5,
+      gracePeriodMinutes: 15,
+      weeklyHolidayDay: 0,
+    };
+    const checkIn = new Date(now);
+    checkIn.setDate(checkIn.getDate() - 1);
+    checkIn.setHours(21, 0, 0, 0);
+    const breakStart = new Date(checkIn.getTime() + 4 * 60 * 60 * 1000);
+    const targetDate = new Date(now);
+    targetDate.setDate(targetDate.getDate() - 1);
+    targetDate.setHours(0, 0, 0, 0);
+    prisma.employee.findMany.mockResolvedValue([
+      { id: 7, organizationId: 1, shift },
+    ]);
+    prisma.attendance.findUnique.mockResolvedValue({
+      id: 88,
+      employeeId: 7,
+      date: targetDate,
+      checkIn,
+      checkOut: null,
+      status: AttendanceStatus.PRESENT,
+      lateMinutes: 0,
+      breaks: [{ id: 12, startedAt: breakStart, endedAt: null }],
+    });
+
+    await service.runDailyAutomation();
+
+    const autoCheckOut = new Date(checkIn);
+    autoCheckOut.setDate(autoCheckOut.getDate() + 1);
+    autoCheckOut.setHours(5, 0, 0, 0);
+    expect(mockTasksService.stopActiveTimerForEmployee).toHaveBeenCalledWith(
+      7,
+      1,
+      autoCheckOut,
+      prisma,
+    );
+    expect(prisma.attendanceBreak.update).toHaveBeenCalledWith({
+      where: { id: 12 },
+      data: { endedAt: autoCheckOut },
+    });
+    expect(prisma.attendance.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 88 },
+        data: expect.objectContaining({
+          checkOut: autoCheckOut,
+          isAutoClosed: true,
+        }),
+      }),
+    );
+  });
+
+  it('auto-closes a same-day missed checkout during the hourly pass', async () => {
+    jest.setSystemTime(new Date('2026-03-13T18:00:00.000Z'));
+    prisma.employee.findMany.mockResolvedValue([]);
+    prisma.attendance.findMany.mockResolvedValue([
+      {
+        id: 91,
+        employeeId: 7,
+        organizationId: 1,
+        date: new Date('2026-03-13T00:00:00.000Z'),
+        checkIn: new Date('2026-03-13T09:00:00.000Z'),
+        checkOut: null,
+        lateMinutes: 0,
+        breaks: [],
+        shift: null,
+        employee: {
+          organization: { timezone: 'UTC' },
+          shift: {
+            id: 1,
+            name: 'Day',
+            type: 'FIXED',
+            startTime: '09:00',
+            endTime: '17:00',
+            requiredHours: 8,
+            minPresentHours: 5,
+            gracePeriodMinutes: 15,
+            weeklyHolidayDay: 0,
+          },
+        },
+      },
+    ]);
+
+    await service.runDailyAutomation();
+
+    expect(mockTasksService.stopActiveTimerForEmployee).toHaveBeenCalledWith(
+      7,
+      1,
+      new Date('2026-03-13T17:00:00.000Z'),
+      prisma,
+    );
+    expect(prisma.attendance.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 91 },
+        data: expect.objectContaining({
+          checkOut: new Date('2026-03-13T17:00:00.000Z'),
+          isAutoClosed: true,
+        }),
+      }),
+    );
   });
 });

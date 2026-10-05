@@ -199,24 +199,13 @@ describe('TimesheetsService', () => {
         expect.objectContaining({
           where: expect.objectContaining({
             organizationId: 1,
-            OR: expect.arrayContaining([
+            AND: expect.arrayContaining([
               expect.objectContaining({
-                task: expect.objectContaining({
-                  contains: 'Test',
-                  mode: 'insensitive',
-                }),
-              }),
-              expect.objectContaining({
-                project: expect.objectContaining({
-                  contains: 'Test',
-                  mode: 'insensitive',
-                }),
-              }),
-              expect.objectContaining({
-                notes: expect.objectContaining({
-                  contains: 'Test',
-                  mode: 'insensitive',
-                }),
+                OR: expect.arrayContaining([
+                  expect.objectContaining({ task: expect.objectContaining({ contains: 'Test', mode: 'insensitive' }) }),
+                  expect.objectContaining({ project: expect.objectContaining({ contains: 'Test', mode: 'insensitive' }) }),
+                  expect.objectContaining({ notes: expect.objectContaining({ contains: 'Test', mode: 'insensitive' }) }),
+                ]),
               }),
             ]),
           }),
@@ -239,6 +228,53 @@ describe('TimesheetsService', () => {
           where: expect.objectContaining({ createdByUserId: _mockEmployeeUser.userId }),
         }),
       );
+    });
+
+    it('restricts manager reports to their own entries and managed projects, including with search', async () => {
+      const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
+      timesheetDelegate.findMany.mockResolvedValueOnce([]);
+      timesheetDelegate.count.mockResolvedValueOnce(0);
+
+      await service.getReport(
+        { search: 'design' } as QueryTimesheetDto,
+        _mockManagerUser,
+      );
+
+      expect(timesheetDelegate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: expect.arrayContaining([
+              { createdByUserId: _mockManagerUser.userId },
+              { projectRef: { managerId: _mockManagerUser.userId } },
+              { projectRef: { coManagers: { some: { id: _mockManagerUser.userId } } } },
+            ]),
+            AND: expect.arrayContaining([
+              expect.objectContaining({ OR: expect.any(Array) }),
+            ]),
+          }),
+        }),
+      );
+    });
+
+    it('returns creator identity as employee details in the report', async () => {
+      const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
+      timesheetDelegate.findMany.mockResolvedValueOnce([{
+        id: 3,
+        task: 'Test Task',
+        date: new Date('2026-01-01'),
+        hours: 2,
+        status: 'PENDING',
+        createdByUserId: 9,
+        createdByUser: { id: 9, name: 'Ava Worker' },
+      }]);
+      timesheetDelegate.count.mockResolvedValueOnce(1);
+
+      const result = await service.getReport({} as QueryTimesheetDto, mockAdminUser);
+
+      expect(result.data[0]).toEqual(expect.objectContaining({
+        employeeId: 9,
+        employee: { id: 9, name: 'Ava Worker' },
+      }));
     });
   });
 

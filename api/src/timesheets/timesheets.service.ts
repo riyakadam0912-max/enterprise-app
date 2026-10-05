@@ -34,9 +34,18 @@ export class TimesheetsService {
   }
 
   private getTimesheetOwnerFilter(user: AuthUser): Prisma.TimesheetWhereInput {
-    return user.role === Role.EMPLOYEE
-      ? { createdByUserId: user.userId ?? user.id }
-      : {};
+    const userId = user.userId ?? user.id;
+    if (user.role === Role.EMPLOYEE) return { createdByUserId: userId };
+    if (user.role === Role.MANAGER) {
+      return {
+        OR: [
+          { createdByUserId: userId },
+          { projectRef: { managerId: userId } },
+          { projectRef: { coManagers: { some: { id: userId } } } },
+        ],
+      };
+    }
+    return {};
   }
 
   private async validateRelatedRecords(
@@ -142,10 +151,19 @@ export class TimesheetsService {
     }
 
     if (search) {
-      where.OR = [
-        { task: { contains: search, mode: 'insensitive' } },
-        { project: { contains: search, mode: 'insensitive' } },
-        { notes: { contains: search, mode: 'insensitive' } },
+      where.AND = [
+        ...(Array.isArray(where.AND)
+          ? where.AND
+          : where.AND
+            ? [where.AND]
+            : []),
+        {
+          OR: [
+            { task: { contains: search, mode: 'insensitive' } },
+            { project: { contains: search, mode: 'insensitive' } },
+            { notes: { contains: search, mode: 'insensitive' } },
+          ],
+        },
       ];
     }
 
@@ -174,7 +192,10 @@ export class TimesheetsService {
         status: t.status,
         project: t.project ?? null,
         notes: t.notes ?? null,
-        employee: null,
+        employee: t.createdByUser
+          ? { id: t.createdByUser.id, name: t.createdByUser.name }
+          : null,
+        employeeId: t.createdByUserId ?? null,
         createdByUser: t.createdByUser ?? null,
         organization: t.organization,
       })),

@@ -17,7 +17,7 @@ describe('TasksService per-user task timer sessions', () => {
       employeeId,
       role,
     }) as AuthUser;
-  const admin = makeUser(5, Role.ADMIN);
+  const admin = makeUser(5, Role.ADMIN, 105);
   const task = {
     id: 8,
     organizationId,
@@ -39,6 +39,7 @@ describe('TasksService per-user task timer sessions', () => {
       create: jest.Mock;
       updateMany: jest.Mock;
     };
+    attendance: { findFirst: jest.Mock };
     $transaction: jest.Mock;
   };
   let tx: {
@@ -64,6 +65,9 @@ describe('TasksService per-user task timer sessions', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 101 }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      attendance: {
+        findFirst: jest.fn().mockResolvedValue({ id: 201 }),
       },
       $transaction: jest.fn((callback: (transaction: typeof tx) => unknown) =>
         callback(tx),
@@ -121,15 +125,28 @@ describe('TasksService per-user task timer sessions', () => {
     expect(prisma.taskTimerSession.create).not.toHaveBeenCalled();
   });
 
-  it('requires an estimate before starting a countdown', async () => {
-    prisma.task.findFirst.mockResolvedValueOnce({
-      ...task,
-      estimatedHours: null,
+  it('allows a timer to start without a task estimate', async () => {
+    prisma.task.findFirst.mockResolvedValueOnce({ ...task, estimatedHours: null });
+
+    await service.updateTimer(8, { action: 'start' }, admin);
+
+    expect(prisma.taskTimerSession.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        taskId: 8,
+        userId: admin.userId,
+        status: 'RUNNING',
+        durationSeconds: 0,
+        remainingSeconds: 0,
+      }),
     });
+  });
+
+  it('requires the user to be checked in and off break before starting', async () => {
+    prisma.attendance.findFirst.mockResolvedValueOnce(null);
 
     await expect(
-      service.updateTimer(8, { action: 'start' }, admin),
-    ).rejects.toThrow(BadRequestException);
+      service.updateTimer(8, { action: 'start' }, makeUser(11, Role.EMPLOYEE, 101)),
+    ).rejects.toThrow('Check in and end any break');
     expect(prisma.taskTimerSession.create).not.toHaveBeenCalled();
   });
 
@@ -145,6 +162,7 @@ describe('TasksService per-user task timer sessions', () => {
       remainingSeconds: 3570,
       startedAt,
       totalSeconds: 0,
+      createdAt: new Date(startedAt.getTime() - 30_000),
     });
 
     await service.updateTimer(

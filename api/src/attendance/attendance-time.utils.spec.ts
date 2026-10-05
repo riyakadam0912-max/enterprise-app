@@ -4,6 +4,7 @@ import {
   attendanceStatusForWorkedHours,
   calculateLateMinutesInTimezone,
   dateKeyInTimezone,
+  shiftEndInTimezone,
 } from './attendance-time.utils';
 
 describe('attendance time utilities', () => {
@@ -51,6 +52,16 @@ describe('attendance time utilities', () => {
     expect(attendanceDateFromKey(dateKey)).toEqual(
       new Date('2026-03-13T00:00:00.000Z'),
     );
+  });
+
+  it('resolves a night shift end on the following local date', () => {
+    expect(
+      shiftEndInTimezone(
+        '2026-03-13',
+        { startTime: '21:00', endTime: '05:00' },
+        'Asia/Kolkata',
+      ),
+    ).toEqual(new Date('2026-03-13T23:30:00.000Z'));
   });
 
   it('does not count flexible shifts as late and derives half-day from worked hours', () => {

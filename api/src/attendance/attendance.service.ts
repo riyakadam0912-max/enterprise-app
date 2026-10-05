@@ -30,8 +30,11 @@ import {
   attendanceDateFromKey,
   calculateLateMinutesInTimezone,
   dateKeyInTimezone,
+  shiftEndInTimezone,
 } from './attendance-time.utils';
 import { calculateNetWorkingHours } from './attendance-work-time.utils';
+import { TasksService } from '../tasks/tasks.service';
+import type { AuthUser } from '../common/types/auth';
 
 type AttendanceUser = {
   userId: number;
@@ -105,6 +108,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly businessUnitsService: BusinessUnitsService,
     private readonly organizationScopeService: OrganizationScopeService,
+    private readonly tasksService: TasksService,
   ) {}
 
   private async resolveOrganizationId(user: AttendanceUser): Promise<number> {
@@ -1411,10 +1415,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const breakIntervals = record.breaks ?? [];
     const openBreak = breakIntervals.find((item) => item.endedAt === null);
     if (openBreak) {
-      await this.prisma.attendanceBreak.update({
-        where: { id: openBreak.id },
-        data: { endedAt: checkOutTime },
-      });
       openBreak.endedAt = checkOutTime;
     }
     const workingHours = calculateNetWorkingHours(
@@ -1436,16 +1436,30 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       lateMinutes,
     });
 
-    const result = await this.prisma.attendance.update({
-      where: { id: record.id },
-      data: {
-        checkOut: checkOutTime,
-        workingHours,
-        overtimeHours,
-        shortfallHours,
-        status,
-      },
-      include: { employee: true, shift: true },
+    const result = await this.prisma.$transaction(async (tx) => {
+      if (openBreak) {
+        await tx.attendanceBreak.update({
+          where: { id: openBreak.id },
+          data: { endedAt: checkOutTime },
+        });
+      }
+      await this.tasksService.stopActiveTimerForEmployee(
+        employeeId,
+        employee.organizationId ?? user.organizationId,
+        checkOutTime,
+        tx,
+      );
+      return tx.attendance.update({
+        where: { id: record.id },
+        data: {
+          checkOut: checkOutTime,
+          workingHours,
+          overtimeHours,
+          shortfallHours,
+          status,
+        },
+        include: { employee: true, shift: true },
+      });
     });
 
     await this.invalidateDashboardCache();
@@ -1468,8 +1482,15 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       throw new ConflictException('A break is already in progress');
     }
     const startedAt = new Date();
-    const created = await this.prisma.attendanceBreak.create({
-      data: { attendanceId: record.id, startedAt },
+    const created = await this.prisma.$transaction(async (tx) => {
+      await this.tasksService.pauseActiveTimerForUser(
+        user as AuthUser,
+        startedAt,
+        tx,
+      );
+      return tx.attendanceBreak.create({
+        data: { attendanceId: record.id, startedAt },
+      });
     });
     await this.invalidateDashboardCache();
     return { break: created, onBreak: true };
@@ -2779,7 +2800,93 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  private async closeOverdueAttendances() {
+    const openAttendances =
+      (await this.prisma.attendance.findMany({
+        where: { checkIn: { not: null }, checkOut: null, deletedAt: null },
+        include: {
+          breaks: true,
+          shift: true,
+          employee: {
+            include: {
+              shift: true,
+              organization: { select: { timezone: true } },
+            },
+          },
+        },
+      })) ?? [];
+    const now = new Date();
+
+    for (const attendance of openAttendances) {
+      if (!attendance.checkIn || !attendance.employee) continue;
+      const shift = attendance.shift ?? attendance.employee.shift;
+      const timezone = attendance.employee.organization?.timezone ?? 'UTC';
+      const dateKey = new Date(attendance.date).toISOString().slice(0, 10);
+      const shiftEnd = shift
+        ? shiftEndInTimezone(dateKey, shift, timezone)
+        : null;
+      const checkOut =
+        shiftEnd && shiftEnd.getTime() > attendance.checkIn.getTime()
+          ? shiftEnd
+          : new Date(
+              attendance.checkIn.getTime() +
+                (shift?.requiredHours ?? 8) * 3_600_000,
+            );
+      if (checkOut.getTime() > now.getTime()) continue;
+
+      const breaks = attendance.breaks ?? [];
+      const openBreak = breaks.find((interval) => interval.endedAt === null);
+      const breakIntervals = breaks.map((interval) => ({
+        startedAt: interval.startedAt,
+        endedAt: interval.endedAt ?? (openBreak ? checkOut : null),
+      }));
+      const workingHours = this.calculateWorkingHours(
+        attendance.checkIn,
+        checkOut,
+        breakIntervals,
+      );
+      const overtimeHours = this.calculateOvertimeHours(workingHours, shift);
+      const shortfallHours = this.calculateShortfallHours(workingHours, shift);
+      const lateMinutes = attendance.lateMinutes ?? 0;
+
+      await this.prisma.$transaction(async (tx) => {
+        if (openBreak) {
+          await tx.attendanceBreak.update({
+            where: { id: openBreak.id },
+            data: { endedAt: checkOut },
+          });
+        }
+        await this.tasksService.stopActiveTimerForEmployee(
+          attendance.employeeId,
+          attendance.organizationId,
+          checkOut,
+          tx,
+        );
+        await tx.attendance.update({
+          where: { id: attendance.id },
+          data: {
+            checkOut,
+            workingHours,
+            overtimeHours,
+            shortfallHours,
+            isAutoClosed: true,
+            status: this.calculateStatus({
+              day: this.startOfDay(new Date(attendance.date)),
+              checkIn: attendance.checkIn,
+              checkOut,
+              workingHours,
+              onLeave: false,
+              shift,
+              lateMinutes,
+            }),
+          },
+        });
+      });
+    }
+  }
+
   async runDailyAutomation() {
+    await this.closeOverdueAttendances();
     const target = this.startOfDay(new Date());
     target.setDate(target.getDate() - 1);
 
@@ -2803,6 +2910,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         targetHolidayDate,
       );
 
+    let hasPendingShiftClose = false;
     for (const employee of employees) {
       if (!this.isAttendanceEligible(target, employee.hireDate)) {
         continue;
@@ -2828,7 +2936,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             date: target,
           },
         },
-        include: { shift: true },
+        include: { shift: true, breaks: true },
       });
 
       if (!existing) {
@@ -2878,18 +2986,32 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       }
 
       if (existing.checkIn && !existing.checkOut) {
+        const checkInTime = new Date(existing.checkIn);
         const { shiftEnd } = this.getShiftWindow(target, employee.shift);
         const autoCheckOut =
-          shiftEnd && shiftEnd.getTime() > new Date(existing.checkIn).getTime()
+          shiftEnd && shiftEnd.getTime() > checkInTime.getTime()
             ? shiftEnd
             : new Date(
                 new Date(existing.checkIn).getTime() +
                   employee.shift.requiredHours * 60 * 60 * 1000,
               );
 
+        if (autoCheckOut.getTime() > Date.now()) {
+          hasPendingShiftClose = true;
+          continue;
+        }
+
+        const breaks = existing.breaks ?? [];
+        const openBreak = breaks.find((interval) => interval.endedAt === null);
+        const breakIntervals = breaks.map((interval) => ({
+          startedAt: interval.startedAt,
+          endedAt: interval.endedAt ?? (openBreak ? autoCheckOut : null),
+        }));
+
         const workingHours = this.calculateWorkingHours(
-          new Date(existing.checkIn),
+          checkInTime,
           autoCheckOut,
+          breakIntervals,
         );
         const overtimeHours = this.calculateOvertimeHours(
           workingHours,
@@ -2901,29 +3023,43 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         );
         const lateMinutes = (existing as any).lateMinutes ?? 0;
 
-        await this.prisma.attendance.update({
-          where: { id: existing.id },
-          data: {
-            checkOut: autoCheckOut,
-            workingHours,
-            overtimeHours,
-            shortfallHours,
-            isAutoClosed: true,
-            status: this.calculateStatus({
-              day: target,
-              checkIn: new Date(existing.checkIn),
+        await this.prisma.$transaction(async (tx) => {
+          if (openBreak) {
+            await tx.attendanceBreak.update({
+              where: { id: openBreak.id },
+              data: { endedAt: autoCheckOut },
+            });
+          }
+          await this.tasksService.stopActiveTimerForEmployee(
+            employee.id,
+            employee.organizationId,
+            autoCheckOut,
+            tx,
+          );
+          await tx.attendance.update({
+            where: { id: existing.id },
+            data: {
               checkOut: autoCheckOut,
               workingHours,
-              onLeave: false,
-              shift: employee.shift,
-              lateMinutes,
-            }),
-          },
+              overtimeHours,
+              shortfallHours,
+              isAutoClosed: true,
+              status: this.calculateStatus({
+                day: target,
+                checkIn: checkInTime,
+                checkOut: autoCheckOut,
+                workingHours,
+                onLeave: false,
+                shift: employee.shift,
+                lateMinutes,
+              }),
+            },
+          });
         });
       }
     }
 
-    this.lastAutomationKey = key;
+    if (!hasPendingShiftClose) this.lastAutomationKey = key;
     await this.invalidateDashboardCache();
     return { processedDate: key, alreadyProcessed: false };
   }

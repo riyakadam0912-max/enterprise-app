@@ -1240,7 +1240,7 @@ export default function AllTasksPage() {
                         sessions={task.timerSessions}
                         legacyTimerTotalSeconds={task.legacyTimerTotalSeconds}
                         currentUserId={currentUserId}
-                        canControl={role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER' || role === 'EMPLOYEE'}
+                        canControl={role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'HR' || role === 'MANAGER' || role === 'EMPLOYEE'}
                       />
                     </td>
                   </tr>

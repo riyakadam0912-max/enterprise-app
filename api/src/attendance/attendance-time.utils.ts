@@ -96,6 +96,30 @@ function localShiftStart(dateKey: string, time: string, timezone: string) {
   return null;
 }
 
+function nextDateKey(dateKey: string) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const next = new Date(Date.UTC(year, month - 1, day + 1));
+  return next.toISOString().slice(0, 10);
+}
+
+export function shiftEndInTimezone(
+  dateKey: string,
+  shift: { startTime: string | null; endTime: string | null },
+  timezone?: string | null,
+) {
+  if (!shift.startTime || !shift.endTime) return null;
+  const zone = safeTimezone(timezone);
+  const start = localShiftStart(dateKey, shift.startTime, zone);
+  if (!start) return null;
+
+  let end = localShiftStart(dateKey, shift.endTime, zone);
+  if (!end) return null;
+  if (end.getTime() <= start.getTime()) {
+    end = localShiftStart(nextDateKey(dateKey), shift.endTime, zone);
+  }
+  return end;
+}
+
 export function calculateLateMinutesInTimezone(
   checkIn: Date,
   dateKey: string,

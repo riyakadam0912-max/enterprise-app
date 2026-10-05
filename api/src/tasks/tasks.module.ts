@@ -18,5 +18,6 @@ import { BusinessUnitsModule } from '../business-units/business-units.module';
   ],
   controllers: [TasksController],
   providers: [TasksService, CompletionNotificationInterceptor],
+  exports: [TasksService],
 })
 export class TasksModule {}

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Linking,
@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { apiError } from "@/src/api/client";
+import { attendanceToday } from "@/src/api/attendance";
 import {
   reviewTask,
   submitTaskWork,
@@ -18,6 +19,8 @@ import {
   taskMessages,
   sendTaskMessage,
   updateTaskStatus,
+  updateTaskTimer,
+  type TaskTimerSession,
 } from "@/src/api/tasks";
 import { UserIdentity } from "@/src/components/UserIdentity";
 import { useAuth } from "@/src/providers/AuthProvider";
@@ -38,6 +41,12 @@ export default function TaskDetail() {
     enabled: allowed && taskId > 0,
   });
   const data = query.data as TaskData | undefined;
+  const role = session?.role ?? "EMPLOYEE";
+  const attendance = useQuery({
+    queryKey: ["attendance-today", session?.organizationId, session?.employeeId],
+    queryFn: attendanceToday,
+    enabled: ["EMPLOYEE", "MANAGER", "HR", "ADMIN", "SUPER_ADMIN"].includes(role),
+  });
   const [tab, setTab] = useState<Tab>("overview");
   const [link, setLink] = useState("");
   const [note, setNote] = useState("");
@@ -48,7 +57,6 @@ export default function TaskDetail() {
     queryFn: () => taskMessages(taskId),
     enabled: tab === "chat" && taskId > 0,
   });
-  const role = session?.role ?? "EMPLOYEE";
   const status = String(data?.status ?? "PENDING").toUpperCase();
   const assigned =
     data?.assignedToUserId === session?.user.id ||
@@ -145,17 +153,32 @@ export default function TaskDetail() {
         ))}
       </View>
       {tab === "overview" && (
-        <Overview
-          data={data}
-          status={status}
-          actions={actions}
-          remarks={remarks}
-          setRemarks={setRemarks}
-          busy={mutation.isPending}
-          act={(kind) =>
-            mutation.mutate(kind as "start" | "approve" | "reject")
-          }
-        />
+        <>
+          {["EMPLOYEE", "MANAGER", "HR", "ADMIN", "SUPER_ADMIN"].includes(role) && (
+            <TaskTimerControl
+              taskId={taskId}
+              sessions={data.timerSessions ?? []}
+              userId={session?.user.id ?? 0}
+              attendanceReady={Boolean(attendance.data?.checkIn && !attendance.data.checkOut && !attendance.data.onBreak)}
+              attendanceLoading={attendance.isLoading}
+              onUpdated={() => {
+                void client.invalidateQueries({ queryKey: ["task", taskId] });
+                void client.invalidateQueries({ queryKey: ["tasks"] });
+              }}
+            />
+          )}
+          <Overview
+            data={data}
+            status={status}
+            actions={actions}
+            remarks={remarks}
+            setRemarks={setRemarks}
+            busy={mutation.isPending}
+            act={(kind) =>
+              mutation.mutate(kind as "start" | "approve" | "reject")
+            }
+          />
+        </>
       )}
       {tab === "submissions" && (
         <Submissions
@@ -182,6 +205,90 @@ export default function TaskDetail() {
         />
       )}
     </ScrollView>
+  );
+}
+
+function formatTimerDuration(totalSeconds: number) {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainder = seconds % 60;
+  return [hours, minutes, remainder]
+    .map((part) => String(part).padStart(2, "0"))
+    .join(":");
+}
+
+function TaskTimerControl({
+  taskId,
+  sessions,
+  userId,
+  attendanceReady,
+  attendanceLoading,
+  onUpdated,
+}: {
+  taskId: number;
+  sessions: TaskTimerSession[];
+  userId: number;
+  attendanceReady: boolean;
+  attendanceLoading: boolean;
+  onUpdated: () => void;
+}) {
+  const [now, setNow] = useState(Date.now());
+  const timerMutation = useMutation({
+    mutationFn: (action: "start" | "pause" | "resume" | "stop") =>
+      updateTaskTimer(taskId, action),
+    onSuccess: onUpdated,
+    onError: (error) => Alert.alert("Unable to update timer", apiError(error)),
+  });
+  const ownSession = sessions.find(
+    (session) => session.userId === userId && (session.status === "RUNNING" || session.status === "PAUSED"),
+  );
+
+  useEffect(() => {
+    if (ownSession?.status !== "RUNNING") return undefined;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [ownSession?.status, ownSession?.startedAt]);
+
+  const elapsed = ownSession
+    ? ownSession.totalSeconds + (ownSession.status === "RUNNING" && ownSession.startedAt
+      ? Math.max(0, Math.floor((now - new Date(ownSession.startedAt).getTime()) / 1000))
+      : 0)
+    : 0;
+  const action = ownSession?.status === "RUNNING"
+    ? "pause"
+    : ownSession?.status === "PAUSED"
+      ? "resume"
+      : "start";
+  const enabled = action === "pause" || attendanceReady;
+
+  return (
+    <View style={styles.timerCard}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.cardTitle}>Task timer</Text>
+        <Text style={styles.timerValue}>{ownSession ? formatTimerDuration(elapsed) : "Not running"}</Text>
+        {ownSession?.status === "PAUSED" ? <Text style={styles.muted}>Paused</Text> : null}
+        {!attendanceReady && !ownSession && !attendanceLoading ? <Text style={styles.muted}>Check in and end any break to start tracking.</Text> : null}
+      </View>
+      <View style={{ gap: 8 }}>
+        <Pressable
+          disabled={!enabled || attendanceLoading || timerMutation.isPending}
+          onPress={() => timerMutation.mutate(action)}
+          style={[styles.timerButton, (!enabled || attendanceLoading || timerMutation.isPending) && styles.disabled]}
+        >
+          <Text style={styles.actionText}>{timerMutation.isPending ? "..." : action === "start" ? "Start" : action === "pause" ? "Pause" : "Resume"}</Text>
+        </Pressable>
+        {ownSession ? (
+          <Pressable
+            disabled={timerMutation.isPending}
+            onPress={() => timerMutation.mutate("stop")}
+            style={[styles.timerStopButton, timerMutation.isPending && styles.disabled]}
+          >
+            <Text style={styles.timerStopText}>Stop and log</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
   );
 }
 
@@ -552,6 +659,21 @@ const styles = {
     padding: 16,
     marginTop: 12,
   } as const,
+  timerCard: {
+    backgroundColor: "#fff",
+    borderColor: "#cbd5e1",
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  } as const,
+  timerValue: { color: "#172033", fontSize: 24, fontWeight: "800", marginTop: 6 } as const,
+  timerButton: { backgroundColor: "#ea580c", borderRadius: 9, paddingHorizontal: 14, paddingVertical: 10, alignItems: "center" } as const,
+  timerStopButton: { borderColor: "#cbd5e1", borderWidth: 1, borderRadius: 9, paddingHorizontal: 10, paddingVertical: 8, alignItems: "center" } as const,
+  timerStopText: { color: "#475569", fontWeight: "700", fontSize: 11 } as const,
   cardTitle: { color: "#172033", fontSize: 16, fontWeight: "800" } as const,
   label: {
     color: "#64748b",
