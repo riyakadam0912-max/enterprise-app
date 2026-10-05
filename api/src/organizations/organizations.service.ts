@@ -125,6 +125,12 @@ export class OrganizationsService {
     }
     const isOrganizationAdmin =
       user.role === Role.ADMIN || user.roles?.includes(Role.ADMIN) === true;
+    const homeOrganizationId = user.homeOrganizationId ?? user.organizationId;
+    if (isOrganizationAdmin && homeOrganizationId == null) {
+      throw new ForbiddenException(
+        'An organization context is required to switch organizations',
+      );
+    }
     const userId = user.userId ?? user.id;
     const assignedOrganizationIds = isOrganizationAdmin
       ? null
@@ -163,7 +169,25 @@ export class OrganizationsService {
       orderBy: { name: 'asc' },
     });
 
-    if (isOrganizationAdmin) return organizations;
+    if (isOrganizationAdmin) {
+      const accessibleIds = new Set<number>([homeOrganizationId!]);
+      let frontier = [homeOrganizationId!];
+      while (frontier.length > 0) {
+        const parents = new Set(frontier);
+        frontier = organizations
+          .filter(
+            (organization) =>
+              organization.parentId != null &&
+              parents.has(organization.parentId) &&
+              !accessibleIds.has(organization.id),
+          )
+          .map((organization) => organization.id);
+        frontier.forEach((organizationId) => accessibleIds.add(organizationId));
+      }
+      return organizations.filter((organization) =>
+        accessibleIds.has(organization.id),
+      );
+    }
 
     if (assignedOrganizationIds != null) {
       const accessibleIds = new Set(assignedOrganizationIds);

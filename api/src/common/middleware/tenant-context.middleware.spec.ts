@@ -36,7 +36,7 @@ describe('TenantContextMiddleware organization selection', () => {
     ).resolves.toBe(2);
   });
 
-  it('allows organization admins to select parent, sibling, and child organizations', async () => {
+  it('allows organization admins to select only their organization and descendants', async () => {
     const middleware = createMiddleware();
 
     await expect(
@@ -47,7 +47,7 @@ describe('TenantContextMiddleware organization selection', () => {
         },
         3,
       ),
-    ).resolves.toBe(3);
+    ).resolves.toBeNull();
     await expect(
       (middleware as any).resolveOrganizationAdminOrganization(
         {
@@ -56,7 +56,7 @@ describe('TenantContextMiddleware organization selection', () => {
         },
         1,
       ),
-    ).resolves.toBe(1);
+    ).resolves.toBeNull();
     await expect(
       (middleware as any).resolveOrganizationAdminOrganization(
         {
@@ -68,7 +68,7 @@ describe('TenantContextMiddleware organization selection', () => {
     ).resolves.toBe(4);
   });
 
-  it('allows an organization admin without a home organization to select any active organization', async () => {
+  it('denies organization selection when an admin has no home organization', async () => {
     const middleware = createMiddleware();
 
     await expect(
@@ -76,7 +76,7 @@ describe('TenantContextMiddleware organization selection', () => {
         { role: Role.ADMIN },
         3,
       ),
-    ).resolves.toBe(3);
+    ).resolves.toBeNull();
   });
 
   it('keeps HR organization selection limited to its home subtree', async () => {
@@ -118,7 +118,7 @@ describe('TenantContextMiddleware organization selection', () => {
     );
   });
 
-  it('resolves a sibling organization in middleware for an organization admin', async () => {
+  it('rejects a sibling organization in middleware for an organization admin', async () => {
     const prisma = {
       organization: {
         findMany: jest.fn().mockResolvedValue(organizations),
@@ -151,8 +151,12 @@ describe('TenantContextMiddleware organization selection', () => {
 
     await middleware.use(request as any, response as any, next);
 
-    expect(response.status).not.toHaveBeenCalled();
-    expect(next).toHaveBeenCalled();
-    expect(request).toHaveProperty('organizationId', 3);
+    expect(response.status).toHaveBeenCalledWith(403);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Selected organization is outside your authorized organization hierarchy',
+      }),
+    );
+    expect(next).not.toHaveBeenCalled();
   });
 });

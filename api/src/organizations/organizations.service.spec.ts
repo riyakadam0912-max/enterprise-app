@@ -1,7 +1,8 @@
+import { ForbiddenException } from '@nestjs/common';
 import { OrganizationsService } from './organizations.service';
 
 describe('OrganizationsService', () => {
-  it('allows organization admins to select any active organization', async () => {
+  it('limits organization admins to their organization and descendants', async () => {
     const organizations = [
       { id: 1, name: 'Parent', parentId: null },
       { id: 2, name: 'Home', parentId: 1 },
@@ -21,9 +22,7 @@ describe('OrganizationsService', () => {
       organizationId: 2,
     } as any);
 
-    expect(result.map((organization) => organization.id)).toEqual([
-      1, 2, 3, 4, 5,
-    ]);
+    expect(result.map((organization) => organization.id)).toEqual([2, 4]);
     expect(prisma.organization.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { status: 'ACTIVE', deletedAt: null },
@@ -31,7 +30,7 @@ describe('OrganizationsService', () => {
     );
   });
 
-  it('allows an organization admin without a home organization to list active organizations', async () => {
+  it('denies organization switching when an admin has no home organization', async () => {
     const organizations = [{ id: 1, name: 'Active Org', parentId: null }];
     const prisma = {
       organization: {
@@ -42,7 +41,7 @@ describe('OrganizationsService', () => {
 
     await expect(
       service.getAccessibleOrganizations({ role: 'ADMIN' } as any),
-    ).resolves.toEqual(organizations);
+    ).rejects.toThrow(ForbiddenException);
   });
 
   it('limits a business unit admin to organizations with active assignments', async () => {

@@ -216,12 +216,10 @@ export class TenantContextMiddleware implements NestMiddleware {
       payload.role === Role.HR ||
       payload.roles?.includes(Role.ADMIN) === true ||
       payload.roles?.includes(Role.HR) === true;
-    const isOrganizationAdmin =
-      payload.role === Role.ADMIN ||
-      payload.roles?.includes(Role.ADMIN) === true;
     const homeOrganizationId =
       payload.homeOrganizationId ?? payload.organizationId;
     if (!isAdmin) return null;
+    if (homeOrganizationId == null) return null;
 
     const organizations = await this.prisma.organization.findMany({
       where: { status: 'ACTIVE', deletedAt: null },
@@ -230,10 +228,9 @@ export class TenantContextMiddleware implements NestMiddleware {
     const byId = new Map(
       organizations.map((organization) => [organization.id, organization]),
     );
-    if (!byId.has(requestedOrganizationId)) return null;
-
-    if (isOrganizationAdmin) return requestedOrganizationId;
-    if (homeOrganizationId == null || !byId.has(homeOrganizationId)) return null;
+    if (!byId.has(requestedOrganizationId) || !byId.has(homeOrganizationId)) {
+      return null;
+    }
 
     let currentId = requestedOrganizationId;
     const visited = new Set<number>();
