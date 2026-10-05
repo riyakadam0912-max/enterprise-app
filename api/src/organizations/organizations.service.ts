@@ -170,8 +170,26 @@ export class OrganizationsService {
     });
 
     if (isOrganizationAdmin) {
-      const accessibleIds = new Set<number>([homeOrganizationId!]);
-      let frontier = [homeOrganizationId!];
+      const organizationsById = new Map(
+        organizations.map((organization) => [organization.id, organization]),
+      );
+      if (!organizationsById.has(homeOrganizationId!)) {
+        throw new ForbiddenException(
+          'The home organization is unavailable for organization switching',
+        );
+      }
+
+      let familyRootId = homeOrganizationId!;
+      const ancestorIds = new Set<number>();
+      while (!ancestorIds.has(familyRootId)) {
+        ancestorIds.add(familyRootId);
+        const parentId = organizationsById.get(familyRootId)?.parentId;
+        if (parentId == null || !organizationsById.has(parentId)) break;
+        familyRootId = parentId;
+      }
+
+      const accessibleIds = new Set<number>([familyRootId]);
+      let frontier = [familyRootId];
       while (frontier.length > 0) {
         const parents = new Set(frontier);
         frontier = organizations

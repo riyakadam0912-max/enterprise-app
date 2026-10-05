@@ -211,14 +211,14 @@ export class TenantContextMiddleware implements NestMiddleware {
     payload: JwtPayload,
     requestedOrganizationId: number,
   ): Promise<number | null> {
-    const isAdmin =
+    const isOrganizationAdmin =
       payload.role === Role.ADMIN ||
-      payload.role === Role.HR ||
-      payload.roles?.includes(Role.ADMIN) === true ||
-      payload.roles?.includes(Role.HR) === true;
+      payload.roles?.includes(Role.ADMIN) === true;
+    const isHR =
+      payload.role === Role.HR || payload.roles?.includes(Role.HR) === true;
     const homeOrganizationId =
       payload.homeOrganizationId ?? payload.organizationId;
-    if (!isAdmin) return null;
+    if (!isOrganizationAdmin && !isHR) return null;
     if (homeOrganizationId == null) return null;
 
     const organizations = await this.prisma.organization.findMany({
@@ -230,6 +230,25 @@ export class TenantContextMiddleware implements NestMiddleware {
     );
     if (!byId.has(requestedOrganizationId) || !byId.has(homeOrganizationId)) {
       return null;
+    }
+
+    if (isOrganizationAdmin) {
+      const getFamilyRootId = (organizationId: number) => {
+        let currentId = organizationId;
+        const visited = new Set<number>();
+        while (!visited.has(currentId)) {
+          visited.add(currentId);
+          const parentId = byId.get(currentId)?.parentId;
+          if (parentId == null || !byId.has(parentId)) return currentId;
+          currentId = parentId;
+        }
+        return currentId;
+      };
+
+      return getFamilyRootId(requestedOrganizationId) ===
+        getFamilyRootId(homeOrganizationId)
+        ? requestedOrganizationId
+        : null;
     }
 
     let currentId = requestedOrganizationId;

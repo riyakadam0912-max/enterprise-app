@@ -36,7 +36,7 @@ describe('TenantContextMiddleware organization selection', () => {
     ).resolves.toBe(2);
   });
 
-  it('allows organization admins to select only their organization and descendants', async () => {
+  it('allows organization admins to select their entire organization family only', async () => {
     const middleware = createMiddleware();
 
     await expect(
@@ -47,7 +47,7 @@ describe('TenantContextMiddleware organization selection', () => {
         },
         3,
       ),
-    ).resolves.toBeNull();
+    ).resolves.toBe(3);
     await expect(
       (middleware as any).resolveOrganizationAdminOrganization(
         {
@@ -56,7 +56,7 @@ describe('TenantContextMiddleware organization selection', () => {
         },
         1,
       ),
-    ).resolves.toBeNull();
+    ).resolves.toBe(1);
     await expect(
       (middleware as any).resolveOrganizationAdminOrganization(
         {
@@ -66,6 +66,15 @@ describe('TenantContextMiddleware organization selection', () => {
         4,
       ),
     ).resolves.toBe(4);
+    await expect(
+      (middleware as any).resolveOrganizationAdminOrganization(
+        {
+          role: Role.ADMIN,
+          organizationId: 2,
+        },
+        5,
+      ),
+    ).resolves.toBeNull();
   });
 
   it('denies organization selection when an admin has no home organization', async () => {
@@ -118,7 +127,7 @@ describe('TenantContextMiddleware organization selection', () => {
     );
   });
 
-  it('rejects a sibling organization in middleware for an organization admin', async () => {
+  it('allows a sibling organization in middleware for an organization admin', async () => {
     const prisma = {
       organization: {
         findMany: jest.fn().mockResolvedValue(organizations),
@@ -151,12 +160,8 @@ describe('TenantContextMiddleware organization selection', () => {
 
     await middleware.use(request as any, response as any, next);
 
-    expect(response.status).toHaveBeenCalledWith(403);
-    expect(json).toHaveBeenCalledWith(
-      expect.objectContaining({
-        message: 'Selected organization is outside your authorized organization hierarchy',
-      }),
-    );
-    expect(next).not.toHaveBeenCalled();
+    expect(response.status).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalled();
+    expect(request).toHaveProperty('organizationId', 3);
   });
 });

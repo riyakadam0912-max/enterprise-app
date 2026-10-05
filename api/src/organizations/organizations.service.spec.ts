@@ -2,7 +2,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { OrganizationsService } from './organizations.service';
 
 describe('OrganizationsService', () => {
-  it('limits organization admins to their organization and descendants', async () => {
+  it('limits organization admins to their organization family', async () => {
     const organizations = [
       { id: 1, name: 'Parent', parentId: null },
       { id: 2, name: 'Home', parentId: 1 },
@@ -22,7 +22,7 @@ describe('OrganizationsService', () => {
       organizationId: 2,
     } as any);
 
-    expect(result.map((organization) => organization.id)).toEqual([2, 4]);
+    expect(result.map((organization) => organization.id)).toEqual([1, 2, 3, 4]);
     expect(prisma.organization.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { status: 'ACTIVE', deletedAt: null },
