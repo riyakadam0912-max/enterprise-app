@@ -95,8 +95,8 @@ describe('AttendanceService', () => {
       getOrganizationIds: jest.fn().mockResolvedValue([1]),
       getDescendantOrganizationIds: jest.fn(async (id: number) => [id]),
       getOrganizationFamilyRootId: jest.fn(async (id: number) => id),
-      getOrganizationFamilyRootMap: jest.fn(async (ids: number[]) =>
-        new Map(ids.map((id) => [id, id])),
+      getOrganizationFamilyRootMap: jest.fn(
+        async (ids: number[]) => new Map(ids.map((id) => [id, id])),
       ),
     };
     service = new AttendanceService(
@@ -141,20 +141,26 @@ describe('AttendanceService', () => {
     });
 
     const result = await service.createHoliday(
-      { startDate: '2026-10-02', endDate: '2026-10-03', name: ' Founders Day ' },
+      {
+        startDate: '2026-10-02',
+        endDate: '2026-10-03',
+        name: ' Founders Day ',
+      },
       { ...mockUser, role: Role.SUPER_ADMIN, organizationId: 42 },
     );
 
-    expect(prisma.holiday.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        OR: [
-          { organizationId: { in: [42] } },
-          { familyRootOrganizationId: 42 },
-        ],
-        startDate: { lte: new Date('2026-10-03T00:00:00.000Z') },
-        endDate: { gte: new Date('2026-10-02T00:00:00.000Z') },
+    expect(prisma.holiday.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            { organizationId: { in: [42] } },
+            { familyRootOrganizationId: 42 },
+          ],
+          startDate: { lte: new Date('2026-10-03T00:00:00.000Z') },
+          endDate: { gte: new Date('2026-10-02T00:00:00.000Z') },
+        }),
       }),
-    }));
+    );
     expect(prisma.holiday.create).toHaveBeenCalledWith({
       data: {
         organizationId: 42,
@@ -170,10 +176,16 @@ describe('AttendanceService', () => {
   it('rejects overlapping corporate holiday ranges', async () => {
     prisma.holiday.findFirst.mockResolvedValue({ id: 8 });
 
-    await expect(service.createHoliday(
-      { startDate: '2026-10-03', endDate: '2026-10-05', name: 'Festival break' },
-      { ...mockUser, role: Role.ADMIN },
-    )).rejects.toThrow('This holiday range overlaps another corporate holiday');
+    await expect(
+      service.createHoliday(
+        {
+          startDate: '2026-10-03',
+          endDate: '2026-10-05',
+          name: 'Festival break',
+        },
+        { ...mockUser, role: Role.ADMIN },
+      ),
+    ).rejects.toThrow('This holiday range overlaps another corporate holiday');
 
     expect(prisma.holiday.create).not.toHaveBeenCalled();
   });
@@ -243,17 +255,25 @@ describe('AttendanceService', () => {
     prisma.attendance.findUnique.mockResolvedValue(null);
     prisma.leaveRequest.findFirst.mockResolvedValue(null);
     prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
-    prisma.attendance.create.mockResolvedValue({ id: 3, status: AttendanceStatus.PRESENT });
-    jest.spyOn(service as any, 'getWorkHourBalancesForEmployee').mockResolvedValue({
-      week: { remainingHours: 2 },
-      month: { remainingHours: 4 },
+    prisma.attendance.create.mockResolvedValue({
+      id: 3,
+      status: AttendanceStatus.PRESENT,
     });
+    jest
+      .spyOn(service as any, 'getWorkHourBalancesForEmployee')
+      .mockResolvedValue({
+        week: { remainingHours: 2 },
+        month: { remainingHours: 4 },
+      });
 
-    await service.checkIn({
-      employeeId: 7,
-      date: '2026-03-15',
-      timestamp: '2026-03-15T09:00:00.000Z',
-    }, mockUser);
+    await service.checkIn(
+      {
+        employeeId: 7,
+        date: '2026-03-15',
+        timestamp: '2026-03-15T09:00:00.000Z',
+      },
+      mockUser,
+    );
 
     expect(prisma.attendance.create).toHaveBeenCalledTimes(1);
   });
@@ -279,16 +299,25 @@ describe('AttendanceService', () => {
     prisma.attendance.findUnique.mockResolvedValue(null);
     prisma.leaveRequest.findFirst.mockResolvedValue(null);
     prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
-    jest.spyOn(service as any, 'getWorkHourBalancesForEmployee').mockResolvedValue({
-      week: { remainingHours: 0 },
-      month: { remainingHours: 0 },
-    });
+    jest
+      .spyOn(service as any, 'getWorkHourBalancesForEmployee')
+      .mockResolvedValue({
+        week: { remainingHours: 0 },
+        month: { remainingHours: 0 },
+      });
 
-    await expect(service.checkIn({
-      employeeId: 7,
-      date: '2026-03-15',
-      timestamp: '2026-03-15T09:00:00.000Z',
-    }, mockUser)).rejects.toThrow('catch-up is available only when scheduled hours are outstanding');
+    await expect(
+      service.checkIn(
+        {
+          employeeId: 7,
+          date: '2026-03-15',
+          timestamp: '2026-03-15T09:00:00.000Z',
+        },
+        mockUser,
+      ),
+    ).rejects.toThrow(
+      'catch-up is available only when scheduled hours are outstanding',
+    );
 
     expect(prisma.attendance.create).not.toHaveBeenCalled();
   });
@@ -311,7 +340,9 @@ describe('AttendanceService', () => {
       },
     };
     prisma.employee.findFirst.mockResolvedValue(employee);
-    prisma.organization.findUnique.mockResolvedValue({ timezone: 'Asia/Kolkata' });
+    prisma.organization.findUnique.mockResolvedValue({
+      timezone: 'Asia/Kolkata',
+    });
     prisma.attendance.findUnique.mockResolvedValue(null);
     prisma.leaveRequest.findFirst.mockResolvedValue(null);
     prisma.attendance.create.mockResolvedValue({
@@ -480,7 +511,10 @@ describe('AttendanceService', () => {
     const result = await service.stopBreak(mockUser);
 
     expect(prisma.attendanceBreak.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 1 }, data: { endedAt: expect.any(Date) } }),
+      expect.objectContaining({
+        where: { id: 1 },
+        data: { endedAt: expect.any(Date) },
+      }),
     );
     expect(result.onBreak).toBe(false);
   });
@@ -535,7 +569,9 @@ describe('AttendanceService', () => {
 
   it('includes active descendant employees in the admin attendance roster', async () => {
     mockOrganizationScopeService.getOrganizationIds.mockResolvedValue([1, 2]);
-    mockOrganizationScopeService.getDescendantOrganizationIds.mockResolvedValue([1, 2]);
+    mockOrganizationScopeService.getDescendantOrganizationIds.mockResolvedValue(
+      [1, 2],
+    );
     prisma.employee.findMany
       .mockResolvedValueOnce([{ id: 22 }])
       .mockResolvedValueOnce([
@@ -574,37 +610,60 @@ describe('AttendanceService', () => {
     );
   });
 
-  it('limits a parent admin selecting a child organization to that child subtree', async () => {
-    mockOrganizationScopeService.getOrganizationIds.mockResolvedValue([1, 2, 3]);
-    mockOrganizationScopeService.getDescendantOrganizationIds
-      .mockResolvedValueOnce([2, 4]);
-
-    await expect((service as any).getAttendanceOrganizationIds({
-      ...mockUser,
-      organizationId: 2,
-      homeOrganizationId: 1,
-    })).resolves.toEqual([2]);
-
-    expect(mockOrganizationScopeService.getOrganizationIds).toHaveBeenCalledWith(
-      expect.objectContaining({ organizationId: 1, homeOrganizationId: 1 }),
+  it('limits an admin selecting a sibling organization to that selected subtree', async () => {
+    mockOrganizationScopeService.getOrganizationFamilyRootId.mockImplementation(
+      async (id: number) => (id === 9 ? 1 : id),
     );
+    mockOrganizationScopeService.getDescendantOrganizationIds.mockResolvedValueOnce(
+      [9, 10],
+    );
+
+    await expect(
+      (service as any).getAttendanceOrganizationIds({
+        ...mockUser,
+        organizationId: 9,
+        homeOrganizationId: 1,
+      }),
+    ).resolves.toEqual([9, 10]);
+
+    expect(
+      mockOrganizationScopeService.getDescendantOrganizationIds,
+    ).toHaveBeenCalledWith(9);
+    expect(
+      mockOrganizationScopeService.getOrganizationFamilyRootId,
+    ).toHaveBeenCalledWith(1);
+    expect(
+      mockOrganizationScopeService.getOrganizationFamilyRootId,
+    ).toHaveBeenCalledWith(9);
   });
 
-  it('rejects an active organization outside the admin home hierarchy', async () => {
-    mockOrganizationScopeService.getOrganizationIds.mockResolvedValue([1, 2]);
+  it('rejects an admin selecting an organization outside their family', async () => {
+    mockOrganizationScopeService.getOrganizationFamilyRootId.mockImplementation(
+      async (id: number) => (id === 9 ? 2 : id),
+    );
 
-    await expect((service as any).getAttendanceOrganizationIds({
-      ...mockUser,
-      organizationId: 9,
-      homeOrganizationId: 1,
-    })).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      (service as any).getAttendanceOrganizationIds({
+        ...mockUser,
+        organizationId: 9,
+        homeOrganizationId: 1,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('creates a canonical family-wide holiday at the selected parent organization', async () => {
-      mockOrganizationScopeService.getOrganizationIds.mockResolvedValue([1, 2, 3]);
-    mockOrganizationScopeService.getOrganizationIds.mockResolvedValue([1, 2, 3]);
-    mockOrganizationScopeService.getDescendantOrganizationIds.mockResolvedValue([1, 2, 3]);
-    mockOrganizationScopeService.getOrganizationFamilyRootId.mockResolvedValue(1);
+    mockOrganizationScopeService.getOrganizationIds.mockResolvedValue([
+      1, 2, 3,
+    ]);
+    mockOrganizationScopeService.getOrganizationIds.mockResolvedValue([
+      1, 2, 3,
+    ]);
+    mockOrganizationScopeService.getDescendantOrganizationIds.mockResolvedValue(
+      [1, 2, 3],
+    );
+    mockOrganizationScopeService.getOrganizationFamilyRootId.mockResolvedValue(
+      1,
+    );
     prisma.holiday.findFirst.mockResolvedValue(null);
     prisma.holiday.create.mockResolvedValue({
       id: 41,
@@ -613,32 +672,43 @@ describe('AttendanceService', () => {
       name: 'Founders Day',
     });
 
-    const result = await service.createHoliday({
-      name: 'Founders Day',
-      startDate: '2026-10-02',
-      endDate: '2026-10-02',
-      familyWide: true,
-    }, { ...mockUser, homeOrganizationId: 1 });
+    const result = await service.createHoliday(
+      {
+        name: 'Founders Day',
+        startDate: '2026-10-02',
+        endDate: '2026-10-02',
+        familyWide: true,
+      },
+      { ...mockUser, homeOrganizationId: 1 },
+    );
 
-    expect(prisma.holiday.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
-        organizationId: 1,
-        familyRootOrganizationId: 1,
+    expect(prisma.holiday.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          organizationId: 1,
+          familyRootOrganizationId: 1,
+        }),
       }),
-    }));
-    expect(result).toEqual(expect.objectContaining({ familyRootOrganizationId: 1 }));
+    );
+    expect(result).toEqual(
+      expect.objectContaining({ familyRootOrganizationId: 1 }),
+    );
   });
 
   it('lists a shared holiday to a child organization as read-only', async () => {
-    mockOrganizationScopeService.getOrganizationFamilyRootId.mockResolvedValue(1);
-    prisma.holiday.findMany.mockResolvedValue([{
-      id: 41,
-      organizationId: 1,
-      familyRootOrganizationId: 1,
-      name: 'Founders Day',
-      startDate: new Date('2026-10-02T00:00:00.000Z'),
-      endDate: new Date('2026-10-02T00:00:00.000Z'),
-    }]);
+    mockOrganizationScopeService.getOrganizationFamilyRootId.mockResolvedValue(
+      1,
+    );
+    prisma.holiday.findMany.mockResolvedValue([
+      {
+        id: 41,
+        organizationId: 1,
+        familyRootOrganizationId: 1,
+        name: 'Founders Day',
+        startDate: new Date('2026-10-02T00:00:00.000Z'),
+        endDate: new Date('2026-10-02T00:00:00.000Z'),
+      },
+    ]);
 
     const holidays = await service.listHolidays({
       ...mockUser,
@@ -646,15 +716,19 @@ describe('AttendanceService', () => {
       homeOrganizationId: 1,
     });
 
-    expect(holidays[0]).toEqual(expect.objectContaining({
-      familyRootOrganizationId: 1,
-      canManage: false,
-    }));
+    expect(holidays[0]).toEqual(
+      expect.objectContaining({
+        familyRootOrganizationId: 1,
+        canManage: false,
+      }),
+    );
   });
 
   it('applies the parent family holiday to a child employee attendance calendar', async () => {
     mockOrganizationScopeService.getOrganizationIds.mockResolvedValue([1, 2]);
-    mockOrganizationScopeService.getDescendantOrganizationIds.mockResolvedValue([2]);
+    mockOrganizationScopeService.getDescendantOrganizationIds.mockResolvedValue(
+      [2],
+    );
     mockBusinessUnitsService.resolveScope.mockResolvedValue({
       organizationId: 2,
       allUnits: true,
@@ -677,33 +751,45 @@ describe('AttendanceService', () => {
     prisma.employee.findFirst.mockResolvedValue(employee);
     prisma.attendance.findMany.mockResolvedValue([]);
     prisma.leaveRequest.findMany.mockResolvedValue([]);
-    mockOrganizationScopeService.getOrganizationFamilyRootId.mockResolvedValue(1);
+    mockOrganizationScopeService.getOrganizationFamilyRootId.mockResolvedValue(
+      1,
+    );
     mockOrganizationScopeService.getOrganizationFamilyRootMap.mockResolvedValue(
       new Map([[2, 1]]),
     );
-    prisma.holiday.findMany.mockResolvedValue([{
-      id: 88,
-      organizationId: 1,
-      familyRootOrganizationId: 1,
-      startDate: new Date('2026-03-13T00:00:00.000Z'),
-      endDate: new Date('2026-03-13T00:00:00.000Z'),
-      name: 'Founders Day',
-    }]);
+    prisma.holiday.findMany.mockResolvedValue([
+      {
+        id: 88,
+        organizationId: 1,
+        familyRootOrganizationId: 1,
+        startDate: new Date('2026-03-13T00:00:00.000Z'),
+        endDate: new Date('2026-03-13T00:00:00.000Z'),
+        name: 'Founders Day',
+      },
+    ]);
 
-    const result = await service.getEmployeeAttendance(4, {
-      ...mockUser,
-      organizationId: 2,
-      homeOrganizationId: 1,
-    }, '2026-03');
+    const result = await service.getEmployeeAttendance(
+      4,
+      {
+        ...mockUser,
+        organizationId: 2,
+        homeOrganizationId: 1,
+      },
+      '2026-03',
+    );
 
-    expect(result.days[12]).toEqual(expect.objectContaining({
-      status: AttendanceStatus.HOLIDAY,
-      holidayName: 'Founders Day',
-    }));
+    expect(result.days[12]).toEqual(
+      expect.objectContaining({
+        status: AttendanceStatus.HOLIDAY,
+        holidayName: 'Founders Day',
+      }),
+    );
   });
 
   it('prevents a child organization from editing a family-wide holiday', async () => {
-    mockOrganizationScopeService.getOrganizationFamilyRootId.mockResolvedValue(1);
+    mockOrganizationScopeService.getOrganizationFamilyRootId.mockResolvedValue(
+      1,
+    );
     prisma.holiday.findFirst.mockResolvedValue({
       id: 88,
       organizationId: 1,
@@ -713,11 +799,17 @@ describe('AttendanceService', () => {
       name: 'Founders Day',
     });
 
-    await expect(service.updateHoliday(88, { name: 'Updated' }, {
-      ...mockUser,
-      organizationId: 2,
-      homeOrganizationId: 1,
-    })).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      service.updateHoliday(
+        88,
+        { name: 'Updated' },
+        {
+          ...mockUser,
+          organizationId: 2,
+          homeOrganizationId: 1,
+        },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.holiday.update).not.toHaveBeenCalled();
   });
 
@@ -801,17 +893,43 @@ describe('AttendanceService', () => {
       shift: null,
     };
 
-    const holidayRow = (service as any).toDailyRow(employee, day, null, false, 'Founders Day');
-    const workedRow = (service as any).toDailyRow(
+    const holidayRow = (service as any).toDailyRow(
       employee,
       day,
-      { id: 1, checkIn: new Date('2026-03-13T09:00:00.000Z'), checkOut: null, workingHours: null, lateMinutes: 0, overtimeHours: 0, shortfallHours: 0, status: AttendanceStatus.PRESENT },
+      null,
       false,
       'Founders Day',
     );
-    const leaveRow = (service as any).toDailyRow(employee, day, null, true, 'Founders Day');
+    const workedRow = (service as any).toDailyRow(
+      employee,
+      day,
+      {
+        id: 1,
+        checkIn: new Date('2026-03-13T09:00:00.000Z'),
+        checkOut: null,
+        workingHours: null,
+        lateMinutes: 0,
+        overtimeHours: 0,
+        shortfallHours: 0,
+        status: AttendanceStatus.PRESENT,
+      },
+      false,
+      'Founders Day',
+    );
+    const leaveRow = (service as any).toDailyRow(
+      employee,
+      day,
+      null,
+      true,
+      'Founders Day',
+    );
 
-    expect(holidayRow).toEqual(expect.objectContaining({ status: AttendanceStatus.HOLIDAY, holidayName: 'Founders Day' }));
+    expect(holidayRow).toEqual(
+      expect.objectContaining({
+        status: AttendanceStatus.HOLIDAY,
+        holidayName: 'Founders Day',
+      }),
+    );
     expect(workedRow.status).toBe(AttendanceStatus.PRESENT);
     expect(leaveRow.status).toBe(AttendanceStatus.LEAVE);
   });
@@ -1044,7 +1162,9 @@ describe('AttendanceService', () => {
 
   it('uses the authorized descendant employee ids for monthly attendance queries', async () => {
     mockOrganizationScopeService.getOrganizationIds.mockResolvedValue([1, 2]);
-    mockOrganizationScopeService.getDescendantOrganizationIds.mockResolvedValue([1, 2]);
+    mockOrganizationScopeService.getDescendantOrganizationIds.mockResolvedValue(
+      [1, 2],
+    );
     prisma.employee.findMany
       .mockResolvedValueOnce([{ id: 10 }, { id: 20 }])
       .mockResolvedValueOnce([
@@ -1085,7 +1205,8 @@ describe('AttendanceService', () => {
   });
 
   it('excludes corporate holidays from monthly absent and working-day totals', async () => {
-    prisma.employee.findMany.mockResolvedValueOnce([{
+    prisma.employee.findMany.mockResolvedValueOnce([
+      {
         id: 7,
         name: 'Ava',
         hireDate: null,
@@ -1093,37 +1214,44 @@ describe('AttendanceService', () => {
         designation: 'Associate',
         organization: { id: 1, name: 'Main' },
         user: { role: 'EMPLOYEE' },
-      }]);
-    prisma.attendance.findMany.mockResolvedValue([{
-      id: 11,
-      employeeId: 7,
-      date: new Date('2026-03-13T00:00:00.000Z'),
-      checkIn: null,
-      status: AttendanceStatus.ABSENT,
-      lateMinutes: 0,
-      overtimeHours: 0,
-      workingHours: null,
-      shift: null,
-    }]);
+      },
+    ]);
+    prisma.attendance.findMany.mockResolvedValue([
+      {
+        id: 11,
+        employeeId: 7,
+        date: new Date('2026-03-13T00:00:00.000Z'),
+        checkIn: null,
+        status: AttendanceStatus.ABSENT,
+        lateMinutes: 0,
+        overtimeHours: 0,
+        workingHours: null,
+        shift: null,
+      },
+    ]);
     prisma.leaveRequest.findMany.mockResolvedValue([]);
-    prisma.holiday.findMany.mockResolvedValue([{
-      organizationId: 1,
-      startDate: new Date('2026-03-13T00:00:00.000Z'),
-      endDate: new Date('2026-03-14T00:00:00.000Z'),
-      name: 'Founders Day',
-    }]);
+    prisma.holiday.findMany.mockResolvedValue([
+      {
+        organizationId: 1,
+        startDate: new Date('2026-03-13T00:00:00.000Z'),
+        endDate: new Date('2026-03-14T00:00:00.000Z'),
+        name: 'Founders Day',
+      },
+    ]);
 
     const result = await service.getMonthlyReport(
       { year: 2026, month: 3 } as any,
       mockUser as any,
     );
 
-    expect(result.rows[0]).toEqual(expect.objectContaining({
-      absentCount: 0,
-      holidayCount: 2,
-      workingDays: 0,
-      attendancePercent: 0,
-    }));
+    expect(result.rows[0]).toEqual(
+      expect.objectContaining({
+        absentCount: 0,
+        holidayCount: 2,
+        workingDays: 0,
+        attendancePercent: 0,
+      }),
+    );
   });
 
   it('returns monthly employee attendance data for calendar rendering', async () => {
@@ -1264,17 +1392,21 @@ describe('AttendanceService', () => {
       'UTC',
     );
 
-    expect(balances.week).toEqual(expect.objectContaining({
-      requiredHours: 40,
-      scheduledDays: 5,
-      completedHours: 0,
-    }));
-    expect(balances.month).toEqual(expect.objectContaining({
-      requiredHours: 16,
-      scheduledDays: 2,
-      fullPeriodRequiredHours: 176,
-      fullPeriodScheduledDays: 22,
-    }));
+    expect(balances.week).toEqual(
+      expect.objectContaining({
+        requiredHours: 40,
+        scheduledDays: 5,
+        completedHours: 0,
+      }),
+    );
+    expect(balances.month).toEqual(
+      expect.objectContaining({
+        requiredHours: 16,
+        scheduledDays: 2,
+        fullPeriodRequiredHours: 176,
+        fullPeriodScheduledDays: 22,
+      }),
+    );
   });
 
   it('returns weekly balances for employees within the admin scope', async () => {
@@ -1290,14 +1422,16 @@ describe('AttendanceService', () => {
       weeklyHolidayDay: 0,
       workingDays: [1, 2, 3, 4, 5],
     };
-    prisma.employee.findMany.mockResolvedValue([{
-      id: 7,
-      name: 'Ava',
-      department: 'Ops',
-      organizationId: 1,
-      hireDate: null,
-      shift,
-    }]);
+    prisma.employee.findMany.mockResolvedValue([
+      {
+        id: 7,
+        name: 'Ava',
+        department: 'Ops',
+        organizationId: 1,
+        hireDate: null,
+        shift,
+      },
+    ]);
     prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
     prisma.attendance.findMany.mockResolvedValue([]);
     prisma.holiday.findMany.mockResolvedValue([]);
@@ -1306,14 +1440,57 @@ describe('AttendanceService', () => {
     const result = await service.getTeamWeeklyWorkHours(mockUser);
 
     expect(result.employees).toHaveLength(1);
-    expect(result.employees[0]).toEqual(expect.objectContaining({
-      employeeId: 7,
-      employeeName: 'Ava',
-      week: expect.objectContaining({ requiredHours: 40, scheduledDays: 5 }),
-    }));
-    expect(prisma.employee.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ organizationId: { in: [1] }, deletedAt: null }),
-    }));
+    expect(result.employees[0]).toEqual(
+      expect.objectContaining({
+        employeeId: 7,
+        employeeName: 'Ava',
+        week: expect.objectContaining({ requiredHours: 40, scheduledDays: 5 }),
+      }),
+    );
+    expect(prisma.employee.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId: { in: [1] },
+          deletedAt: null,
+        }),
+      }),
+    );
+  });
+
+  it('uses the selected organization subtree for team hours after an admin switches organizations', async () => {
+    const switchedUser = {
+      ...mockUser,
+      organizationId: 9,
+      homeOrganizationId: 1,
+    };
+    mockOrganizationScopeService.getOrganizationFamilyRootId.mockImplementation(
+      async (id: number) => (id === 9 ? 1 : id),
+    );
+    mockOrganizationScopeService.getDescendantOrganizationIds.mockResolvedValue(
+      [9, 10],
+    );
+    jest
+      .spyOn(service as any, 'getScopedEmployeeFilter')
+      .mockResolvedValue(null);
+    prisma.employee.findMany.mockResolvedValue([]);
+
+    await expect(
+      service.getTeamWeeklyWorkHours(switchedUser as any),
+    ).resolves.toEqual({
+      employees: [],
+    });
+
+    expect(prisma.employee.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId: { in: [9, 10] },
+          deletedAt: null,
+        }),
+      }),
+    );
+    expect(
+      mockOrganizationScopeService.getDescendantOrganizationIds,
+    ).toHaveBeenCalledWith(9);
   });
 
   it('shows a corporate holiday in the employee calendar without marking the day absent', async () => {
@@ -1329,23 +1506,29 @@ describe('AttendanceService', () => {
     prisma.employee.findFirst.mockResolvedValue(mockEmployee);
     prisma.attendance.findMany.mockResolvedValue([]);
     prisma.leaveRequest.findMany.mockResolvedValue([]);
-    prisma.holiday.findMany.mockResolvedValue([{
-      organizationId: 1,
-      startDate: new Date('2026-03-13T00:00:00.000Z'),
-      endDate: new Date('2026-03-14T00:00:00.000Z'),
-      name: 'Founders Day',
-    }]);
+    prisma.holiday.findMany.mockResolvedValue([
+      {
+        organizationId: 1,
+        startDate: new Date('2026-03-13T00:00:00.000Z'),
+        endDate: new Date('2026-03-14T00:00:00.000Z'),
+        name: 'Founders Day',
+      },
+    ]);
 
     const result = await service.getEmployeeAttendance(4, mockUser, '2026-03');
 
-    expect(result.days[12]).toEqual(expect.objectContaining({
-      status: AttendanceStatus.HOLIDAY,
-      holidayName: 'Founders Day',
-    }));
-    expect(result.days[13]).toEqual(expect.objectContaining({
-      status: AttendanceStatus.HOLIDAY,
-      holidayName: 'Founders Day',
-    }));
+    expect(result.days[12]).toEqual(
+      expect.objectContaining({
+        status: AttendanceStatus.HOLIDAY,
+        holidayName: 'Founders Day',
+      }),
+    );
+    expect(result.days[13]).toEqual(
+      expect.objectContaining({
+        status: AttendanceStatus.HOLIDAY,
+        holidayName: 'Founders Day',
+      }),
+    );
     expect(result.summary.absent).toBe(0);
     expect(result.summary.holiday).toBe(2);
   });
