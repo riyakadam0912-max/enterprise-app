@@ -182,7 +182,6 @@ const navConfig: NavItem[] = [
   {
     type: 'dropdown', id: 'tasks', label: 'Tasks', icon: <CheckIcon />,
     children: [
-      { label: '+ Tasks',    href: '/dashboard/tasks/add',        icon: <PlusCircleIcon /> },
       { label: 'All Tasks',  href: '/dashboard/tasks',            icon: <ReportIcon /> },
       { label: 'Priorities', href: '/dashboard/tasks/priorities', icon: <KanbanIcon /> },
     ],

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { UserIdentity } from '@/components/common/UserIdentity';
+import { CalendarDays, Check, Clock3, ExternalLink, Flag, FolderKanban, MessageCircle, Pencil, Play, Send, UserRound, UserRoundCog, X } from 'lucide-react';
 
 type DashboardRole = 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
 type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
@@ -276,23 +277,29 @@ function TaskDetailPanelBody({
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-slate-950/45 backdrop-blur-[2px]" onClick={onClose} />
-      <aside className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
-        <div className="w-full max-w-3xl overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-slate-200">
+      <div className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-[2px]" onClick={onClose} />
+      <aside className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
+        <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200">
         <div
-          className="flex items-start justify-between border-b border-slate-200 px-5 py-4 sm:px-6"
-          style={{ backgroundImage: 'linear-gradient(to right, #ffffff, #f8fafc)' }}
+          className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6"
         >
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Task Detail</p>
-            <h2 className="mt-1 text-2xl font-bold text-slate-900">{task.taskName}</h2>
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-slate-500">Task details · #{task.id}</p>
+            <h2 className="mt-1 wrap-break-word text-xl font-semibold text-slate-950 sm:text-2xl">{task.taskName}</h2>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_BADGE[taskStatus] ?? STATUS_BADGE.PENDING}`}><Clock3 className="h-3.5 w-3.5" />{taskStatus.replace('_', ' ')}</span>
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${PRIORITY_BADGE[(task.priority ?? 'LOW').toUpperCase()] ?? PRIORITY_BADGE.LOW}`}><Flag className="h-3.5 w-3.5" />{(task.priority ?? 'LOW').toUpperCase()}</span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600"><FolderKanban className="h-3.5 w-3.5" />{task.category?.trim() || 'Other'}</span>
+            </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm font-semibold text-slate-600 shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-50 hover:text-slate-900"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
             aria-label="Close task details"
+            title="Close task details"
           >
-            X
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
 
@@ -301,9 +308,9 @@ function TaskDetailPanelBody({
             type="button"
             onClick={() => setChatTab((current) => !current)}
             disabled={!onLoadMessages || !onSendMessage}
-            className={`border-b-2 px-1 py-3 text-sm font-semibold ${chatTab ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-900'} disabled:cursor-not-allowed disabled:opacity-50`}
+            className={`inline-flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-medium ${chatTab ? 'border-orange-500 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-900'} disabled:cursor-not-allowed disabled:opacity-50`}
           >
-            Task chat
+            <MessageCircle className="h-4 w-4" />Task chat
           </button>
         </div>
 
@@ -348,53 +355,29 @@ function TaskDetailPanelBody({
           </div>
         )}
 
-        <div className="max-h-[calc(100vh-10rem)] overflow-y-auto space-y-4 px-5 py-5 sm:px-6">
-          <div className="flex flex-wrap gap-2">
-            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_BADGE[taskStatus] ?? 'bg-slate-200 text-slate-700'}`}>
-              {taskStatus}
-            </span>
-            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${PRIORITY_BADGE[(task.priority ?? 'LOW').toUpperCase()] ?? PRIORITY_BADGE.LOW}`}>
-              {(task.priority ?? 'LOW').toUpperCase()}
-            </span>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-              {task.category ?? 'Other'}
-            </span>
-          </div>
-
-          <div className="space-y-2">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
-              <p className="mb-2 text-sm font-semibold text-slate-900">Assigned To</p>
-              <UserIdentity userId={task.assignedToUser?.id} name={task.assignedToUser?.name ?? task.assignee} subtitle={task.assignedToUser?.email} size="md" />
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
-              <p className="text-sm font-semibold text-slate-900">Assigned By</p>
-              <p className="text-sm text-slate-600">{task.assignedByUser?.name ?? 'N/A'}</p>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
-              <p className="text-sm font-semibold text-slate-900">Due Date</p>
-              <p className={`text-sm ${isPastDue ? 'font-semibold text-rose-600' : 'text-slate-600'}`}>{formatDate(task.dueDate)}</p>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
-              <p className="text-sm font-semibold text-slate-900">Created</p>
-              <p className="text-sm text-slate-600">{formatDate(task.createdAt)}</p>
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-slate-900">Task details</h3>
+            <div className="grid gap-x-8 sm:grid-cols-2">
+              <div className="flex min-w-0 items-center gap-3 border-b border-slate-100 py-3"><UserRound className="h-4 w-4 shrink-0 text-slate-400" /><div className="min-w-0"><p className="text-xs text-slate-500">Assigned to</p><UserIdentity userId={task.assignedToUser?.id} name={task.assignedToUser?.name ?? task.assignee} subtitle={task.assignedToUser?.email} size="md" /></div></div>
+              <div className="flex min-w-0 items-center gap-3 border-b border-slate-100 py-3"><UserRoundCog className="h-4 w-4 shrink-0 text-slate-400" /><div className="min-w-0"><p className="text-xs text-slate-500">Assigned by</p><p className="text-sm font-medium text-slate-800">{task.assignedByUser?.name ?? 'N/A'}</p></div></div>
+              <div className="flex min-w-0 items-center gap-3 border-b border-slate-100 py-3"><CalendarDays className={`h-4 w-4 shrink-0 ${isPastDue ? 'text-rose-500' : 'text-slate-400'}`} /><div><p className="text-xs text-slate-500">Due date</p><p className={`text-sm font-medium ${isPastDue ? 'text-rose-600' : 'text-slate-800'}`}>{formatDate(task.dueDate)}</p></div></div>
+              <div className="flex min-w-0 items-center gap-3 border-b border-slate-100 py-3"><Clock3 className="h-4 w-4 shrink-0 text-slate-400" /><div><p className="text-xs text-slate-500">Created</p><p className="text-sm font-medium text-slate-800">{formatDate(task.createdAt)}</p></div></div>
             </div>
           </div>
 
           <div className="space-y-2 border-t border-slate-200 pt-4">
-            <h3 className="text-sm font-semibold text-slate-900">Description / Instructions</h3>
-            <div className="whitespace-pre-wrap wrap-break-word rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700 shadow-sm">
+            <h3 className="text-sm font-semibold text-slate-900">Instructions</h3>
+            <div className="whitespace-pre-wrap wrap-break-word text-sm leading-6 text-slate-600">
               {task.description?.trim() ? task.description : 'No instructions provided.'}
             </div>
             {canEdit && !showEditForm && (
               <button
                 type="button"
                 onClick={() => setShowEditForm(true)}
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
               >
-                Edit task
+                <Pencil className="h-4 w-4" />Edit task
               </button>
             )}
             {showEditForm && (
@@ -480,9 +463,9 @@ function TaskDetailPanelBody({
                 href={task.driveLink}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:underline"
+                className="inline-flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-orange-600"
               >
-                Google Drive
+                <ExternalLink className="h-4 w-4" />Google Drive
               </a>
             )}
           </div>
@@ -499,9 +482,9 @@ function TaskDetailPanelBody({
                     href={link}
                     target="_blank"
                     rel="noreferrer"
-                    className="block break-all text-sm text-blue-600 hover:underline"
+                    className="inline-flex items-start gap-2 break-all text-sm text-slate-700 hover:text-orange-600"
                   >
-                    Reference URL: {link}
+                    <ExternalLink className="mt-0.5 h-4 w-4 shrink-0" />{link}
                   </a>
                 ))}
               </div>
@@ -537,9 +520,9 @@ function TaskDetailPanelBody({
               <button
                 onClick={() => onStartTask(task.id)}
                 disabled={busy}
-                className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
               >
-                Start Task
+                <Play className="h-4 w-4" />Start Task
               </button>
             )}
 
@@ -547,9 +530,9 @@ function TaskDetailPanelBody({
               <button
                 onClick={() => setShowSubmitForm(true)}
                 disabled={busy}
-                className="w-full rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700 disabled:opacity-50"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
               >
-                Submit Work
+                <Send className="h-4 w-4" />Submit Work
               </button>
             )}
 
@@ -557,9 +540,9 @@ function TaskDetailPanelBody({
               <button
                 onClick={() => setShowSubmitForm(true)}
                 disabled={busy}
-                className="w-full rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600 disabled:opacity-50"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
               >
-                Resubmit
+                <Send className="h-4 w-4" />Resubmit
               </button>
             )}
 
@@ -582,9 +565,9 @@ function TaskDetailPanelBody({
                   <button
                     onClick={() => onSubmitTask(task.id, { note: submissionNote.trim(), submissionLink: submissionLink.trim() })}
                     disabled={busy || !submissionNote.trim()}
-                    className="rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
                   >
-                    Submit for Review
+                    <Send className="h-4 w-4" />Submit for Review
                   </button>
                   <button
                     onClick={() => setShowSubmitForm(false)}
@@ -608,9 +591,9 @@ function TaskDetailPanelBody({
               <button
                 onClick={() => setShowReviewForm(true)}
                 disabled={busy}
-                className="w-full rounded-xl bg-purple-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-purple-700 disabled:opacity-50"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
               >
-                Review
+                <Check className="h-4 w-4" />Review submission
               </button>
             )}
 
@@ -668,16 +651,16 @@ function TaskDetailPanelBody({
                   <button
                     onClick={() => onReviewTask(task.id, { status: 'APPROVED', remarks: reviewRemarks.trim() })}
                     disabled={busy}
-                    className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                   >
-                    Approve
+                    <Check className="h-4 w-4" />Approve
                   </button>
                   <button
                     onClick={() => onReviewTask(task.id, { status: 'REJECTED', remarks: reviewRemarks.trim() })}
                     disabled={busy}
-                    className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                   >
-                    Reject
+                    <X className="h-4 w-4" />Reject
                   </button>
                 </div>
                 <button
