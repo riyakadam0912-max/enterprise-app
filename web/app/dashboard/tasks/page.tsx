@@ -24,7 +24,7 @@ import { TaskTimerSessionsCell } from '@/components/tasks/TaskTimerSessionsCell'
 import CreateTaskDrawer from '@/components/tasks/CreateTaskDrawer';
 import { TaskDetailHeader, TaskDetailMetadata } from '@/components/tasks/TaskDetailPresentation';
 import { dateTimeLocalToIso, toDateTimeLocalValue } from '@/utils/dateUtils';
-import { Check, ClipboardList, ExternalLink, FileText, MessageCircle, Pencil, Play, Send, X } from 'lucide-react';
+import { Check, ClipboardList, ExternalLink, FileText, MessageCircle, Play, Send, X } from 'lucide-react';
 
 type DashboardRole = AuthRole;
 type TaskFilter = 'all' | 'mine' | 'needs-review';
@@ -329,6 +329,11 @@ function TaskDetailModal({
               priority={priority}
               category={category}
               overdue={pastDue}
+              editing={showEditForm}
+              onEdit={isManagerOrAdmin ? () => {
+                onTabChange('overview');
+                setShowEditForm((current) => !current);
+              } : undefined}
               onClose={onClose}
             />
             <div className="px-5 sm:px-7">
@@ -382,13 +387,6 @@ function TaskDetailModal({
                     {task.description?.trim() ? task.description : 'No instructions provided.'}
                   </div>
                 </div>
-
-                {isManagerOrAdmin && !showEditForm && (
-                  <Button variant="outline" onClick={() => setShowEditForm(true)}>
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Edit task
-                  </Button>
-                )}
 
                 {isManagerOrAdmin && showEditForm && (
                   <div className="space-y-3 rounded-2xl border border-blue-200 bg-blue-50/40 p-5">

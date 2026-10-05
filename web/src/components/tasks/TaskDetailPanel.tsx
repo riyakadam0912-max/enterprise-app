@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AuthRole } from '@/stores/auth-store';
 import { TaskDetailHeader, TaskDetailMetadata } from '@/components/tasks/TaskDetailPresentation';
-import { Check, ExternalLink, MessageCircle, Pencil, Play, Send, X } from 'lucide-react';
+import { Check, ExternalLink, MessageCircle, Play, Send, X } from 'lucide-react';
 
 type DashboardRole = AuthRole;
 type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
@@ -275,6 +275,8 @@ function TaskDetailPanelBody({
           priority={task.priority}
           category={task.category}
           overdue={isPastDue}
+          editing={showEditForm}
+          onEdit={canEdit ? () => setShowEditForm((current) => !current) : undefined}
           onClose={onClose}
         />
 
@@ -348,15 +350,6 @@ function TaskDetailPanelBody({
             <div className="whitespace-pre-wrap wrap-break-word text-sm leading-6 text-slate-600">
               {task.description?.trim() ? task.description : 'No instructions provided.'}
             </div>
-            {canEdit && !showEditForm && (
-              <button
-                type="button"
-                onClick={() => setShowEditForm(true)}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-              >
-                <Pencil className="h-4 w-4" />Edit task
-              </button>
-            )}
             {showEditForm && (
               <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
                 <input

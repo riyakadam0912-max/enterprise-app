@@ -1,6 +1,6 @@
 'use client';
 
-import { CalendarDays, CircleCheck, CircleX, Clock3, Flag, FileText, FolderKanban, UserRound, UserRoundCog, X } from 'lucide-react';
+import { CalendarDays, CircleCheck, CircleX, Clock3, Flag, FileText, FolderKanban, Pencil, UserRound, UserRoundCog, X } from 'lucide-react';
 import { UserIdentity } from '@/components/common/UserIdentity';
 
 type TaskDetailHeaderProps = {
@@ -10,6 +10,8 @@ type TaskDetailHeaderProps = {
   priority?: string | null;
   category?: string | null;
   overdue?: boolean;
+  editing?: boolean;
+  onEdit?: () => void;
   onClose: () => void;
 };
 
@@ -59,6 +61,8 @@ export function TaskDetailHeader({
   priority,
   category,
   overdue = false,
+  editing = false,
+  onEdit,
   onClose,
 }: TaskDetailHeaderProps) {
   const normalizedStatus = status.trim().toUpperCase() || 'PENDING';
@@ -88,15 +92,29 @@ export function TaskDetailHeader({
           {overdue && <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">Overdue</span>}
         </div>
       </div>
-      <button
-        type="button"
-        onClick={onClose}
-        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
-        aria-label="Close task details"
-        title="Close task details"
-      >
-        <X className="h-4 w-4" aria-hidden="true" />
-      </button>
+      <div className="flex shrink-0 items-center gap-2">
+        {onEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border transition ${editing ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-900'}`}
+            aria-label={editing ? 'Exit edit mode' : 'Edit task'}
+            aria-pressed={editing}
+            title={editing ? 'Exit edit mode' : 'Edit task'}
+          >
+            <Pencil className="h-4 w-4" aria-hidden="true" />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
+          aria-label="Close task details"
+          title="Close task details"
+        >
+          <X className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </div>
     </header>
   );
 }
