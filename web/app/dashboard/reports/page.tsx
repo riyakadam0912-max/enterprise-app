@@ -39,6 +39,18 @@ const PerformanceDistributionChart = dynamic(
 
 type UserRole = 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
 
+const REVIEW_TIME_OPTIONS = Array.from({ length: 96 }, (_, index) => {
+  const hour = Math.floor(index / 4);
+  const minute = (index % 4) * 15;
+  const displayHour = hour % 12 || 12;
+  const period = hour < 12 ? 'AM' : 'PM';
+
+  return {
+    value: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
+    label: `${displayHour}:${String(minute).padStart(2, '0')} ${period}`,
+  };
+});
+
 function toMonthInputValue(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
@@ -105,6 +117,7 @@ export default function ReportsPage() {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [isSubmittingQuickAction, setIsSubmittingQuickAction] = useState(false);
   const [reviewScheduleAt, setReviewScheduleAt] = useState('');
+  const [reviewDate, reviewTime] = reviewScheduleAt.split('T');
   const [reviewLocation, setReviewLocation] = useState('HR Cabin - Review Desk');
   const [reviewNotes, setReviewNotes] = useState('');
 
@@ -247,7 +260,8 @@ export default function ReportsPage() {
       return;
     }
 
-    if (!reviewScheduleAt) {
+    const [reviewDate, reviewTime] = reviewScheduleAt.split('T');
+    if (!reviewDate || !reviewTime) {
       setActionError('Please select review date and time.');
       return;
     }
@@ -260,7 +274,7 @@ export default function ReportsPage() {
     setIsSubmittingQuickAction(true);
 
     try {
-      const start = new Date(reviewScheduleAt);
+      const start = new Date(`${reviewDate}T${reviewTime}`);
       const end = new Date(start.getTime() + 45 * 60 * 1000);
 
       await createEvent({
@@ -590,16 +604,32 @@ export default function ReportsPage() {
             </div>
 
             <form onSubmit={submitQuickAction} className="mt-5 space-y-4">
-              <label className="block text-sm font-medium text-slate-700">
-                Review Date & Time
-                <input
-                  type="datetime-local"
-                  value={reviewScheduleAt}
-                  onChange={(e) => setReviewScheduleAt(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900"
-                  required
-                />
-              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block text-sm font-medium text-slate-700">
+                  Review Date
+                  <input
+                    type="date"
+                    value={reviewDate}
+                    onChange={(e) => setReviewScheduleAt(`${e.target.value}T${reviewTime}`)}
+                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                    required
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Review Time
+                  <select
+                    value={reviewTime}
+                    onChange={(e) => setReviewScheduleAt(`${reviewDate}T${e.target.value}`)}
+                    className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                    required
+                  >
+                    <option value="" disabled>Select time</option>
+                    {REVIEW_TIME_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
 
               <label className="block text-sm font-medium text-slate-700">
                 Location
