@@ -19,12 +19,12 @@ import { toast } from '@/providers/toast-provider';
 import { cn } from '@/lib/cn';
 import { useAuthSession, type AuthRole } from '@/stores/auth-store';
 import { useAuth } from '@/providers/AuthProvider';
-import { UserIdentity } from '@/components/common/UserIdentity';
 import { SuccessFeedback } from '@/components/feedback/SuccessFeedback';
 import { TaskTimerSessionsCell } from '@/components/tasks/TaskTimerSessionsCell';
 import CreateTaskDrawer from '@/components/tasks/CreateTaskDrawer';
+import { TaskDetailHeader, TaskDetailMetadata } from '@/components/tasks/TaskDetailPresentation';
 import { dateTimeLocalToIso, toDateTimeLocalValue } from '@/utils/dateUtils';
-import { CalendarDays, Check, CircleCheck, CircleX, ClipboardList, Clock3, ExternalLink, FileText, Flag, FolderKanban, MessageCircle, Pencil, Play, Send, UserRound, UserRoundCog, X } from 'lucide-react';
+import { Check, ClipboardList, ExternalLink, FileText, MessageCircle, Pencil, Play, Send, X } from 'lucide-react';
 
 type DashboardRole = AuthRole;
 type TaskFilter = 'all' | 'mine' | 'needs-review';
@@ -45,12 +45,6 @@ const STATUS_BADGE: Record<string, string> = {
   SUBMITTED: 'bg-amber-50 text-amber-700 border border-amber-200',
   APPROVED: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
   REJECTED: 'bg-rose-50 text-rose-700 border border-rose-200',
-};
-
-const PRIORITY_BADGE: Record<string, string> = {
-  HIGH: 'bg-rose-50 text-rose-700 border border-rose-200',
-  MEDIUM: 'bg-amber-50 text-amber-700 border border-amber-200',
-  LOW: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
 };
 
 function formatDateTime(value?: string | null) {
@@ -93,10 +87,6 @@ function parseLinks(value?: string | null) {
 
 function IconExternalLink() {
   return <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />;
-}
-
-function IconClose() {
-  return <X className="h-5 w-5 shrink-0" aria-hidden="true" />;
 }
 
 function isForbiddenTaskError(error: unknown) {
@@ -261,9 +251,7 @@ function TaskDetailModal({
 
   const activeTask = task;
 
-  const statusClass = STATUS_BADGE[taskStatus] ?? STATUS_BADGE.PENDING;
-  const priority = (activeTask.priority?.toUpperCase() ?? 'LOW') as keyof typeof PRIORITY_BADGE;
-  const priorityClass = PRIORITY_BADGE[priority] ?? PRIORITY_BADGE.LOW;
+  const priority = activeTask.priority?.toUpperCase() ?? 'LOW';
   const category = activeTask.category?.trim() || 'Other';
   const pastDue = isOverdue(activeTask, currentTime);
   const referenceLinks = parseLinks(activeTask.links ?? null);
@@ -333,42 +321,17 @@ function TaskDetailModal({
       />
         <div className="absolute inset-0 flex items-center justify-center p-3 sm:p-6">
         <div className="relative flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-          <div className="border-b border-slate-200 px-5 py-4 sm:px-7 sm:py-5">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0 flex-1">
-                <h2 className="wrap-break-word text-xl font-semibold text-slate-950 sm:text-2xl">{activeTask.taskName}</h2>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold', statusClass)}>
-                    {taskStatus === 'APPROVED' ? <CircleCheck className="h-3.5 w-3.5" /> : taskStatus === 'REJECTED' ? <CircleX className="h-3.5 w-3.5" /> : <Clock3 className="h-3.5 w-3.5" />}
-                    {taskStatus.replace('_', ' ')}
-                  </span>
-                  <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold', priorityClass)}>
-                    <Flag className="h-3.5 w-3.5" />
-                    {priority}
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600">
-                    <FileText className="h-3.5 w-3.5" />
-                    {category}
-                  </span>
-                  {pastDue && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 border border-rose-200">
-                      <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
-                      Overdue
-                    </span>
-                  )}
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onClose}
-                  className="rounded-lg border border-slate-200 hover:bg-slate-100"
-                aria-label="Close task details"
-              >
-                <IconClose />
-              </Button>
-            </div>
-
+          <div>
+            <TaskDetailHeader
+              taskId={activeTask.id}
+              taskName={activeTask.taskName}
+              status={taskStatus}
+              priority={priority}
+              category={category}
+              overdue={pastDue}
+              onClose={onClose}
+            />
+            <div className="px-5 sm:px-7">
             <div className="mt-5 flex items-center gap-2 border-b border-slate-200">
               {(['overview', 'submission', 'chat'] as DetailTab[]).map((tab) => {
                 const enabled = tab !== 'submission' || ['SUBMITTED', 'APPROVED', 'REJECTED'].includes(taskStatus);
@@ -393,36 +356,23 @@ function TaskDetailModal({
                 );
               })}
             </div>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-7">
             {activeTab === 'overview' && (
               <div className="space-y-6">
-                <div>
-                  <p className="mb-3 text-sm font-semibold text-slate-900">Task details</p>
-                  <div className="grid gap-x-8 sm:grid-cols-2">
-                    <div className="flex min-w-0 items-center gap-3 border-b border-slate-100 py-3">
-                      <UserRound className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
-                      <div className="min-w-0"><p className="text-xs text-slate-500">Assigned to</p><UserIdentity userId={task.assignedToUser?.id} name={task.assignedToUser?.name ?? task.assignee} subtitle={task.assignedToUser?.email} /></div>
-                    </div>
-                    <div className="flex min-w-0 items-center gap-3 border-b border-slate-100 py-3">
-                      <UserRoundCog className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
-                      <div className="min-w-0"><p className="text-xs text-slate-500">Assigned by</p><p className="truncate text-sm font-medium text-slate-800">{task.assignedByUser?.name ?? 'Manager'}</p></div>
-                    </div>
-                    <div className="flex min-w-0 items-center gap-3 border-b border-slate-100 py-3">
-                      <CalendarDays className={cn('h-4 w-4 shrink-0', pastDue ? 'text-rose-500' : 'text-slate-400')} aria-hidden="true" />
-                      <div><p className="text-xs text-slate-500">Due date</p><p className={cn('text-sm font-medium', pastDue ? 'text-rose-600' : 'text-slate-800')}>{formatDateTime(task.dueDate)}</p></div>
-                    </div>
-                    <div className="flex min-w-0 items-center gap-3 border-b border-slate-100 py-3">
-                      <FolderKanban className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
-                      <div className="min-w-0"><p className="text-xs text-slate-500">Project</p><p className="truncate text-sm font-medium text-slate-800">{task.project ?? 'No project'}</p></div>
-                    </div>
-                    <div className="flex min-w-0 items-center gap-3 py-3">
-                      <Clock3 className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
-                      <div><p className="text-xs text-slate-500">Estimate</p><p className="text-sm font-medium text-slate-800">{task.estimatedHours == null ? 'Not set' : `${task.estimatedHours} hours`}</p></div>
-                    </div>
-                  </div>
-                </div>
+                <TaskDetailMetadata
+                  assigneeId={task.assignedToUser?.id}
+                  assigneeName={task.assignedToUser?.name ?? task.assignee}
+                  assigneeEmail={task.assignedToUser?.email}
+                  assignerName={task.assignedByUser?.name}
+                  dueDate={task.dueDate}
+                  project={task.project}
+                  estimatedHours={task.estimatedHours}
+                  createdAt={task.createdAt}
+                  overdue={pastDue}
+                />
 
                 <div className="h-px bg-slate-200" />
 

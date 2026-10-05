@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { UserIdentity } from '@/components/common/UserIdentity';
-import { CalendarDays, Check, Clock3, ExternalLink, Flag, FolderKanban, MessageCircle, Pencil, Play, Send, UserRound, UserRoundCog, X } from 'lucide-react';
+import type { AuthRole } from '@/stores/auth-store';
+import { TaskDetailHeader, TaskDetailMetadata } from '@/components/tasks/TaskDetailPresentation';
+import { Check, ExternalLink, MessageCircle, Pencil, Play, Send, X } from 'lucide-react';
 
-type DashboardRole = 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
+type DashboardRole = AuthRole;
 type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
 type TaskChatMessage = {
   id: string;
@@ -18,6 +19,7 @@ type TaskLike = {
   id: number;
   taskName: string;
   status: string;
+  project?: string | null;
   priority?: string | null;
   estimatedHours?: number | null;
   category?: string | null;
@@ -62,20 +64,6 @@ type TaskDetailPanelProps = {
   onSendMessage?: (taskId: number, content: string) => Promise<TaskChatMessage>;
   onUpdateStatus?: (taskId: number, status: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED') => Promise<void> | void;
   busy?: boolean;
-};
-
-const STATUS_BADGE: Record<string, string> = {
-  PENDING: 'bg-slate-200 text-slate-700',
-  IN_PROGRESS: 'bg-blue-100 text-blue-700',
-  SUBMITTED: 'bg-amber-100 text-amber-700',
-  APPROVED: 'bg-emerald-100 text-emerald-700',
-  REJECTED: 'bg-rose-100 text-rose-700',
-};
-
-const PRIORITY_BADGE: Record<string, string> = {
-  LOW: 'bg-slate-100 text-slate-700',
-  MEDIUM: 'bg-amber-100 text-amber-800',
-  HIGH: 'bg-rose-100 text-rose-800',
 };
 
 function formatDate(value?: string | null) {
@@ -278,30 +266,17 @@ function TaskDetailPanelBody({
   return (
     <>
       <div className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-[2px]" onClick={onClose} />
-      <aside className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
+      <aside className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6" role="dialog" aria-modal="true" aria-label={`Task details: ${task.taskName}`}>
         <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200">
-        <div
-          className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6"
-        >
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-slate-500">Task details · #{task.id}</p>
-            <h2 className="mt-1 wrap-break-word text-xl font-semibold text-slate-950 sm:text-2xl">{task.taskName}</h2>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_BADGE[taskStatus] ?? STATUS_BADGE.PENDING}`}><Clock3 className="h-3.5 w-3.5" />{taskStatus.replace('_', ' ')}</span>
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${PRIORITY_BADGE[(task.priority ?? 'LOW').toUpperCase()] ?? PRIORITY_BADGE.LOW}`}><Flag className="h-3.5 w-3.5" />{(task.priority ?? 'LOW').toUpperCase()}</span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600"><FolderKanban className="h-3.5 w-3.5" />{task.category?.trim() || 'Other'}</span>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
-            aria-label="Close task details"
-            title="Close task details"
-          >
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </div>
+        <TaskDetailHeader
+          taskId={task.id}
+          taskName={task.taskName}
+          status={taskStatus}
+          priority={task.priority}
+          category={task.category}
+          overdue={isPastDue}
+          onClose={onClose}
+        />
 
         <div className="border-b border-slate-200 px-5 sm:px-6">
           <button
@@ -356,15 +331,17 @@ function TaskDetailPanelBody({
         )}
 
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
-          <div>
-            <h3 className="mb-2 text-sm font-semibold text-slate-900">Task details</h3>
-            <div className="grid gap-x-8 sm:grid-cols-2">
-              <div className="flex min-w-0 items-center gap-3 border-b border-slate-100 py-3"><UserRound className="h-4 w-4 shrink-0 text-slate-400" /><div className="min-w-0"><p className="text-xs text-slate-500">Assigned to</p><UserIdentity userId={task.assignedToUser?.id} name={task.assignedToUser?.name ?? task.assignee} subtitle={task.assignedToUser?.email} size="md" /></div></div>
-              <div className="flex min-w-0 items-center gap-3 border-b border-slate-100 py-3"><UserRoundCog className="h-4 w-4 shrink-0 text-slate-400" /><div className="min-w-0"><p className="text-xs text-slate-500">Assigned by</p><p className="text-sm font-medium text-slate-800">{task.assignedByUser?.name ?? 'N/A'}</p></div></div>
-              <div className="flex min-w-0 items-center gap-3 border-b border-slate-100 py-3"><CalendarDays className={`h-4 w-4 shrink-0 ${isPastDue ? 'text-rose-500' : 'text-slate-400'}`} /><div><p className="text-xs text-slate-500">Due date</p><p className={`text-sm font-medium ${isPastDue ? 'text-rose-600' : 'text-slate-800'}`}>{formatDate(task.dueDate)}</p></div></div>
-              <div className="flex min-w-0 items-center gap-3 border-b border-slate-100 py-3"><Clock3 className="h-4 w-4 shrink-0 text-slate-400" /><div><p className="text-xs text-slate-500">Created</p><p className="text-sm font-medium text-slate-800">{formatDate(task.createdAt)}</p></div></div>
-            </div>
-          </div>
+          <TaskDetailMetadata
+            assigneeId={task.assignedToUser?.id}
+            assigneeName={task.assignedToUser?.name ?? task.assignee}
+            assigneeEmail={task.assignedToUser?.email}
+            assignerName={task.assignedByUser?.name}
+            dueDate={task.dueDate}
+            project={task.project}
+            estimatedHours={task.estimatedHours}
+            createdAt={task.createdAt}
+            overdue={isPastDue}
+          />
 
           <div className="space-y-2 border-t border-slate-200 pt-4">
             <h3 className="text-sm font-semibold text-slate-900">Instructions</h3>

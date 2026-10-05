@@ -37,7 +37,6 @@ import { useAuthSession } from '@/stores/auth-store';
 import { ProjectGrid } from '@/components/projects/ProjectGrid';
 import { dateTimeLocalToIso, formatDateTime } from '@/utils/dateUtils';
 
-type DashboardRole = 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
 type ProjectTab = 'overview' | 'tasks' | 'users' | 'reports' | 'issues' | 'timeLogs' | 'chat';
 
 type TaskPanelData = {
@@ -1935,7 +1934,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                 key={selectedTask?.id ?? 'none'}
                 task={selectedTask as TaskPanelData | null}
                 open={Boolean(selectedTask)}
-                role={(role as DashboardRole)}
+                role={role}
                 currentUserId={userId}
                 onClose={() => setSelectedTaskId(null)}
                 onStartTask={(taskId) => onTaskStatusChange(taskId, 'IN_PROGRESS')}
