@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { currentUser, login as loginRequest, logout as logoutRequest } from '@/src/api/auth';
-import { contextStore, setSessionExpiredHandler, tokenStore } from '@/src/api/client';
+import { contextStore, normalizePersistedId, setSessionExpiredHandler, tokenStore } from '@/src/api/client';
 import type { Session } from '@/src/types/auth';
 
 type AuthContextValue = { session: Session | null; loading: boolean; login: (email: string, password: string) => Promise<Session>; logout: () => Promise<void>; };
@@ -17,6 +17,13 @@ export async function initializeAuthSession(): Promise<Session | null> {
 
   try {
     const session = await currentUser();
+    const safeOrganizationId = normalizePersistedId(session?.organizationId);
+    if (safeOrganizationId == null) {
+      await contextStore.setOrg(null);
+      await contextStore.setBU(null);
+    } else {
+      await contextStore.setOrg(safeOrganizationId);
+    }
     return session;
   } catch (error) {
     console.warn('Auth bootstrap failed. Clearing persisted session.', error);
@@ -60,7 +67,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const value = {
     session, loading,
-    login: async (email: string, password: string) => { const next = await loginRequest(email, password); await contextStore.setOrg(next.organizationId); await contextStore.setBU(null); setSession(next); return next; },
+    login: async (email: string, password: string) => {
+      const next = await loginRequest(email, password);
+      const safeOrganizationId = normalizePersistedId(next.organizationId);
+      await contextStore.setOrg(safeOrganizationId);
+      await contextStore.setBU(null);
+      setSession(next);
+      return next;
+    },
     logout: async () => { await logoutRequest(); await contextStore.setOrg(null); await contextStore.setBU(null); setSession(null); },
   };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

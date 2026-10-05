@@ -8,6 +8,12 @@ const REFRESH_KEY = 'erp_mobile_refresh_token';
 const ORG_KEY = 'erp_mobile_organization_id';
 const BU_KEY = 'erp_mobile_business_unit_id';
 
+export function normalizePersistedId(value: number | string | null | undefined): number | null {
+  if (value == null || value === '') return null;
+  const normalized = Number(value);
+  return Number.isFinite(normalized) && normalized > 0 ? normalized : null;
+}
+
 const isWeb = Platform.OS === 'web';
 
 function getStoredValue(key: string) {
@@ -39,9 +45,17 @@ export const tokenStore = {
 
 export const contextStore = {
   getOrg: () => getStoredValue(ORG_KEY),
-  setOrg: (id: number | null) => id == null ? deleteStoredValue(ORG_KEY) : setStoredValue(ORG_KEY, String(id)),
+  setOrg: async (id: number | null) => {
+    const normalizedId = normalizePersistedId(id);
+    if (normalizedId == null) return deleteStoredValue(ORG_KEY);
+    return setStoredValue(ORG_KEY, String(normalizedId));
+  },
   getBU: () => getStoredValue(BU_KEY),
-  setBU: (id: number | null) => id == null ? deleteStoredValue(BU_KEY) : setStoredValue(BU_KEY, String(id)),
+  setBU: async (id: number | null) => {
+    const normalizedId = normalizePersistedId(id);
+    if (normalizedId == null) return deleteStoredValue(BU_KEY);
+    return setStoredValue(BU_KEY, String(normalizedId));
+  },
 };
 
 export const api = axios.create({ baseURL: env.apiUrl, timeout: 20000, headers: { 'Content-Type': 'application/json' } });
@@ -51,12 +65,22 @@ export function setSessionExpiredHandler(handler: (() => void) | null) { onSessi
 
 api.interceptors.request.use(async (config) => {
   const access = await tokenStore.getAccess();
-  const org = await contextStore.getOrg();
-  const bu = await contextStore.getBU();
+  const storedOrg = await contextStore.getOrg();
+  const storedBU = await contextStore.getBU();
+  const org = normalizePersistedId(storedOrg);
+  const bu = normalizePersistedId(storedBU);
   config.headers = config.headers ?? {};
   if (access) config.headers.Authorization = `Bearer ${access}`;
-  if (org) config.headers['X-Organization-Id'] = org;
-  if (bu) config.headers['X-Business-Unit-Id'] = bu;
+  if (org != null) {
+    config.headers['X-Organization-Id'] = String(org);
+  } else {
+    delete config.headers['X-Organization-Id'];
+  }
+  if (bu != null) {
+    config.headers['X-Business-Unit-Id'] = String(bu);
+  } else {
+    delete config.headers['X-Business-Unit-Id'];
+  }
   return config;
 });
 
