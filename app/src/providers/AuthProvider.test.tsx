@@ -45,7 +45,7 @@ describe('initializeAuthSession', () => {
     expect(mockedContextStore.setBU).toHaveBeenCalledWith(null);
   });
 
-  test('clears a stale persisted organization when the active session has no valid org scope', async () => {
+  test('does not persist the default session organization as the mobile request scope', async () => {
     mockedTokenStore.getAccess.mockResolvedValue('token-123');
     mockedCurrentUser.mockResolvedValue({
       user: { id: 7, name: 'Maya', email: 'maya@example.com' },
@@ -53,15 +53,15 @@ describe('initializeAuthSession', () => {
       roles: ['EMPLOYEE'],
       permissions: [],
       employeeId: 11,
-      organizationId: null,
-      organizationName: null,
-      organizationSlug: null,
+      organizationId: 6,
+      organizationName: 'North Hub',
+      organizationSlug: 'north-hub',
       organizationLogo: null,
       isSuperAdmin: false,
       isPlatformAdmin: false,
     });
 
-    await expect(initializeAuthSession()).resolves.toMatchObject({ organizationId: null });
+    await expect(initializeAuthSession()).resolves.toMatchObject({ organizationId: 6 });
 
     expect(mockedContextStore.setOrg).toHaveBeenCalledWith(null);
     expect(mockedContextStore.setBU).toHaveBeenCalledWith(null);
