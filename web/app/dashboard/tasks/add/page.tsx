@@ -8,6 +8,7 @@ import { apiClient } from '@/api/apiClient';
 import { canManageProjects } from '@/utils/auth/permissions';
 import { reportError } from '@/lib/error-handling';
 import { useAuthSession } from '@/stores/auth-store';
+import { dateTimeLocalToIso } from '@/utils/dateUtils';
 
 const PRIORITIES = [
   { value: 'HIGH', label: 'High' },
@@ -86,7 +87,7 @@ export default function AddTaskPage() {
         projectId:      form.projectId ? Number(form.projectId) : undefined,
         assignee:       form.assignee.trim() || null,
         assignedToUserId: form.assignedToUserId ? Number(form.assignedToUserId) : undefined,
-        dueDate:        form.dueDate               || null,
+        dueDate:        dateTimeLocalToIso(form.dueDate),
         priority:       form.priority              || null,
         status:         form.status                || 'PENDING',
         estimatedHours: form.estimatedHours ? parseFloat(form.estimatedHours) : null,
@@ -118,7 +119,7 @@ export default function AddTaskPage() {
           <input type="url" className={field} value={form.driveLink} onChange={(e) => set('driveLink', e.target.value)} placeholder="https://drive.google.com/..." />
         </div>
 
-        {/* Due Date */}
+        {/* Task Name */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Task Name</label>
           <input
@@ -165,8 +166,9 @@ export default function AddTaskPage() {
 
         {/* Due Date */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
-          <input type="date" className={field} value={form.dueDate} onChange={(e) => set('dueDate', e.target.value)} />
+          <label className="block text-sm font-medium text-gray-700 mb-1">Due date and time</label>
+          <input type="datetime-local" className={field} value={form.dueDate} onChange={(e) => set('dueDate', e.target.value)} />
+          <p className="mt-1 text-xs text-gray-500">Time uses your device&apos;s local timezone.</p>
         </div>
 
         {/* Priority */}

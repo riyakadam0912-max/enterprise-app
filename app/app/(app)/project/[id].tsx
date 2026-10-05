@@ -250,7 +250,7 @@ export default function ProjectDetail() {
         </Text>
         {task.dueDate ? (
           <Text style={styles.muted}>
-            Due: {String(task.dueDate).slice(0, 10)}
+            Due: {new Date(String(task.dueDate)).toLocaleString()}
           </Text>
         ) : null}
         <View style={{ marginTop: 10 }}>

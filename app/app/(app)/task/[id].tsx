@@ -347,7 +347,7 @@ function Overview({
           <Stat label="Priority" value={String(data.priority ?? "Not set")} />
           <Stat
             label="Due"
-            value={String(data.dueDate ?? "Not set").slice(0, 10)}
+            value={data.dueDate ? new Date(String(data.dueDate)).toLocaleString() : "Not set"}
           />
         </View>
       </View>

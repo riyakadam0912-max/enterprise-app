@@ -35,6 +35,7 @@ import { canAccessUsers } from '@/utils/auth/permissions';
 import { useStableNow } from '@/hooks/useStableNow';
 import { useAuthSession } from '@/stores/auth-store';
 import { ProjectGrid } from '@/components/projects/ProjectGrid';
+import { dateTimeLocalToIso, formatDateTime } from '@/utils/dateUtils';
 
 type DashboardRole = 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
 type ProjectTab = 'overview' | 'tasks' | 'users' | 'reports' | 'issues' | 'timeLogs' | 'chat';
@@ -951,7 +952,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
         projectId: selectedProjectId,
         assignedToUserId: selectedEmployee.userId,
         employeeId: Number(taskForm.assignedEmployeeId),
-        dueDate: taskForm.dueDate || null,
+        dueDate: dateTimeLocalToIso(taskForm.dueDate),
         priority: taskForm.priority,
         estimatedHours: taskForm.estimatedHours ? Number(taskForm.estimatedHours) : null,
         status: 'PENDING',
@@ -1853,11 +1854,13 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                       placeholder="Estimate (hours)"
                     />
                     <input
-                      type="date"
+                      type="datetime-local"
+                      aria-label="Task deadline date and time"
                       value={taskForm.dueDate}
                       onChange={(e) => setTaskForm((prev) => ({ ...prev, dueDate: e.target.value }))}
                       className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     />
+                    <p className="text-xs text-slate-500">Deadline time uses your device&apos;s local timezone.</p>
                     <button
                       disabled={taskSubmitting}
                       className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
@@ -1903,7 +1906,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                             <td className="px-4 py-3 text-slate-600">{task.assignedToUser?.name ?? 'Unassigned'}</td>
                             <td className="whitespace-nowrap px-4 py-3 text-slate-600">{start ? formatDate(task.startDate) : '—'}</td>
                             <td className={`whitespace-nowrap px-4 py-3 ${days != null && days < 0 && status !== 'APPROVED' ? 'font-semibold text-rose-600' : 'text-slate-600'}`}>
-                              {due ? <>{formatDate(task.dueDate)} {days !== null && <span className="text-xs">({days === 0 ? 'today' : days > 0 ? `${days} days left` : `${Math.abs(days)} days overdue`})</span>}</> : '—'}
+                              {due ? <>{formatDateTime(task.dueDate)} {days !== null && <span className="text-xs">({days === 0 ? 'today' : days > 0 ? `${days} days left` : `${Math.abs(days)} days overdue`})</span>}</> : '—'}
                             </td>
                             <td className="px-4 py-3 text-slate-600">{start && due ? `${Math.max(1, Math.ceil((due.getTime() - start.getTime()) / 86400000) + 1)} days` : '—'}</td>
                             <td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${taskPriorityClass[priority] ?? taskPriorityClass.LOW}`}>{priority}</span></td>

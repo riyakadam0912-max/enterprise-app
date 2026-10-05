@@ -22,6 +22,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { UserIdentity } from '@/components/common/UserIdentity';
 import { SuccessFeedback } from '@/components/feedback/SuccessFeedback';
 import { TaskTimerSessionsCell } from '@/components/tasks/TaskTimerSessionsCell';
+import { dateTimeLocalToIso, toDateTimeLocalValue } from '@/utils/dateUtils';
 
 type DashboardRole = AuthRole;
 type TaskFilter = 'all' | 'mine' | 'needs-review';
@@ -49,15 +50,6 @@ const PRIORITY_BADGE: Record<string, string> = {
   MEDIUM: 'bg-amber-50 text-amber-700 border border-amber-200',
   LOW: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
 };
-
-function formatDate(value?: string | null) {
-  if (!value) return 'No due date';
-  return new Date(value).toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
-}
 
 function formatDateTime(value?: string | null) {
   if (!value) return 'N/A';
@@ -209,7 +201,7 @@ function TaskDetailModal({
   const [editDriveLink, setEditDriveLink] = useState(task?.driveLink ?? '');
   const [editPriority, setEditPriority] = useState(task?.priority ?? 'MEDIUM');
   const [editEstimatedHours, setEditEstimatedHours] = useState(task?.estimatedHours?.toString() ?? '');
-  const [editDueDate, setEditDueDate] = useState(task?.dueDate?.slice(0, 10) ?? '');
+  const [editDueDate, setEditDueDate] = useState(toDateTimeLocalValue(task?.dueDate));
   const [chatDraft, setChatDraft] = useState('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
@@ -355,7 +347,7 @@ function TaskDetailModal({
       driveLink: editDriveLink.trim(),
       priority: editPriority,
       estimatedHours: editEstimatedHours ? Number(editEstimatedHours) : null,
-      dueDate: editDueDate || null,
+      dueDate: dateTimeLocalToIso(editDueDate),
     });
     setShowEditForm(false);
   }
@@ -469,7 +461,7 @@ function TaskDetailModal({
                       <p className="mb-0.5 text-xs font-medium uppercase tracking-wide text-slate-500">Due date</p>
                       <div className={cn('flex items-center gap-2 text-sm', pastDue ? 'font-medium text-rose-600' : 'text-slate-700')}>
                         <IconCalendar />
-                        <span>{formatDate(task.dueDate)}</span>
+                        <span>{formatDateTime(task.dueDate)}</span>
                       </div>
                     </div>
 
@@ -515,7 +507,8 @@ function TaskDetailModal({
                     <input value={editLinks} onChange={(e) => setEditLinks(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="Reference links, comma separated" />
                     <div className="grid gap-3 sm:grid-cols-2">
                       <input type="url" value={editDriveLink} onChange={(e) => setEditDriveLink(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="Google Drive link" />
-                      <input type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" />
+                      <label className="text-xs text-slate-500">Deadline date and time (your local timezone)</label>
+                      <input type="datetime-local" aria-label="Deadline date and time" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" />
                     </div>
                     <div className="flex gap-2">
                       <Button onClick={() => void handleEditSave()} disabled={busy || !editTaskName.trim()}>Save changes</Button>
@@ -1229,7 +1222,7 @@ export default function AllTasksPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-600">{task.priority ?? '—'}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatDate(task.dueDate)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatDateTime(task.dueDate)}</td>
                     <td className="px-4 py-3 text-slate-600">{task.estimatedHours ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-600">{task.actualHours ?? '—'}</td>
                     <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
