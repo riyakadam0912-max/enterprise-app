@@ -10,7 +10,7 @@ import { useEmployees } from '@/hooks/useEmployees';
 import TableActions from '@/components/common/TableActions';
 import { reportError } from '@/lib/error-handling';
 import { useAuthSession } from '@/stores/auth-store';
-import { formatTime, formatShiftTime, formatShiftRange } from '@/lib/time-format';
+import { formatHoursDuration, formatTime, formatShiftTime, formatShiftRange } from '@/lib/time-format';
 
 const STATUS_STYLES: Record<AttendanceStatus, string> = {
   PRESENT: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -191,17 +191,17 @@ function WorkHourProgress({ label, balance }: { label: string; balance: WorkHour
       <div className="min-w-0">
         <p className="text-sm font-semibold text-slate-800">{label}</p>
         <p className="mt-1 text-xs font-medium text-slate-600">
-          of {targetHours.toFixed(2)} hrs {isFullMonthTarget ? 'full-month target' : 'scheduled'}
+          of {formatHoursDuration(targetHours)} {isFullMonthTarget ? 'full-month target' : 'scheduled'}
         </p>
         <p className="mt-1 text-xs text-slate-500">
           {remainingHours > 0
-            ? `${remainingHours.toFixed(2)} hrs remaining`
+            ? `${formatHoursDuration(remainingHours)} remaining`
             : 'Hours target complete'}
         </p>
-        <p className="mt-1 text-xs text-slate-500">Breaks: {balance.breakHours.toFixed(2)} hrs</p>
+        <p className="mt-1 text-xs text-slate-500">Breaks: {formatHoursDuration(balance.breakHours)}</p>
         {isFullMonthTarget && (
           <p className="mt-1 text-xs text-slate-500">
-            {balance.requiredHours.toFixed(2)} hrs scheduled through today
+            {formatHoursDuration(balance.requiredHours)} scheduled through today
           </p>
         )}
       </div>
@@ -308,7 +308,7 @@ function EmployeeAttendancePanel(props: {
                   {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   {' - '}
                   {end?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) ?? 'In progress'}
-                  {durationHours !== null && <> · {durationHours.toFixed(2)} hrs</>}
+                  {durationHours !== null && <> · {formatHoursDuration(durationHours)}</>}
                 </li>
               );
             })}
@@ -1464,10 +1464,10 @@ export default function AttendancePage() {
                       {employee.employeeName}
                       <span className="ml-2 text-xs text-slate-400">{employee.department ?? ''}</span>
                     </td>
-                    <td className="px-4 py-2 text-slate-600">{employee.week.requiredHours.toFixed(2)} hrs · {employee.week.scheduledDays} days</td>
-                    <td className="px-4 py-2 font-medium text-slate-800">{employee.week.completedHours.toFixed(2)} hrs</td>
-                    <td className="px-4 py-2 text-slate-600">{employee.week.breakHours.toFixed(2)} hrs</td>
-                    <td className="px-4 py-2 text-slate-600">{employee.week.remainingHours.toFixed(2)} hrs</td>
+                    <td className="px-4 py-2 text-slate-600">{formatHoursDuration(employee.week.requiredHours)} · {employee.week.scheduledDays} days</td>
+                    <td className="px-4 py-2 font-medium text-slate-800">{formatHoursDuration(employee.week.completedHours)}</td>
+                    <td className="px-4 py-2 text-slate-600">{formatHoursDuration(employee.week.breakHours)}</td>
+                    <td className="px-4 py-2 text-slate-600">{formatHoursDuration(employee.week.remainingHours)}</td>
                   </tr>
                 ))}
                 {teamWeeklyHours?.employees.length === 0 && (
@@ -1521,10 +1521,10 @@ export default function AttendancePage() {
                   <td className="px-5 py-4 text-slate-600">{new Date(row.date).toLocaleDateString()}</td>
                   <td className="px-5 py-4 text-slate-600">{formatTime(row.checkIn)}</td>
                   <td className="px-5 py-4 text-slate-600">{formatTime(row.checkOut)}</td>
-                  <td className="px-5 py-4 text-slate-700">{row.workingHours != null ? `${row.workingHours.toFixed(2)} hrs` : '—'}</td>
+                  <td className="px-5 py-4 text-slate-700">{row.workingHours != null ? formatHoursDuration(row.workingHours) : '—'}</td>
                   <td className="px-5 py-4 text-slate-700">
                     <details className="min-w-24">
-                      <summary className="cursor-pointer text-xs font-medium">{(row.breakHours ?? 0).toFixed(2)} hrs · timeline</summary>
+                      <summary className="cursor-pointer text-xs font-medium">{formatHoursDuration(row.breakHours ?? 0)} · timeline</summary>
                       <ul className="mt-2 space-y-1 text-xs text-slate-500">
                         {row.checkIn && <li>Check in · {formatTime(row.checkIn)}</li>}
                         {(row.breaks ?? []).map((interval) => (
@@ -1555,7 +1555,7 @@ export default function AttendancePage() {
                       <span className="text-slate-400">On time</span>
                     )}
                   </td>
-                  <td className="px-5 py-4 text-slate-700">{row.overtimeHours > 0 ? `+${row.overtimeHours.toFixed(2)} hrs` : '—'}</td>
+                  <td className="px-5 py-4 text-slate-700">{row.overtimeHours > 0 ? `+${formatHoursDuration(row.overtimeHours)}` : '—'}</td>
                   <td className="px-5 py-4"><StatusBadge status={row.status} /></td>
                   {canViewAdminAttendance && (
                     <td className="px-5 py-4 text-right">

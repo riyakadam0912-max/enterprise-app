@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useAttendanceToday, useAttendanceHistory, useCheckIn, useCheckOut } from '@/hooks/useEss';
 import { getWorkHourBalances, startAttendanceBreak, stopAttendanceBreak, WorkHourBalances } from '@/api/attendanceApi';
 import { formatDate } from '@/utils/dateUtils';
+import { formatHoursDuration } from '@/lib/time-format';
 import { AlertCircle, Clock } from 'lucide-react';
 
 export default function ESSAttendancePage() {
@@ -145,7 +146,7 @@ export default function ESSAttendancePage() {
                 <div>
                   <p className="text-xs text-gray-600 uppercase">Working Hours</p>
                   <p className="text-lg font-bold text-gray-900">
-                    {(today.workingHours || 0).toFixed(2)} hrs
+                    {formatHoursDuration(today.workingHours ?? 0)}
                   </p>
                 </div>
                 {today.lateMinutes !== undefined && today.lateMinutes > 0 && (
@@ -158,7 +159,7 @@ export default function ESSAttendancePage() {
                   <div className="bg-purple-50 rounded p-3">
                     <p className="text-xs text-purple-800 uppercase">Overtime</p>
                     <p className="text-lg font-bold text-purple-600">
-                      {today.overtimeHours.toFixed(2)} hrs
+                      {formatHoursDuration(today.overtimeHours)}
                     </p>
                   </div>
                 )}
@@ -198,7 +199,7 @@ export default function ESSAttendancePage() {
                       <li key={interval.startedAt}>
                         {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         {' - '}{end?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) ?? 'In progress'}
-                        {durationHours !== null && <> · {durationHours.toFixed(2)} hrs</>}
+                        {durationHours !== null && <> · {formatHoursDuration(durationHours)}</>}
                       </li>
                     );
                   })}
@@ -258,10 +259,10 @@ export default function ESSAttendancePage() {
                 </div>
                 <div className="min-w-0">
                   <h2 className="font-semibold text-gray-900">{label}</h2>
-                  <p className="mt-1 text-sm text-gray-600">of {balance.requiredHours.toFixed(2)} hrs scheduled</p>
-                  <p className="mt-1 text-sm text-gray-600">{balance.remainingHours > 0 ? `${balance.remainingHours.toFixed(2)} hrs remaining` : 'Hours target complete'}</p>
-                  <p className="mt-1 text-sm text-gray-600">Breaks: {balance.breakHours.toFixed(2)} hrs</p>
-                                  {balance.fullPeriodRequiredHours !== undefined && <p className="mt-1 text-sm text-gray-600">Full month: {balance.fullPeriodRequiredHours.toFixed(2)} hrs</p>}
+                  <p className="mt-1 text-sm text-gray-600">of {formatHoursDuration(balance.requiredHours)} scheduled</p>
+                  <p className="mt-1 text-sm text-gray-600">{balance.remainingHours > 0 ? `${formatHoursDuration(balance.remainingHours)} remaining` : 'Hours target complete'}</p>
+                  <p className="mt-1 text-sm text-gray-600">Breaks: {formatHoursDuration(balance.breakHours)}</p>
+                                  {balance.fullPeriodRequiredHours !== undefined && <p className="mt-1 text-sm text-gray-600">Full month: {formatHoursDuration(balance.fullPeriodRequiredHours)}</p>}
                 </div>
               </div>
             );
@@ -315,7 +316,7 @@ export default function ESSAttendancePage() {
                         {record.checkOut ? new Date(record.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}
                       </td>
                       <td className="px-4 py-3 font-medium">
-                        {record.workingHours?.toFixed(2) || '-'} hrs
+                        {record.workingHours != null ? formatHoursDuration(record.workingHours) : '-'}
                       </td>
                       <td className="px-4 py-3">
                         {record.lateMinutes > 0 ? (

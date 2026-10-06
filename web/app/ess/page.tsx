@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMyProfile, useAttendanceToday, useLeaveBalance, useMyPayslips, useCheckIn, useCheckOut } from '@/hooks/useEss';
 import { formatDate } from '@/utils/dateUtils';
+import { formatHoursDuration } from '@/lib/time-format';
 import { AlertCircle, Clock, Briefcase, FileText, Receipt, ChevronRight } from 'lucide-react';
 
 export default function ESSDashboardPage() {
@@ -128,11 +129,11 @@ export default function ESSDashboardPage() {
                   </p>
                 </div>
               )}
-              {attendance?.workingHours && (
+              {attendance?.workingHours != null && (
                 <div>
                   <p className="text-xs text-gray-600">Working Hours</p>
                   <p className="text-sm font-medium text-gray-900">
-                    {attendance.workingHours.toFixed(2)} hrs
+                    {formatHoursDuration(attendance.workingHours)}
                   </p>
                 </div>
               )}

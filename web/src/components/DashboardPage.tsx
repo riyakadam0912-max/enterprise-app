@@ -9,6 +9,7 @@ import { getEmployee, getEmployees, type Employee } from '@/api/employeesApi';
 import { getLeaveRequests, type LeaveRequest } from '@/api/leaveRequestsApi';
 import { getTasks, type Task } from '@/api/tasksApi';
 import { formatInrCurrency } from '@/utils/formatCurrency';
+import { formatHoursDuration } from '@/lib/time-format';
 import { useAnalyticsSummary } from '@/hooks/useAnalyticsSummary';
 import { useAttendanceSummary, useTodayAttendance } from '@/hooks/useAttendance';
 import { useAuthSession } from '@/stores/auth-store';
@@ -231,7 +232,7 @@ function AdminDashboard() {
           <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4">
             <p className="text-sm font-semibold text-indigo-700">Overtime Tracking</p>
             <div className="mt-3 space-y-2 text-sm text-slate-700">
-              {(todayRows.filter((row) => row.overtimeHours > 0).length === 0) ? <p className="text-slate-500">No overtime yet.</p> : todayRows.filter((row) => row.overtimeHours > 0).slice(0, 6).map((row) => <p key={`ot-${row.employeeId}`}>{row.employee.name} - +{row.overtimeHours.toFixed(2)} hrs</p>)}
+              {(todayRows.filter((row) => row.overtimeHours > 0).length === 0) ? <p className="text-slate-500">No overtime yet.</p> : todayRows.filter((row) => row.overtimeHours > 0).slice(0, 6).map((row) => <p key={`ot-${row.employeeId}`}>{row.employee.name} - +{formatHoursDuration(row.overtimeHours)}</p>)}
             </div>
           </div>
         </div>

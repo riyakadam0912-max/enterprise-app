@@ -7,7 +7,7 @@ import { useMemo, useState } from 'react';
 import { AttendanceStatus } from '@/api/attendanceApi';
 import { useEmployeeAttendance } from '@/hooks/useAttendance';
 import { useAuthSession } from '@/stores/auth-store';
-import { formatShiftRange } from '@/lib/time-format';
+import { formatHoursDuration, formatShiftRange } from '@/lib/time-format';
 
 const DAY_HEADERS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -175,7 +175,7 @@ export default function EmployeeAttendancePage() {
                         {day.checkIn && (
                           <p>{new Date(day.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })} - {day.checkOut ? new Date(day.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : 'In progress'}</p>
                         )}
-                        {day.workingHours != null && <p>{day.workingHours.toFixed(2)} hrs</p>}
+                        {day.workingHours != null && <p>{formatHoursDuration(day.workingHours)}</p>}
                         {day.breaks?.map((interval) => {
                           const start = new Date(interval.startedAt);
                           const end = interval.endedAt ? new Date(interval.endedAt) : null;
@@ -184,7 +184,7 @@ export default function EmployeeAttendancePage() {
                             <p key={interval.startedAt} className="text-[11px]">
                               Break {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               {' - '}{end?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) ?? 'In progress'}
-                              {durationHours !== null && <> · {durationHours.toFixed(2)} hrs</>}
+                              {durationHours !== null && <> · {formatHoursDuration(durationHours)}</>}
                             </p>
                           );
                         })}
