@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createFormSubmission, CreateFormSubmissionPayload } from '../../../../src/api/formSubmissionsApi';
+import { getCurrentDateTimeLocalValue } from '@/utils/dateUtils';
 
 const EMPTY: CreateFormSubmissionPayload = {
   form: '',
@@ -15,7 +16,10 @@ export default function AddFormSubmissionPage() {
   const searchParams = useSearchParams();
   const selectedFormName = searchParams.get('formName')?.trim() ?? '';
   const selectedFormCode = searchParams.get('formCode')?.trim() ?? '';
-  const [form, setForm]   = useState<CreateFormSubmissionPayload>(EMPTY);
+  const [form, setForm]   = useState<CreateFormSubmissionPayload>({
+    ...EMPTY,
+    submissionDate: getCurrentDateTimeLocalValue(),
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState<string | null>(null);
 
@@ -90,12 +94,21 @@ export default function AddFormSubmissionPage() {
         {/* Submission Date */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Submission Date</label>
-          <input
-            type="datetime-local"
-            value={form.submissionDate ?? ''}
-            onChange={(e) => set('submissionDate', e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg outline-none focus:ring-1 focus:ring-orange-400"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type="datetime-local"
+              value={form.submissionDate ?? ''}
+              onChange={(e) => set('submissionDate', e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg outline-none focus:ring-1 focus:ring-orange-400"
+            />
+            <button
+              type="button"
+              onClick={() => set('submissionDate', getCurrentDateTimeLocalValue())}
+              className="shrink-0 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 transition hover:bg-orange-100"
+            >
+              Now
+            </button>
+          </div>
         </div>
 
         {/* Data */}

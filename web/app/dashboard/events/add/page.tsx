@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createEvent } from '@/api/eventsApi';
+import { getCurrentDateTimeLocalValue } from '@/utils/dateUtils';
 
 const STATUSES    = ['Planned', 'Completed', 'Cancelled', 'In Progress'];
 const EVENT_TYPES = ['Training', 'Networking', 'Webinar', 'Workshop', 'Conference', 'Other'];
@@ -15,8 +16,8 @@ export default function AddEventPage() {
   const [form, setForm] = useState({
     eventName:     '',
     eventCode:     '',
-    startDateTime: '',
-    endDateTime:   '',
+    startDateTime: getCurrentDateTimeLocalValue(),
+    endDateTime:   getCurrentDateTimeLocalValue(60),
     location:      '',
     organizer:     '',
     status:        '',
@@ -92,23 +93,41 @@ export default function AddEventPage() {
         {/* Start Date Time */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Start Date Time</label>
-          <input
-            type="datetime-local"
-            className={field}
-            value={form.startDateTime}
-            onChange={(e) => set('startDateTime', e.target.value)}
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type="datetime-local"
+              className={`${field} flex-1`}
+              value={form.startDateTime}
+              onChange={(e) => set('startDateTime', e.target.value)}
+            />
+            <button
+              type="button"
+              onClick={() => set('startDateTime', getCurrentDateTimeLocalValue())}
+              className="shrink-0 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 transition hover:bg-orange-100"
+            >
+              Now
+            </button>
+          </div>
         </div>
 
         {/* End Date Time */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">End Date Time</label>
-          <input
-            type="datetime-local"
-            className={field}
-            value={form.endDateTime}
-            onChange={(e) => set('endDateTime', e.target.value)}
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type="datetime-local"
+              className={`${field} flex-1`}
+              value={form.endDateTime}
+              onChange={(e) => set('endDateTime', e.target.value)}
+            />
+            <button
+              type="button"
+              onClick={() => set('endDateTime', getCurrentDateTimeLocalValue(60))}
+              className="shrink-0 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 transition hover:bg-orange-100"
+            >
+              +1h
+            </button>
+          </div>
         </div>
 
         {/* Location */}
@@ -187,7 +206,7 @@ export default function AddEventPage() {
           </button>
           <button
             type="button"
-            onClick={() => setForm({ eventName:'', eventCode:'', startDateTime:'', endDateTime:'', location:'', organizer:'', status:'', capacity:'', description:'', eventType:'' })}
+            onClick={() => setForm({ eventName:'', eventCode:'', startDateTime:getCurrentDateTimeLocalValue(), endDateTime:getCurrentDateTimeLocalValue(60), location:'', organizer:'', status:'', capacity:'', description:'', eventType:'' })}
             className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold px-6 py-2 rounded-lg transition-colors"
           >
             Reset

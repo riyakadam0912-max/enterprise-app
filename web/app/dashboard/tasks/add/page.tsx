@@ -8,7 +8,7 @@ import { apiClient } from '@/api/apiClient';
 import { canManageProjects } from '@/utils/auth/permissions';
 import { reportError } from '@/lib/error-handling';
 import { useAuthSession } from '@/stores/auth-store';
-import { dateTimeLocalToIso } from '@/utils/dateUtils';
+import { dateTimeLocalToIso, getCurrentDateTimeLocalValue } from '@/utils/dateUtils';
 
 const PRIORITIES = [
   { value: 'HIGH', label: 'High' },
@@ -33,7 +33,7 @@ export default function AddTaskPage() {
     projectId:      '',
     assignee:       '',
     assignedToUserId: '',
-    dueDate:        '',
+    dueDate:        getCurrentDateTimeLocalValue(),
     priority:       '',
     status:         '',
     estimatedHours: '',
@@ -167,7 +167,16 @@ export default function AddTaskPage() {
         {/* Due Date */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Due date and time</label>
-          <input type="datetime-local" className={field} value={form.dueDate} onChange={(e) => set('dueDate', e.target.value)} />
+          <div className="flex items-center gap-2">
+            <input type="datetime-local" className={`${field} flex-1`} value={form.dueDate} onChange={(e) => set('dueDate', e.target.value)} />
+            <button
+              type="button"
+              onClick={() => set('dueDate', getCurrentDateTimeLocalValue())}
+              className="shrink-0 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 transition hover:bg-orange-100"
+            >
+              Now
+            </button>
+          </div>
           <p className="mt-1 text-xs text-gray-500">Time uses your device&apos;s local timezone.</p>
         </div>
 
@@ -240,7 +249,7 @@ export default function AddTaskPage() {
           </button>
           <button
             type="button"
-            onClick={() => setForm({ taskName:'', project:'', projectId:'', assignee:'', assignedToUserId:'', dueDate:'', priority:'', status:'', estimatedHours:'', actualHours:'', notes:'', driveLink:'' })}
+            onClick={() => setForm({ taskName:'', project:'', projectId:'', assignee:'', assignedToUserId:'', dueDate:getCurrentDateTimeLocalValue(), priority:'', status:'', estimatedHours:'', actualHours:'', notes:'', driveLink:'' })}
             className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold px-6 py-2 rounded-lg transition-colors"
           >
             Reset

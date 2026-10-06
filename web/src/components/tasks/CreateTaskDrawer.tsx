@@ -7,7 +7,7 @@ import { apiClient } from '@/api/apiClient';
 import { canManageProjects } from '@/utils/auth/permissions';
 import { reportError } from '@/lib/error-handling';
 import { useAuthSession } from '@/stores/auth-store';
-import { dateTimeLocalToIso } from '@/utils/dateUtils';
+import { dateTimeLocalToIso, getCurrentDateTimeLocalValue } from '@/utils/dateUtils';
 
 type CreateTaskDrawerProps = {
   open: boolean;
@@ -25,20 +25,20 @@ const PRIORITIES = [
 const STATUSES = ['PENDING', 'IN_PROGRESS', 'SUBMITTED', 'APPROVED', 'REJECTED'];
 const field = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100';
 
-const emptyForm = {
+const buildEmptyForm = () => ({
   taskName: '',
   project: '',
   projectId: '',
   assignee: '',
   assignedToUserId: '',
-  dueDate: '',
+  dueDate: getCurrentDateTimeLocalValue(),
   priority: '',
   status: '',
   estimatedHours: '',
   actualHours: '',
   notes: '',
   driveLink: '',
-};
+});
 
 export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTaskDrawerProps) {
   const authSession = useAuthSession();
@@ -46,7 +46,7 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
   const currentUserId = authSession.user?.id ?? null;
   const [projects, setProjects] = useState<Project[]>([]);
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(buildEmptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -90,7 +90,7 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [onClose, open, saving]);
 
-  function set(key: keyof typeof emptyForm, value: string) {
+  function set(key: keyof ReturnType<typeof buildEmptyForm>, value: string) {
     setForm((previous) => ({ ...previous, [key]: value }));
   }
 
@@ -118,7 +118,7 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
         notes: form.notes.trim() || null,
         driveLink: form.driveLink.trim() || undefined,
       });
-      setForm(emptyForm);
+      setForm(buildEmptyForm());
       await onCreated();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Failed to create task. Please try again.');
@@ -201,7 +201,16 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
 
             <label className="block space-y-1.5">
               <span className="text-sm font-medium text-slate-700">Due date and time</span>
-              <input type="datetime-local" className={field} value={form.dueDate} onChange={(event) => set('dueDate', event.target.value)} />
+              <div className="flex items-center gap-2">
+                <input type="datetime-local" className={`${field} flex-1`} value={form.dueDate} onChange={(event) => set('dueDate', event.target.value)} />
+                <button
+                  type="button"
+                  onClick={() => set('dueDate', getCurrentDateTimeLocalValue())}
+                  className="shrink-0 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 transition hover:bg-orange-100"
+                >
+                  Now
+                </button>
+              </div>
               <span className="block text-xs text-slate-500">Time uses your device&apos;s local timezone.</span>
             </label>
 

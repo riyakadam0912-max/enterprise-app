@@ -48,6 +48,12 @@ export function toDateTimeLocalValue(value: Date | string | null | undefined): s
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+export function getCurrentDateTimeLocalValue(offsetMinutes = 0): string {
+  const date = new Date();
+  date.setMinutes(date.getMinutes() + offsetMinutes);
+  return toDateTimeLocalValue(date);
+}
+
 export function dateTimeLocalToIso(value: string): string | null {
   if (!value) return null;
   const date = new Date(value);
