@@ -26,6 +26,8 @@ function createPrismaMock() {
     attendanceBreak: {
       create: jest.fn(),
       update: jest.fn(),
+      deleteMany: jest.fn(),
+      createMany: jest.fn(),
     },
     taskTimerSession: { findFirst: jest.fn().mockResolvedValue(null) },
     holiday: {
@@ -79,7 +81,10 @@ describe('AttendanceService', () => {
   let mockUser: ReturnType<typeof createMockUser>;
   let mockBusinessUnitsService: any;
   let mockOrganizationScopeService: any;
-  let mockTasksService: { pauseActiveTimerForUser: jest.Mock; stopActiveTimerForEmployee: jest.Mock };
+  let mockTasksService: {
+    pauseActiveTimerForUser: jest.Mock;
+    stopActiveTimerForEmployee: jest.Mock;
+  };
 
   beforeEach(() => {
     jest.useFakeTimers();
@@ -142,6 +147,148 @@ describe('AttendanceService', () => {
     expect(result.summary.present).toBe(1);
     expect(result.summary.absent).toBe(0);
   });
+
+  it('replaces edited breaks atomically and recalculates net worked hours', async () => {
+    const checkIn = new Date('2026-10-06T09:00:00.000Z');
+    const checkOut = new Date('2026-10-06T18:00:00.000Z');
+    const breakStart = new Date('2026-10-06T13:00:00.000Z');
+    const breakEnd = new Date('2026-10-06T14:00:00.000Z');
+    prisma.attendance.findFirst.mockResolvedValue({
+      id: 44,
+      employeeId: 7,
+      organizationId: 1,
+      date: new Date('2026-10-06T00:00:00.000Z'),
+      checkIn,
+      checkOut,
+      status: AttendanceStatus.PRESENT,
+      breaks: [],
+      employee: { hireDate: null, shift: null },
+      shift: null,
+    });
+    prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
+    prisma.attendance.update.mockResolvedValue({ id: 44 });
+    jest.spyOn(service as any, 'calculateLateMinutes').mockReturnValue(0);
+    jest
+      .spyOn(service as any, 'findApprovedLeaveForDay')
+      .mockResolvedValue(null);
+
+    await service.update(
+      44,
+      {
+        breaks: [
+          {
+            startedAt: breakStart.toISOString(),
+            endedAt: breakEnd.toISOString(),
+          },
+        ],
+      } as any,
+      mockUser as any,
+    );
+
+    expect(prisma.attendanceBreak.deleteMany).toHaveBeenCalledWith({
+      where: { attendanceId: 44 },
+    });
+    expect(prisma.attendanceBreak.createMany).toHaveBeenCalledWith({
+      data: [{ attendanceId: 44, startedAt: breakStart, endedAt: breakEnd }],
+    });
+    expect(prisma.attendance.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 44, organizationId: 1 },
+        data: expect.objectContaining({ workingHours: 8 }),
+        include: expect.objectContaining({ breaks: true }),
+      }),
+    );
+  });
+
+  it('preserves and subtracts existing breaks when only attendance fields are edited', async () => {
+    prisma.attendance.findFirst.mockResolvedValue({
+      id: 45,
+      employeeId: 7,
+      organizationId: 1,
+      date: new Date('2026-10-06T00:00:00.000Z'),
+      checkIn: new Date('2026-10-06T09:00:00.000Z'),
+      checkOut: new Date('2026-10-06T18:00:00.000Z'),
+      status: AttendanceStatus.PRESENT,
+      breaks: [
+        {
+          id: 2,
+          startedAt: new Date('2026-10-06T13:00:00.000Z'),
+          endedAt: new Date('2026-10-06T14:00:00.000Z'),
+        },
+      ],
+      employee: { hireDate: null, shift: null },
+      shift: null,
+    });
+    prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
+    prisma.attendance.update.mockResolvedValue({ id: 45 });
+    jest.spyOn(service as any, 'calculateLateMinutes').mockReturnValue(0);
+    jest
+      .spyOn(service as any, 'findApprovedLeaveForDay')
+      .mockResolvedValue(null);
+
+    await service.update(
+      45,
+      { status: AttendanceStatus.PRESENT } as any,
+      mockUser as any,
+    );
+
+    expect(prisma.attendance.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ workingHours: 8 }),
+      }),
+    );
+    expect(prisma.attendanceBreak.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      reason: 'overlapping intervals',
+      breaks: [
+        {
+          startedAt: '2026-10-06T12:00:00.000Z',
+          endedAt: '2026-10-06T13:30:00.000Z',
+        },
+        {
+          startedAt: '2026-10-06T13:00:00.000Z',
+          endedAt: '2026-10-06T14:00:00.000Z',
+        },
+      ],
+      message: 'Break intervals cannot overlap',
+    },
+    {
+      reason: 'intervals outside the attendance span',
+      breaks: [
+        {
+          startedAt: '2026-10-06T18:00:00.000Z',
+          endedAt: '2026-10-06T18:30:00.000Z',
+        },
+      ],
+      message: 'Breaks must fall within check-in and check-out',
+    },
+  ])(
+    'rejects $reason without writing attendance',
+    async ({ breaks, message }) => {
+      prisma.attendance.findFirst.mockResolvedValue({
+        id: 46,
+        employeeId: 7,
+        organizationId: 1,
+        date: new Date('2026-10-06T00:00:00.000Z'),
+        checkIn: new Date('2026-10-06T09:00:00.000Z'),
+        checkOut: new Date('2026-10-06T18:00:00.000Z'),
+        status: AttendanceStatus.PRESENT,
+        breaks: [],
+        employee: { hireDate: null, shift: null },
+        shift: null,
+      });
+
+      await expect(
+        service.update(46, { breaks } as any, mockUser as any),
+      ).rejects.toThrow(message);
+
+      expect(prisma.attendanceBreak.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.attendance.update).not.toHaveBeenCalled();
+    },
+  );
 
   it('allows a super admin to create a holiday for the active organization', async () => {
     prisma.holiday.create.mockResolvedValue({
@@ -556,7 +703,9 @@ describe('AttendanceService', () => {
       new Error('timer write failed'),
     );
 
-    await expect(service.startBreak(mockUser)).rejects.toThrow('timer write failed');
+    await expect(service.startBreak(mockUser)).rejects.toThrow(
+      'timer write failed',
+    );
     expect(prisma.attendanceBreak.create).not.toHaveBeenCalled();
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });

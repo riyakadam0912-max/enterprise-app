@@ -252,6 +252,7 @@ export interface UpdateAttendancePayload {
   checkIn?: string;
   checkOut?: string;
   status?: AttendanceStatus;
+  breaks?: { startedAt: string; endedAt: string | null }[];
 }
 
 function buildQuery(filters: { [key: string]: string | number | undefined | null }) {

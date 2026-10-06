@@ -2688,7 +2688,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         ...this.buildOrganizationScope(user),
         employee: buWhere,
       },
-      include: { employee: { include: { shift: true } }, shift: true },
+      include: {
+        employee: { include: { shift: true } },
+        shift: true,
+        breaks: true,
+      },
     });
 
     if (!record) {
@@ -2740,6 +2744,56 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
+    const breaks =
+      dto.breaks !== undefined
+        ? dto.breaks.map((interval) => ({
+            startedAt: new Date(interval.startedAt),
+            endedAt: interval.endedAt ? new Date(interval.endedAt) : null,
+          }))
+        : record.breaks;
+    const orderedBreaks = [...breaks].sort(
+      (left, right) => left.startedAt.getTime() - right.startedAt.getTime(),
+    );
+    let previousBreakEnd = checkIn?.getTime() ?? Number.NEGATIVE_INFINITY;
+    let hasOpenBreak = false;
+
+    for (const [index, interval] of orderedBreaks.entries()) {
+      const start = interval.startedAt.getTime();
+      const end = interval.endedAt?.getTime() ?? null;
+      if (!Number.isFinite(start) || (end !== null && !Number.isFinite(end))) {
+        throw new BadRequestException('Break times must be valid dates');
+      }
+      if (!checkIn || start < checkIn.getTime()) {
+        throw new BadRequestException('Breaks must start at or after check-in');
+      }
+      if (end !== null && end <= start) {
+        throw new BadRequestException('Break end must be after its start');
+      }
+      if (start < previousBreakEnd) {
+        throw new BadRequestException('Break intervals cannot overlap');
+      }
+      if (
+        checkOut &&
+        (start >= checkOut.getTime() ||
+          (end !== null && end > checkOut.getTime()))
+      ) {
+        throw new BadRequestException(
+          'Breaks must fall within check-in and check-out',
+        );
+      }
+      if (end === null) {
+        if (checkOut || hasOpenBreak || index !== orderedBreaks.length - 1) {
+          throw new BadRequestException(
+            'Only the latest active attendance may have an open break',
+          );
+        }
+        hasOpenBreak = true;
+        previousBreakEnd = Number.POSITIVE_INFINITY;
+      } else {
+        previousBreakEnd = end;
+      }
+    }
+
     const shift = (record.shift ??
       record.employee?.shift ??
       null) as ShiftLite | null;
@@ -2751,7 +2805,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     const workingHours =
       checkIn && checkOut
-        ? this.calculateWorkingHours(checkIn, checkOut)
+        ? this.calculateWorkingHours(checkIn, checkOut, orderedBreaks)
         : null;
     const overtimeHours =
       workingHours != null
@@ -2783,21 +2837,38 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         lateMinutes,
       });
 
-    return this.prisma.attendance.update({
-      where: { id, organizationId: user.organizationId },
-      data: {
-        date: nextDate,
-        checkIn,
-        checkOut,
-        workingHours,
-        overtimeHours,
-        shortfallHours,
-        lateMinutes,
-        status,
-        isPaidLeave: leave ? Boolean(leave.isPaid ?? true) : null,
-      },
-      include: { employee: true, shift: true },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (dto.breaks !== undefined) {
+        await tx.attendanceBreak.deleteMany({ where: { attendanceId: id } });
+        if (orderedBreaks.length > 0) {
+          await tx.attendanceBreak.createMany({
+            data: orderedBreaks.map((interval) => ({
+              attendanceId: id,
+              startedAt: interval.startedAt,
+              endedAt: interval.endedAt,
+            })),
+          });
+        }
+      }
+
+      return tx.attendance.update({
+        where: { id, organizationId: user.organizationId },
+        data: {
+          date: nextDate,
+          checkIn,
+          checkOut,
+          workingHours,
+          overtimeHours,
+          shortfallHours,
+          lateMinutes,
+          status,
+          isPaidLeave: leave ? Boolean(leave.isPaid ?? true) : null,
+        },
+        include: { employee: true, shift: true, breaks: true },
+      });
     });
+    await this.invalidateDashboardCache();
+    return updated;
   }
 
   private async closeOverdueAttendances() {

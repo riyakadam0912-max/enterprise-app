@@ -130,6 +130,19 @@ function toIsoFromParts(date: string, time: string) {
   return new Date(`${date}T${time}:00`).toISOString();
 }
 
+function formatDateTimeLocal(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function toIsoFromDateTimeLocal(value: string) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
 function StatCard({ label, value, tone, icon }: { label: string; value: number | string; tone: string; icon: string }) {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 px-5 py-4">
@@ -338,13 +351,21 @@ function EditAttendanceModal(props: {
   loading: boolean;
   error: string | null;
   onClose: () => void;
-  onSubmit: (payload: { date: string; checkIn: string; checkOut: string; status: AttendanceStatus }) => void;
+  onSubmit: (payload: {
+    date: string;
+    checkIn: string;
+    checkOut: string;
+    status: AttendanceStatus;
+    breaks: { startedAt: string; endedAt: string | null }[];
+  }) => void;
 }) {
   const { record, loading, error, onClose, onSubmit } = props;
   const [date, setDate] = useState('');
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
   const [status, setStatus] = useState<AttendanceStatus>('PRESENT');
+  const [breaks, setBreaks] = useState<{ startedAt: string; endedAt: string }[]>([]);
+  const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!record) return;
@@ -354,6 +375,11 @@ function EditAttendanceModal(props: {
       setCheckIn(formatTimeInput(record.checkIn));
       setCheckOut(formatTimeInput(record.checkOut));
       setStatus(record.status);
+      setBreaks((record.breaks ?? []).map((interval) => ({
+        startedAt: formatDateTimeLocal(interval.startedAt),
+        endedAt: interval.endedAt ? formatDateTimeLocal(interval.endedAt) : '',
+      })));
+      setFormError(null);
     }, 0);
 
     return () => window.clearTimeout(timeout);
@@ -361,9 +387,28 @@ function EditAttendanceModal(props: {
 
   if (!record) return null;
 
+  function submitChanges() {
+    const normalizedBreaks: { startedAt: string; endedAt: string | null }[] = [];
+    for (const [index, interval] of breaks.entries()) {
+      const startedAt = toIsoFromDateTimeLocal(interval.startedAt);
+      const endedAt = interval.endedAt ? toIsoFromDateTimeLocal(interval.endedAt) : null;
+      if (!startedAt || endedAt === undefined) {
+        setFormError(`Enter valid start and end times for break ${index + 1}.`);
+        return;
+      }
+      if (!endedAt && checkOut) {
+        setFormError('Add an end time for every break before checking out.');
+        return;
+      }
+      normalizedBreaks.push({ startedAt, endedAt });
+    }
+    setFormError(null);
+    onSubmit({ date, checkIn, checkOut, status, breaks: normalizedBreaks });
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4">
-      <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden">
+      <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Edit Attendance</h2>
@@ -372,7 +417,7 @@ function EditAttendanceModal(props: {
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 px-5 py-5 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 overflow-y-auto px-5 py-5 md:grid-cols-2">
           <div className="md:col-span-2 rounded-xl bg-slate-50 px-4 py-3">
             <p className="text-sm font-medium text-slate-900">{record.employee.name}</p>
             <p className="text-xs text-slate-500 mt-1">{record.employee.designation ?? record.employee.department ?? 'Employee'}</p>
@@ -402,12 +447,62 @@ function EditAttendanceModal(props: {
             <input type="time" value={checkOut} onChange={(event) => setCheckOut(event.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
           </div>
 
-          {error && <p className="md:col-span-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error}</p>}
+          <section className="md:col-span-2" aria-label="Attendance breaks">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold text-slate-800">Breaks</h3>
+              <button
+                type="button"
+                onClick={() => setBreaks((current) => [...current, { startedAt: '', endedAt: '' }])}
+                disabled={breaks.length >= 20}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Add break
+              </button>
+            </div>
+            {breaks.length === 0 ? (
+              <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500">No breaks recorded.</p>
+            ) : (
+              <div className="space-y-3">
+                {breaks.map((interval, index) => (
+                  <div key={index} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                    <label className="block text-xs font-medium text-slate-600">
+                      Break {index + 1} start
+                      <input
+                        type="datetime-local"
+                        value={interval.startedAt}
+                        onChange={(event) => setBreaks((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, startedAt: event.target.value } : item))}
+                        className="mt-1 w-full rounded-lg border border-slate-300 px-2.5 py-2 text-sm text-slate-800"
+                      />
+                    </label>
+                    <label className="block text-xs font-medium text-slate-600">
+                      Break {index + 1} end
+                      <input
+                        type="datetime-local"
+                        value={interval.endedAt}
+                        onChange={(event) => setBreaks((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, endedAt: event.target.value } : item))}
+                        className="mt-1 w-full rounded-lg border border-slate-300 px-2.5 py-2 text-sm text-slate-800"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setBreaks((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                      aria-label={`Remove break ${index + 1}`}
+                      className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {(formError || error) && <p className="md:col-span-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{formError ?? error}</p>}
         </div>
 
-        <div className="px-5 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+        <div className="flex justify-end gap-3 border-t border-slate-100 bg-slate-50 px-5 py-4">
           <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
-          <button onClick={() => onSubmit({ date, checkIn, checkOut, status })} disabled={loading} className="px-4 py-2 rounded-lg bg-orange-500 text-sm font-medium text-white hover:bg-orange-600 disabled:opacity-50">
+          <button onClick={submitChanges} disabled={loading} className="px-4 py-2 rounded-lg bg-orange-500 text-sm font-medium text-white hover:bg-orange-600 disabled:opacity-50">
             {loading ? 'Saving…' : 'Save Changes'}
           </button>
         </div>
@@ -558,7 +653,13 @@ export default function AttendancePage() {
     }
   }
 
-  async function handleAttendanceUpdate(payload: { date: string; checkIn: string; checkOut: string; status: AttendanceStatus }) {
+  async function handleAttendanceUpdate(payload: {
+    date: string;
+    checkIn: string;
+    checkOut: string;
+    status: AttendanceStatus;
+    breaks: { startedAt: string; endedAt: string | null }[];
+  }) {
     if (!editingRecord?.id) return;
 
     try {
@@ -567,6 +668,7 @@ export default function AttendancePage() {
         checkIn: payload.checkIn ? toIsoFromParts(payload.date, payload.checkIn) : undefined,
         checkOut: payload.checkOut ? toIsoFromParts(payload.date, payload.checkOut) : undefined,
         status: payload.status,
+        breaks: payload.breaks,
       });
       await Promise.all([refetch(), today.refetch()]);
       setEditingRecord(null);

@@ -180,7 +180,7 @@ export function useUpdateAttendance() {
     try {
       return await updateAttendance(attendanceId, payload);
     } catch (err) {
-      setError('Attendance record could not be updated.');
+      setError(err instanceof Error ? err.message : 'Attendance record could not be updated.');
       throw err;
     } finally {
       setLoading(false);
