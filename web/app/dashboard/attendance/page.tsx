@@ -356,7 +356,7 @@ function EditAttendanceModal(props: {
     checkIn: string;
     checkOut: string;
     status: AttendanceStatus;
-    breaks: { startedAt: string; endedAt: string | null }[];
+    breaks?: { startedAt: string; endedAt: string | null }[];
   }) => void;
 }) {
   const { record, loading, error, onClose, onSubmit } = props;
@@ -365,6 +365,7 @@ function EditAttendanceModal(props: {
   const [checkOut, setCheckOut] = useState('');
   const [status, setStatus] = useState<AttendanceStatus>('PRESENT');
   const [breaks, setBreaks] = useState<{ startedAt: string; endedAt: string }[]>([]);
+  const [editingBreaks, setEditingBreaks] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -379,6 +380,7 @@ function EditAttendanceModal(props: {
         startedAt: formatDateTimeLocal(interval.startedAt),
         endedAt: interval.endedAt ? formatDateTimeLocal(interval.endedAt) : '',
       })));
+      setEditingBreaks(false);
       setFormError(null);
     }, 0);
 
@@ -386,21 +388,25 @@ function EditAttendanceModal(props: {
   }, [record]);
 
   if (!record) return null;
+  const canEditBreaks = Boolean(record.checkIn && date === formatDateInput(record.date));
 
   function submitChanges() {
-    const normalizedBreaks: { startedAt: string; endedAt: string | null }[] = [];
-    for (const [index, interval] of breaks.entries()) {
-      const startedAt = toIsoFromDateTimeLocal(interval.startedAt);
-      const endedAt = interval.endedAt ? toIsoFromDateTimeLocal(interval.endedAt) : null;
-      if (!startedAt || endedAt === undefined) {
-        setFormError(`Enter valid start and end times for break ${index + 1}.`);
-        return;
+    let normalizedBreaks: { startedAt: string; endedAt: string | null }[] | undefined;
+    if (canEditBreaks && editingBreaks) {
+      normalizedBreaks = [];
+      for (const [index, interval] of breaks.entries()) {
+        const startedAt = toIsoFromDateTimeLocal(interval.startedAt);
+        const endedAt = interval.endedAt ? toIsoFromDateTimeLocal(interval.endedAt) : null;
+        if (!startedAt || endedAt === undefined) {
+          setFormError(`Enter valid start and end times for break ${index + 1}.`);
+          return;
+        }
+        if (!endedAt && checkOut) {
+          setFormError('Add an end time for every break before checking out.');
+          return;
+        }
+        normalizedBreaks.push({ startedAt, endedAt });
       }
-      if (!endedAt && checkOut) {
-        setFormError('Add an end time for every break before checking out.');
-        return;
-      }
-      normalizedBreaks.push({ startedAt, endedAt });
     }
     setFormError(null);
     onSubmit({ date, checkIn, checkOut, status, breaks: normalizedBreaks });
@@ -447,55 +453,69 @@ function EditAttendanceModal(props: {
             <input type="time" value={checkOut} onChange={(event) => setCheckOut(event.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
           </div>
 
-          <section className="md:col-span-2" aria-label="Attendance breaks">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-slate-800">Breaks</h3>
-              <button
-                type="button"
-                onClick={() => setBreaks((current) => [...current, { startedAt: '', endedAt: '' }])}
-                disabled={breaks.length >= 20}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Add break
-              </button>
-            </div>
-            {breaks.length === 0 ? (
-              <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500">No breaks recorded.</p>
-            ) : (
-              <div className="space-y-3">
-                {breaks.map((interval, index) => (
-                  <div key={index} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-                    <label className="block text-xs font-medium text-slate-600">
-                      Break {index + 1} start
-                      <input
-                        type="datetime-local"
-                        value={interval.startedAt}
-                        onChange={(event) => setBreaks((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, startedAt: event.target.value } : item))}
-                        className="mt-1 w-full rounded-lg border border-slate-300 px-2.5 py-2 text-sm text-slate-800"
-                      />
-                    </label>
-                    <label className="block text-xs font-medium text-slate-600">
-                      Break {index + 1} end
-                      <input
-                        type="datetime-local"
-                        value={interval.endedAt}
-                        onChange={(event) => setBreaks((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, endedAt: event.target.value } : item))}
-                        className="mt-1 w-full rounded-lg border border-slate-300 px-2.5 py-2 text-sm text-slate-800"
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setBreaks((current) => current.filter((_, itemIndex) => itemIndex !== index))}
-                      aria-label={`Remove break ${index + 1}`}
-                      className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
+          {canEditBreaks && (
+            <section className="md:col-span-2" aria-label="Attendance breaks">
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2.5">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-slate-800">Breaks</h3>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {breaks.length === 0 ? 'None recorded' : `${breaks.length} ${breaks.length === 1 ? 'break' : 'breaks'} recorded`}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingBreaks((current) => !current)}
+                  aria-expanded={editingBreaks}
+                  className="shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium text-orange-700 hover:bg-orange-50"
+                >
+                  {editingBreaks ? 'Done' : 'Edit breaks'}
+                </button>
               </div>
-            )}
-          </section>
+              {editingBreaks && (
+                <div className="mt-3 space-y-2">
+                  {breaks.map((interval, index) => (
+                    <div key={index} className="grid min-w-0 grid-cols-1 gap-2 rounded-xl bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2rem] sm:items-end">
+                      <label className="block min-w-0 text-xs font-medium text-slate-600">
+                        Break {index + 1} start
+                        <input
+                          type="datetime-local"
+                          value={interval.startedAt}
+                          onChange={(event) => setBreaks((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, startedAt: event.target.value } : item))}
+                          className="mt-1 block min-w-0 w-full max-w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs text-slate-800"
+                        />
+                      </label>
+                      <label className="block min-w-0 text-xs font-medium text-slate-600">
+                        Break {index + 1} end
+                        <input
+                          type="datetime-local"
+                          value={interval.endedAt}
+                          onChange={(event) => setBreaks((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, endedAt: event.target.value } : item))}
+                          className="mt-1 block min-w-0 w-full max-w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs text-slate-800"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setBreaks((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                        aria-label={`Remove break ${index + 1}`}
+                        title={`Remove break ${index + 1}`}
+                        className="inline-flex h-8 w-8 items-center justify-center justify-self-end rounded-lg text-slate-500 hover:bg-white hover:text-rose-600 sm:justify-self-center"
+                      >
+                        <X aria-hidden="true" className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setBreaks((current) => [...current, { startedAt: '', endedAt: '' }])}
+                    disabled={breaks.length >= 20}
+                    className="rounded-lg px-2 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    + Add break
+                  </button>
+                </div>
+              )}
+            </section>
+          )}
 
           {(formError || error) && <p className="md:col-span-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{formError ?? error}</p>}
         </div>
@@ -658,7 +678,7 @@ export default function AttendancePage() {
     checkIn: string;
     checkOut: string;
     status: AttendanceStatus;
-    breaks: { startedAt: string; endedAt: string | null }[];
+    breaks?: { startedAt: string; endedAt: string | null }[];
   }) {
     if (!editingRecord?.id) return;
 

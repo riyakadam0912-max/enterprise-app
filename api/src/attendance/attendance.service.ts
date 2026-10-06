@@ -2702,6 +2702,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const nextDate = dto.date
       ? attendanceDateFromKey(dto.date.slice(0, 10))
       : new Date(record.date);
+    const attendanceDateShiftMs =
+      nextDate.getTime() - new Date(record.date).getTime();
     this.assertAttendanceEligible(nextDate, record.employee.hireDate);
 
     if (nextDate.getTime() !== new Date(record.date).getTime()) {
@@ -2750,7 +2752,16 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             startedAt: new Date(interval.startedAt),
             endedAt: interval.endedAt ? new Date(interval.endedAt) : null,
           }))
-        : record.breaks;
+        : attendanceDateShiftMs !== 0
+          ? record.breaks.map((interval) => ({
+              startedAt: new Date(
+                interval.startedAt.getTime() + attendanceDateShiftMs,
+              ),
+              endedAt: interval.endedAt
+                ? new Date(interval.endedAt.getTime() + attendanceDateShiftMs)
+                : null,
+            }))
+          : record.breaks;
     const orderedBreaks = [...breaks].sort(
       (left, right) => left.startedAt.getTime() - right.startedAt.getTime(),
     );
@@ -2838,7 +2849,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       });
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      if (dto.breaks !== undefined) {
+      if (dto.breaks !== undefined || attendanceDateShiftMs !== 0) {
         await tx.attendanceBreak.deleteMany({ where: { attendanceId: id } });
         if (orderedBreaks.length > 0) {
           await tx.attendanceBreak.createMany({
