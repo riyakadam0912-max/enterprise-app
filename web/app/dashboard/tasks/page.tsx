@@ -39,6 +39,22 @@ type ChatMessage = {
   createdAt: string;
 };
 
+type TaskGridColumnKey = 'id' | 'task' | 'organization' | 'project' | 'assignee' | 'status' | 'priority' | 'dueDate' | 'estimatedHours' | 'actualHours' | 'timer';
+
+const TASK_GRID_COLUMNS: Array<{ key: TaskGridColumnKey; label: string }> = [
+  { key: 'id', label: 'ID' },
+  { key: 'task', label: 'Task' },
+  { key: 'organization', label: 'Organization' },
+  { key: 'project', label: 'Project' },
+  { key: 'assignee', label: 'Assignee' },
+  { key: 'status', label: 'Status' },
+  { key: 'priority', label: 'Priority' },
+  { key: 'dueDate', label: 'Due Date' },
+  { key: 'estimatedHours', label: 'Estimated Hours' },
+  { key: 'actualHours', label: 'Actual Hours' },
+  { key: 'timer', label: 'Timer' },
+];
+
 const STATUS_BADGE: Record<string, string> = {
   PENDING: 'bg-slate-100 text-slate-700 border border-slate-200',
   IN_PROGRESS: 'bg-blue-50 text-blue-700 border border-blue-200',
@@ -56,6 +72,25 @@ function formatDateTime(value?: string | null) {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4 text-slate-400">
+      <circle cx="11" cy="11" r="6" />
+      <path d="M16 16L21 21" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function FilterIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <path d="M4 6H20" strokeLinecap="round" />
+      <path d="M7 12H17" strokeLinecap="round" />
+      <path d="M10 18H14" strokeLinecap="round" />
+    </svg>
+  );
 }
 
 function normalizeTaskStatus(status?: string | null): TaskStatus {
@@ -719,8 +754,14 @@ export default function AllTasksPage() {
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
   const [showCreateTask, setShowCreateTask] = useState(false);
+  const [isTaskFilterOpen, setIsTaskFilterOpen] = useState(false);
+  const [visibleTaskColumns, setVisibleTaskColumns] = useState<Record<string, boolean>>(() => Object.fromEntries(TASK_GRID_COLUMNS.map((column) => [column.key, true])));
 
   const isManagerOrAdmin = role === 'ADMIN' || role === 'MANAGER';
+  const visibleTaskColumnList = useMemo(
+    () => TASK_GRID_COLUMNS.filter((column) => visibleTaskColumns[column.key] !== false),
+    [visibleTaskColumns],
+  );
 
   const loadTasks = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -997,36 +1038,27 @@ export default function AllTasksPage() {
     ...(isManagerOrAdmin ? [{ id: 'needs-review' as const, label: 'Needs Review' }] : []),
   ];
 
+  const currentFilterLabel = filters.find((filterOption) => filterOption.id === filter)?.label ?? 'All';
+
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
-      <div className="border-b border-slate-200 bg-white px-6 py-5">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <div className="border-b border-slate-200 bg-white px-6 py-6">
+        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900">Tasks</h1>
-            <p className="mt-1 text-sm text-slate-500">Manage and track your team&apos;s tasks efficiently.</p>
+            <h1 className="text-[2.3rem] font-semibold tracking-tight text-slate-900">Tasks Workflow</h1>
+            <p className="mt-2 text-sm text-slate-500">Create Task → Assign Employee → Review Work → Track Progress</p>
           </div>
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <div className="w-full sm:w-80">
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search tasks..."
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => void loadTasks()}
+
+          {['SUPER_ADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE'].includes(role) && (
+            <button
+              type="button"
+              onClick={() => setShowCreateTask(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-orange-600"
             >
-              Refresh
-            </Button>
-            {['SUPER_ADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE'].includes(role) && (
-              <Button onClick={() => setShowCreateTask(true)} className="bg-orange-500 text-white hover:bg-orange-600">
-                Create Task
-              </Button>
-            )}
-          </div>
+              <span className="text-xl leading-none">+</span>
+              <span>Create Task</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1036,114 +1068,233 @@ export default function AllTasksPage() {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        <div className="mb-5 flex items-center gap-2 border-b border-slate-200 pb-4">
-          {filters.map((tab) => {
-            const active = filter === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setFilter(tab.id)}
-                className={cn(
-                  'rounded-full px-4 py-2 text-sm font-medium transition-colors',
-                  active
-                    ? 'bg-slate-900 text-white'
-                    : 'text-slate-600 hover:bg-slate-100'
-                )}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
+      <div className="px-6 py-6">
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Spreadsheet view</p>
+              {selectedTaskIds.length > 0 && <span className="text-xs font-semibold text-orange-600">{selectedTaskIds.length} selected</span>}
+            </div>
 
-        {filteredTasks.length === 0 ? (
-          <div className="flex min-h-80 items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white px-6 text-center">
-            <div>
-              <div className="text-5xl mb-4">📋</div>
-              <h3 className="text-lg font-semibold text-slate-900 mb-1">No tasks here</h3>
-              <p className="text-sm text-slate-500">Create a new task or adjust filters to see existing tasks.</p>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">
+                  <SearchIcon />
+                </span>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search tasks"
+                  aria-label="Search tasks"
+                  className="w-52 rounded-full border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-700 outline-none transition focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
+                />
+              </div>
+
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsTaskFilterOpen((open) => !open)}
+                  className={`flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition ${
+                    filter !== 'all' ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                  }`}
+                >
+                  <FilterIcon />
+                  <span>{filter === 'all' ? 'Filter' : currentFilterLabel}</span>
+                  {filter !== 'all' && <span className="rounded-full bg-orange-500 px-1.5 py-0.5 text-[10px] font-bold text-white">1</span>}
+                </button>
+
+                {isTaskFilterOpen && (
+                  <div className="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+                    {filters.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => {
+                          setFilter(option.id);
+                          setIsTaskFilterOpen(false);
+                        }}
+                        className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-sm transition ${
+                          filter === option.id ? 'bg-orange-50 text-orange-700' : 'text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span>{option.label}</span>
+                        {filter === option.id && <span className="text-xs font-semibold">✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="relative">
+                <details className="group">
+                  <summary className="cursor-pointer list-none rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300">
+                    Columns
+                  </summary>
+                  <div className="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+                    {TASK_GRID_COLUMNS.map((column) => (
+                      <label key={column.key} className="flex items-center gap-2 py-1.5 text-sm text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={visibleTaskColumns[column.key] !== false}
+                          onChange={(event) => setVisibleTaskColumns((current) => ({ ...current, [column.key]: event.target.checked }))}
+                        />
+                        {column.label}
+                      </label>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setVisibleTaskColumns(Object.fromEntries(TASK_GRID_COLUMNS.map((column) => [column.key, true])))}
+                      className="mt-2 w-full border-t border-slate-100 pt-2 text-left text-xs font-semibold text-orange-600"
+                    >
+                      Reset columns
+                    </button>
+                  </div>
+                </details>
+              </div>
             </div>
           </div>
-        ) : (
-          <>
-            {selectedTaskIds.length > 0 && <div className="mb-2 flex items-center gap-2 rounded-lg border border-orange-100 bg-orange-50 px-3 py-2"><span className="text-xs font-semibold text-orange-700">{selectedTaskIds.length} selected</span><button type="button" onClick={exportSelectedTasks} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">Export CSV</button><button type="button" onClick={() => void deleteSelectedTasks()} className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white">Delete</button><button type="button" onClick={() => setSelectedTaskIds([])} className="text-xs font-semibold text-slate-500">Clear</button></div>}
-            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-            <table className="min-w-full border-collapse text-sm">
-              <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="sticky left-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-3">
-                    <input
-                      type="checkbox"
-                      checked={filteredTasks.length > 0 && filteredTasks.every((task) => selectedTaskIds.includes(task.id))}
-                      onChange={(event) => setSelectedTaskIds(event.target.checked ? filteredTasks.map((task) => task.id) : [])}
-                      aria-label="Select all tasks"
-                    />
-                  </th>
-                  {['ID', 'Task', 'Organization', 'Project', 'Assignee', 'Status', 'Priority', 'Due Date', 'Estimated Hours', 'Actual Hours', 'Timer'].map((heading, index) => (
-                    <th key={heading} className={`whitespace-nowrap border-b border-slate-200 px-4 py-3 ${index < 2 ? 'sticky z-10 bg-slate-50' : ''}`}>
-                      {heading}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredTasks.map((task) => (
-                  <tr
-                    key={task.id}
-                    tabIndex={0}
-                    onClick={() => { setSelectedTaskId(task.id); setActiveTab('overview'); }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        setSelectedTaskId(task.id);
-                        setActiveTab('overview');
-                      }
-                    }}
-                    className="cursor-pointer transition hover:bg-orange-50/50"
-                  >
-                    <td className="sticky left-0 z-10 bg-white px-3 py-3" onClick={(event) => event.stopPropagation()}>
+
+          {selectedTaskIds.length > 0 && (
+            <div className="flex items-center gap-2 border-b border-orange-100 bg-orange-50 px-4 py-2">
+              <span className="text-xs font-semibold text-orange-700">{selectedTaskIds.length} selected</span>
+              <button type="button" onClick={exportSelectedTasks} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">Export CSV</button>
+              <button type="button" onClick={() => void deleteSelectedTasks()} className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white">Delete</button>
+              <button type="button" onClick={() => setSelectedTaskIds([])} className="text-xs font-semibold text-slate-500">Clear</button>
+            </div>
+          )}
+
+          {filteredTasks.length === 0 ? (
+            <div className="flex min-h-80 items-center justify-center px-6 py-12 text-center">
+              <div>
+                <div className="mb-4 text-5xl">📋</div>
+                <h3 className="mb-1 text-lg font-semibold text-slate-900">No tasks here</h3>
+                <p className="text-sm text-slate-500">Create a new task or adjust filters to see existing tasks.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-max border-collapse text-sm">
+                <thead className="sticky top-0 z-10 bg-slate-50">
+                  <tr>
+                    <th className="sticky left-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-3">
                       <input
                         type="checkbox"
-                        checked={selectedTaskIds.includes(task.id)}
-                        onChange={() => toggleTaskSelection(task.id)}
-                        aria-label={`Select task ${task.taskName}`}
+                        checked={filteredTasks.length > 0 && filteredTasks.every((task) => selectedTaskIds.includes(task.id))}
+                        onChange={(event) => setSelectedTaskIds(event.target.checked ? filteredTasks.map((task) => task.id) : [])}
+                        aria-label="Select all tasks"
                       />
-                    </td>
-                    <td className="sticky z-10 bg-white px-4 py-3 text-slate-500">#{task.id}</td>
-                    <td className="sticky z-10 bg-white px-4 py-3 font-semibold text-slate-900">{task.taskName}</td>
-                    <td className="px-4 py-3 text-slate-600">{task.organization?.name ?? '—'}</td>
-                    <td className="px-4 py-3 text-slate-600">{task.project ?? '—'}</td>
-                    <td className="px-4 py-3 text-slate-600">{task.assignedToUser?.name ?? task.assignee ?? 'Unassigned'}</td>
-                    <td className="px-4 py-3">
-                      <span className={cn('rounded-full px-2 py-1 text-xs font-semibold', STATUS_BADGE[task.status?.toUpperCase()] ?? STATUS_BADGE.PENDING)}>
-                        {task.status?.replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">{task.priority ?? '—'}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatDateTime(task.dueDate)}</td>
-                    <td className="px-4 py-3 text-slate-600">{task.estimatedHours ?? '—'}</td>
-                    <td className="px-4 py-3 text-slate-600">{task.actualHours ?? '—'}</td>
-                    <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
-                      <TaskTimerSessionsCell
-                        taskId={task.id}
-                        estimateHours={task.estimatedHours}
-                        actualHours={task.actualHours}
-                        sessions={task.timerSessions}
-                        legacyTimerTotalSeconds={task.legacyTimerTotalSeconds}
-                        currentUserId={currentUserId}
-                        canControl={role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'HR' || role === 'MANAGER' || role === 'EMPLOYEE'}
-                      />
-                    </td>
+                    </th>
+                    {visibleTaskColumnList.map((column, index) => (
+                      <th
+                        key={column.key}
+                        className={`whitespace-nowrap border-b border-slate-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 ${index < 2 ? 'sticky z-10 bg-slate-50' : ''}`}
+                      >
+                        {column.label}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
-          </>
-        )}
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredTasks.map((task) => (
+                    <tr
+                      key={task.id}
+                      tabIndex={0}
+                      onClick={() => { setSelectedTaskId(task.id); setActiveTab('overview'); }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          setSelectedTaskId(task.id);
+                          setActiveTab('overview');
+                        }
+                      }}
+                      className={`cursor-pointer transition hover:bg-orange-50/50 ${selectedTaskId === task.id ? 'bg-orange-50' : ''}`}
+                    >
+                      <td className="sticky left-0 z-10 bg-white px-3 py-3" onClick={(event) => event.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedTaskIds.includes(task.id)}
+                          onChange={() => toggleTaskSelection(task.id)}
+                          aria-label={`Select task ${task.taskName}`}
+                        />
+                      </td>
 
-        <TaskDetailModal
+                      {visibleTaskColumnList.map((column) => {
+                        const cellClass = 'whitespace-nowrap px-4 py-3 text-slate-700';
+
+                        if (column.key === 'id') {
+                          return <td key={column.key} className={`${cellClass} sticky z-10 bg-white`}>#{task.id}</td>;
+                        }
+
+                        if (column.key === 'task') {
+                          return <td key={column.key} className={`${cellClass} sticky z-10 bg-white`}><span className="font-semibold text-slate-900">{task.taskName}</span></td>;
+                        }
+
+                        if (column.key === 'organization') {
+                          return <td key={column.key} className={cellClass}>{task.organization?.name ?? '—'}</td>;
+                        }
+
+                        if (column.key === 'project') {
+                          return <td key={column.key} className={cellClass}>{task.project ?? '—'}</td>;
+                        }
+
+                        if (column.key === 'assignee') {
+                          return <td key={column.key} className={cellClass}>{task.assignedToUser?.name ?? task.assignee ?? 'Unassigned'}</td>;
+                        }
+
+                        if (column.key === 'status') {
+                          return (
+                            <td key={column.key} className={cellClass}>
+                              <span className={cn('rounded-full px-2 py-1 text-xs font-semibold', STATUS_BADGE[task.status?.toUpperCase()] ?? STATUS_BADGE.PENDING)}>
+                                {task.status?.replace('_', ' ')}
+                              </span>
+                            </td>
+                          );
+                        }
+
+                        if (column.key === 'priority') {
+                          return <td key={column.key} className={cellClass}>{task.priority ?? '—'}</td>;
+                        }
+
+                        if (column.key === 'dueDate') {
+                          return <td key={column.key} className={cellClass}>{formatDateTime(task.dueDate)}</td>;
+                        }
+
+                        if (column.key === 'estimatedHours') {
+                          return <td key={column.key} className={cellClass}>{task.estimatedHours ?? '—'}</td>;
+                        }
+
+                        if (column.key === 'actualHours') {
+                          return <td key={column.key} className={cellClass}>{task.actualHours ?? '—'}</td>;
+                        }
+
+                        if (column.key === 'timer') {
+                          return (
+                            <td key={column.key} className={cellClass} onClick={(event) => event.stopPropagation()}>
+                              <TaskTimerSessionsCell
+                                taskId={task.id}
+                                estimateHours={task.estimatedHours}
+                                actualHours={task.actualHours}
+                                sessions={task.timerSessions}
+                                legacyTimerTotalSeconds={task.legacyTimerTotalSeconds}
+                                currentUserId={currentUserId}
+                                canControl={role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'HR' || role === 'MANAGER' || role === 'EMPLOYEE'}
+                              />
+                            </td>
+                          );
+                        }
+
+                        return null;
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <TaskDetailModal
           key={selectedTask?.id ?? 'none'}
           task={selectedTask}
           role={role}
@@ -1172,7 +1323,6 @@ export default function AllTasksPage() {
             await loadTasks(true);
           }}
         />
-      </div>
     </div>
   );
 }
