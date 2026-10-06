@@ -1,11 +1,9 @@
 export function formatHoursDuration(value: number | null | undefined): string {
-	if (value == null || Number.isNaN(value)) return '0h';
+	if (value == null || Number.isNaN(value)) return '0:00';
 
 	const totalMinutes = Math.max(0, Math.round(value * 60));
 	const hours = Math.floor(totalMinutes / 60);
 	const minutes = totalMinutes % 60;
 
-	if (hours === 0) return `${minutes}m`;
-	if (minutes === 0) return `${hours}h`;
-	return `${hours}h ${minutes}m`;
+	return `${hours}:${String(minutes).padStart(2, '0')}`;
 }

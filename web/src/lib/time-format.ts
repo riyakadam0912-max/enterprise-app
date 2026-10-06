@@ -47,7 +47,7 @@ export function formatShiftRange(startTime: string | null, endTime: string | nul
 }
 
 /**
- * Format decimal hours like 5.5 as "5h 30m"
+ * Format decimal hours like 5.5 as "5:30" (hours:minutes)
  * @param value Decimal hours
  * @returns Human-readable duration string
  */
@@ -58,7 +58,5 @@ export function formatHoursDuration(value: number | null | undefined): string {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
 
-  if (hours === 0) return `${minutes}m`;
-  if (minutes === 0) return `${hours}h`;
-  return `${hours}h ${minutes}m`;
+  return `${hours}:${String(minutes).padStart(2, '0')}`;
 }
