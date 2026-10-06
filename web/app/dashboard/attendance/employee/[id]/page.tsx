@@ -39,7 +39,7 @@ function shiftMonth(month: string, delta: number) {
   return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function SummaryMini({ label, value }: { label: string; value: number }) {
+function SummaryMini({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
       <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">{label}</p>
@@ -101,7 +101,7 @@ export default function EmployeeAttendancePage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <SummaryMini label="Late Count" value={data?.summary.lateCount ?? 0} />
-            <SummaryMini label="Overtime Hours" value={Number(data?.summary.overtimeHours ?? 0)} />
+            <SummaryMini label="Overtime" value={formatHoursDuration(data?.summary.overtimeHours ?? 0)} />
             <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
               <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Assigned Shift</p>
               <p className="mt-2 text-sm font-semibold text-slate-900">

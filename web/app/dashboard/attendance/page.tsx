@@ -130,7 +130,7 @@ function toIsoFromParts(date: string, time: string) {
   return new Date(`${date}T${time}:00`).toISOString();
 }
 
-function StatCard({ label, value, tone, icon }: { label: string; value: number; tone: string; icon: string }) {
+function StatCard({ label, value, tone, icon }: { label: string; value: number | string; tone: string; icon: string }) {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 px-5 py-4">
       <div className="flex items-center justify-between mb-3">
@@ -185,7 +185,7 @@ function WorkHourProgress({ label, balance }: { label: string; balance: WorkHour
         aria-valuemax={100}
       >
         <div className="grid h-[3.25rem] w-[3.25rem] place-items-center rounded-full bg-white text-sm font-bold text-slate-900">
-          {balance.completedHours.toFixed(1)}
+          {formatHoursDuration(balance.completedHours)}
         </div>
       </div>
       <div className="min-w-0">
@@ -880,9 +880,9 @@ export default function AttendancePage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <StatCard label="Late Count" value={today.data?.summary.lateCount ?? 0} tone="bg-yellow-100 text-yellow-700" icon="!" />
-        <StatCard label="Overtime (hrs)" value={Number(today.data?.summary.overtimeHours ?? 0)} tone="bg-indigo-100 text-indigo-700" icon="+" />
-        <StatCard label="Total Worked (hrs)" value={Number(today.data?.summary.totalWorkedHours ?? 0)} tone="bg-teal-100 text-teal-700" icon="⌚" />
-        <StatCard label="Shortfall (hrs)" value={Number(today.data?.summary.shortfallHours ?? 0)} tone="bg-rose-100 text-rose-700" icon="−" />
+        <StatCard label="Overtime" value={formatHoursDuration(today.data?.summary.overtimeHours ?? 0)} tone="bg-indigo-100 text-indigo-700" icon="+" />
+        <StatCard label="Total Worked" value={formatHoursDuration(today.data?.summary.totalWorkedHours ?? 0)} tone="bg-teal-100 text-teal-700" icon="⌚" />
+        <StatCard label="Shortfall" value={formatHoursDuration(today.data?.summary.shortfallHours ?? 0)} tone="bg-rose-100 text-rose-700" icon="−" />
       </div>
 
       {canViewAdminAttendance && (

@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useMyPayslips, usePayslipDetails } from '@/hooks/useEss';
 import { Download, ChevronDown, ChevronUp } from 'lucide-react';
+import { formatHoursDuration } from '@/lib/time-format';
 
 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -242,7 +243,7 @@ export default function ESSPayslipsPage() {
                           <div className="bg-white rounded p-3">
                             <p className="text-gray-600">Overtime Hours</p>
                             <p className="font-bold text-purple-600">
-                              {payslipDetails.attendance.overtimeHours.toFixed(2)}
+                              {formatHoursDuration(payslipDetails.attendance.overtimeHours)}
                             </p>
                           </div>
                         </div>

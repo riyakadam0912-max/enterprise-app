@@ -12,6 +12,7 @@ import {
   ReportsDashboard,
   ReportsFilters,
 } from '@/api/reportsApi';
+import { formatHoursDuration } from '@/lib/time-format';
 import { reportError } from '@/lib/error-handling';
 
 const AttendanceTrendChart = dynamic(() => import('@/components/reports/AttendanceTrendChart'), {
@@ -559,7 +560,7 @@ export default function ReportsPage() {
                         <td className="px-4 py-2 text-slate-600">{item.department}</td>
                         <td className="px-4 py-2 text-slate-700">{item.status}</td>
                         <td className="px-4 py-2 text-slate-700">{item.lateMinutes} mins</td>
-                        <td className="px-4 py-2 text-slate-700">{item.overtimeHours.toFixed(2)} hrs</td>
+                        <td className="px-4 py-2 text-slate-700">{formatHoursDuration(item.overtimeHours)}</td>
                       </tr>
                     ))}
                   </tbody>

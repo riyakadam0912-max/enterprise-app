@@ -12,6 +12,7 @@ import { useAuth } from '@/src/providers/AuthProvider';
 import { AppButton } from '@/src/components/AppButton';
 import { StatePanel } from '@/src/components/StatePanel';
 import { tokens } from '@/src/theme/tokens';
+import { formatHoursDuration } from '@/src/utils/time-format';
 
 const formatTime = (value: string | null) => value ? new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Not recorded';
 const formatBreakInterval = (startedAt: string, endedAt: string | null) => {
@@ -21,7 +22,7 @@ const formatBreakInterval = (startedAt: string, endedAt: string | null) => {
 		? Math.max(0, end.getTime() - start.getTime()) / 3600000
 		: null;
 	const endLabel = end ? formatTime(end.toISOString()) : 'In progress';
-	const durationLabel = durationHours !== null ? ` · ${durationHours.toFixed(2)} h` : '';
+	const durationLabel = durationHours !== null ? ` · ${formatHoursDuration(durationHours)}` : '';
 	return `${formatTime(start.toISOString())} - ${endLabel}${durationLabel}`;
 };
 
@@ -53,14 +54,14 @@ function WorkHourProgress({ label, balance }: { label: string; balance: WorkHour
 						origin="32, 32"
 					/>
 				</Svg>
-				<Text style={{ color: tokens.colors.ink, fontSize: 13, fontWeight: '800' }}>{balance.completedHours.toFixed(1)}</Text>
+				<Text style={{ color: tokens.colors.ink, fontSize: 11, fontWeight: '800' }}>{formatHoursDuration(balance.completedHours)}</Text>
 			</View>
 			<View style={{ flex: 1 }}>
 				<Text style={{ color: tokens.colors.ink, fontWeight: '700' }}>{label}</Text>
-				<Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 4 }}>of {balance.requiredHours.toFixed(2)} h scheduled</Text>
-				<Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 3 }}>{balance.remainingHours > 0 ? `${balance.remainingHours.toFixed(2)} h remaining` : 'Hours target complete'}</Text>
-				<Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 3 }}>Breaks: {balance.breakHours.toFixed(2)} h</Text>
-							{balance.fullPeriodRequiredHours !== undefined ? <Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 3 }}>Full month: {balance.fullPeriodRequiredHours.toFixed(2)} h</Text> : null}
+				<Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 4 }}>of {formatHoursDuration(balance.requiredHours)} scheduled</Text>
+				<Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 3 }}>{balance.remainingHours > 0 ? `${formatHoursDuration(balance.remainingHours)} remaining` : 'Hours target complete'}</Text>
+				<Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 3 }}>Breaks: {formatHoursDuration(balance.breakHours)}</Text>
+				{balance.fullPeriodRequiredHours !== undefined ? <Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 3 }}>Full month: {formatHoursDuration(balance.fullPeriodRequiredHours)}</Text> : null}
 			</View>
 		</View>
 	);
@@ -98,7 +99,7 @@ export default function Attendance() {
 			<CalendarCheck color="#059669" size={42} />
 			<Text style={{ fontSize: 18, fontWeight: '700', color: '#172033', marginTop: 14 }}>Today: {status.replaceAll('_', ' ')}</Text>
 			<Text style={{ color: '#64748b', marginTop: 6 }}>In: {formatTime(today.data?.checkIn ?? null)} · Out: {formatTime(today.data?.checkOut ?? null)}</Text>
-			<Text style={{ color: '#64748b', marginTop: 6 }}>Working hours: {today.data?.workingHours ?? 0} · Overtime: {today.data?.overtimeHours ?? 0} · Late: {today.data?.lateMinutes ?? 0} min</Text>
+			<Text style={{ color: '#64748b', marginTop: 6 }}>Working hours: {formatHoursDuration(today.data?.workingHours ?? 0)} · Overtime: {formatHoursDuration(today.data?.overtimeHours ?? 0)} · Late: {today.data?.lateMinutes ?? 0} min</Text>
 			<Text style={{ color: today.data?.onBreak ? '#b45309' : '#64748b', marginTop: 6 }}>{today.data?.onBreak ? 'Break in progress' : `Breaks today: ${today.data?.breaks?.length ?? 0}`}</Text>
 			{today.data?.breaks?.map((interval) => <Text key={interval.startedAt} style={{ color: '#92400e', marginTop: 4, fontSize: 12 }}>{formatBreakInterval(interval.startedAt, interval.endedAt)}</Text>)}
 			<Text style={{ color: hasActiveShift ? '#64748b' : '#be123c', marginTop: 6 }}>Shift: {today.data?.shift ? `${today.data.shift.name} (${today.data.shift.startTime || '--'} - ${today.data.shift.endTime || '--'})` : 'No active shift assigned. Check-in is unavailable.'}</Text>
@@ -119,10 +120,10 @@ export default function Attendance() {
 			return <WorkHourProgress key={period} label={label} balance={balance} />;
 		})}
 		<Text style={{ fontSize: 20, fontWeight: '800', color: '#172033', marginTop: 24, marginBottom: 10 }}>This month</Text>
-		{summary.isError ? <Text style={{ color: '#be123c' }}>{apiError(summary.error)}</Text> : <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>{[['Present', summary.data?.present ?? 0], ['Absent', summary.data?.absent ?? 0], ['Leave', summary.data?.leave ?? 0], ['Half day', summary.data?.halfDay ?? 0], ['Overtime', `${summary.data?.overtimeHours ?? 0}h`], ['Shortfall', `${summary.data?.shortfallHours ?? 0}h`]].map(([label, value]) => <View key={String(label)} style={{ minWidth: '30%', flex: 1, backgroundColor: '#fff', borderRadius: 12, padding: 13 }}><Text style={{ color: '#64748b', fontSize: 12 }}>{label}</Text><Text style={{ color: '#172033', fontWeight: '800', fontSize: 17, marginTop: 4 }}>{String(value)}</Text></View>)}</View>}
+		{summary.isError ? <Text style={{ color: '#be123c' }}>{apiError(summary.error)}</Text> : <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>{[['Present', summary.data?.present ?? 0], ['Absent', summary.data?.absent ?? 0], ['Leave', summary.data?.leave ?? 0], ['Half day', summary.data?.halfDay ?? 0], ['Overtime', formatHoursDuration(summary.data?.overtimeHours ?? 0)], ['Shortfall', formatHoursDuration(summary.data?.shortfallHours ?? 0)]].map(([label, value]) => <View key={String(label)} style={{ minWidth: '30%', flex: 1, backgroundColor: '#fff', borderRadius: 12, padding: 13 }}><Text style={{ color: '#64748b', fontSize: 12 }}>{label}</Text><Text style={{ color: '#172033', fontWeight: '800', fontSize: 17, marginTop: 4 }}>{String(value)}</Text></View>)}</View>}
 		<Text style={{ fontSize: 20, fontWeight: '800', color: '#172033', marginTop: 24, marginBottom: 10 }}>Recent records</Text>
 		{history.isError ? <Text style={{ color: '#be123c' }}>{apiError(history.error)}</Text> : null}
-			{history.data?.map((record) => <View key={record.date} style={{ backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 10 }}><Text style={{ color: '#172033', fontWeight: '700' }}>{record.date} · {record.status}</Text><Text style={{ color: '#64748b', marginTop: 5 }}>In {formatTime(record.checkIn)} · Out {formatTime(record.checkOut)}</Text><Text style={{ color: '#64748b', marginTop: 5 }}>Hours: {record.workingHours ?? 0} · Late: {record.lateMinutes} min</Text>{record.breaks?.map((interval) => <Text key={interval.startedAt} style={{ color: '#92400e', marginTop: 4, fontSize: 12 }}>{formatBreakInterval(interval.startedAt, interval.endedAt)}</Text>)}</View>)}
+		{history.data?.map((record) => <View key={record.date} style={{ backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 10 }}><Text style={{ color: '#172033', fontWeight: '700' }}>{record.date} · {record.status}</Text><Text style={{ color: '#64748b', marginTop: 5 }}>In {formatTime(record.checkIn)} · Out {formatTime(record.checkOut)}</Text><Text style={{ color: '#64748b', marginTop: 5 }}>Hours: {record.workingHours != null ? formatHoursDuration(record.workingHours) : '—'} · Late: {record.lateMinutes} min</Text>{record.breaks?.map((interval) => <Text key={interval.startedAt} style={{ color: '#92400e', marginTop: 4, fontSize: 12 }}>{formatBreakInterval(interval.startedAt, interval.endedAt)}</Text>)}</View>)}
 		{!history.isLoading && !history.isError && history.data?.length === 0 ? <Text style={{ color: '#64748b' }}>No attendance records yet.</Text> : null}
 	</ScrollView>;
 }
