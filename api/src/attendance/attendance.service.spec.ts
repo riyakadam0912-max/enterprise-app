@@ -1919,8 +1919,8 @@ describe('AttendanceService', () => {
     expect(prisma.attendance.findUnique).not.toHaveBeenCalled();
   });
 
-  it('auto-closes missed checkout and its timer at shift end, closing an open break', async () => {
-    const now = new Date(2026, 2, 14, 12, 0, 0);
+  it('auto-closes missed checkout and its timer at local midnight, closing an open break', async () => {
+    const now = new Date('2026-03-14T12:00:00.000Z');
     jest.setSystemTime(now);
     const shift = {
       id: 2,
@@ -1933,15 +1933,29 @@ describe('AttendanceService', () => {
       gracePeriodMinutes: 15,
       weeklyHolidayDay: 0,
     };
-    const checkIn = new Date(now);
-    checkIn.setDate(checkIn.getDate() - 1);
-    checkIn.setHours(21, 0, 0, 0);
+    const checkIn = new Date('2026-03-13T21:00:00.000Z');
     const breakStart = new Date(checkIn.getTime() + 4 * 60 * 60 * 1000);
-    const targetDate = new Date(now);
-    targetDate.setDate(targetDate.getDate() - 1);
-    targetDate.setHours(0, 0, 0, 0);
+    const targetDate = new Date('2026-03-13T00:00:00.000Z');
     prisma.employee.findMany.mockResolvedValue([
       { id: 7, organizationId: 1, shift },
+    ]);
+    prisma.attendance.findMany.mockResolvedValue([
+      {
+        id: 88,
+        employeeId: 7,
+        organizationId: 1,
+        date: targetDate,
+        checkIn,
+        checkOut: null,
+        status: AttendanceStatus.PRESENT,
+        lateMinutes: 0,
+        shift,
+        breaks: [{ id: 12, startedAt: breakStart, endedAt: null }],
+        employee: {
+          shift,
+          organization: { timezone: 'UTC' },
+        },
+      },
     ]);
     prisma.attendance.findUnique.mockResolvedValue({
       id: 88,
@@ -1956,9 +1970,7 @@ describe('AttendanceService', () => {
 
     await service.runDailyAutomation();
 
-    const autoCheckOut = new Date(checkIn);
-    autoCheckOut.setDate(autoCheckOut.getDate() + 1);
-    autoCheckOut.setHours(5, 0, 0, 0);
+    const autoCheckOut = new Date('2026-03-14T00:00:00.000Z');
     expect(mockTasksService.stopActiveTimerForEmployee).toHaveBeenCalledWith(
       7,
       1,
@@ -1980,8 +1992,8 @@ describe('AttendanceService', () => {
     );
   });
 
-  it('auto-closes a same-day missed checkout during the hourly pass', async () => {
-    jest.setSystemTime(new Date('2026-03-13T18:00:00.000Z'));
+  it('leaves a same-day attendance open until the local date advances', async () => {
+    jest.setSystemTime(new Date('2026-03-13T23:59:00.000Z'));
     prisma.employee.findMany.mockResolvedValue([]);
     prisma.attendance.findMany.mockResolvedValue([
       {
@@ -2013,17 +2025,48 @@ describe('AttendanceService', () => {
 
     await service.runDailyAutomation();
 
-    expect(mockTasksService.stopActiveTimerForEmployee).toHaveBeenCalledWith(
-      7,
-      1,
-      new Date('2026-03-13T17:00:00.000Z'),
-      prisma,
-    );
+    expect(mockTasksService.stopActiveTimerForEmployee).not.toHaveBeenCalled();
+    expect(prisma.attendance.update).not.toHaveBeenCalled();
+  });
+
+  it('auto-closes at midnight in the organization timezone', async () => {
+    jest.setSystemTime(new Date('2026-03-14T00:00:00.000Z'));
+    const checkIn = new Date('2026-03-13T09:00:00.000Z');
+    prisma.attendance.findMany.mockResolvedValue([
+      {
+        id: 92,
+        employeeId: 7,
+        organizationId: 1,
+        date: new Date('2026-03-13T00:00:00.000Z'),
+        checkIn,
+        checkOut: null,
+        lateMinutes: 0,
+        breaks: [],
+        shift: null,
+        employee: {
+          organization: { timezone: 'Asia/Kolkata' },
+          shift: {
+            id: 1,
+            name: 'Day',
+            type: 'FIXED',
+            startTime: '09:00',
+            endTime: '17:00',
+            requiredHours: 8,
+            minPresentHours: 5,
+            gracePeriodMinutes: 15,
+            weeklyHolidayDay: 0,
+          },
+        },
+      },
+    ]);
+
+    await service.runAutoCheckoutAutomation();
+
     expect(prisma.attendance.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 91 },
+        where: { id: 92 },
         data: expect.objectContaining({
-          checkOut: new Date('2026-03-13T17:00:00.000Z'),
+          checkOut: new Date('2026-03-13T18:30:00.000Z'),
           isAutoClosed: true,
         }),
       }),

@@ -102,6 +102,13 @@ function nextDateKey(dateKey: string) {
   return next.toISOString().slice(0, 10);
 }
 
+export function localMidnightAfterDateInTimezone(
+  dateKey: string,
+  timezone?: string | null,
+) {
+  return localShiftStart(nextDateKey(dateKey), '00:00', safeTimezone(timezone));
+}
+
 export function shiftEndInTimezone(
   dateKey: string,
   shift: { startTime: string | null; endTime: string | null },

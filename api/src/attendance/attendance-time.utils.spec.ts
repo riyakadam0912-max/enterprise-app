@@ -4,6 +4,7 @@ import {
   attendanceStatusForWorkedHours,
   calculateLateMinutesInTimezone,
   dateKeyInTimezone,
+  localMidnightAfterDateInTimezone,
   shiftEndInTimezone,
 } from './attendance-time.utils';
 
@@ -62,6 +63,12 @@ describe('attendance time utilities', () => {
         'Asia/Kolkata',
       ),
     ).toEqual(new Date('2026-03-13T23:30:00.000Z'));
+  });
+
+  it('resolves the next local midnight as a UTC instant', () => {
+    expect(
+      localMidnightAfterDateInTimezone('2026-03-13', 'Asia/Kolkata'),
+    ).toEqual(new Date('2026-03-13T18:30:00.000Z'));
   });
 
   it('does not count flexible shifts as late and derives half-day from worked hours', () => {

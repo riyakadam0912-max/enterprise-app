@@ -13,5 +13,11 @@
     "api/index.ts": {
       "includeFiles": "dist/**"
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/attendance-cron",
+      "schedule": "* * * * *"
+    }
+  ]
 }

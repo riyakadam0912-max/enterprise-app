@@ -30,7 +30,7 @@ import {
   attendanceDateFromKey,
   calculateLateMinutesInTimezone,
   dateKeyInTimezone,
-  shiftEndInTimezone,
+  localMidnightAfterDateInTimezone,
 } from './attendance-time.utils';
 import { calculateNetWorkingHours } from './attendance-work-time.utils';
 import { TasksService } from '../tasks/tasks.service';
@@ -145,7 +145,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleInit() {
-    // Run once on boot and then hourly; each date is processed only once.
+    if (process.env.VERCEL === '1') return;
+
     this.runDailyAutomation().catch(() => {
       return;
     });
@@ -2904,16 +2905,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       const shift = attendance.shift ?? attendance.employee.shift;
       const timezone = attendance.employee.organization?.timezone ?? 'UTC';
       const dateKey = new Date(attendance.date).toISOString().slice(0, 10);
-      const shiftEnd = shift
-        ? shiftEndInTimezone(dateKey, shift, timezone)
-        : null;
-      const checkOut =
-        shiftEnd && shiftEnd.getTime() > attendance.checkIn.getTime()
-          ? shiftEnd
-          : new Date(
-              attendance.checkIn.getTime() +
-                (shift?.requiredHours ?? 8) * 3_600_000,
-            );
+      if (dateKeyInTimezone(now, timezone) <= dateKey) continue;
+
+      const checkOut = localMidnightAfterDateInTimezone(dateKey, timezone);
+      if (!checkOut || checkOut.getTime() < attendance.checkIn.getTime()) {
+        continue;
+      }
       if (checkOut.getTime() > now.getTime()) continue;
 
       const breaks = attendance.breaks ?? [];
@@ -2967,6 +2964,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  async runAutoCheckoutAutomation() {
+    await this.closeOverdueAttendances();
+    await this.invalidateDashboardCache();
+    return { processedAt: new Date().toISOString() };
+  }
+
   async runDailyAutomation() {
     await this.closeOverdueAttendances();
     const target = this.startOfDay(new Date());
@@ -2992,7 +2995,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         targetHolidayDate,
       );
 
-    let hasPendingShiftClose = false;
     for (const employee of employees) {
       if (!this.isAttendanceEligible(target, employee.hireDate)) {
         continue;
@@ -3066,82 +3068,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         });
         continue;
       }
-
-      if (existing.checkIn && !existing.checkOut) {
-        const checkInTime = new Date(existing.checkIn);
-        const { shiftEnd } = this.getShiftWindow(target, employee.shift);
-        const autoCheckOut =
-          shiftEnd && shiftEnd.getTime() > checkInTime.getTime()
-            ? shiftEnd
-            : new Date(
-                new Date(existing.checkIn).getTime() +
-                  employee.shift.requiredHours * 60 * 60 * 1000,
-              );
-
-        if (autoCheckOut.getTime() > Date.now()) {
-          hasPendingShiftClose = true;
-          continue;
-        }
-
-        const breaks = existing.breaks ?? [];
-        const openBreak = breaks.find((interval) => interval.endedAt === null);
-        const breakIntervals = breaks.map((interval) => ({
-          startedAt: interval.startedAt,
-          endedAt: interval.endedAt ?? (openBreak ? autoCheckOut : null),
-        }));
-
-        const workingHours = this.calculateWorkingHours(
-          checkInTime,
-          autoCheckOut,
-          breakIntervals,
-        );
-        const overtimeHours = this.calculateOvertimeHours(
-          workingHours,
-          employee.shift,
-        );
-        const shortfallHours = this.calculateShortfallHours(
-          workingHours,
-          employee.shift,
-        );
-        const lateMinutes = (existing as any).lateMinutes ?? 0;
-
-        await this.prisma.$transaction(async (tx) => {
-          if (openBreak) {
-            await tx.attendanceBreak.update({
-              where: { id: openBreak.id },
-              data: { endedAt: autoCheckOut },
-            });
-          }
-          await this.tasksService.stopActiveTimerForEmployee(
-            employee.id,
-            employee.organizationId,
-            autoCheckOut,
-            tx,
-          );
-          await tx.attendance.update({
-            where: { id: existing.id },
-            data: {
-              checkOut: autoCheckOut,
-              workingHours,
-              overtimeHours,
-              shortfallHours,
-              isAutoClosed: true,
-              status: this.calculateStatus({
-                day: target,
-                checkIn: checkInTime,
-                checkOut: autoCheckOut,
-                workingHours,
-                onLeave: false,
-                shift: employee.shift,
-                lateMinutes,
-              }),
-            },
-          });
-        });
-      }
     }
 
-    if (!hasPendingShiftClose) this.lastAutomationKey = key;
+    this.lastAutomationKey = key;
     await this.invalidateDashboardCache();
     return { processedDate: key, alreadyProcessed: false };
   }
