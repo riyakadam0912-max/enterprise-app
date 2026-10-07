@@ -49,6 +49,8 @@ export interface AttendanceRecord {
   date: string;
   checkIn: string | null;
   checkOut: string | null;
+  checkoutSource?: 'USER' | 'ADMIN_EDIT' | 'AUTO' | null;
+  checkoutActorName?: string | null;
   workingHours: number | null;
   breaks?: { startedAt: string; endedAt: string | null }[];
   breakHours?: number;

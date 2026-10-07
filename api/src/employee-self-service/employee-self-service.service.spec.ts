@@ -175,6 +175,8 @@ describe('EmployeeSelfServiceService', () => {
           workingHours: 3,
           status: 'HALF_DAY',
           shortfallHours: 5,
+          checkoutSource: 'USER',
+          checkoutActorId: user.userId,
         }),
       }),
     );

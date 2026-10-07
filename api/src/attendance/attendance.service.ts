@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
-import { AttendanceStatus } from '@prisma/client';
+import { AttendanceCheckoutSource, AttendanceStatus } from '@prisma/client';
 import { Role } from '../common/enums/role.enum';
 import { DASHBOARD_CACHE_KEY } from '../common/utils/cache-keys';
 import { PrismaService } from '../prisma/prisma.service';
@@ -75,6 +75,8 @@ type DailyAttendanceRow = {
   date: string;
   checkIn: string | null;
   checkOut: string | null;
+  checkoutSource: AttendanceCheckoutSource | null;
+  checkoutActorName: string | null;
   workingHours: number | null;
   breaks: { startedAt: string; endedAt: string | null }[];
   breakHours: number;
@@ -716,6 +718,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           shortfallHours: number;
           status: AttendanceStatus;
           shift?: ShiftLite | null;
+          isAutoClosed?: boolean;
+          checkoutSource?: AttendanceCheckoutSource | null;
+          checkoutActor?: { name: string } | null;
         } & { shortfallHours?: number })
       | null,
     onLeave: boolean,
@@ -752,6 +757,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       date: day.toISOString(),
       checkIn: attendance?.checkIn?.toISOString() ?? null,
       checkOut: attendance?.checkOut?.toISOString() ?? null,
+      checkoutSource:
+        attendance?.checkoutSource ??
+        (attendance?.isAutoClosed ? AttendanceCheckoutSource.AUTO : null),
+      checkoutActorName: attendance?.checkoutActor?.name ?? null,
       workingHours:
         attendance?.workingHours ??
         (attendance?.checkIn
@@ -1383,7 +1392,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       const day = this.parseTargetDay(dto.date, checkOutTime);
       record = await this.prisma.attendance.findUnique({
         where: { employeeId_date: { employeeId, date: day } },
-        include: { shift: true, breaks: true },
+        include: { shift: true, breaks: true, checkoutActor: { select: { name: true } } },
       });
     } else {
       // Supports night shifts: close the latest open attendance row.
@@ -1454,6 +1463,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         where: { id: record.id },
         data: {
           checkOut: checkOutTime,
+          checkoutSource: AttendanceCheckoutSource.USER,
+          checkoutActorId: user.userId,
           workingHours,
           overtimeHours,
           shortfallHours,
@@ -1586,7 +1597,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const [attendanceRows, leaveRows] = await Promise.all([
       this.prisma.attendance.findMany({
         where: { employeeId: { in: ids }, date: this.startOfDay(day) },
-        include: { shift: true, breaks: true },
+        include: { shift: true, breaks: true, checkoutActor: { select: { name: true } } },
       }),
       this.prisma.leaveRequest.findMany({
         where: {
@@ -1923,6 +1934,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         date: d.date,
         checkIn: d.checkIn,
         checkOut: d.checkOut,
+        checkoutSource: null,
+        checkoutActorName: null,
         workingHours: d.workingHours,
         breaks: d.breaks,
         breakHours: d.breaks.reduce((total, interval) => {
@@ -2736,6 +2749,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           ? new Date(dto.checkOut)
           : null
         : record.checkOut;
+    const checkoutChanged =
+      dto.checkOut !== undefined &&
+      checkOut?.getTime() !== record.checkOut?.getTime();
 
     if (checkOut && !checkIn) {
       throw new BadRequestException('Check-in is required before check-out');
@@ -2869,6 +2885,15 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           date: nextDate,
           checkIn,
           checkOut,
+          ...(checkoutChanged
+            ? {
+                checkoutSource: checkOut
+                  ? AttendanceCheckoutSource.ADMIN_EDIT
+                  : null,
+                checkoutActorId: checkOut ? user.userId : null,
+                isAutoClosed: false,
+              }
+            : {}),
           workingHours,
           overtimeHours,
           shortfallHours,
@@ -2945,6 +2970,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           where: { id: attendance.id },
           data: {
             checkOut,
+            checkoutSource: AttendanceCheckoutSource.AUTO,
+            checkoutActorId: null,
             workingHours,
             overtimeHours,
             shortfallHours,

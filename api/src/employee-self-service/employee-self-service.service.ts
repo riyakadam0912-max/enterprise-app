@@ -4,7 +4,7 @@ import {
   BadRequestException,
   UnauthorizedException,
 } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import { AttendanceCheckoutSource, type Prisma } from '@prisma/client';
 import type { AuthUser } from '../common/types/auth';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApplyLeaveDto } from './dto/apply-leave.dto';
@@ -289,6 +289,8 @@ export class EmployeeSelfServiceService {
       },
       data: {
         checkOut: now,
+        checkoutSource: AttendanceCheckoutSource.USER,
+        checkoutActorId: user.userId ?? user.id,
         workingHours,
         overtimeHours,
         shortfallHours: parseFloat(

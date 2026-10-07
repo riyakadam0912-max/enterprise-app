@@ -663,6 +663,8 @@ describe('AttendanceService', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           workingHours: 5,
+          checkoutSource: 'USER',
+          checkoutActorId: mockUser.userId,
         }),
       }),
     );
@@ -1987,6 +1989,8 @@ describe('AttendanceService', () => {
         data: expect.objectContaining({
           checkOut: autoCheckOut,
           isAutoClosed: true,
+          checkoutSource: 'AUTO',
+          checkoutActorId: null,
         }),
       }),
     );

@@ -1642,7 +1642,20 @@ export default function AttendancePage() {
                   )}
                   <td className="px-5 py-4 text-slate-600">{new Date(row.date).toLocaleDateString()}</td>
                   <td className="px-5 py-4 text-slate-600">{formatTime(row.checkIn)}</td>
-                  <td className="px-5 py-4 text-slate-600">{formatTime(row.checkOut)}</td>
+                  <td className="px-5 py-4 text-slate-600">
+                    <div>{formatTime(row.checkOut)}</div>
+                    {row.checkOut && row.checkoutSource && (
+                      <p className="mt-1 text-xs text-slate-400">
+                        {row.checkoutSource === 'AUTO'
+                          ? 'Auto-closed'
+                          : row.checkoutSource === 'ADMIN_EDIT'
+                            ? `Edited${row.checkoutActorName ? ` by ${row.checkoutActorName}` : ''}`
+                            : row.checkoutSource === 'USER'
+                              ? `Checked out${row.checkoutActorName ? ` by ${row.checkoutActorName}` : ''}`
+                              : null}
+                      </p>
+                    )}
+                  </td>
                   <td className="px-5 py-4 text-slate-700">{row.workingHours != null ? formatHoursDuration(row.workingHours) : '—'}</td>
                   <td className="px-5 py-4 text-slate-700">
                     <details className="min-w-24">

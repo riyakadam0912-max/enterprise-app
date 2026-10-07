@@ -47,6 +47,7 @@ model User {
   reviewedTasks              Task[]                 @relation("TaskReviewedBy")
   createdTimesheets           Timesheet[]            @relation("TimesheetCreatedBy")
   taskTimerSessions           TaskTimerSession[]
+  attendanceCheckouts         Attendance[]           @relation("AttendanceCheckoutActor")
   employee                   Employee?              @relation("UserEmployee", fields: [employeeId], references: [id])
   manager                    User?                  @relation("UserManager", fields: [managerId], references: [id])
   teamMembers                User[]                 @relation("UserManager")
@@ -370,6 +371,8 @@ model Attendance {
   shiftId        Int?
   deletedAt      DateTime?
   isAutoClosed   Boolean          @default(false)
+  checkoutSource AttendanceCheckoutSource?
+  checkoutActorId Int?
   isPaidLeave    Boolean?
   lateMinutes    Int              @default(0)
   overtimeHours  Float            @default(0)
@@ -378,6 +381,7 @@ model Attendance {
   requiredHours  Float?
   organizationId Int
   employee       Employee         @relation(fields: [employeeId], references: [id])
+  checkoutActor  User?            @relation("AttendanceCheckoutActor", fields: [checkoutActorId], references: [id], onDelete: SetNull)
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   shift          Shift?           @relation(fields: [shiftId], references: [id])
   breaks         AttendanceBreak[]
@@ -2113,6 +2117,12 @@ enum AttendanceStatus {
   UPCOMING
   NOT_STARTED
   NOT_SCHEDULED
+}
+
+enum AttendanceCheckoutSource {
+  USER
+  ADMIN_EDIT
+  AUTO
 }
 
 enum ActivityType {
