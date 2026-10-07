@@ -136,13 +136,13 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
         aria-label="Close create task drawer"
         onClick={onClose}
         disabled={saving}
-        className="fixed inset-0 z-[60] cursor-default bg-slate-950/20 disabled:cursor-wait"
+        className="fixed inset-0 z-60 cursor-default bg-slate-950/20 disabled:cursor-wait"
       />
       <aside
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-task-title"
-        className="fixed inset-y-0 right-0 z-[70] flex w-full max-w-xl flex-col bg-white shadow-2xl"
+        className="fixed inset-y-0 right-0 z-70 flex w-full max-w-xl flex-col bg-white shadow-2xl"
       >
         <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
           <div>

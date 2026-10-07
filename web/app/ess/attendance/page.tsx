@@ -245,7 +245,7 @@ export default function ESSAttendancePage() {
             return (
               <div key={period} className="flex items-center gap-4 rounded-lg border border-gray-200 bg-white p-5">
                 <div
-                  className="relative grid h-[4.5rem] w-[4.5rem] shrink-0 place-items-center rounded-full"
+                  className="relative grid h-18 w-18 shrink-0 place-items-center rounded-full"
                   style={{ background: `conic-gradient(#059669 ${balance.progressPercent}%, #e5e7eb ${balance.progressPercent}% 100%)` }}
                   role="progressbar"
                   aria-label={`${label} hours completed`}
@@ -253,7 +253,7 @@ export default function ESSAttendancePage() {
                   aria-valuemin={0}
                   aria-valuemax={100}
                 >
-                  <div className="grid h-[3.25rem] w-[3.25rem] place-items-center rounded-full bg-white text-sm font-bold text-gray-900">
+                  <div className="grid h-13 w-13 place-items-center rounded-full bg-white text-sm font-bold text-gray-900">
                     {balance.completedHours.toFixed(1)}
                   </div>
                 </div>

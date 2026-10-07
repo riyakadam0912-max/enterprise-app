@@ -189,7 +189,7 @@ function WorkHourProgress({ label, balance }: { label: string; balance: WorkHour
   return (
     <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white/90 px-4 py-3">
       <div
-        className="relative grid h-[4.5rem] w-[4.5rem] shrink-0 place-items-center rounded-full"
+        className="relative grid h-18 w-18 shrink-0 place-items-center rounded-full"
         style={{ background: `conic-gradient(#10b981 ${progressPercent}%, #e2e8f0 ${progressPercent}% 100%)` }}
         role="progressbar"
         aria-label={`${label} hours completed against ${targetHours.toFixed(2)} hour target`}
@@ -197,7 +197,7 @@ function WorkHourProgress({ label, balance }: { label: string; balance: WorkHour
         aria-valuemin={0}
         aria-valuemax={100}
       >
-        <div className="grid h-[3.25rem] w-[3.25rem] place-items-center rounded-full bg-white text-sm font-bold text-slate-900">
+        <div className="grid h-13 w-13 place-items-center rounded-full bg-white text-sm font-bold text-slate-900">
           {formatHoursDuration(balance.completedHours)}
         </div>
       </div>

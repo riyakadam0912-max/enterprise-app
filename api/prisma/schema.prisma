@@ -146,6 +146,7 @@ model Organization {
   leaveRequests            LeaveRequest[]
   ledgerEntries            LedgerEntry[]
   marketingCampaigns       MarketingCampaign[]
+  marketingPosts           MarketingPost[]
   notifications            Notification[]
   notificationDeliveryLogs NotificationDeliveryLog[]
   notificationPreferences  NotificationPreference[]
@@ -725,6 +726,21 @@ model MarketingCampaign {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+}
+
+model MarketingPost {
+  id             Int          @id @default(autoincrement())
+  content        String
+  platform       String
+  scheduledAt    DateTime?
+  status         String       @default("DRAFT")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, scheduledAt])
 }
 
 model Expense {
