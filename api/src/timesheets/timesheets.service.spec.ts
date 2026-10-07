@@ -202,9 +202,24 @@ describe('TimesheetsService', () => {
             AND: expect.arrayContaining([
               expect.objectContaining({
                 OR: expect.arrayContaining([
-                  expect.objectContaining({ task: expect.objectContaining({ contains: 'Test', mode: 'insensitive' }) }),
-                  expect.objectContaining({ project: expect.objectContaining({ contains: 'Test', mode: 'insensitive' }) }),
-                  expect.objectContaining({ notes: expect.objectContaining({ contains: 'Test', mode: 'insensitive' }) }),
+                  expect.objectContaining({
+                    task: expect.objectContaining({
+                      contains: 'Test',
+                      mode: 'insensitive',
+                    }),
+                  }),
+                  expect.objectContaining({
+                    project: expect.objectContaining({
+                      contains: 'Test',
+                      mode: 'insensitive',
+                    }),
+                  }),
+                  expect.objectContaining({
+                    notes: expect.objectContaining({
+                      contains: 'Test',
+                      mode: 'insensitive',
+                    }),
+                  }),
                 ]),
               }),
             ]),
@@ -218,14 +233,13 @@ describe('TimesheetsService', () => {
       timesheetDelegate.findMany.mockResolvedValueOnce([]);
       timesheetDelegate.count.mockResolvedValueOnce(0);
 
-      await service.getReport(
-        {} as QueryTimesheetDto,
-        _mockEmployeeUser,
-      );
+      await service.getReport({} as QueryTimesheetDto, _mockEmployeeUser);
 
       expect(timesheetDelegate.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ createdByUserId: _mockEmployeeUser.userId }),
+          where: expect.objectContaining({
+            createdByUserId: _mockEmployeeUser.userId,
+          }),
         }),
       );
     });
@@ -246,7 +260,11 @@ describe('TimesheetsService', () => {
             OR: expect.arrayContaining([
               { createdByUserId: _mockManagerUser.userId },
               { projectRef: { managerId: _mockManagerUser.userId } },
-              { projectRef: { coManagers: { some: { id: _mockManagerUser.userId } } } },
+              {
+                projectRef: {
+                  coManagers: { some: { id: _mockManagerUser.userId } },
+                },
+              },
             ]),
             AND: expect.arrayContaining([
               expect.objectContaining({ OR: expect.any(Array) }),
@@ -258,23 +276,30 @@ describe('TimesheetsService', () => {
 
     it('returns creator identity as employee details in the report', async () => {
       const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
-      timesheetDelegate.findMany.mockResolvedValueOnce([{
-        id: 3,
-        task: 'Test Task',
-        date: new Date('2026-01-01'),
-        hours: 2,
-        status: 'PENDING',
-        createdByUserId: 9,
-        createdByUser: { id: 9, name: 'Ava Worker' },
-      }]);
+      timesheetDelegate.findMany.mockResolvedValueOnce([
+        {
+          id: 3,
+          task: 'Test Task',
+          date: new Date('2026-01-01'),
+          hours: 2,
+          status: 'PENDING',
+          createdByUserId: 9,
+          createdByUser: { id: 9, name: 'Ava Worker' },
+        },
+      ]);
       timesheetDelegate.count.mockResolvedValueOnce(1);
 
-      const result = await service.getReport({} as QueryTimesheetDto, mockAdminUser);
+      const result = await service.getReport(
+        {} as QueryTimesheetDto,
+        mockAdminUser,
+      );
 
-      expect(result.data[0]).toEqual(expect.objectContaining({
-        employeeId: 9,
-        employee: { id: 9, name: 'Ava Worker' },
-      }));
+      expect(result.data[0]).toEqual(
+        expect.objectContaining({
+          employeeId: 9,
+          employee: { id: 9, name: 'Ava Worker' },
+        }),
+      );
     });
   });
 
@@ -335,12 +360,14 @@ describe('TimesheetsService', () => {
           mockAdminUser,
         ),
       ).rejects.toThrow(ForbiddenException);
-      expect(getPrismaDelegate(mockPrisma, 'timesheet').create).not.toHaveBeenCalled();
+      expect(
+        getPrismaDelegate(mockPrisma, 'timesheet').create,
+      ).not.toHaveBeenCalled();
     });
   });
 
   describe('update', () => {
-    it('prevents employees from editing another user\'s timesheet', async () => {
+    it("prevents employees from editing another user's timesheet", async () => {
       const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
       timesheetDelegate.findFirst.mockResolvedValueOnce({
         id: 5,

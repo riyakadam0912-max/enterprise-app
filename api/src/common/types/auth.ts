@@ -22,6 +22,7 @@ export interface AuthUser {
   allBusinessUnits?: boolean;
   tokenType: string;
   jti: string | null;
+  sessionId?: string | null;
 }
 
 export interface JwtPayload {
@@ -44,4 +45,5 @@ export interface JwtPayload {
   employeeBusinessUnitId?: number | null;
   tokenType?: string;
   jti?: string | null;
+  sid?: string;
 }

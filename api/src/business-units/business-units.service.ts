@@ -505,14 +505,16 @@ export class BusinessUnitsService {
       (await this.getActiveAdministratorUnitIds(user, orgId)).length > 0;
     const hasBusinessUnitAdminAssignment =
       isBusinessUnitAdminForOrganization ||
-      (await this.prisma.businessUnitAdmin.findMany({
-        where: {
-          userId: user.userId,
-          businessUnit: { status: 'ACTIVE' },
-          organization: { status: 'ACTIVE', deletedAt: null },
-        },
-        select: { organizationId: true },
-      })).length > 0;
+      (
+        await this.prisma.businessUnitAdmin.findMany({
+          where: {
+            userId: user.userId,
+            businessUnit: { status: 'ACTIVE' },
+            organization: { status: 'ACTIVE', deletedAt: null },
+          },
+          select: { organizationId: true },
+        })
+      ).length > 0;
     if (
       this.isOrganizationWideBUAdmin(user) ||
       isBusinessUnitAdminForOrganization

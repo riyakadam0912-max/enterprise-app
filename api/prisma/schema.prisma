@@ -55,12 +55,27 @@ model User {
   organization               Organization?          @relation(fields: [organizationId], references: [id])
   primaryBusinessUnit        BusinessUnit?          @relation("UserPrimaryBusinessUnit", fields: [primaryBusinessUnitId], references: [id], onDelete: SetNull)
   userRoles                  UserRole[]
+  authSessions               AuthSession[]
   coManagedProjects          Project[]              @relation("ProjectCoManagers")
   businessUnitAdminAssignments BusinessUnitAdmin[]  @relation("BusinessUnitAdminUser")
   clientProfile              ClientProfile?
 
   @@index([organizationId])
   @@index([primaryBusinessUnitId])
+}
+
+model AuthSession {
+  id               String    @id
+  userId           Int
+  refreshTokenHash String
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
 }
 
 model UserReportingManager {

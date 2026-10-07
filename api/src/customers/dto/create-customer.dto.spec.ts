@@ -6,16 +6,22 @@ describe('CreateCustomerDto', () => {
     const dto = new CreateCustomerDto();
 
     const errors = await validate(dto);
-    const webAddressError = errors.find((error) => error.property === 'webAddress');
+    const webAddressError = errors.find(
+      (error) => error.property === 'webAddress',
+    );
 
     expect(webAddressError).toBeUndefined();
   });
 
   it('validates a supplied web address', async () => {
-    const dto = Object.assign(new CreateCustomerDto(), { webAddress: 'not-a-url' });
+    const dto = Object.assign(new CreateCustomerDto(), {
+      webAddress: 'not-a-url',
+    });
 
     const errors = await validate(dto);
-    const webAddressError = errors.find((error) => error.property === 'webAddress');
+    const webAddressError = errors.find(
+      (error) => error.property === 'webAddress',
+    );
 
     expect(webAddressError?.constraints).toHaveProperty('isUrl');
   });

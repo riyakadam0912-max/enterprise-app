@@ -331,14 +331,14 @@ export class TenantContextMiddleware implements NestMiddleware {
         const accessibleOrganizationId = Number.isInteger(
           requestedOrganizationId,
         )
-          ? await this.resolveOrganizationAdminOrganization(
+          ? ((await this.resolveOrganizationAdminOrganization(
               payload,
               requestedOrganizationId,
-            ) ??
+            )) ??
             (await this.resolveBusinessUnitAdminOrganization(
               payload,
               requestedOrganizationId,
-            ))
+            )))
           : null;
         if (accessibleOrganizationId != null) {
           resolvedOrganizationId = accessibleOrganizationId;

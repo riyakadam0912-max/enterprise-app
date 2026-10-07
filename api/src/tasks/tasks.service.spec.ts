@@ -155,7 +155,9 @@ describe('TasksService', () => {
             mockAdminUser,
           ),
         ).rejects.toThrow(ForbiddenException);
-        expect(getPrismaDelegate(mockPrisma, 'task').create).not.toHaveBeenCalled();
+        expect(
+          getPrismaDelegate(mockPrisma, 'task').create,
+        ).not.toHaveBeenCalled();
       },
     );
 
@@ -748,9 +750,7 @@ describe('TasksService', () => {
         .spyOn(organizationScope, 'getRelatedOrganizationIds')
         .mockResolvedValue([1, 2]);
 
-      const where = await (service as any).getTaskAccessWhere(
-        mockEmployeeUser,
-      );
+      const where = await (service as any).getTaskAccessWhere(mockEmployeeUser);
 
       expect(where.OR).toEqual(
         expect.arrayContaining([

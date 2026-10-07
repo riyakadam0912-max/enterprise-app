@@ -1,5 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  jest,
+} from '@jest/globals';
 import { EmployeeSelfServiceService } from './employee-self-service.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role } from '../common/enums/role.enum';
@@ -90,13 +97,18 @@ describe('EmployeeSelfServiceService', () => {
     jest.setSystemTime(new Date('2026-03-13T03:46:00.000Z'));
     const user = createUser({ employeeId: 22 });
     const employeeDelegate = getMockPrismaDelegate(mockPrisma, 'employee');
-    const organizationDelegate = getMockPrismaDelegate(mockPrisma, 'organization');
+    const organizationDelegate = getMockPrismaDelegate(
+      mockPrisma,
+      'organization',
+    );
     const shiftDelegate = getMockPrismaDelegate(mockPrisma, 'shift');
     const attendanceDelegate = getMockPrismaDelegate(mockPrisma, 'attendance');
 
     employeeDelegate.findFirst.mockResolvedValue({ id: 22 });
     employeeDelegate.findUnique.mockResolvedValue({ id: 22, shiftId: 5 });
-    organizationDelegate.findUnique.mockResolvedValue({ timezone: 'Asia/Kolkata' });
+    organizationDelegate.findUnique.mockResolvedValue({
+      timezone: 'Asia/Kolkata',
+    });
     attendanceDelegate.findUnique.mockResolvedValue(null);
     shiftDelegate.findUnique.mockResolvedValue({
       type: 'FIXED',
@@ -130,12 +142,17 @@ describe('EmployeeSelfServiceService', () => {
     jest.setSystemTime(new Date('2026-03-13T06:46:00.000Z'));
     const user = createUser({ employeeId: 22 });
     const employeeDelegate = getMockPrismaDelegate(mockPrisma, 'employee');
-    const organizationDelegate = getMockPrismaDelegate(mockPrisma, 'organization');
+    const organizationDelegate = getMockPrismaDelegate(
+      mockPrisma,
+      'organization',
+    );
     const attendanceDelegate = getMockPrismaDelegate(mockPrisma, 'attendance');
 
     employeeDelegate.findFirst.mockResolvedValue({ id: 22 });
     employeeDelegate.findUnique.mockResolvedValue({ id: 22 });
-    organizationDelegate.findUnique.mockResolvedValue({ timezone: 'Asia/Kolkata' });
+    organizationDelegate.findUnique.mockResolvedValue({
+      timezone: 'Asia/Kolkata',
+    });
     attendanceDelegate.findUnique.mockResolvedValue({
       id: 4,
       checkIn: new Date('2026-03-13T03:46:00.000Z'),

@@ -397,9 +397,15 @@ describe('LeaveRequestsService', () => {
       } as never);
 
       await expect(
-        service.update(8, { employeeId: 202 } as UpdateLeaveRequestDto, mockEmployeeUser),
+        service.update(
+          8,
+          { employeeId: 202 } as UpdateLeaveRequestDto,
+          mockEmployeeUser,
+        ),
       ).rejects.toThrow(ForbiddenException);
-      expect(getPrismaDelegate(mockPrisma, 'leaveRequest').update).not.toHaveBeenCalled();
+      expect(
+        getPrismaDelegate(mockPrisma, 'leaveRequest').update,
+      ).not.toHaveBeenCalled();
     });
   });
 

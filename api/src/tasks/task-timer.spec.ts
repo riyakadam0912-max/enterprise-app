@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { ForbiddenException } from '@nestjs/common';
 import { TasksService } from './tasks.service';
 import { Role } from '../common/enums/role.enum';
 import type { AuthUser } from '../common/types/auth';
@@ -126,7 +126,10 @@ describe('TasksService per-user task timer sessions', () => {
   });
 
   it('allows a timer to start without a task estimate', async () => {
-    prisma.task.findFirst.mockResolvedValueOnce({ ...task, estimatedHours: null });
+    prisma.task.findFirst.mockResolvedValueOnce({
+      ...task,
+      estimatedHours: null,
+    });
 
     await service.updateTimer(8, { action: 'start' }, admin);
 
@@ -145,7 +148,11 @@ describe('TasksService per-user task timer sessions', () => {
     prisma.attendance.findFirst.mockResolvedValueOnce(null);
 
     await expect(
-      service.updateTimer(8, { action: 'start' }, makeUser(11, Role.EMPLOYEE, 101)),
+      service.updateTimer(
+        8,
+        { action: 'start' },
+        makeUser(11, Role.EMPLOYEE, 101),
+      ),
     ).rejects.toThrow('Check in and end any break');
     expect(prisma.taskTimerSession.create).not.toHaveBeenCalled();
   });

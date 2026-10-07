@@ -44,8 +44,14 @@ export class MarketingPostsService {
     if (Number.isNaN(date.getTime()) || date.getTime() <= Date.now()) {
       throw new BadRequestException('Scheduled time must be in the future');
     }
-    if (date.getMinutes() % 15 !== 0 || date.getSeconds() !== 0 || date.getMilliseconds() !== 0) {
-      throw new BadRequestException('Scheduled time must use 15-minute intervals');
+    if (
+      date.getMinutes() % 15 !== 0 ||
+      date.getSeconds() !== 0 ||
+      date.getMilliseconds() !== 0
+    ) {
+      throw new BadRequestException(
+        'Scheduled time must use 15-minute intervals',
+      );
     }
   }
 
@@ -83,9 +89,10 @@ export class MarketingPostsService {
     if (!post) throw new NotFoundException(`Marketing post #${id} not found`);
 
     const status = dto.status ?? post.status;
-    const scheduledAt = dto.scheduledAt !== undefined
-      ? dto.scheduledAt
-      : post.scheduledAt?.toISOString();
+    const scheduledAt =
+      dto.scheduledAt !== undefined
+        ? dto.scheduledAt
+        : post.scheduledAt?.toISOString();
     this.validateSchedule(scheduledAt, status);
     const content = dto.content !== undefined ? dto.content.trim() : undefined;
     if (content !== undefined && !content) {

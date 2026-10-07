@@ -31,7 +31,10 @@ export class MarketingPostsController {
   }
 
   @Post()
-  create(@Body() dto: CreateMarketingPostDto, @Req() req: AuthenticatedRequest) {
+  create(
+    @Body() dto: CreateMarketingPostDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
     return this.service.create(dto, req.user);
   }
 
@@ -45,7 +48,10 @@ export class MarketingPostsController {
   }
 
   @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number, @Req() req: AuthenticatedRequest) {
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
     return this.service.remove(id, req.user);
   }
 }

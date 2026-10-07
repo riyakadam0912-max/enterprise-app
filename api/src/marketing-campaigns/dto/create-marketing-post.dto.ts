@@ -1,4 +1,10 @@
-import { IsDateString, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  IsDateString,
+  IsIn,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export const MARKETING_POST_PLATFORMS = [

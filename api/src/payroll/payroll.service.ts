@@ -105,12 +105,15 @@ export class PayrollService {
       }),
     ]);
 
-    const isCorporateHolidayAbsence = (row: (typeof attendanceRows)[number]) => (
-      !row.checkIn && holidayRows.some((holiday) => {
+    const isCorporateHolidayAbsence = (row: (typeof attendanceRows)[number]) =>
+      !row.checkIn &&
+      holidayRows.some((holiday) => {
         const day = new Date(row.date).toISOString().slice(0, 10);
-        return day >= holiday.startDate.toISOString().slice(0, 10) && day <= holiday.endDate.toISOString().slice(0, 10);
-      })
-    );
+        return (
+          day >= holiday.startDate.toISOString().slice(0, 10) &&
+          day <= holiday.endDate.toISOString().slice(0, 10)
+        );
+      });
 
     const presentDays = attendanceRows.filter(
       (row) => row.status === 'PRESENT',

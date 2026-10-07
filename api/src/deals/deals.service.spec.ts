@@ -143,10 +143,15 @@ describe('DealsService', () => {
       expect(result).toEqual(mockDeals);
       expect(dealDelegate.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ organizationId: 1, deletedAt: null }),
+          where: expect.objectContaining({
+            organizationId: 1,
+            deletedAt: null,
+          }),
         }),
       );
-      expect(getPrismaDelegate(mockPrisma, 'user').findUnique).not.toHaveBeenCalled();
+      expect(
+        getPrismaDelegate(mockPrisma, 'user').findUnique,
+      ).not.toHaveBeenCalled();
     });
 
     it('should allow a manager without an employee link to read organization deals', async () => {
@@ -156,10 +161,15 @@ describe('DealsService', () => {
       await expect(service.findAll(_mockManagerUser)).resolves.toEqual([]);
       expect(dealDelegate.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ organizationId: 1, deletedAt: null }),
+          where: expect.objectContaining({
+            organizationId: 1,
+            deletedAt: null,
+          }),
         }),
       );
-      expect(getPrismaDelegate(mockPrisma, 'user').findUnique).not.toHaveBeenCalled();
+      expect(
+        getPrismaDelegate(mockPrisma, 'user').findUnique,
+      ).not.toHaveBeenCalled();
     });
 
     it('should return filtered deals for employee', async () => {

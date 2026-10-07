@@ -37,6 +37,7 @@ export type AuthTokenPayload = {
   employeeBusinessUnitId?: number | null;
   tokenType: 'access' | 'refresh';
   jti?: string;
+  sid?: string;
 };
 
 type UserRoleRecord = {
@@ -272,17 +273,36 @@ export class AuthService {
     );
   }
 
-  async logout(userId: number) {
+  async logout(userId: number, sessionId?: string | null) {
     if (!userId) {
       return { message: 'Logout successful' };
     }
 
+    if (sessionId) {
+      await this.prisma.authSession.updateMany({
+        where: { id: sessionId, userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    } else {
+      await this.prisma.user.updateMany({
+        where: { id: userId },
+        data: { refreshToken: null },
+      });
+    }
+
+    return { message: 'Logout successful' };
+  }
+
+  async logoutAll(userId: number) {
+    await this.prisma.authSession.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
     await this.prisma.user.updateMany({
       where: { id: userId },
       data: { refreshToken: null },
     });
-
-    return { message: 'Logout successful' };
+    return { message: 'All sessions revoked successfully' };
   }
 
   private async resolveOrganizationMeta(organizationId: number | null) {
@@ -621,16 +641,35 @@ export class AuthService {
       },
     })) as UserWithRoles | null;
 
-    if (!user || !user.isActive || !user.refreshToken) {
+    if (!user || !user.isActive) {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    const tokenMatches = this.matchesRefreshToken(
-      refreshToken,
-      user.refreshToken,
-    );
-    if (!tokenMatches) {
-      throw new UnauthorizedException('Invalid refresh token');
+    let sessionId: string | undefined;
+    let existingRefreshHash: string | undefined;
+    if (payload.sid) {
+      const session = await this.prisma.authSession.findUnique({
+        where: { id: payload.sid },
+      });
+      const now = new Date();
+      if (
+        !session ||
+        session.userId !== user.id ||
+        session.revokedAt !== null ||
+        session.expiresAt <= now ||
+        !this.matchesRefreshToken(refreshToken, session.refreshTokenHash)
+      ) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+      sessionId = session.id;
+      existingRefreshHash = session.refreshTokenHash;
+    } else {
+      if (
+        !user.refreshToken ||
+        !this.matchesRefreshToken(refreshToken, user.refreshToken)
+      ) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
     }
 
     const resolvedEmployeeId = await this.reconcileUserEmployeeLink(user);
@@ -683,29 +722,56 @@ export class AuthService {
     const primaryBusinessUnitId = user.primaryBusinessUnitId ?? null;
     const employeeBusinessUnitId = user.employee?.businessUnitId ?? null;
 
-    const tokens = await this.issueTokenPair(
-      {
-        sub: user.id,
-        userId: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        roles: userRoles,
-        permissions: userPermissions,
-        employeeId: userEmployeeId,
-        organizationId: user.organizationId ?? null,
-        organizationSlug: organizationMeta.slug,
-        organizationName: organizationMeta.name,
-        organizationLogo: organizationMeta.logoUrl,
-        isPlatformAdmin: isSuperAdmin,
-        isSuperAdmin,
-        designation: user.designation ?? null,
-        primaryBusinessUnitId,
-        employeeBusinessUnitId,
-        tokenType: 'access',
-      },
-      user.id,
-    );
+    const tokenPayload: AuthTokenPayload = {
+      sub: user.id,
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      roles: userRoles,
+      permissions: userPermissions,
+      employeeId: userEmployeeId,
+      organizationId: user.organizationId ?? null,
+      organizationSlug: organizationMeta.slug,
+      organizationName: organizationMeta.name,
+      organizationLogo: organizationMeta.logoUrl,
+      isPlatformAdmin: isSuperAdmin,
+      isSuperAdmin,
+      designation: user.designation ?? null,
+      primaryBusinessUnitId,
+      employeeBusinessUnitId,
+      tokenType: 'access',
+      ...(sessionId ? { sid: sessionId } : {}),
+    };
+    const tokens = sessionId
+      ? this.createTokenPair(tokenPayload, sessionId)
+      : this.createTokenPair(tokenPayload);
+
+    if (sessionId && existingRefreshHash) {
+      const nextRefreshHash = this.hashRefreshToken(tokens.refreshToken);
+      const now = new Date();
+      const updated = await this.prisma.authSession.updateMany({
+        where: {
+          id: sessionId,
+          userId: user.id,
+          refreshTokenHash: existingRefreshHash,
+          revokedAt: null,
+          expiresAt: { gt: now },
+        },
+        data: {
+          refreshTokenHash: nextRefreshHash,
+          expiresAt: this.getRefreshTokenExpiry(),
+        },
+      });
+      if (updated.count !== 1) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+    } else {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { refreshToken: this.hashRefreshToken(tokens.refreshToken) },
+      });
+    }
 
     return {
       message: 'Token refreshed successfully',
@@ -792,7 +858,25 @@ export class AuthService {
   }
 
   private async issueTokenPair(payload: AuthTokenPayload, userId: number) {
+    const sessionId = randomUUID();
+    const tokens = this.createTokenPair(
+      { ...payload, sid: sessionId },
+      sessionId,
+    );
+    await this.prisma.authSession.create({
+      data: {
+        id: sessionId,
+        userId,
+        refreshTokenHash: this.hashRefreshToken(tokens.refreshToken),
+        expiresAt: this.getRefreshTokenExpiry(),
+      },
+    });
+    return tokens;
+  }
+
+  private createTokenPair(payload: AuthTokenPayload, sessionId?: string) {
     const signingPayload: any = { ...payload };
+    if (sessionId) signingPayload.sid = sessionId;
 
     const accessToken = this.jwtService.sign(signingPayload, {
       secret: this.accessTokenSecret,
@@ -806,6 +890,7 @@ export class AuthService {
       ...payload,
       tokenType: 'refresh',
       jti: randomUUID(),
+      ...(sessionId ? { sid: sessionId } : {}),
     };
 
     const refreshToken = this.jwtService.sign(refreshTokenPayload, {
@@ -815,13 +900,27 @@ export class AuthService {
       audience: this.jwtAudience,
       algorithm: 'HS256' as const,
     });
-    const hashedRefreshToken = this.hashRefreshToken(refreshToken);
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { refreshToken: hashedRefreshToken },
-    });
-
     return { accessToken, refreshToken };
+  }
+
+  private getRefreshTokenExpiry(): Date {
+    const expiresIn =
+      this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '7d';
+    const match = expiresIn
+      .trim()
+      .toLowerCase()
+      .match(/^(\d+)([smhd])$/);
+    if (!match) {
+      return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    }
+    const value = Number(match[1]);
+    const unitMs: Record<string, number> = {
+      s: 1000,
+      m: 60 * 1000,
+      h: 60 * 60 * 1000,
+      d: 24 * 60 * 60 * 1000,
+    };
+    return new Date(Date.now() + value * unitMs[match[2]]);
   }
 
   private hashRefreshToken(refreshToken: string): string {
@@ -879,7 +978,7 @@ export class AuthService {
 
   private get accessTokenExpiresIn(): ms.StringValue {
     return (this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ??
-      '1d') as ms.StringValue;
+      '15m') as ms.StringValue;
   }
 
   private get refreshTokenExpiresIn(): ms.StringValue {

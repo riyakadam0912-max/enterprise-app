@@ -219,9 +219,15 @@ describe('ExpensesService', () => {
       } as never);
 
       await expect(
-        service.update(7, { employeeId: 202 } as UpdateExpenseDto, mockEmployeeUser),
+        service.update(
+          7,
+          { employeeId: 202 } as UpdateExpenseDto,
+          mockEmployeeUser,
+        ),
       ).rejects.toThrow(ForbiddenException);
-      expect(getPrismaDelegate(mockPrisma, 'expense').update).not.toHaveBeenCalled();
+      expect(
+        getPrismaDelegate(mockPrisma, 'expense').update,
+      ).not.toHaveBeenCalled();
     });
   });
 

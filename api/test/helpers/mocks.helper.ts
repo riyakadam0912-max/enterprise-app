@@ -83,6 +83,7 @@ export type MockPrismaService = Partial<
   Record<keyof PrismaService, unknown>
 > & {
   user: DelegateMock;
+  authSession: DelegateMock;
   employee: DelegateMock;
   attendance: DelegateMock;
   holiday: DelegateMock;
@@ -160,6 +161,7 @@ type MockPrismaDelegateKey = Exclude<
 
 export const createMockPrismaService = (): MockPrismaService => ({
   user: createDelegateMock(),
+  authSession: createDelegateMock(),
   employee: createDelegateMock(),
   attendance: createDelegateMock(),
   holiday: createDelegateMock(),

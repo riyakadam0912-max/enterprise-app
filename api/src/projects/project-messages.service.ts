@@ -125,9 +125,8 @@ export class ProjectMessagesService {
       );
     }
 
-    const projectScope = await this.projectsService.getProjectAccessWhere(
-      requestingUser,
-    );
+    const projectScope =
+      await this.projectsService.getProjectAccessWhere(requestingUser);
     const project = await this.db.project.findFirst({
       where: { id: projectId, ...projectScope },
       select: { id: true, organizationId: true },
@@ -153,7 +152,8 @@ export class ProjectMessagesService {
       );
     }
 
-    const projectScope = await this.projectsService.getProjectAccessWhere(requestingUser);
+    const projectScope =
+      await this.projectsService.getProjectAccessWhere(requestingUser);
     const project = await this.db.project.findFirst({
       where: { id: projectId, ...projectScope, deletedAt: null },
       select: {
@@ -271,9 +271,8 @@ export class ProjectMessagesService {
       );
     }
 
-    const projectScope = await this.projectsService.getProjectAccessWhere(
-      requestingUser,
-    );
+    const projectScope =
+      await this.projectsService.getProjectAccessWhere(requestingUser);
     const project = await this.db.project.findFirst({
       where: { id: projectId, ...projectScope },
       select: { id: true, organizationId: true },

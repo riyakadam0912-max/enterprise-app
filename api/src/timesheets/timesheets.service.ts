@@ -15,9 +15,7 @@ export class TimesheetsService {
     private readonly organizationScopeService: OrganizationScopeService,
   ) {}
 
-  private async getReadableOrganizationIds(
-    user: AuthUser,
-  ): Promise<number[]> {
+  private async getReadableOrganizationIds(user: AuthUser): Promise<number[]> {
     const organizationId = await this.resolveOrganizationId(user);
     if (
       user.role === Role.ADMIN ||
@@ -207,7 +205,11 @@ export class TimesheetsService {
 
   async create(dto: CreateTimesheetDto, user: AuthUser) {
     const organizationId = await this.resolveOrganizationId(user);
-    await this.validateRelatedRecords(dto.projectId, dto.taskId, organizationId);
+    await this.validateRelatedRecords(
+      dto.projectId,
+      dto.taskId,
+      organizationId,
+    );
     return this.prisma.timesheet.create({
       data: {
         organizationId,

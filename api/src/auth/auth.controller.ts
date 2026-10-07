@@ -132,7 +132,7 @@ export class AuthController {
     req: Request,
   ) {
     const accessMaxAge = this.parseExpiresInMs(
-      this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ?? '1d',
+      this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ?? '15m',
     );
     const refreshMaxAge = this.parseExpiresInMs(
       this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '7d',
@@ -448,10 +448,28 @@ export class AuthController {
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Post('logout')
   logout(
-    @Req() req: Request & { user: { userId?: number; id?: number } },
+    @Req()
+    req: Request & {
+      user: { userId?: number; id?: number; sessionId?: string | null };
+    },
     @Res({ passthrough: true }) res: Response,
   ) {
     this.clearAuthCookies(res, req);
-    return this.authService.logout(req.user.userId ?? req.user.id ?? 0);
+    return this.authService.logout(
+      req.user.userId ?? req.user.id ?? 0,
+      req.user.sessionId,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'POST logout all sessions' })
+  @Post('logout-all')
+  async logoutAll(
+    @Req() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    this.clearAuthCookies(res, req);
+    return this.authService.logoutAll(req.user.userId ?? req.user.id ?? 0);
   }
 }

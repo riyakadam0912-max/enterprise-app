@@ -101,9 +101,8 @@ export class LeaveRequestsService {
     const organizationIds = isHierarchyAdmin
       ? await this.organizationScopeService.getOrganizationIds(user)
       : [organizationId];
-    const descendantIds = organizationIds?.filter(
-      (id) => id !== organizationId,
-    ) ?? [];
+    const descendantIds =
+      organizationIds?.filter((id) => id !== organizationId) ?? [];
 
     let employeeWhere: Prisma.EmployeeWhereInput;
     let employeeId: number | undefined;
@@ -212,9 +211,8 @@ export class LeaveRequestsService {
       user.role === Role.ADMIN || user.role === Role.HR
         ? await this.organizationScopeService.getOrganizationIds(user)
         : [organizationId];
-    const descendantIds = organizationIds?.filter(
-      (id) => id !== organizationId,
-    ) ?? [];
+    const descendantIds =
+      organizationIds?.filter((id) => id !== organizationId) ?? [];
     const employee = await this.prisma.employee.findFirst({
       where: {
         id: employeeId,
@@ -257,7 +255,9 @@ export class LeaveRequestsService {
         ...createSubmittedApprovalState(user.userId),
       },
       include: {
-        employee: { include: { organization: { select: { id: true, name: true } } } },
+        employee: {
+          include: { organization: { select: { id: true, name: true } } },
+        },
       },
     });
 
@@ -373,7 +373,6 @@ export class LeaveRequestsService {
     // Validate new employeeId is within user's BU scope if provided
     if (dto.employeeId !== undefined && dto.employeeId !== null) {
       const buScope = await this.businessUnitsService.resolveScope(user as any);
-      const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
       const organizationIds =
         user.role === Role.ADMIN || user.role === Role.HR
           ? await this.organizationScopeService.getOrganizationIds(user)

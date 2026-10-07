@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import * as bcrypt from 'bcrypt';
+import { createHash } from 'crypto';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
@@ -310,6 +311,32 @@ describe('AuthService', () => {
       );
     });
 
+    it('creates an independent refresh session for each login', async () => {
+      const user = createLoginUser(7);
+      const userDelegate = getMockPrismaDelegate(mockPrisma, 'user');
+      const sessionDelegate = getMockPrismaDelegate(mockPrisma, 'authSession');
+      userDelegate.findUnique.mockResolvedValue(user);
+      sessionDelegate.create.mockResolvedValue({});
+      mockJwt.sign
+        .mockReturnValueOnce('access-token-one')
+        .mockReturnValueOnce('refresh-token-one')
+        .mockReturnValueOnce('access-token-two')
+        .mockReturnValueOnce('refresh-token-two');
+      mockAudit.logLogin.mockResolvedValue(undefined);
+      compareMock.mockResolvedValue(true);
+
+      await service.login(user.email, 'password');
+      await service.login(user.email, 'password');
+
+      expect(sessionDelegate.create).toHaveBeenCalledTimes(2);
+      const firstSessionId = sessionDelegate.create.mock.calls[0][0].data.id;
+      const secondSessionId = sessionDelegate.create.mock.calls[1][0].data.id;
+      expect(firstSessionId).not.toBe(secondSessionId);
+      expect(userDelegate.update).not.toHaveBeenCalled();
+      expect(mockJwt.sign.mock.calls[0][0].sid).toBe(firstSessionId);
+      expect(mockJwt.sign.mock.calls[2][0].sid).toBe(secondSessionId);
+    });
+
     it('keeps tenant organizationId on tenant login audit events', async () => {
       const user = createLoginUser(7);
       const userDelegate = getMockPrismaDelegate(mockPrisma, 'user');
@@ -368,6 +395,108 @@ describe('AuthService', () => {
         }),
         expect.anything(),
       );
+    });
+  });
+
+  describe('session lifecycle', () => {
+    it('rotates only the session associated with the refresh token', async () => {
+      const sessionId = 'session-one';
+      const refreshToken = 'existing-refresh-token';
+      const refreshTokenHash = createHash('sha256')
+        .update(refreshToken)
+        .digest('hex');
+      const user = {
+        id: 2,
+        name: 'Tenant Admin',
+        email: 'tenant@example.com',
+        password: 'hashed-password',
+        isActive: true,
+        role: Role.ADMIN,
+        employeeId: null,
+        organizationId: null,
+        refreshToken: null,
+        designation: null,
+        primaryBusinessUnitId: null,
+        userRoles: [
+          {
+            role: {
+              name: Role.ADMIN,
+              rolePermissions: [],
+            },
+          },
+        ],
+      };
+      const sessionDelegate = getMockPrismaDelegate(mockPrisma, 'authSession');
+      getMockPrismaDelegate(mockPrisma, 'user').findUnique.mockResolvedValue(
+        user,
+      );
+      sessionDelegate.findUnique.mockResolvedValue({
+        id: sessionId,
+        userId: user.id,
+        refreshTokenHash,
+        expiresAt: new Date(Date.now() + 60_000),
+        revokedAt: null,
+      });
+      sessionDelegate.updateMany.mockResolvedValue({ count: 1 });
+      mockJwt.verifyAsync.mockResolvedValue({
+        sub: user.id,
+        tokenType: 'refresh',
+        sid: sessionId,
+      });
+      mockJwt.sign
+        .mockReturnValueOnce('next-access-token')
+        .mockReturnValueOnce('next-refresh-token');
+
+      await service.refreshTokens(refreshToken);
+
+      expect(sessionDelegate.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: sessionId,
+            userId: user.id,
+            refreshTokenHash,
+          }),
+          data: expect.objectContaining({
+            refreshTokenHash: createHash('sha256')
+              .update('next-refresh-token')
+              .digest('hex'),
+          }),
+        }),
+      );
+      expect(
+        getMockPrismaDelegate(mockPrisma, 'user').update,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('revokes only the requested session on logout', async () => {
+      const sessionDelegate = getMockPrismaDelegate(mockPrisma, 'authSession');
+
+      await service.logout(12, 'session-two');
+
+      expect(sessionDelegate.updateMany).toHaveBeenCalledWith({
+        where: { id: 'session-two', userId: 12, revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
+      });
+      expect(
+        getMockPrismaDelegate(mockPrisma, 'user').updateMany,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('revokes all active sessions when requested', async () => {
+      const sessionDelegate = getMockPrismaDelegate(mockPrisma, 'authSession');
+
+      await service.logoutAll(12);
+
+      expect(sessionDelegate.updateMany).toHaveBeenCalledWith({
+        where: { userId: 12, revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
+      });
+      expect(
+        getMockPrismaDelegate(mockPrisma, 'user').updateMany,
+      ).toHaveBeenCalledWith({
+        where: { id: 12 },
+        data: { refreshToken: null },
+      });
     });
   });
 
