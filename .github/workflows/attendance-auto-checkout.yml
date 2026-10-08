@@ -1,0 +1,28 @@
+name: Attendance auto-checkout
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  auto-checkout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Verify cron secret is configured
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: test -n "$CRON_SECRET"
+
+      - name: Run attendance auto-checkout
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: >-
+          curl --fail --silent --show-error --output /dev/null
+          --write-out 'Attendance automation HTTP %{http_code}\n'
+          --header "Authorization: Bearer ${CRON_SECRET}"
+          https://enterprise-app-1phv.vercel.app/api/attendance-cron
