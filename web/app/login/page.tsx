@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useEffect, useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/providers/AuthProvider';
 import { getAuthSessionSnapshot, isSuperAdminSession } from '@/stores/auth-store';
@@ -13,7 +13,21 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const { login } = useAuth();
+  const { login, authenticated, loading: authLoading, session } = useAuth();
+
+  useEffect(() => {
+    if (authLoading || !authenticated) {
+      return;
+    }
+
+    if (isSuperAdminSession(session)) {
+      router.replace('/super-admin/dashboard');
+    } else if (session.organizationId == null) {
+      router.replace('/select-organization');
+    } else {
+      router.replace('/dashboard');
+    }
+  }, [authLoading, authenticated, router, session]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();

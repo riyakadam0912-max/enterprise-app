@@ -91,11 +91,6 @@ export function AuthProvider({
 
   useEffect(() => {
 
-    if (pathname === '/login') {
-      setLoading(false);
-      return;
-    }
-
     if (bootstrapAttemptedRef.current) {
       return;
     }
