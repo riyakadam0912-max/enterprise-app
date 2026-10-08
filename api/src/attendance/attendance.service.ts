@@ -1392,7 +1392,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       const day = this.parseTargetDay(dto.date, checkOutTime);
       record = await this.prisma.attendance.findUnique({
         where: { employeeId_date: { employeeId, date: day } },
-        include: { shift: true, breaks: true, checkoutActor: { select: { name: true } } },
+        include: {
+          shift: true,
+          breaks: true,
+          checkoutActor: { select: { name: true } },
+        },
       });
     } else {
       // Supports night shifts: close the latest open attendance row.
@@ -1405,6 +1409,25 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
         include: { shift: true, breaks: true },
       });
+      if (!record) {
+        const latestAttendance = await this.prisma.attendance.findFirst({
+          where: { employeeId, checkIn: { not: null } },
+          orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+          include: { shift: true, breaks: true },
+        });
+        const organization = await this.prisma.organization.findUnique({
+          where: { id: employee.organizationId ?? user.organizationId },
+          select: { timezone: true },
+        });
+        const timezone = organization?.timezone ?? 'UTC';
+        if (
+          latestAttendance?.checkOut &&
+          dateKeyInTimezone(latestAttendance.checkOut, timezone) ===
+            dateKeyInTimezone(checkOutTime, timezone)
+        ) {
+          throw new ConflictException('Employee has already checked out');
+        }
+      }
     }
 
     if (!record || !record.checkIn) {
@@ -1597,7 +1620,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const [attendanceRows, leaveRows] = await Promise.all([
       this.prisma.attendance.findMany({
         where: { employeeId: { in: ids }, date: this.startOfDay(day) },
-        include: { shift: true, breaks: true, checkoutActor: { select: { name: true } } },
+        include: {
+          shift: true,
+          breaks: true,
+          checkoutActor: { select: { name: true } },
+        },
       }),
       this.prisma.leaveRequest.findMany({
         where: {
@@ -1688,7 +1715,14 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
   async getToday(user: AttendanceUser, date?: string) {
     user.organizationId = await this.resolveOrganizationId(user);
-    const day = this.parseTargetDay(date);
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: user.organizationId },
+      select: { timezone: true },
+    });
+    const timezone = organization?.timezone ?? 'UTC';
+    const dateKey =
+      date?.slice(0, 10) ?? dateKeyInTimezone(new Date(), timezone);
+    const day = attendanceDateFromKey(dateKey);
     const scopedIds = await this.getScopedEmployeeFilter(user);
     const { rows, summary } = await this.buildDailySnapshot(
       day,
@@ -2161,7 +2195,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       employeeName: string;
       department: string | null;
       week: Awaited<
-        ReturnType<typeof this.getWorkHourBalancesForEmployee>
+        ReturnType<AttendanceService['getWorkHourBalancesForEmployee']>
       >['week'];
     }> = [];
     for (let offset = 0; offset < employees.length; offset += 10) {

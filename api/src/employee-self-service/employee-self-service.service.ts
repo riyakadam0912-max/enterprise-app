@@ -320,8 +320,13 @@ export class EmployeeSelfServiceService {
 
   async getMyAttendanceToday(user: AuthUser) {
     const employeeId = await this.resolveEmployeeId(user);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const organizationId = await this.resolveOrganizationId(user);
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { timezone: true },
+    });
+    const timezone = organization?.timezone ?? 'UTC';
+    const today = attendanceDateFromKey(dateKeyInTimezone(new Date(), timezone));
 
     const attendance = await this.prisma.attendance.findUnique({
       where: {

@@ -181,4 +181,36 @@ describe('EmployeeSelfServiceService', () => {
       }),
     );
   });
+
+  it('loads today attendance using the organization timezone', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-03-12T19:00:00.000Z'));
+    const user = createUser({ employeeId: 22 });
+    const employeeDelegate = getMockPrismaDelegate(mockPrisma, 'employee');
+    const organizationDelegate = getMockPrismaDelegate(
+      mockPrisma,
+      'organization',
+    );
+    const attendanceDelegate = getMockPrismaDelegate(mockPrisma, 'attendance');
+
+    employeeDelegate.findFirst.mockResolvedValue({ id: 22 });
+    organizationDelegate.findUnique.mockResolvedValue({
+      timezone: 'Asia/Kolkata',
+    });
+    attendanceDelegate.findUnique.mockResolvedValue(null);
+    employeeDelegate.findUnique.mockResolvedValue({ id: 22, shift: null });
+
+    await service.getMyAttendanceToday(user);
+
+    expect(attendanceDelegate.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          employeeId_date: {
+            employeeId: 22,
+            date: new Date('2026-03-13T00:00:00.000Z'),
+          },
+        },
+      }),
+    );
+  });
 });

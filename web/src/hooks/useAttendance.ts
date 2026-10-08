@@ -95,8 +95,8 @@ export function useTodayAttendance(date?: string) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchToday = useCallback(async () => {
-    setLoading(true);
+  const fetchToday = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       setData(await getTodayAttendance(date));
@@ -104,12 +104,26 @@ export function useTodayAttendance(date?: string) {
       const message = err instanceof Error ? err.message : undefined;
       setError(getFriendlyLoadError(message));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [date]);
 
   useEffect(() => {
     fetchToday();
+    const refreshSilently = () => {
+      if (document.visibilityState === 'visible') {
+        void fetchToday(true);
+      }
+    };
+    const interval = window.setInterval(refreshSilently, 30_000);
+    window.addEventListener('focus', refreshSilently);
+    document.addEventListener('visibilitychange', refreshSilently);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshSilently);
+      document.removeEventListener('visibilitychange', refreshSilently);
+    };
   }, [fetchToday]);
 
   return { data, loading, error, refetch: fetchToday };

@@ -148,6 +148,46 @@ describe('AttendanceService', () => {
     expect(result.summary.absent).toBe(0);
   });
 
+  it('uses the organization timezone when resolving today without a date', async () => {
+    jest.setSystemTime(new Date('2026-03-12T19:00:00.000Z'));
+    prisma.organization.findUnique.mockResolvedValue({
+      timezone: 'Asia/Kolkata',
+    });
+    jest.spyOn(service as any, 'buildDailySnapshot').mockResolvedValue({
+      rows: [],
+      summary: {},
+    });
+
+    await service.getToday(mockUser);
+
+    expect((service as any).buildDailySnapshot).toHaveBeenCalledWith(
+      new Date('2026-03-13T00:00:00.000Z'),
+      null,
+      expect.any(Object),
+    );
+  });
+
+  it('returns an already-checked-out conflict for a stale checkout request', async () => {
+    jest.setSystemTime(new Date('2026-03-14T00:01:00.000Z'));
+    jest.spyOn(service as any, 'resolveScopedEmployeeId').mockResolvedValue(7);
+    jest.spyOn(service as any, 'ensureEmployee').mockResolvedValue({
+      id: 7,
+      organizationId: 1,
+      shift: null,
+    });
+    prisma.attendance.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 91,
+        checkIn: new Date('2026-03-13T09:00:00.000Z'),
+        checkOut: new Date('2026-03-14T00:00:00.000Z'),
+      });
+
+    await expect(service.checkOut({}, mockUser)).rejects.toThrow(
+      'Employee has already checked out',
+    );
+  });
+
   it('replaces edited breaks atomically and recalculates net worked hours', async () => {
     const checkIn = new Date('2026-10-06T09:00:00.000Z');
     const checkOut = new Date('2026-10-06T18:00:00.000Z');

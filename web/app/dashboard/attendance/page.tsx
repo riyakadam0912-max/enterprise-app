@@ -667,6 +667,9 @@ export default function AttendancePage() {
 
       await Promise.all([refetch(), today.refetch(), getWorkHourBalances().then(setWorkBalances)]);
     } catch {
+      if (mode === 'out') {
+        await Promise.all([refetch(), today.refetch()]);
+      }
       // Errors are mapped in the hooks and shown in the UI.
     } finally {
       setBreakActionLoading(false);
