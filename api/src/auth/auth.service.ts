@@ -905,7 +905,7 @@ export class AuthService {
 
   private getRefreshTokenExpiry(): Date {
     const expiresIn =
-      this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '7d';
+      this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '30d';
     const match = expiresIn
       .trim()
       .toLowerCase()
@@ -983,7 +983,7 @@ export class AuthService {
 
   private get refreshTokenExpiresIn(): ms.StringValue {
     return (this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ??
-      '7d') as ms.StringValue;
+      '30d') as ms.StringValue;
   }
 
   private isProductionEnvironment(): boolean {

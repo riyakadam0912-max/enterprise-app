@@ -413,7 +413,7 @@ export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
     JWT_REFRESH_EXPIRES_IN: readOptionalString(
       env,
       'JWT_REFRESH_EXPIRES_IN',
-      '7d',
+      '30d',
     ),
     COOKIE_DOMAIN: readOptionalString(env, 'COOKIE_DOMAIN'),
     COOKIE_SAME_SITE,

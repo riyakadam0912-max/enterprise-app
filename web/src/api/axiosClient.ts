@@ -40,6 +40,16 @@ let failedQueue: Array<{
   reject: (reason?: unknown) => void;
 }> = [];
 
+const AUTH_REFRESH_LOCK = 'enterprise-auth-refresh';
+
+export function withAuthRefreshLock<T>(refresh: () => Promise<T>): Promise<T> {
+  if (typeof navigator === 'undefined' || !navigator.locks) {
+    return refresh();
+  }
+
+  return navigator.locks.request(AUTH_REFRESH_LOCK, refresh).then((result) => result);
+}
+
 function clearAuthState() {
   clearAuthSession();
 }
@@ -210,12 +220,13 @@ axiosClient.interceptors.response.use(
 
       try {
 
-        const response =
-          await axiosClient.post<{
+        const response = await withAuthRefreshLock(() =>
+          axiosClient.post<{
             success: boolean;
             message: string;
             data: AuthRefreshPayload;
-          }>('/auth/refresh', { _skipAuthRefresh: true } as never);
+          }>('/auth/refresh', { _skipAuthRefresh: true } as never),
+        );
 
         const payload = response.data?.data;
 
@@ -262,10 +273,12 @@ axiosClient.interceptors.response.use(
 
         processQueue(refreshError as Error);
 
-        clearAuthState();
+        if ((refreshError as AxiosError).response?.status === 401) {
+          clearAuthState();
 
-        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-          window.location.assign('/login');
+          if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+            window.location.assign('/login');
+          }
         }
 
         return Promise.reject(refreshError);
