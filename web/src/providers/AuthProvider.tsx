@@ -15,6 +15,7 @@ import { ApiError, apiClient } from '@/api/apiClient';
 
 import {
   clearAuthSession,
+  getActiveOrganizationId,
   getAuthSessionSnapshot,
   setAuthSession,
   useAuthSession,
@@ -37,6 +38,11 @@ type BusinessUnitAccessResponse = {
 };
 
 async function hydrateBusinessUnitAccess() {
+  const session = getAuthSessionSnapshot();
+  if (session.isSuperAdmin && getActiveOrganizationId() == null) {
+    return;
+  }
+
   try {
     const access = await apiClient<BusinessUnitAccessResponse>('/me/business-units');
     const current = getAuthSessionSnapshot();
