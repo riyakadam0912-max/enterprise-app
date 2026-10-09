@@ -304,10 +304,8 @@ export class ProjectsService {
       where: {
         id: { in: uniqueOwnerIds },
         isActive: true,
-        OR: [
-          { organizationId: { in: allowedOrganizationIds } },
-          { role: Role.SUPER_ADMIN },
-        ],
+        organizationId: { in: allowedOrganizationIds },
+        role: { in: [Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER] },
       },
       select: { id: true, name: true, role: true, organizationId: true },
     });
@@ -451,6 +449,7 @@ export class ProjectsService {
       : [organizationIds];
     const managerWhere = {
       id: managerId,
+      isActive: true,
       organizationId:
         allowedOrganizationIds.length === 1
           ? allowedOrganizationIds[0]
@@ -470,9 +469,7 @@ export class ProjectsService {
   async create(dto: CreateProjectDto, user: AuthUser) {
     const organizationId = this.validateOrganization(user);
     const assignableOrganizationIds =
-      (await this.organizationScopeService.getOrganizationIds(user)) ?? [
-        organizationId,
-      ];
+      await this.getAssignableProjectOrganizationIds(organizationId, user);
     const scope = await this.businessUnitsService.resolveScope(user as any);
     const dtoAny = dto as any;
     if (dtoAny.businessUnitId != null) {
@@ -605,13 +602,11 @@ export class ProjectsService {
     if (!existing)
       throw new NotFoundException(`Project #${projectId} not found`);
 
-    const actorDescendantIds =
-      await this.organizationScopeService.getOrganizationIds(user);
-    const assignableManagerOrganizationIds = actorDescendantIds?.includes(
-      existing.organizationId,
-    )
-      ? actorDescendantIds
-      : [user.homeOrganizationId ?? organizationId];
+    const assignableManagerOrganizationIds =
+      await this.getAssignableProjectOrganizationIds(
+        existing.organizationId,
+        user,
+      );
     const manager = await this.assertManager(
       managerId,
       assignableManagerOrganizationIds,
@@ -1162,7 +1157,12 @@ export class ProjectsService {
 
     let managerName = dto.manager;
     if (dto.managerId) {
-      const manager = await this.assertManager(dto.managerId, organizationId);
+      const assignableOrganizationIds =
+        await this.getAssignableProjectOrganizationIds(organizationId, user);
+      const manager = await this.assertManager(
+        dto.managerId,
+        assignableOrganizationIds,
+      );
       managerName = manager.name;
     }
 
@@ -1173,7 +1173,12 @@ export class ProjectsService {
         select: { createdById: true },
       });
       if (!project) throw new NotFoundException(`Project #${id} not found`);
-      const owners = await this.validateOwners(dto.ownerIds, organizationId);
+      const assignableOrganizationIds =
+        await this.getAssignableProjectOrganizationIds(organizationId, user);
+      const owners = await this.validateOwners(
+        dto.ownerIds,
+        assignableOrganizationIds,
+      );
       ownersToSet = [
         ...new Set([
           ...(project.createdById == null ? [] : [project.createdById]),
@@ -1418,31 +1423,20 @@ export class ProjectsService {
 
   async getEligibleManagers(user: AuthUser) {
     const organizationId = this.validateOrganization(user);
-
-    // Get users who are:
-    // 1. SUPER_ADMIN or ADMIN in the current organization
-    // 2. OR SUPER_ADMIN at platform level (organizationId = null)
+    const assignableOrganizationIds =
+      await this.getAssignableProjectOrganizationIds(organizationId, user);
     return this.db.user.findMany({
       where: {
         isActive: true,
-        OR: [
-          // Organization-scoped SUPER_ADMIN and ADMIN
-          {
-            organizationId,
-            role: { in: [Role.SUPER_ADMIN, Role.ADMIN] },
-          },
-          // Platform-level SUPER_ADMIN
-          {
-            organizationId: null,
-            role: Role.SUPER_ADMIN,
-          },
-        ],
+        organizationId: { in: assignableOrganizationIds },
+        role: { in: [Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER] },
       },
       select: {
         id: true,
         name: true,
         role: true,
         email: true,
+        organization: { select: { id: true, name: true } },
       },
       orderBy: { name: 'asc' },
     });

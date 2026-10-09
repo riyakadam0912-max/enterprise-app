@@ -124,6 +124,48 @@ describe('ProjectsService', () => {
     );
   });
 
+  describe('project assignment options', () => {
+    it('returns active admins, super admins, and managers from assignable organizations', async () => {
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      userDelegate.findMany.mockResolvedValueOnce([]);
+
+      await service.getEligibleManagers(mockAdminUser);
+
+      expect(userDelegate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            isActive: true,
+            organizationId: { in: [1] },
+            role: { in: [Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER] },
+          },
+          select: expect.objectContaining({
+            organization: { select: { id: true, name: true } },
+          }),
+        }),
+      );
+    });
+
+    it('validates additional owners against the same organization and role boundary', async () => {
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      userDelegate.findMany.mockResolvedValueOnce([
+        { id: 7, name: 'Scoped Owner', role: Role.ADMIN, organizationId: 2 },
+      ]);
+
+      await (service as any).validateOwners([7], [1, 2]);
+
+      expect(userDelegate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            id: { in: [7] },
+            isActive: true,
+            organizationId: { in: [1, 2] },
+            role: { in: [Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER] },
+          },
+        }),
+      );
+    });
+  });
+
   describe('create', () => {
     const createProjectDto: CreateProjectDto = {
       projectName: 'Test Project',

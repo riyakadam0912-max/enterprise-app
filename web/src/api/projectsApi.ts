@@ -96,6 +96,14 @@ export interface Project {
   updatedAt: string;
 }
 
+export interface ProjectAssignmentUser {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  organization: { id: number; name: string } | null;
+}
+
 export interface ProjectMessage {
   id: string;
   projectId: number;
@@ -180,6 +188,10 @@ export async function getProjects(): Promise<Project[]> {
 
 export async function getProject(id: number): Promise<Project> {
   return apiClient<Project>(`/projects/${id}`);
+}
+
+export async function getEligibleProjectAssignees(): Promise<ProjectAssignmentUser[]> {
+  return apiClient<ProjectAssignmentUser[]>('/projects/eligible-managers');
 }
 
 export async function createProject(payload: CreateProjectPayload): Promise<Project> {

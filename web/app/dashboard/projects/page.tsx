@@ -12,9 +12,11 @@ import {
   getProject,
   getProjectProgress,
   getProjects,
+  getEligibleProjectAssignees,
   getMessages,
   getMessageMentionOptions,
   type Project,
+  type ProjectAssignmentUser,
   type ProjectMessage,
   type ProjectMessageMention,
   type ProjectMessageMentionOptions,
@@ -298,8 +300,9 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
   const [projectDriveLinkDraft, setProjectDriveLinkDraft] = useState('');
   const [projectOwnerIdsDraft, setProjectOwnerIdsDraft] = useState<string[]>([]);
 
-  const [managers, setManagers] = useState<Array<{ id: number; name: string; role: string }>>([]);
-  const [ownerOptions, setOwnerOptions] = useState<Array<{ id: number; name: string; role: string }>>([]);
+  const [managers, setManagers] = useState<ProjectAssignmentUser[]>([]);
+  const [ownerOptions, setOwnerOptions] = useState<ProjectAssignmentUser[]>([]);
+  const [ownerSearch, setOwnerSearch] = useState('');
   const [employees, setEmployees] = useState<Array<{ id: number; userId: number | null; name: string; email: string | null; department: string | null; designation: string | null; organization?: { id: number; name: string } }>>([]);
   const [managerSelection, setManagerSelection] = useState('');
   const [showCoManagerPicker, setShowCoManagerPicker] = useState(false);
@@ -507,19 +510,26 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
       const employeesPromise = canLoadDirectoryData
         ? apiClient<Array<{ id: number; name: string; email: string | null; department: string | null; designation: string | null; organization?: { id: number; name: string } }>>('/employees')
         : Promise.resolve([] as Array<{ id: number; name: string; email: string | null; department: string | null; designation: string | null; organization?: { id: number; name: string } }>);
+      const assigneesPromise = canLoadDirectoryData
+        ? getEligibleProjectAssignees()
+        : Promise.resolve([] as ProjectAssignmentUser[]);
 
-      const [usersResult, employeesResult] = await Promise.allSettled([usersPromise, employeesPromise]);
+      const [usersResult, employeesResult, assigneesResult] = await Promise.allSettled([
+        usersPromise,
+        employeesPromise,
+        assigneesPromise,
+      ]);
 
       if (cancelled) return;
 
-      if (usersResult.status === 'fulfilled') {
-        setManagers(usersResult.value.filter((u) => u.role === 'MANAGER'));
-        setOwnerOptions(usersResult.value.filter((u) => ['ADMIN', 'SUPER_ADMIN', 'MANAGER'].includes(u.role)));
+      if (assigneesResult.status === 'fulfilled') {
+        setManagers(assigneesResult.value.filter((candidate) => candidate.role === 'MANAGER'));
+        setOwnerOptions(assigneesResult.value);
       } else {
         setManagers([]);
         setOwnerOptions([]);
         if (canLoadDirectoryData) {
-          console.error('Failed to load users', usersResult.reason);
+          console.error('Failed to load project assignment options', assigneesResult.reason);
         }
       }
 
@@ -632,6 +642,18 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     const existingIds = new Set(coManagers.map((manager) => manager.id));
     return managers.filter((manager) => manager.id !== primaryManagerId && manager.id !== userId && !existingIds.has(manager.id));
   }, [coManagers, managers, primaryManagerId, userId]);
+
+  const filteredOwnerOptions = useMemo(() => {
+    const term = ownerSearch.trim().toLowerCase();
+    return ownerOptions.filter((candidate) => {
+      const haystack = [
+        candidate.name,
+        candidate.role,
+        candidate.organization?.name ?? '',
+      ].join(' ').toLowerCase();
+      return !term || haystack.includes(term);
+    });
+  }, [ownerOptions, ownerSearch]);
 
   const availableEmployeeOptions = useMemo(() => {
     const existingIds = new Set(assignedEmployees.map((employee) => employee.id));
@@ -1378,20 +1400,21 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                     <select value={projectCreateForm.managerId} onChange={(event) => setProjectCreateForm((current) => ({ ...current, managerId: event.target.value, manager: managers.find((manager) => String(manager.id) === event.target.value)?.name ?? current.manager }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
                       <option value="">Assign manager</option>
                       {managers.map((manager) => (
-                        <option key={manager.id} value={String(manager.id)}>{manager.name}</option>
+                        <option key={manager.id} value={String(manager.id)}>{manager.name} · {manager.role.replaceAll('_', ' ')} · {manager.organization?.name ?? 'Organization unavailable'}</option>
                       ))}
                     </select>
-                    <label className="block space-y-1.5 text-sm font-medium text-slate-700">
-                      <span>Additional owners</span>
+                    <div className="space-y-1.5 text-sm font-medium text-slate-700">
+                      <label htmlFor="project-create-owner-search">Additional owners</label>
+                      <input id="project-create-owner-search" value={ownerSearch} onChange={(event) => setOwnerSearch(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Search by name, role, or organization" />
                       <select multiple value={projectCreateForm.ownerIds} onChange={(event) => {
                         const ownerIds = Array.from(event.currentTarget.selectedOptions, (option) => option.value);
                         setProjectCreateForm((current) => ({ ...current, ownerIds }));
                       }} className="min-h-24 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
-                        {ownerOptions.map((owner) => (
-                          <option key={owner.id} value={String(owner.id)}>{owner.name}</option>
+                        {filteredOwnerOptions.map((owner) => (
+                          <option key={owner.id} value={String(owner.id)}>{owner.name} · {owner.role.replaceAll('_', ' ')} · {owner.organization?.name ?? 'Organization unavailable'}</option>
                         ))}
                       </select>
-                    </label>
+                    </div>
                     <select value={projectCreateForm.customerId} onChange={(event) => setProjectCreateForm((current) => ({ ...current, customerId: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
                       <option value="">No customer linked</option>
                       {customerOptions.map((customer) => (
@@ -1593,7 +1616,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                       <option value="">Assign manager</option>
                       {managers.map((manager) => (
                         <option key={manager.id} value={manager.id}>
-                          {manager.name}
+                          {manager.name} · {manager.role.replaceAll('_', ' ')} · {manager.organization?.name ?? 'Organization unavailable'}
                         </option>
                       ))}
                     </select>
@@ -2372,14 +2395,15 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
 
                   <div>
                     <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Ownership</p>
-                    <label className="block space-y-1.5 text-sm font-medium text-slate-700">
-                      <span>Additional owners</span>
+                    <div className="space-y-1.5 text-sm font-medium text-slate-700">
+                      <label htmlFor="project-edit-owner-search">Additional owners</label>
+                      <input id="project-edit-owner-search" value={ownerSearch} onChange={(event) => setOwnerSearch(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Search by name, role, or organization" />
                       <select multiple value={projectOwnerIdsDraft} onChange={(event) => setProjectOwnerIdsDraft(Array.from(event.currentTarget.selectedOptions, (option) => option.value))} className="min-h-24 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
-                        {ownerOptions.map((owner) => (
-                          <option key={owner.id} value={String(owner.id)}>{owner.name}</option>
+                        {filteredOwnerOptions.map((owner) => (
+                          <option key={owner.id} value={String(owner.id)}>{owner.name} · {owner.role.replaceAll('_', ' ')} · {owner.organization?.name ?? 'Organization unavailable'}</option>
                         ))}
                       </select>
-                    </label>
+                    </div>
                   </div>
 
                   <div>
