@@ -142,7 +142,7 @@ export default function Topbar() {
   if (pathname.includes('/add')) pageLabel = `Add ${segmentLabels[segments[segments.indexOf('add') - 1]] ?? ''}`;
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white/90 px-3 shadow-[0_12px_28px_-28px_rgba(15,23,42,0.25)] backdrop-blur-sm sm:px-5">
+    <header className="relative z-40 flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white/90 px-3 shadow-[0_12px_28px_-28px_rgba(15,23,42,0.25)] backdrop-blur-sm sm:px-5">
 
       <div className="flex min-w-0 items-center gap-1.5 text-sm">
         <span className="hidden text-slate-400 font-medium sm:inline">Enterprise Management</span>
