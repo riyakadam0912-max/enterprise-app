@@ -6,7 +6,11 @@ import {
   DelegateMock,
 } from '../../test/helpers/mocks.helper';
 import { Role } from '../common/enums/role.enum';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { AuthUser } from '../common/types/auth';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
@@ -140,6 +144,61 @@ describe('ProjectsService', () => {
           },
           select: expect.objectContaining({
             organization: { select: { id: true, name: true } },
+          }),
+        }),
+      );
+    });
+
+    it('includes sibling organizations in the authorized project family', async () => {
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      jest
+        .spyOn((service as any).organizationScopeService, 'getRelatedOrganizationIds')
+        .mockResolvedValue([10, 11, 12]);
+      jest
+        .spyOn((service as any).organizationScopeService, 'getOrganizationIds')
+        .mockResolvedValue([11]);
+      userDelegate.findMany.mockResolvedValueOnce([]);
+
+      await service.getEligibleManagers(
+        createMockAuthUser(Role.ADMIN, {
+          organizationId: 11,
+          homeOrganizationId: 11,
+        }),
+      );
+
+      expect(userDelegate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: { in: [10, 11, 12] },
+          }),
+        }),
+      );
+    });
+
+    it('requires an accessible project to scope organizationless platform admins', async () => {
+      const globalSuperAdmin = createMockAuthUser(Role.SUPER_ADMIN, {
+        organizationId: null,
+        isPlatformAdmin: true,
+      });
+
+      await expect(service.getEligibleManagers(globalSuperAdmin)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      getPrismaDelegate(mockPrisma, 'project').findFirst.mockResolvedValueOnce({
+        organizationId: 10,
+      });
+      getPrismaDelegate(mockPrisma, 'user').findMany.mockResolvedValueOnce([]);
+      jest
+        .spyOn((service as any).organizationScopeService, 'getRelatedOrganizationIds')
+        .mockResolvedValue([10, 11, 12]);
+
+      await service.getEligibleManagers(globalSuperAdmin, 77);
+
+      expect(getPrismaDelegate(mockPrisma, 'user').findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: { in: [10, 11, 12] },
           }),
         }),
       );

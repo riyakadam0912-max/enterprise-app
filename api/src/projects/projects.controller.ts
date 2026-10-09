@@ -9,6 +9,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
   UseInterceptors,
@@ -203,10 +204,14 @@ export class ProjectsController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @Get('eligible-managers')
   getEligibleManagers(
+    @Query('projectId') projectId: string | undefined,
     @Req()
     req: ProjectRequest,
   ) {
-    return this.service.getEligibleManagers(req.user);
+    return this.service.getEligibleManagers(
+      req.user,
+      projectId === undefined ? undefined : Number(projectId),
+    );
   }
 
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.EMPLOYEE)

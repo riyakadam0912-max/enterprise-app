@@ -190,8 +190,9 @@ export async function getProject(id: number): Promise<Project> {
   return apiClient<Project>(`/projects/${id}`);
 }
 
-export async function getEligibleProjectAssignees(): Promise<ProjectAssignmentUser[]> {
-  return apiClient<ProjectAssignmentUser[]>('/projects/eligible-managers');
+export async function getEligibleProjectAssignees(projectId?: number): Promise<ProjectAssignmentUser[]> {
+  const query = projectId == null ? '' : `?projectId=${projectId}`;
+  return apiClient<ProjectAssignmentUser[]>(`/projects/eligible-managers${query}`);
 }
 
 export async function createProject(payload: CreateProjectPayload): Promise<Project> {

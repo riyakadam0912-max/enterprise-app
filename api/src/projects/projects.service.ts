@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -421,6 +422,22 @@ export class ProjectsService {
   }
 
   private async getAssignableProjectOrganizationIds(
+    projectOrganizationId: number,
+    user: AuthUser,
+  ): Promise<number[]> {
+    const relatedOrganizationIds =
+      await this.organizationScopeService.getRelatedOrganizationIds(
+        projectOrganizationId,
+      );
+    const accessibleOrganizationIds =
+      await this.getProjectOrganizationIds(user);
+    if (accessibleOrganizationIds === null) return relatedOrganizationIds;
+    return relatedOrganizationIds.filter((id) =>
+      accessibleOrganizationIds.includes(id),
+    );
+  }
+
+  private async getAssignableEmployeeOrganizationIds(
     projectOrganizationId: number,
     user: AuthUser,
   ): Promise<number[]> {
@@ -989,7 +1006,7 @@ export class ProjectsService {
     }
 
     const assignableOrganizationIds =
-      await this.getAssignableProjectOrganizationIds(
+      await this.getAssignableEmployeeOrganizationIds(
         project.organizationId,
         requestingUser,
       );
@@ -1421,8 +1438,29 @@ export class ProjectsService {
     return grouped;
   }
 
-  async getEligibleManagers(user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+  async getEligibleManagers(user: AuthUser, projectId?: number) {
+    let organizationId = user.organizationId;
+    if (projectId !== undefined) {
+      if (!Number.isInteger(projectId) || projectId <= 0) {
+        throw new BadRequestException('Project ID must be a positive integer');
+      }
+      const project = await this.db.project.findFirst({
+        where: { id: projectId, ...(await this.getProjectScope(user)) },
+        select: { organizationId: true },
+      });
+      if (!project) {
+        throw new NotFoundException(`Project #${projectId} not found`);
+      }
+      organizationId = project.organizationId;
+    }
+    if (organizationId == null && !this.isPlatformAdmin(user)) {
+      throw new ForbiddenException('User has no associated organization');
+    }
+    if (organizationId == null) {
+      throw new BadRequestException(
+        'A project ID is required to scope platform-level assignment options',
+      );
+    }
     const assignableOrganizationIds =
       await this.getAssignableProjectOrganizationIds(organizationId, user);
     return this.db.user.findMany({

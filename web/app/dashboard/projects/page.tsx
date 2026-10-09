@@ -510,28 +510,12 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
       const employeesPromise = canLoadDirectoryData
         ? apiClient<Array<{ id: number; name: string; email: string | null; department: string | null; designation: string | null; organization?: { id: number; name: string } }>>('/employees')
         : Promise.resolve([] as Array<{ id: number; name: string; email: string | null; department: string | null; designation: string | null; organization?: { id: number; name: string } }>);
-      const assigneesPromise = canLoadDirectoryData
-        ? getEligibleProjectAssignees()
-        : Promise.resolve([] as ProjectAssignmentUser[]);
-
-      const [usersResult, employeesResult, assigneesResult] = await Promise.allSettled([
+      const [usersResult, employeesResult] = await Promise.allSettled([
         usersPromise,
         employeesPromise,
-        assigneesPromise,
       ]);
 
       if (cancelled) return;
-
-      if (assigneesResult.status === 'fulfilled') {
-        setManagers(assigneesResult.value.filter((candidate) => candidate.role === 'MANAGER'));
-        setOwnerOptions(assigneesResult.value);
-      } else {
-        setManagers([]);
-        setOwnerOptions([]);
-        if (canLoadDirectoryData) {
-          console.error('Failed to load project assignment options', assigneesResult.reason);
-        }
-      }
 
       if (employeesResult.status === 'fulfilled') {
         const users = usersResult.status === 'fulfilled' ? usersResult.value : [];
@@ -565,6 +549,34 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canLoadDirectoryData, initialProjectId]);
+
+  useEffect(() => {
+    if (!canLoadDirectoryData) {
+      setManagers([]);
+      setOwnerOptions([]);
+      return undefined;
+    }
+
+    let cancelled = false;
+    getEligibleProjectAssignees(selectedProjectId ?? undefined)
+      .then((candidates) => {
+        if (cancelled) return;
+        setManagers(candidates.filter((candidate) => candidate.role === 'MANAGER'));
+        setOwnerOptions(candidates);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setManagers([]);
+        setOwnerOptions([]);
+        if (selectedProjectId != null) {
+          console.error('Failed to load project assignment options', error);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canLoadDirectoryData, selectedProjectId]);
 
   useEffect(() => {
     if (!selectedProjectId) {
