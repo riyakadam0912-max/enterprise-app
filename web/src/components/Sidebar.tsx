@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight, Menu } from 'lucide-react';
-import { logout } from '@/utils/logout';
 import { useAuthSession } from '@/stores/auth-store';
+import { useAuth } from '@/providers/AuthProvider';
 import { UserAvatar } from '@/components/common/UserAvatar';
 
 // ── SVG icon components ──────────────────────────────────────────────────────
@@ -324,6 +325,8 @@ function getMatchedDropdownId(items: NavItem[], path: string): string | null {
 }
 
 export default function Sidebar({ currentPath }: SidebarProps) {
+  const router = useRouter();
+  const { logout } = useAuth();
   const session = useAuthSession();
   const role = session.role;
   const currentUser = session.user;
@@ -346,6 +349,11 @@ export default function Sidebar({ currentPath }: SidebarProps) {
   });
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  const handleLogout = async () => {
+    await logout();
+    router.replace('/login');
+  };
 
   useEffect(() => {
     window.localStorage.setItem('sidebar-collapsed', String(isCollapsed));
@@ -634,7 +642,7 @@ export default function Sidebar({ currentPath }: SidebarProps) {
             Profile
           </Link>
           <button
-            onClick={logout}
+            onClick={handleLogout}
             className="sidebar-user-link sidebar-user-link--danger w-full border-t border-slate-700/60"
           >
             <svg viewBox="0 0 24 24" className="w-4 h-4 shrink-0" {...stroke}><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
