@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { createCustomer, type Customer, type CustomerInput } from '@/api/customersApi';
 
 const initialForm: CustomerInput = {
@@ -26,6 +26,11 @@ export function CustomerCreateForm({ onCreated, onCancel }: CustomerCreateFormPr
   const [form, setForm] = useState<CustomerInput>(initialForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    nameInputRef.current?.focus();
+  }, []);
 
   function setField<K extends keyof CustomerInput>(field: K, value: CustomerInput[K]) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -36,7 +41,9 @@ export function CustomerCreateForm({ onCreated, onCancel }: CustomerCreateFormPr
     setSaving(true);
     setError(null);
     try {
-      onCreated(await createCustomer(form));
+      const created = await createCustomer(form);
+      setForm(initialForm);
+      onCreated(created);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to create customer.');
     } finally {
@@ -54,6 +61,7 @@ export function CustomerCreateForm({ onCreated, onCancel }: CustomerCreateFormPr
               required={['customerName', 'addressLine1', 'city', 'state', 'zipCode'].includes(field)}
               type={field === 'email' ? 'email' : 'text'}
               value={String(form[field] ?? '')}
+              ref={field === 'customerName' ? nameInputRef : undefined}
               onChange={(event) => setField(field, event.target.value)}
               className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-orange-400"
             />

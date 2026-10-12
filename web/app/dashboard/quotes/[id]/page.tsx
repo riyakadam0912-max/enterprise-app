@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useQuote, useUpdateQuote, useDeleteQuote, useConvertQuoteToInvoice } from '@/hooks/useQuotes';
-import { createQuotePublicLink, downloadQuotePdf } from '@/api/quotesApi';
+import { createQuotePublicLink, downloadQuotePdf, sendQuoteEmail } from '@/api/quotesApi';
 //import { Quote } from '@/api/quotesApi';
 import {
   QUOTE_STATUS_STYLES,
@@ -36,6 +36,7 @@ export default function QuoteDetailPage() {
   const { convert } = useConvertQuoteToInvoice();
   const [actionLoading, setActionLoading] = useState(false);
   const [shareMessage, setShareMessage] = useState<string | null>(null);
+  const [emailRecipient, setEmailRecipient] = useState('');
   const quoteStatus = quote ? deriveQuoteStatus(quote.status, quote.validTill) : 'DRAFT';
   const quoteAge = quote ? daysBetween(quote.createdAt) ?? 0 : 0;
   const validityDays = quote ? daysUntil(quote.validTill) : null;
@@ -104,6 +105,26 @@ export default function QuoteDetailPage() {
       router.refresh();
     } catch (cause) {
       setShareMessage(cause instanceof Error ? cause.message : 'Unable to create a public quote link.');
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleEmailPdf() {
+    if (!quote || actionLoading) return;
+    const recipient = emailRecipient.trim() || quote.customer?.email || '';
+    if (!recipient) {
+      setShareMessage('Add a customer email address before sending the PDF.');
+      return;
+    }
+    setActionLoading(true);
+    setShareMessage(null);
+    try {
+      await sendQuoteEmail(id, { recipient });
+      setShareMessage(`PDF sent to ${recipient}.`);
+      router.refresh();
+    } catch (cause) {
+      setShareMessage(cause instanceof Error ? cause.message : 'Unable to send the quote PDF.');
     } finally {
       setActionLoading(false);
     }
@@ -192,6 +213,21 @@ export default function QuoteDetailPage() {
             className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-60"
           >
             Share via WhatsApp
+          </button>
+          <input
+            type="email"
+            value={emailRecipient}
+            onChange={(event) => setEmailRecipient(event.target.value)}
+            placeholder={quote.customer?.email ?? 'Customer email'}
+            aria-label="Quote email recipient"
+            className="min-w-48 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400"
+          />
+          <button
+            onClick={handleEmailPdf}
+            disabled={actionLoading}
+            className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100 disabled:opacity-60"
+          >
+            Email PDF
           </button>
           {quote.status !== 'ACCEPTED' && (
             <button

@@ -76,7 +76,13 @@ export function CustomerPickerModal({ open, customers, selectedId, loading = fal
             )}
           </>
         ) : (
-          <div className="mt-5"><CustomerCreateForm onCancel={() => setCreating(false)} onCreated={(customer) => { setCreating(false); onSelect(customer); }} /></div>
+          <div className="mt-5">
+            <div className="mb-4 flex items-center gap-2">
+              <button type="button" onClick={() => setCreating(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Back to customers</button>
+              <p className="text-sm text-slate-500">Add a customer to this quote.</p>
+            </div>
+            <CustomerCreateForm onCancel={() => setCreating(false)} onCreated={(customer) => { setCreating(false); onSelect(customer); }} />
+          </div>
         )}
       </div>
     </div>

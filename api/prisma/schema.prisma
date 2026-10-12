@@ -1132,6 +1132,8 @@ model QuoteItem {
   name           String
   productId      Int?
   description    String?
+  unit           String         @default("Unit")
+  type           String         @default("SERVICE")
   quantity       Int
   price          Float
   discountAmount Float        @default(0)
@@ -1160,6 +1162,8 @@ model Product {
   id             Int              @id @default(autoincrement())
   name           String
   description    String?
+  unit           String           @default("Unit")
+  type           String           @default("SERVICE")
   price          Float
   sku            String?
   categoryId     Int?

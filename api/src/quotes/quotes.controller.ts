@@ -29,6 +29,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../common/types/request';
+import { SendQuoteDto } from './dto/send-quote.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiTags('CRM - Quotes')
@@ -82,6 +83,22 @@ export class QuotesController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.quotesService.createPublicLink(id, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.EMPLOYEE)
+  @Post(':id/send')
+  send(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SendQuoteDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.quotesService.sendByEmail(
+      id,
+      dto.recipient,
+      dto.subject,
+      dto.message,
+      req.user,
+    );
   }
 
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.EMPLOYEE)

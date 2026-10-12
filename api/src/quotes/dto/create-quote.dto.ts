@@ -34,6 +34,14 @@ export class QuoteItemDto {
   @IsString()
   description?: string;
 
+  @IsOptional()
+  @IsString()
+  unit?: string;
+
+  @IsOptional()
+  @IsIn(['GOODS', 'SERVICE'])
+  type?: 'GOODS' | 'SERVICE';
+
   @IsInt()
   @Min(1)
   @ApiProperty({ example: 123 })

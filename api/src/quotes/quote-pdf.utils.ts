@@ -1,4 +1,5 @@
 export type QuotePdfContext = {
+  templateKey?: QuoteTemplateKey;
   quoteNumber: string;
   quoteName?: string | null;
   quoteDate: string;
@@ -20,6 +21,24 @@ export type QuotePdfContext = {
   terms?: string | null;
 };
 
+export const QUOTE_TEMPLATE_KEYS = [
+  'minimal',
+  'professional',
+  'modern',
+  'classic',
+] as const;
+export type QuoteTemplateKey = (typeof QUOTE_TEMPLATE_KEYS)[number];
+
+const templateStyles: Record<
+  QuoteTemplateKey,
+  { headingSize: number; bodySize: number; accent: string }
+> = {
+  minimal: { headingSize: 12, bodySize: 9, accent: '0 0 0 rg' },
+  professional: { headingSize: 14, bodySize: 9, accent: '0.05 0.2 0.45 rg' },
+  modern: { headingSize: 13, bodySize: 9, accent: '0.9 0.25 0.05 rg' },
+  classic: { headingSize: 12, bodySize: 10, accent: '0.25 0.15 0.08 rg' },
+};
+
 function escapePdfText(value: string) {
   return value
     .replace(/\\/g, '\\\\')
@@ -28,6 +47,12 @@ function escapePdfText(value: string) {
 }
 
 export function buildQuotePdfBuffer(context: QuotePdfContext) {
+  const templateKey = QUOTE_TEMPLATE_KEYS.includes(
+    context.templateKey ?? 'minimal',
+  )
+    ? (context.templateKey ?? 'minimal')
+    : 'minimal';
+  const style = templateStyles[templateKey];
   const lines = [
     context.companyName,
     context.quoteName?.trim() || `Quote ${context.quoteNumber}`,
@@ -53,14 +78,14 @@ export function buildQuotePdfBuffer(context: QuotePdfContext) {
     context.terms?.trim() || 'No additional terms and conditions provided.',
   ];
 
-  const contentLines = ['0 0 0 rg'];
+  const contentLines = [style.accent];
   let y = 790;
   for (const line of lines) {
     contentLines.push(
       'BT',
       line === 'Items' || line === 'Terms & Conditions'
-        ? '/F1 12 Tf'
-        : '/F1 9 Tf',
+        ? `/F1 ${style.headingSize} Tf`
+        : `/F1 ${style.bodySize} Tf`,
     );
     contentLines.push(`50 ${y} Td`, `(${escapePdfText(line)}) Tj`, 'ET');
     y -= line === 'Items' || line === 'Terms & Conditions' ? 20 : 14;

@@ -1,4 +1,10 @@
-import { IsString, IsOptional, IsNumber, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsNumber,
+  IsBoolean,
+  IsIn,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateProductDto {
@@ -10,6 +16,14 @@ export class CreateProductDto {
   @IsString()
   @ApiPropertyOptional({ example: 'sample-description' })
   description?: string;
+
+  @IsOptional()
+  @IsString()
+  unit?: string;
+
+  @IsOptional()
+  @IsIn(['GOODS', 'SERVICE'])
+  type?: 'GOODS' | 'SERVICE';
 
   @IsNumber()
   @ApiProperty({ example: 123 })

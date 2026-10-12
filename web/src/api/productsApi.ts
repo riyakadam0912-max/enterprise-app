@@ -4,6 +4,8 @@ import type { Product } from '@/types/entities';
 export type ProductInput = {
   name: string;
   description?: string;
+  unit?: string;
+  type?: 'GOODS' | 'SERVICE';
   price: number;
   sku?: string;
   categoryId?: number;

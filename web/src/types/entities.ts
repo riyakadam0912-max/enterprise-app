@@ -8,6 +8,8 @@ export interface Product {
   id: number;
   name: string;
   description: string | null;
+  unit: string;
+  type: 'GOODS' | 'SERVICE';
   price: number;
   sku: string | null;
   categoryId: number | null;

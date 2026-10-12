@@ -3,8 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { getDeals, type Deal } from '@/api/dealsApi';
-import { getContacts, type Contact } from '@/api/contactsApi';
 import { getCustomers, type Customer } from '@/api/customersApi';
 import { getProducts } from '@/api/productsApi';
 import type { Product } from '@/types/entities';
@@ -18,6 +16,8 @@ import { ServicePickerModal } from '@/components/quotes/ServicePickerModal';
 interface ItemRow {
   name: string;
   productId?: number;
+  unit: string;
+  type: 'GOODS' | 'SERVICE';
   description?: string;
   quantity: number;
   price: number;
@@ -26,32 +26,32 @@ interface ItemRow {
 }
 
 const QUOTE_STATUSES = ['DRAFT', 'SENT', 'ACCEPTED', 'REJECTED'] as const;
+const QUOTE_TEMPLATES = [
+  { key: 'minimal', label: 'Minimal' },
+  { key: 'professional', label: 'Professional' },
+  { key: 'modern', label: 'Modern' },
+  { key: 'classic', label: 'Classic' },
+] as const;
 
 export default function AddQuotePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const presetDealId = searchParams.get('dealId') ?? '';
-  const presetContactId = searchParams.get('contactId') ?? '';
   const editId = searchParams.get('editId');
   const isEditing = Boolean(editId);
   const session = useAuthSession();
   const canCreateService = session.isSuperAdmin || session.role === 'ADMIN' || session.permissions.includes('product.create');
 
-  const [dealId, setDealId] = useState(presetDealId);
-  const [contactId, setContactId] = useState(presetContactId);
   const [customerId, setCustomerId] = useState('');
-  const [quoteName, setQuoteName] = useState('');
   const [quoteDate, setQuoteDate] = useState(new Date().toISOString().slice(0, 10));
   const [customerAddress, setCustomerAddress] = useState('');
   const [status, setStatus] = useState<(typeof QUOTE_STATUSES)[number]>('DRAFT');
+  const [templateKey, setTemplateKey] = useState<(typeof QUOTE_TEMPLATES)[number]['key']>('minimal');
   const [validTill, setValidTill] = useState('');
   const [notes, setNotes] = useState('');
   const [termsAndConditions, setTermsAndConditions] = useState('');
   const [discountAmount, setDiscountAmount] = useState(0);
   const [adjustmentAmount, setAdjustmentAmount] = useState(0);
-  const [items, setItems] = useState<ItemRow[]>([{ name: '', quantity: 1, price: 0, discountAmount: 0, taxRate: 0 }]);
-  const [deals, setDeals] = useState<Deal[]>([]);
-  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [items, setItems] = useState<ItemRow[]>([{ name: '', unit: 'Unit', type: 'SERVICE', quantity: 1, price: 0, discountAmount: 0, taxRate: 0 }]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customerModalOpen, setCustomerModalOpen] = useState(false);
@@ -66,9 +66,7 @@ export default function AddQuotePage() {
       setMetadataLoading(true);
       setMetadataError(null);
       try {
-        const [dealList, contactList, customerList, productList] = await Promise.all([getDeals(), getContacts(), getCustomers(), getProducts()]);
-        setDeals(dealList);
-        setContacts(contactList);
+        const [customerList, productList] = await Promise.all([getCustomers(), getProducts()]);
         setCustomers(customerList);
         setProducts(productList);
       } catch (error) {
@@ -86,19 +84,17 @@ export default function AddQuotePage() {
     if (!editId) return;
     getQuote(Number(editId))
       .then((quote) => {
-        setDealId(String(quote.dealId));
-        setContactId(String(quote.contactId));
         setCustomerId(quote.customerId ? String(quote.customerId) : '');
-        setQuoteName(quote.name ?? '');
         setQuoteDate((quote.quoteDate ?? quote.createdAt).slice(0, 10));
         setCustomerAddress(quote.customerAddress ?? '');
         setStatus(quote.status as (typeof QUOTE_STATUSES)[number]);
+        setTemplateKey((QUOTE_TEMPLATES.some((template) => template.key === quote.templateKey) ? quote.templateKey : 'minimal') as (typeof QUOTE_TEMPLATES)[number]['key']);
         setValidTill(quote.validTill.slice(0, 10));
         setNotes(quote.notes ?? '');
         setTermsAndConditions(quote.termsAndConditions ?? '');
         setDiscountAmount(quote.discountAmount ?? 0);
         setAdjustmentAmount(quote.adjustmentAmount ?? 0);
-        setItems(quote.items.map((item) => ({ name: item.name, productId: item.productId ?? undefined, description: item.description ?? '', quantity: item.quantity, price: item.price, discountAmount: item.discountAmount ?? 0, taxRate: item.taxRate ?? 0 })));
+        setItems(quote.items.map((item) => ({ name: item.name, productId: item.productId ?? undefined, unit: item.unit ?? 'Unit', type: item.type === 'GOODS' ? 'GOODS' : 'SERVICE', description: item.description ?? '', quantity: item.quantity, price: item.price, discountAmount: item.discountAmount ?? 0, taxRate: item.taxRate ?? 0 })));
       })
       .catch((error) => {
         reportError(error, 'Unable to load quote');
@@ -111,7 +107,7 @@ export default function AddQuotePage() {
   const total = subtotal - Number(discountAmount || 0) + taxTotal + Number(adjustmentAmount || 0);
 
   function addItem() {
-    setItems((prev) => [...prev, { name: '', quantity: 1, price: 0, discountAmount: 0, taxRate: 0 }]);
+    setItems((prev) => [...prev, { name: '', unit: 'Unit', type: 'SERVICE', quantity: 1, price: 0, discountAmount: 0, taxRate: 0 }]);
   }
 
   function removeItem(index: number) {
@@ -123,7 +119,7 @@ export default function AddQuotePage() {
   }
 
   function selectProduct(index: number, product: Product) {
-    setItems((prev) => prev.map((item, current) => current === index ? { ...item, productId: product.id, name: product.name, description: product.description ?? '', price: product.price, taxRate: product.taxRate ?? 0 } : item));
+    setItems((prev) => prev.map((item, current) => current === index ? { ...item, productId: product.id, name: product.name, unit: product.unit, type: product.type, description: product.description ?? '', price: product.price, taxRate: product.taxRate ?? 0 } : item));
     setServiceModalIndex(null);
   }
 
@@ -161,19 +157,17 @@ export default function AddQuotePage() {
     }
 
     const payload = {
-      dealId: dealId ? Number(dealId) : undefined,
-      contactId: contactId ? Number(contactId) : undefined,
       customerId: Number(customerId),
-      name: quoteName || undefined,
       quoteDate,
       customerAddress: customerAddress || undefined,
       status,
+      templateKey,
       validTill,
       notes: notes || undefined,
       termsAndConditions: termsAndConditions || undefined,
       discountAmount: Number(discountAmount),
       adjustmentAmount: Number(adjustmentAmount),
-      items: items.map((item) => ({ name: item.name.trim(), productId: item.productId, description: item.description, quantity: Number(item.quantity), price: Number(item.price), discountAmount: Number(item.discountAmount), taxRate: Number(item.taxRate) })),
+      items: items.map((item) => ({ name: item.name.trim(), productId: item.productId, unit: item.unit, type: item.type, description: item.description, quantity: Number(item.quantity), price: Number(item.price), discountAmount: Number(item.discountAmount), taxRate: Number(item.taxRate) })),
     };
 
     setLoading(true);
@@ -203,7 +197,7 @@ export default function AddQuotePage() {
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-600">Sales proposal</p>
             <h1 className="mt-1 text-2xl font-semibold text-slate-900">{isEditing ? 'Edit quote' : 'New quote'}</h1>
-            <p className="mt-1 text-sm text-slate-500">Build a proposal with a valid-until date, client and deal context, and itemized pricing.</p>
+            <p className="mt-1 text-sm text-slate-500">Build a proposal with a customer, validity date, and itemized pricing.</p>
           </div>
         </div>
       </section>
@@ -211,10 +205,6 @@ export default function AddQuotePage() {
       <form onSubmit={handleSubmit} className="space-y-6">
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <label className="space-y-2 text-sm">
-              <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Quote name</span>
-              <input value={quoteName} onChange={(event) => setQuoteName(event.target.value)} placeholder="e.g. Website redesign proposal" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" />
-            </label>
             <label className="space-y-2 text-sm">
               <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Customer</span>
               <button type="button" onClick={() => setCustomerModalOpen(true)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-left outline-none transition hover:border-orange-400 focus:border-orange-400">
@@ -226,20 +216,6 @@ export default function AddQuotePage() {
               <input type="date" value={quoteDate} onChange={(event) => setQuoteDate(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" />
             </label>
             <label className="space-y-2 text-sm">
-              <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Deal</span>
-              <select value={dealId} onChange={(event) => setDealId(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400">
-                <option value="">Select deal</option>
-                {deals.map((deal) => <option key={deal.id} value={deal.id}>{deal.title}</option>)}
-              </select>
-            </label>
-            <label className="space-y-2 text-sm">
-              <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Client</span>
-              <select value={contactId} onChange={(event) => setContactId(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400">
-                <option value="">Select contact</option>
-                {contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.contactName}{contact.company ? ` (${contact.company})` : ''}</option>)}
-              </select>
-            </label>
-            <label className="space-y-2 text-sm">
               <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Status</span>
               <select value={status} onChange={(event) => setStatus(event.target.value as (typeof QUOTE_STATUSES)[number])} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400">
                 {QUOTE_STATUSES.map((item) => <option key={item} value={item}>{item}</option>)}
@@ -248,6 +224,12 @@ export default function AddQuotePage() {
             <label className="space-y-2 text-sm">
               <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Valid until</span>
               <input type="date" value={validTill} onChange={(event) => setValidTill(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" />
+            </label>
+            <label className="space-y-2 text-sm">
+              <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">PDF template</span>
+              <select value={templateKey} onChange={(event) => setTemplateKey(event.target.value as (typeof QUOTE_TEMPLATES)[number]['key'])} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400">
+                {QUOTE_TEMPLATES.map((template) => <option key={template.key} value={template.key}>{template.label}</option>)}
+              </select>
             </label>
           </div>
 
@@ -276,19 +258,16 @@ export default function AddQuotePage() {
               <h2 className="text-sm font-semibold text-slate-700">Quote items</h2>
               <p className="text-sm text-slate-500">Itemized pricing for the proposal sent to the customer.</p>
             </div>
-            <button type="button" onClick={addItem} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-              Add line
-            </button>
+            <button type="button" onClick={addItem} aria-label="Add quote item" title="Add quote item" className="rounded-xl border border-slate-200 p-2 text-xl leading-none font-medium text-slate-700 hover:bg-slate-50">+</button>
           </div>
 
           <div className="mt-4 space-y-3">
             {items.map((item, index) => (
-              <div key={`${index}-${item.name}`} className="grid gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 md:grid-cols-[1.4fr_1.3fr_0.55fr_0.8fr_0.7fr_0.8fr_auto] md:items-end">
+              <div key={`${index}-${item.name}`} className="grid gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 md:grid-cols-[1.8fr_0.7fr_0.9fr_1fr_auto] md:items-end">
                 <label className="space-y-1 text-sm">
                   <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Item</span>
                   <button type="button" onClick={() => setServiceModalIndex(index)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left outline-none transition hover:border-orange-400 focus:border-orange-400">{item.name || 'Select service or custom item'}</button>
                 </label>
-                <label className="space-y-1 text-sm"><span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Description</span><input value={item.description ?? ''} onChange={(event) => updateItem(index, 'description', event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" /></label>
                 <label className="space-y-1 text-sm">
                   <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Quantity</span>
                   <input type="number" min="1" step="1" value={item.quantity} onChange={(event) => updateItem(index, 'quantity', Number(event.target.value))} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" />
@@ -297,13 +276,8 @@ export default function AddQuotePage() {
                   <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Rate</span>
                   <input type="number" min="0" step="0.01" value={item.price} onChange={(event) => updateItem(index, 'price', Number(event.target.value))} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" />
                 </label>
-                <label className="space-y-1 text-sm">
-                  <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Tax</span>
-                  <input type="number" min="0" step="0.01" value={item.taxRate} onChange={(event) => updateItem(index, 'taxRate', Number(event.target.value))} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" />
-                </label>
-                <label className="space-y-1 text-sm"><span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Discount</span><input type="number" min="0" step="0.01" value={item.discountAmount} onChange={(event) => updateItem(index, 'discountAmount', Number(event.target.value))} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" /></label>
                 <div className="flex items-center justify-between gap-2 md:justify-end">
-                  <div><span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Line total</span><div className="text-sm font-semibold text-slate-900">{formatInr(quoteLineTotal(item))}</div></div>
+                  <div><span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Amount</span><div className="text-sm font-semibold text-slate-900">{formatInr(quoteLineTotal(item))}</div></div>
                   <button type="button" onClick={() => removeItem(index)} aria-label="Remove item" title="Remove item" className="rounded-xl border border-slate-200 p-2 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40" disabled={items.length === 1}>
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
                   </button>

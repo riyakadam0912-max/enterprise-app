@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  Optional,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -9,12 +10,17 @@ import { CreateQuoteDto } from './dto/create-quote.dto';
 import { UpdateQuoteDto } from './dto/update-quote.dto';
 import type { AuthUser } from '../common/types/auth';
 import { Role } from '../common/enums/role.enum';
-import { buildQuotePdfBuffer } from './quote-pdf.utils';
+import {
+  buildQuotePdfBuffer,
+  QUOTE_TEMPLATE_KEYS,
+  type QuoteTemplateKey,
+} from './quote-pdf.utils';
 import {
   createPublicQuoteToken,
   publicQuoteExpiry,
   publicQuoteUrl,
 } from './quote-public-token.utils';
+import { MailService } from '../mail/mail.service';
 
 const includeRelations = {
   deal: { select: { id: true, title: true, value: true, stage: true } },
@@ -28,7 +34,10 @@ const includeRelations = {
 
 @Injectable()
 export class QuotesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly mailService?: MailService,
+  ) {}
 
   private validateOrganization(user: AuthUser): number {
     if (!user.organizationId) {
@@ -127,6 +136,8 @@ export class QuotesService {
             name: item.name,
             productId: item.productId,
             description: item.description,
+            unit: item.unit,
+            type: item.type,
             quantity: item.quantity,
             price: item.price,
             discountAmount: item.discountAmount ?? 0,
@@ -238,6 +249,8 @@ export class QuotesService {
           name: item.name,
           productId: item.productId,
           description: item.description,
+          unit: item.unit,
+          type: item.type,
           quantity: item.quantity,
           price: item.price,
           discountAmount: item.discountAmount ?? 0,
@@ -327,6 +340,52 @@ export class QuotesService {
     });
   }
 
+  async sendByEmail(
+    id: number,
+    recipient: string,
+    subject: string | undefined,
+    message: string | undefined,
+    user: AuthUser,
+  ) {
+    const quote = await this.findOne(id, user);
+    if (quote.validTill <= new Date()) {
+      throw new ForbiddenException('Quote has expired');
+    }
+    const pdf = await this.generatePdf(id, user);
+    if (!this.mailService) {
+      throw new ForbiddenException('Email delivery is not configured');
+    }
+    const text = message?.trim() || `Please find quote Q-${quote.id} attached.`;
+    const result = await this.mailService.sendEmail({
+      to: recipient,
+      subject: subject?.trim() || `Your quote Q-${quote.id}`,
+      text,
+      html: `<p>${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`,
+      attachments: [
+        {
+          filename: `quote-${quote.id}.pdf`,
+          content: pdf,
+          contentType: 'application/pdf',
+        },
+      ],
+    });
+    if (!result.success) {
+      throw new ForbiddenException(
+        result.error || 'Quote email could not be sent',
+      );
+    }
+    if (quote.status === 'DRAFT') {
+      await this.prisma.quote.update({
+        where: { id, organizationId: user.organizationId! },
+        data: { status: 'SENT' },
+      });
+      await this.prisma.quoteStatusHistory.create({
+        data: { quoteId: id, status: 'SENT', source: 'EMAIL' },
+      });
+    }
+    return { success: true, messageId: result.messageId, recipient };
+  }
+
   async convertToInvoice(id: number, userId: number, user: AuthUser) {
     const organizationId = this.validateOrganization(user);
     const quote = await this.prisma.quote.findUnique({
@@ -406,6 +465,11 @@ export class QuotesService {
       adjustment: formatAmount(quote.adjustmentAmount),
       total: formatAmount(quote.total),
       terms: quote.termsAndConditions,
+      templateKey: QUOTE_TEMPLATE_KEYS.includes(
+        quote.templateKey as QuoteTemplateKey,
+      )
+        ? (quote.templateKey as QuoteTemplateKey)
+        : 'minimal',
     });
   }
 }

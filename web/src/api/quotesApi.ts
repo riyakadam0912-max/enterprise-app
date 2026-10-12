@@ -10,6 +10,8 @@ export interface QuoteItem {
   name:     string;
   productId?: number | null;
   description?: string | null;
+  unit?: string;
+  type?: 'GOODS' | 'SERVICE';
   quantity: number;
   price:    number;
   discountAmount?: number;
@@ -73,6 +75,8 @@ export interface CreateQuotePayload {
     name:     string;
     productId?: number;
     description?: string;
+    unit?: string;
+    type?: 'GOODS' | 'SERVICE';
     quantity: number;
     price:    number;
     discountAmount?: number;
@@ -115,6 +119,13 @@ export function getQuote(id: number): Promise<Quote> {
 
 export function createQuotePublicLink(id: number): Promise<{ publicQuoteUrl: string; expiresAt: string }> {
   return apiClient(`/quotes/${id}/public-link`, { method: 'POST' });
+}
+
+export function sendQuoteEmail(id: number, data: { recipient: string; subject?: string; message?: string }): Promise<{ success: boolean; messageId?: string; recipient: string }> {
+  return apiClient(`/quotes/${id}/send`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 }
 
 export function getPublicQuote(token: string): Promise<PublicQuote> {
