@@ -8,7 +8,11 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { QUOTE_STATUSES, QuoteItemDto } from './create-quote.dto';
+import {
+  QUOTE_RATE_MODES,
+  QUOTE_STATUSES,
+  QuoteItemDto,
+} from './create-quote.dto';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateQuoteDto {
@@ -72,6 +76,36 @@ export class UpdateQuoteDto {
   @IsOptional()
   @IsNumber()
   adjustmentAmount?: number;
+
+  @IsOptional()
+  @IsIn(QUOTE_RATE_MODES)
+  discountType?: (typeof QUOTE_RATE_MODES)[number];
+
+  @IsOptional()
+  @IsNumber()
+  discountRate?: number;
+
+  @IsOptional()
+  @IsIn(QUOTE_RATE_MODES)
+  adjustmentType?: (typeof QUOTE_RATE_MODES)[number];
+
+  @IsOptional()
+  @IsNumber()
+  adjustmentRate?: number;
+
+  @IsOptional()
+  tdsEnabled?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  tdsRate?: number;
+
+  @IsOptional()
+  tcsEnabled?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  tcsRate?: number;
 
   @IsOptional()
   @IsArray()

@@ -50,7 +50,15 @@ export default function AddQuotePage() {
   const [notes, setNotes] = useState('');
   const [termsAndConditions, setTermsAndConditions] = useState('');
   const [discountAmount, setDiscountAmount] = useState(0);
+  const [discountType, setDiscountType] = useState<'AMOUNT' | 'PERCENTAGE'>('AMOUNT');
+  const [discountRate, setDiscountRate] = useState(0);
   const [adjustmentAmount, setAdjustmentAmount] = useState(0);
+  const [adjustmentType, setAdjustmentType] = useState<'AMOUNT' | 'PERCENTAGE'>('AMOUNT');
+  const [adjustmentRate, setAdjustmentRate] = useState(0);
+  const [tdsEnabled, setTdsEnabled] = useState(false);
+  const [tdsRate, setTdsRate] = useState(0);
+  const [tcsEnabled, setTcsEnabled] = useState(false);
+  const [tcsRate, setTcsRate] = useState(0);
   const [items, setItems] = useState<ItemRow[]>([{ name: '', unit: 'Unit', type: 'SERVICE', quantity: 1, price: 0, discountAmount: 0, taxRate: 0 }]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -93,7 +101,15 @@ export default function AddQuotePage() {
         setNotes(quote.notes ?? '');
         setTermsAndConditions(quote.termsAndConditions ?? '');
         setDiscountAmount(quote.discountAmount ?? 0);
+        setDiscountType(quote.discountType ?? 'AMOUNT');
+        setDiscountRate(quote.discountRate ?? 0);
         setAdjustmentAmount(quote.adjustmentAmount ?? 0);
+        setAdjustmentType(quote.adjustmentType ?? 'AMOUNT');
+        setAdjustmentRate(quote.adjustmentRate ?? 0);
+        setTdsEnabled(quote.tdsEnabled ?? false);
+        setTdsRate(quote.tdsRate ?? 0);
+        setTcsEnabled(quote.tcsEnabled ?? false);
+        setTcsRate(quote.tcsRate ?? 0);
         setItems(quote.items.map((item) => ({ name: item.name, productId: item.productId ?? undefined, unit: item.unit ?? 'Unit', type: item.type === 'GOODS' ? 'GOODS' : 'SERVICE', description: item.description ?? '', quantity: item.quantity, price: item.price, discountAmount: item.discountAmount ?? 0, taxRate: item.taxRate ?? 0 })));
       })
       .catch((error) => {
@@ -102,9 +118,16 @@ export default function AddQuotePage() {
       });
   }, [editId]);
 
-  const subtotal = useMemo(() => sumLineItems(items), [items]);
+  const grossSubtotal = useMemo(() => sumLineItems(items), [items]);
+  const lineDiscountTotal = useMemo(() => items.reduce((sum, item) => sum + Math.min(item.quantity * item.price, item.discountAmount), 0), [items]);
+  const subtotal = Math.max(0, grossSubtotal - lineDiscountTotal);
+  const quoteDiscount = discountType === 'PERCENTAGE' ? subtotal * discountRate / 100 : discountAmount;
+  const taxableSubtotal = Math.max(0, subtotal - quoteDiscount);
   const taxTotal = useMemo(() => items.reduce((sum, item) => sum + Math.max(0, item.quantity * item.price - item.discountAmount) * item.taxRate / 100, 0), [items]);
-  const total = subtotal - Number(discountAmount || 0) + taxTotal + Number(adjustmentAmount || 0);
+  const tdsAmount = tdsEnabled ? taxableSubtotal * tdsRate / 100 : 0;
+  const tcsAmount = tcsEnabled ? taxableSubtotal * tcsRate / 100 : 0;
+  const adjustmentTotal = adjustmentType === 'PERCENTAGE' ? taxableSubtotal * adjustmentRate / 100 : adjustmentAmount;
+  const total = taxableSubtotal + taxTotal + tcsAmount - tdsAmount + adjustmentTotal;
 
   function addItem() {
     setItems((prev) => [...prev, { name: '', unit: 'Unit', type: 'SERVICE', quantity: 1, price: 0, discountAmount: 0, taxRate: 0 }]);
@@ -166,7 +189,15 @@ export default function AddQuotePage() {
       notes: notes || undefined,
       termsAndConditions: termsAndConditions || undefined,
       discountAmount: Number(discountAmount),
+      discountType,
+      discountRate: Number(discountRate),
       adjustmentAmount: Number(adjustmentAmount),
+      adjustmentType,
+      adjustmentRate: Number(adjustmentRate),
+      tdsEnabled,
+      tdsRate: Number(tdsRate),
+      tcsEnabled,
+      tcsRate: Number(tcsRate),
       items: items.map((item) => ({ name: item.name.trim(), productId: item.productId, unit: item.unit, type: item.type, description: item.description, quantity: Number(item.quantity), price: Number(item.price), discountAmount: Number(item.discountAmount), taxRate: Number(item.taxRate) })),
     };
 
@@ -276,8 +307,12 @@ export default function AddQuotePage() {
                   <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Rate</span>
                   <input type="number" min="0" step="0.01" value={item.price} onChange={(event) => updateItem(index, 'price', Number(event.target.value))} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" />
                 </label>
+                <label className="space-y-1 text-sm">
+                  <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Discount</span>
+                  <input type="number" min="0" step="0.01" value={item.discountAmount} onChange={(event) => updateItem(index, 'discountAmount', Number(event.target.value))} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" />
+                </label>
                 <div className="flex items-center justify-between gap-2 md:justify-end">
-                  <div><span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Amount</span><div className="text-sm font-semibold text-slate-900">{formatInr(quoteLineTotal(item))}</div></div>
+                  <div><span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Amount</span><div className="text-sm font-semibold text-slate-900">{formatInr(Math.max(0, quoteLineTotal(item) - item.discountAmount))}</div></div>
                   <button type="button" onClick={() => removeItem(index)} aria-label="Remove item" title="Remove item" className="rounded-xl border border-slate-200 p-2 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40" disabled={items.length === 1}>
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
                   </button>
@@ -287,8 +322,11 @@ export default function AddQuotePage() {
           </div>
 
           <div className="mt-4 flex flex-col items-end gap-3">
-            <label className="flex items-center gap-3 text-sm text-slate-600">Discount <input type="number" min="0" step="0.01" value={discountAmount} onChange={(event) => setDiscountAmount(Number(event.target.value))} className="w-32 rounded-xl border border-slate-200 px-3 py-2 text-right outline-none focus:border-orange-400" /></label>
-            <label className="flex items-center gap-3 text-sm text-slate-600">Adjustment <input type="number" step="0.01" value={adjustmentAmount} onChange={(event) => setAdjustmentAmount(Number(event.target.value))} className="w-32 rounded-xl border border-slate-200 px-3 py-2 text-right outline-none focus:border-orange-400" /></label>
+            <label className="flex items-center gap-3 text-sm text-slate-600">Discount <select value={discountType} onChange={(event) => setDiscountType(event.target.value as typeof discountType)} className="rounded-xl border border-slate-200 px-2 py-2"><option value="AMOUNT">Amount</option><option value="PERCENTAGE">%</option></select><input type="number" min="0" max={discountType === 'PERCENTAGE' ? 100 : undefined} step="0.01" value={discountType === 'PERCENTAGE' ? discountRate : discountAmount} onChange={(event) => discountType === 'PERCENTAGE' ? setDiscountRate(Number(event.target.value)) : setDiscountAmount(Number(event.target.value))} className="w-28 rounded-xl border border-slate-200 px-3 py-2 text-right outline-none focus:border-orange-400" /></label>
+            <label className="flex items-center gap-3 text-sm text-slate-600">TDS <input type="checkbox" checked={tdsEnabled} onChange={(event) => setTdsEnabled(event.target.checked)} /><input disabled={!tdsEnabled} type="number" min="0" max="100" step="0.01" value={tdsRate} onChange={(event) => setTdsRate(Number(event.target.value))} className="w-24 rounded-xl border border-slate-200 px-3 py-2 text-right outline-none focus:border-orange-400 disabled:bg-slate-100" />%</label>
+            <label className="flex items-center gap-3 text-sm text-slate-600">TCS <input type="checkbox" checked={tcsEnabled} onChange={(event) => setTcsEnabled(event.target.checked)} /><input disabled={!tcsEnabled} type="number" min="0" max="100" step="0.01" value={tcsRate} onChange={(event) => setTcsRate(Number(event.target.value))} className="w-24 rounded-xl border border-slate-200 px-3 py-2 text-right outline-none focus:border-orange-400 disabled:bg-slate-100" />%</label>
+            <label className="flex items-center gap-3 text-sm text-slate-600">Adjustment <select value={adjustmentType} onChange={(event) => setAdjustmentType(event.target.value as typeof adjustmentType)} className="rounded-xl border border-slate-200 px-2 py-2"><option value="AMOUNT">Amount</option><option value="PERCENTAGE">%</option></select><input type="number" min="0" max={adjustmentType === 'PERCENTAGE' ? 100 : undefined} step="0.01" value={adjustmentType === 'PERCENTAGE' ? adjustmentRate : adjustmentAmount} onChange={(event) => adjustmentType === 'PERCENTAGE' ? setAdjustmentRate(Number(event.target.value)) : setAdjustmentAmount(Number(event.target.value))} className="w-28 rounded-xl border border-slate-200 px-3 py-2 text-right outline-none focus:border-orange-400" /></label>
+            <div className="text-sm text-slate-500">Tax {formatInr(taxTotal)} · TDS -{formatInr(tdsAmount)} · TCS {formatInr(tcsAmount)}</div>
             <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-right">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Calculated total</p>
               <p className="mt-1 text-2xl font-semibold text-slate-900">{formatInr(total)}</p>

@@ -8,6 +8,8 @@ import {
   ValidateNested,
   IsInt,
   Min,
+  Max,
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -20,6 +22,7 @@ export const QUOTE_STATUSES = [
   'CONVERTED',
   'EXPIRED',
 ] as const;
+export const QUOTE_RATE_MODES = ['AMOUNT', 'PERCENTAGE'] as const;
 
 export class QuoteItemDto {
   @IsString()
@@ -125,6 +128,45 @@ export class CreateQuoteDto {
   @IsOptional()
   @IsNumber()
   adjustmentAmount?: number;
+
+  @IsOptional()
+  @IsIn(QUOTE_RATE_MODES)
+  discountType?: (typeof QUOTE_RATE_MODES)[number];
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  discountRate?: number;
+
+  @IsOptional()
+  @IsIn(QUOTE_RATE_MODES)
+  adjustmentType?: (typeof QUOTE_RATE_MODES)[number];
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  adjustmentRate?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  tdsEnabled?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  tdsRate?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  tcsEnabled?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  tcsRate?: number;
 
   @IsArray()
   @ValidateNested({ each: true })

@@ -21,6 +21,7 @@ import {
   publicQuoteUrl,
 } from './quote-public-token.utils';
 import { MailService } from '../mail/mail.service';
+import { calculateQuoteTotals } from './quote-calculations';
 
 const includeRelations = {
   deal: { select: { id: true, title: true, value: true, stage: true } },
@@ -88,29 +89,19 @@ export class QuotesService {
       }
     }
 
-    const subtotal = dto.items.reduce(
-      (sum, item) =>
-        sum + item.quantity * item.price - (item.discountAmount ?? 0),
-      0,
-    );
-    const taxAmount =
-      dto.taxAmount ??
-      dto.items.reduce(
-        (sum, item) =>
-          sum +
-          (Math.max(
-            0,
-            item.quantity * item.price - (item.discountAmount ?? 0),
-          ) *
-            (item.taxRate ?? 0)) /
-            100,
-        0,
-      );
-    const total =
-      subtotal -
-      (dto.discountAmount ?? 0) +
-      taxAmount +
-      (dto.adjustmentAmount ?? 0);
+    const totals = calculateQuoteTotals(dto.items, {
+      discountAmount: dto.discountAmount,
+      discountRate: dto.discountRate,
+      discountType: dto.discountType,
+      adjustmentAmount: dto.adjustmentAmount,
+      adjustmentRate: dto.adjustmentRate,
+      adjustmentType: dto.adjustmentType,
+      tdsEnabled: dto.tdsEnabled,
+      tdsRate: dto.tdsRate,
+      tcsEnabled: dto.tcsEnabled,
+      tcsRate: dto.tcsRate,
+      explicitTaxAmount: dto.taxAmount,
+    });
 
     const quote = await this.prisma.quote.create({
       data: {
@@ -121,11 +112,21 @@ export class QuotesService {
         name: dto.name,
         quoteDate: dto.quoteDate ? new Date(dto.quoteDate) : undefined,
         customerAddress: dto.customerAddress,
-        total,
-        subtotal,
-        discountAmount: dto.discountAmount ?? 0,
-        taxAmount,
-        adjustmentAmount: dto.adjustmentAmount ?? 0,
+        total: totals.total,
+        subtotal: totals.subtotal,
+        discountAmount: totals.discountAmount,
+        taxAmount: totals.taxAmount,
+        adjustmentAmount: totals.adjustmentAmount,
+        discountType: dto.discountType ?? 'AMOUNT',
+        discountRate: dto.discountRate ?? 0,
+        adjustmentType: dto.adjustmentType ?? 'AMOUNT',
+        adjustmentRate: dto.adjustmentRate ?? 0,
+        tdsEnabled: dto.tdsEnabled ?? false,
+        tdsRate: dto.tdsRate ?? 0,
+        tdsAmount: totals.tdsAmount,
+        tcsEnabled: dto.tcsEnabled ?? false,
+        tcsRate: dto.tcsRate ?? 0,
+        tcsAmount: totals.tcsAmount,
         status: dto.status ?? 'DRAFT',
         validTill: new Date(dto.validTill),
         notes: dto.notes,
@@ -216,33 +217,34 @@ export class QuotesService {
             throw new NotFoundException(`Product #${item.productId} not found`);
         }
       }
-      const subtotal = dto.items.reduce(
-        (sum, item) =>
-          sum + item.quantity * item.price - (item.discountAmount ?? 0),
-        0,
-      );
-      const taxAmount =
-        dto.taxAmount ??
-        dto.items.reduce(
-          (sum, item) =>
-            sum +
-            (Math.max(
-              0,
-              item.quantity * item.price - (item.discountAmount ?? 0),
-            ) *
-              (item.taxRate ?? 0)) /
-              100,
-          0,
-        );
-      data.subtotal = subtotal;
-      data.discountAmount = dto.discountAmount ?? 0;
-      data.taxAmount = taxAmount;
-      data.adjustmentAmount = dto.adjustmentAmount ?? 0;
-      data.total =
-        subtotal -
-        (dto.discountAmount ?? 0) +
-        taxAmount +
-        (dto.adjustmentAmount ?? 0);
+      const totals = calculateQuoteTotals(dto.items, {
+        discountAmount: dto.discountAmount,
+        discountRate: dto.discountRate,
+        discountType: dto.discountType,
+        adjustmentAmount: dto.adjustmentAmount,
+        adjustmentRate: dto.adjustmentRate,
+        adjustmentType: dto.adjustmentType,
+        tdsEnabled: dto.tdsEnabled,
+        tdsRate: dto.tdsRate,
+        tcsEnabled: dto.tcsEnabled,
+        tcsRate: dto.tcsRate,
+        explicitTaxAmount: dto.taxAmount,
+      });
+      data.subtotal = totals.subtotal;
+      data.discountAmount = totals.discountAmount;
+      data.taxAmount = totals.taxAmount;
+      data.adjustmentAmount = totals.adjustmentAmount;
+      data.total = totals.total;
+      data.discountType = dto.discountType ?? 'AMOUNT';
+      data.discountRate = dto.discountRate ?? 0;
+      data.adjustmentType = dto.adjustmentType ?? 'AMOUNT';
+      data.adjustmentRate = dto.adjustmentRate ?? 0;
+      data.tdsEnabled = dto.tdsEnabled ?? false;
+      data.tdsRate = dto.tdsRate ?? 0;
+      data.tdsAmount = totals.tdsAmount;
+      data.tcsEnabled = dto.tcsEnabled ?? false;
+      data.tcsRate = dto.tcsRate ?? 0;
+      data.tcsAmount = totals.tcsAmount;
       data.items = {
         deleteMany: {},
         create: dto.items.map((item) => ({
@@ -463,6 +465,8 @@ export class QuotesService {
       discount: formatAmount(quote.discountAmount),
       tax: formatAmount(quote.taxAmount),
       adjustment: formatAmount(quote.adjustmentAmount),
+      tds: quote.tdsEnabled ? formatAmount(quote.tdsAmount) : undefined,
+      tcs: quote.tcsEnabled ? formatAmount(quote.tcsAmount) : undefined,
       total: formatAmount(quote.total),
       terms: quote.termsAndConditions,
       templateKey: QUOTE_TEMPLATE_KEYS.includes(

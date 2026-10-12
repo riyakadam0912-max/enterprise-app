@@ -17,6 +17,8 @@ export type QuotePdfContext = {
   discount: string;
   tax: string;
   adjustment: string;
+  tds?: string;
+  tcs?: string;
   total: string;
   terms?: string | null;
 };
@@ -72,6 +74,8 @@ export function buildQuotePdfBuffer(context: QuotePdfContext) {
     `Discount: ${context.discount}`,
     `Tax: ${context.tax}`,
     `Adjustment: ${context.adjustment}`,
+    context.tds ? `TDS: ${context.tds}` : '',
+    context.tcs ? `TCS: ${context.tcs}` : '',
     `Total: ${context.total}`,
     '',
     'Terms & Conditions',

@@ -1081,6 +1081,16 @@ model Quote {
   discountAmount Float        @default(0)
   taxAmount      Float        @default(0)
   adjustmentAmount Float      @default(0)
+  discountType     String     @default("AMOUNT")
+  discountRate     Float      @default(0)
+  adjustmentType   String     @default("AMOUNT")
+  adjustmentRate   Float      @default(0)
+  tdsEnabled       Boolean    @default(false)
+  tdsRate          Float      @default(0)
+  tdsAmount        Float      @default(0)
+  tcsEnabled       Boolean    @default(false)
+  tcsRate          Float      @default(0)
+  tcsAmount        Float      @default(0)
   status         String       @default("DRAFT")
   validTill      DateTime
   notes          String?

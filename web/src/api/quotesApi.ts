@@ -31,6 +31,16 @@ export interface Quote {
   discountAmount?: number;
   taxAmount?: number;
   adjustmentAmount?: number;
+  discountType?: 'AMOUNT' | 'PERCENTAGE';
+  discountRate?: number;
+  adjustmentType?: 'AMOUNT' | 'PERCENTAGE';
+  adjustmentRate?: number;
+  tdsEnabled?: boolean;
+  tdsRate?: number;
+  tdsAmount?: number;
+  tcsEnabled?: boolean;
+  tcsRate?: number;
+  tcsAmount?: number;
   status:    QuoteStatus;
   validTill: string;
   notes:     string | null;
@@ -71,6 +81,14 @@ export interface CreateQuotePayload {
   discountAmount?: number;
   taxAmount?: number;
   adjustmentAmount?: number;
+  discountType?: 'AMOUNT' | 'PERCENTAGE';
+  discountRate?: number;
+  adjustmentType?: 'AMOUNT' | 'PERCENTAGE';
+  adjustmentRate?: number;
+  tdsEnabled?: boolean;
+  tdsRate?: number;
+  tcsEnabled?: boolean;
+  tcsRate?: number;
   items: {
     name:     string;
     productId?: number;
@@ -98,6 +116,12 @@ export interface PublicQuote {
   discountAmount: number;
   taxAmount: number;
   adjustmentAmount: number;
+  tdsEnabled: boolean;
+  tdsRate: number;
+  tdsAmount: number;
+  tcsEnabled: boolean;
+  tcsRate: number;
+  tcsAmount: number;
   status: string;
   termsAndConditions: string | null;
   customer: { customerName: string; email: string | null; phoneNumber: string | null; address: string } | null;
