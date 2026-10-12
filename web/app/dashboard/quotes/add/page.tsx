@@ -5,12 +5,15 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getDeals, type Deal } from '@/api/dealsApi';
 import { getContacts, type Contact } from '@/api/contactsApi';
-import { createCustomer, getCustomers, type Customer, type CustomerInput } from '@/api/customersApi';
+import { getCustomers, type Customer } from '@/api/customersApi';
 import { getProducts } from '@/api/productsApi';
 import type { Product } from '@/types/entities';
 import { createQuote, getQuote, updateQuote } from '@/api/quotesApi';
 import { reportError } from '@/lib/error-handling';
 import { formatInr, quoteLineTotal, sumLineItems } from '@/utils/finance';
+import { useAuthSession } from '@/stores/auth-store';
+import { CustomerPickerModal } from '@/components/quotes/CustomerPickerModal';
+import { ServicePickerModal } from '@/components/quotes/ServicePickerModal';
 
 interface ItemRow {
   name: string;
@@ -31,6 +34,8 @@ export default function AddQuotePage() {
   const presetContactId = searchParams.get('contactId') ?? '';
   const editId = searchParams.get('editId');
   const isEditing = Boolean(editId);
+  const session = useAuthSession();
+  const canCreateService = session.isSuperAdmin || session.role === 'ADMIN' || session.permissions.includes('product.create');
 
   const [dealId, setDealId] = useState(presetDealId);
   const [contactId, setContactId] = useState(presetContactId);
@@ -50,12 +55,16 @@ export default function AddQuotePage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customerModalOpen, setCustomerModalOpen] = useState(false);
-  const [newCustomer, setNewCustomer] = useState<Partial<CustomerInput>>({ customerType: 'BUSINESS', country: 'India' });
+  const [serviceModalIndex, setServiceModalIndex] = useState<number | null>(null);
+  const [metadataLoading, setMetadataLoading] = useState(true);
+  const [metadataError, setMetadataError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadMeta() {
+      setMetadataLoading(true);
+      setMetadataError(null);
       try {
         const [dealList, contactList, customerList, productList] = await Promise.all([getDeals(), getContacts(), getCustomers(), getProducts()]);
         setDeals(dealList);
@@ -64,6 +73,9 @@ export default function AddQuotePage() {
         setProducts(productList);
       } catch (error) {
         reportError(error, 'Unable to load quote metadata');
+        setMetadataError('Unable to load customers and services.');
+      } finally {
+        setMetadataLoading(false);
       }
     }
 
@@ -110,21 +122,28 @@ export default function AddQuotePage() {
     setItems((prev) => prev.map((item, current) => (current === index ? { ...item, [field]: value } : item)));
   }
 
-  function selectProduct(index: number, productId: string) {
-    const product = products.find((item) => item.id === Number(productId));
-    if (!product) return updateItem(index, 'productId', 0);
+  function selectProduct(index: number, product: Product) {
     setItems((prev) => prev.map((item, current) => current === index ? { ...item, productId: product.id, name: product.name, description: product.description ?? '', price: product.price, taxRate: product.taxRate ?? 0 } : item));
+    setServiceModalIndex(null);
   }
 
-  async function handleCreateCustomer(event: React.FormEvent) {
-    event.preventDefault();
-    if (!newCustomer.customerName || !newCustomer.addressLine1 || !newCustomer.city || !newCustomer.state || !newCustomer.country || !newCustomer.zipCode) return;
-    const created = await createCustomer(newCustomer as CustomerInput);
-    setCustomers((prev) => [...prev, created]);
-    setCustomerId(String(created.id));
-    setCustomerAddress([created.addressLine1, created.addressLine2, created.city, created.state, created.zipCode].filter(Boolean).join(', '));
+  function selectCustomer(customer: Customer) {
+    const address = [customer.addressLine1, customer.addressLine2, customer.city, customer.state, customer.zipCode].filter(Boolean).join(', ');
+    setCustomers((prev) => prev.some((item) => item.id === customer.id) ? prev : [...prev, customer]);
+    setCustomerId(String(customer.id));
+    setCustomerAddress(address);
     setCustomerModalOpen(false);
-    setNewCustomer({ customerType: 'BUSINESS', country: 'India' });
+  }
+
+  function addCustomItem() {
+    if (serviceModalIndex === null) return;
+    setItems((prev) => prev.map((item, current) => current === serviceModalIndex ? { ...item, productId: undefined } : item));
+    setServiceModalIndex(null);
+  }
+
+  function handleCreatedService(product: Product) {
+    setProducts((prev) => [...prev, product]);
+    if (serviceModalIndex !== null) selectProduct(serviceModalIndex, product);
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -198,9 +217,9 @@ export default function AddQuotePage() {
             </label>
             <label className="space-y-2 text-sm">
               <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Customer</span>
-              <div className="flex gap-2"><select value={customerId} onChange={(event) => { setCustomerId(event.target.value); const customer = customers.find((item) => item.id === Number(event.target.value)); if (customer) setCustomerAddress([customer.addressLine1, customer.addressLine2, customer.city, customer.state, customer.zipCode].filter(Boolean).join(', ')); }} className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400">
-                <option value="">Select customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.customerName}</option>)}
-              </select><button type="button" onClick={() => setCustomerModalOpen(true)} className="rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-600 hover:bg-slate-50" title="Create customer">+</button></div>
+              <button type="button" onClick={() => setCustomerModalOpen(true)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-left outline-none transition hover:border-orange-400 focus:border-orange-400">
+                {customers.find((customer) => String(customer.id) === customerId)?.customerName ?? 'Select customer'}
+              </button>
             </label>
             <label className="space-y-2 text-sm">
               <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Quote date</span>
@@ -248,6 +267,7 @@ export default function AddQuotePage() {
           </label>
 
           {error ? <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600">{error}</div> : null}
+          {metadataError ? <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">{metadataError}</div> : null}
         </section>
 
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -263,17 +283,14 @@ export default function AddQuotePage() {
 
           <div className="mt-4 space-y-3">
             {items.map((item, index) => (
-              <div key={`${index}-${item.name}`} className="grid gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 md:grid-cols-[1.8fr_0.6fr_0.8fr_auto] md:items-end">
+              <div key={`${index}-${item.name}`} className="grid gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 md:grid-cols-[1.4fr_1.3fr_0.55fr_0.8fr_0.7fr_0.8fr_auto] md:items-end">
                 <label className="space-y-1 text-sm">
                   <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Item</span>
-                  <select value={item.productId ?? ''} onChange={(event) => selectProduct(index, event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400">
-                    <option value="">Select service</option>
-                    {products.filter((product) => product.isActive).map((product) => <option key={product.id} value={product.id}>{product.name} · {formatInr(product.price)}</option>)}
-                  </select>
-                  <input value={item.name} onChange={(event) => updateItem(index, 'name', event.target.value)} placeholder="Or enter a custom item" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" />
+                  <button type="button" onClick={() => setServiceModalIndex(index)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left outline-none transition hover:border-orange-400 focus:border-orange-400">{item.name || 'Select service or custom item'}</button>
                 </label>
+                <label className="space-y-1 text-sm"><span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Description</span><input value={item.description ?? ''} onChange={(event) => updateItem(index, 'description', event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" /></label>
                 <label className="space-y-1 text-sm">
-                  <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Qty</span>
+                  <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Quantity</span>
                   <input type="number" min="1" step="1" value={item.quantity} onChange={(event) => updateItem(index, 'quantity', Number(event.target.value))} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" />
                 </label>
                 <label className="space-y-1 text-sm">
@@ -281,11 +298,12 @@ export default function AddQuotePage() {
                   <input type="number" min="0" step="0.01" value={item.price} onChange={(event) => updateItem(index, 'price', Number(event.target.value))} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" />
                 </label>
                 <label className="space-y-1 text-sm">
-                  <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Tax %</span>
+                  <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Tax</span>
                   <input type="number" min="0" step="0.01" value={item.taxRate} onChange={(event) => updateItem(index, 'taxRate', Number(event.target.value))} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" />
                 </label>
+                <label className="space-y-1 text-sm"><span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Discount</span><input type="number" min="0" step="0.01" value={item.discountAmount} onChange={(event) => updateItem(index, 'discountAmount', Number(event.target.value))} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" /></label>
                 <div className="flex items-center justify-between gap-2 md:justify-end">
-                  <div className="text-sm font-semibold text-slate-900">{formatInr(quoteLineTotal(item))}</div>
+                  <div><span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Line total</span><div className="text-sm font-semibold text-slate-900">{formatInr(quoteLineTotal(item))}</div></div>
                   <button type="button" onClick={() => removeItem(index)} aria-label="Remove item" title="Remove item" className="rounded-xl border border-slate-200 p-2 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40" disabled={items.length === 1}>
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
                   </button>
@@ -313,15 +331,8 @@ export default function AddQuotePage() {
           </button>
         </div>
       </form>
-      {customerModalOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 p-4" role="dialog" aria-modal="true" aria-label="Create customer">
-        <form onSubmit={handleCreateCustomer} className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
-          <div className="flex items-start justify-between"><div><h2 className="text-lg font-semibold text-slate-900">Create customer</h2><p className="mt-1 text-sm text-slate-500">Save a customer and use it in this quote.</p></div><button type="button" onClick={() => setCustomerModalOpen(false)} className="text-xl text-slate-400" aria-label="Close">×</button></div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            {([['customerName', 'Customer name'], ['addressLine1', 'Address'], ['city', 'City'], ['state', 'State'], ['zipCode', 'Postal code'], ['phoneNumber', 'Phone']] as const).map(([field, label]) => <label key={field} className="space-y-1 text-sm"><span className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span><input required={['customerName', 'addressLine1', 'city', 'state', 'zipCode'].includes(field)} value={String(newCustomer[field] ?? '')} onChange={(event) => setNewCustomer((prev) => ({ ...prev, [field]: event.target.value }))} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-orange-400" /></label>)}
-          </div>
-          <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setCustomerModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600">Cancel</button><button type="submit" className="rounded-xl bg-orange-500 px-4 py-2 text-sm font-medium text-white">Create customer</button></div>
-        </form>
-      </div>}
+      <CustomerPickerModal open={customerModalOpen} customers={customers} selectedId={customerId ? Number(customerId) : undefined} loading={metadataLoading} error={metadataError} onClose={() => setCustomerModalOpen(false)} onSelect={selectCustomer} />
+      <ServicePickerModal open={serviceModalIndex !== null} products={products} selectedId={serviceModalIndex === null ? undefined : items[serviceModalIndex]?.productId} canCreate={canCreateService} onClose={() => setServiceModalIndex(null)} onSelect={handleCreatedService} onCustom={addCustomItem} />
     </div>
   );
 }

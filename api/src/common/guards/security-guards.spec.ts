@@ -12,6 +12,8 @@ import { ROLES_KEY } from '../decorators/roles.decorator';
 import { LeadsController } from '../../leads/leads.controller';
 import { DealsController } from '../../deals/deals.controller';
 import { QuotesController } from '../../quotes/quotes.controller';
+import { ProductsController } from '../../products/products.controller';
+import { REQUIRE_PERMISSIONS_KEY } from '../decorators/require-permissions.decorator';
 
 function contextWithUser(user?: Record<string, unknown>): ExecutionContext {
   return {
@@ -76,5 +78,26 @@ describe('authorization guards', () => {
     expect(
       Reflect.getMetadata(ROLES_KEY, QuotesController.prototype.findAll),
     ).toEqual(expect.arrayContaining([Role.MANAGER]));
+  });
+
+  it('protects product catalog mutations with product permissions', () => {
+    expect(
+      Reflect.getMetadata(
+        REQUIRE_PERMISSIONS_KEY,
+        ProductsController.prototype.create,
+      ),
+    ).toEqual([Permission.PRODUCT_CREATE]);
+    expect(
+      Reflect.getMetadata(
+        REQUIRE_PERMISSIONS_KEY,
+        ProductsController.prototype.update,
+      ),
+    ).toEqual([Permission.PRODUCT_UPDATE]);
+    expect(
+      Reflect.getMetadata(
+        REQUIRE_PERMISSIONS_KEY,
+        ProductsController.prototype.remove,
+      ),
+    ).toEqual([Permission.PRODUCT_DELETE]);
   });
 });

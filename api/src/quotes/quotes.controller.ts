@@ -11,7 +11,9 @@ import {
   ParseIntPipe,
   HttpCode,
   HttpStatus,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -55,6 +57,31 @@ export class QuotesController {
   @Get()
   findAll(@Req() req: AuthenticatedRequest) {
     return this.quotesService.findAll(req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.EMPLOYEE)
+  @Get(':id/pdf')
+  async pdf(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+    @Res() response: Response,
+  ) {
+    const buffer = await this.quotesService.generatePdf(id, req.user);
+    response.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="quote-${id}.pdf"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    response.end(buffer);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.EMPLOYEE)
+  @Post(':id/public-link')
+  createPublicLink(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.quotesService.createPublicLink(id, req.user);
   }
 
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.EMPLOYEE)

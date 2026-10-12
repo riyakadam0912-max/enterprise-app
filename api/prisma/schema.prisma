@@ -1095,8 +1095,35 @@ model Quote {
   deal           Deal?        @relation(fields: [dealId], references: [id])
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   items          QuoteItem[]
+  publicLink     QuotePublicLink?
+  statusHistory  QuoteStatusHistory[]
 
   @@index([organizationId])
+}
+
+model QuotePublicLink {
+  id          Int       @id @default(autoincrement())
+  quoteId     Int       @unique
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  lastAccessedAt DateTime?
+  quote       Quote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
+
+model QuoteStatusHistory {
+  id        Int      @id @default(autoincrement())
+  quoteId   Int
+  status    String
+  source    String   @default("SYSTEM")
+  comment   String?
+  createdAt DateTime @default(now())
+  quote     Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId, createdAt])
 }
 
 model QuoteItem {

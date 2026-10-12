@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient';
+import { axiosClient } from './axiosClient';
 import type { QuoteStatus } from '@/utils/finance';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -35,6 +36,18 @@ export interface Quote {
   templateKey?: string;
   deal:      { id: number; title: string; value: number; stage: string } | null;
   contact:   { id: number; contactName: string; email: string | null; company: string | null } | null;
+  customer?: {
+    id: number;
+    customerName: string;
+    email: string | null;
+    phoneNumber: string | null;
+    addressLine1: string;
+    addressLine2: string | null;
+    city: string;
+    state: string;
+    country: string;
+    zipCode: string;
+  } | null;
   items:     QuoteItem[];
   statusHistory?: Array<{ status: QuoteStatus | string; at: string; note?: string | null }>;
   createdAt: string;
@@ -69,6 +82,27 @@ export interface CreateQuotePayload {
 
 export type UpdateQuotePayload = Partial<CreateQuotePayload>;
 
+export interface PublicQuote {
+  id: number;
+  quoteNumber: string;
+  name: string | null;
+  quoteDate: string;
+  validTill: string;
+  customerAddress: string | null;
+  total: number;
+  subtotal: number;
+  discountAmount: number;
+  taxAmount: number;
+  adjustmentAmount: number;
+  status: string;
+  termsAndConditions: string | null;
+  customer: { customerName: string; email: string | null; phoneNumber: string | null; address: string } | null;
+  items: Array<{ name: string; description: string | null; quantity: number; price: number; discountAmount: number; taxRate: number | null }>;
+  company: { name: string; logoUrl: string | null; currency: string };
+  statusHistory: Array<{ status: string; source: string; comment: string | null; createdAt: string }>;
+  linkExpiresAt: string;
+}
+
 // ── API functions ─────────────────────────────────────────────────────────────
 
 export function getQuotes(): Promise<Quote[]> {
@@ -77,6 +111,21 @@ export function getQuotes(): Promise<Quote[]> {
 
 export function getQuote(id: number): Promise<Quote> {
   return apiClient<Quote>(`/quotes/${id}`);
+}
+
+export function createQuotePublicLink(id: number): Promise<{ publicQuoteUrl: string; expiresAt: string }> {
+  return apiClient(`/quotes/${id}/public-link`, { method: 'POST' });
+}
+
+export function getPublicQuote(token: string): Promise<PublicQuote> {
+  return apiClient<PublicQuote>(`/public/quotes/${encodeURIComponent(token)}`);
+}
+
+export function decidePublicQuote(token: string, decision: 'accept' | 'reject', comment?: string): Promise<PublicQuote> {
+  return apiClient<PublicQuote>(`/public/quotes/${encodeURIComponent(token)}/${decision}`, {
+    method: 'POST',
+    body: JSON.stringify({ comment: comment?.trim() || undefined }),
+  });
 }
 
 export function createQuote(data: CreateQuotePayload): Promise<Quote> {
@@ -101,4 +150,11 @@ export function convertQuoteToInvoice(id: number): Promise<{ id: number; invoice
   return apiClient<{ id: number; invoiceNo: string }>(`/quotes/${id}/convert-to-invoice`, {
     method: 'POST',
   });
+}
+
+export async function downloadQuotePdf(id: number): Promise<Blob> {
+  const response = await axiosClient.get<Blob>(`/quotes/${id}/pdf`, {
+    responseType: 'blob',
+  });
+  return response.data;
 }

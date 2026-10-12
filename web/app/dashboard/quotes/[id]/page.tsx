@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useQuote, useUpdateQuote, useDeleteQuote, useConvertQuoteToInvoice } from '@/hooks/useQuotes';
+import { createQuotePublicLink, downloadQuotePdf } from '@/api/quotesApi';
 //import { Quote } from '@/api/quotesApi';
 import {
   QUOTE_STATUS_STYLES,
@@ -34,10 +35,12 @@ export default function QuoteDetailPage() {
   const { remove }  = useDeleteQuote();
   const { convert } = useConvertQuoteToInvoice();
   const [actionLoading, setActionLoading] = useState(false);
+  const [shareMessage, setShareMessage] = useState<string | null>(null);
   const quoteStatus = quote ? deriveQuoteStatus(quote.status, quote.validTill) : 'DRAFT';
   const quoteAge = quote ? daysBetween(quote.createdAt) ?? 0 : 0;
   const validityDays = quote ? daysUntil(quote.validTill) : null;
-  const lineTotal = quote ? quote.items.reduce((sum, item) => sum + quoteLineTotal(item), 0) : 0;
+  const lineTotal = quote ? quote.items.reduce((sum, item) => sum + quoteLineTotal(item) - (item.discountAmount ?? 0), 0) : 0;
+  const taxTotal = quote ? quote.items.reduce((sum, item) => sum + Math.max(0, quoteLineTotal(item) - (item.discountAmount ?? 0)) * (item.taxRate ?? 0) / 100, 0) : 0;
 
   async function handleSend() {
     if (!quote || actionLoading) return;
@@ -72,6 +75,40 @@ export default function QuoteDetailPage() {
     }
   }
 
+  async function handleDownloadPdf() {
+    if (actionLoading) return;
+    setActionLoading(true);
+    try {
+      const blob = await downloadQuotePdf(id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `quote-${id}.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleWhatsAppShare() {
+    if (!quote || actionLoading) return;
+    setActionLoading(true);
+    setShareMessage(null);
+    try {
+      const { publicQuoteUrl } = await createQuotePublicLink(id);
+      const message = `Hello ${quote.customer?.customerName ?? 'there'},\n\nYour quote Q-${quote.id} for ${formatInr(quote.total)} is ready.\n\nView and respond to your quote:\n${publicQuoteUrl}`;
+      const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+      const popup = window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+      setShareMessage(popup ? 'WhatsApp share opened with a secure quote link.' : 'Your browser blocked the WhatsApp window. Please allow popups and try again.');
+      router.refresh();
+    } catch (cause) {
+      setShareMessage(cause instanceof Error ? cause.message : 'Unable to create a public quote link.');
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   if (loading) return <div className="p-6 text-sm text-slate-400">Loading quote…</div>;
   if (error || !quote) return <div className="p-6 text-sm text-red-500">{error ?? 'Quote not found'}</div>;
 
@@ -90,7 +127,7 @@ export default function QuoteDetailPage() {
             </Link>
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-semibold text-slate-900">Quote #{quote.id}</h1>
+                <h1 className="text-2xl font-semibold text-slate-900">{quote.name || `Quote #${quote.id}`}</h1>
                 <StatusBadge status={quoteStatus} />
               </div>
               <p className="mt-1 text-sm text-slate-500">
@@ -103,15 +140,15 @@ export default function QuoteDetailPage() {
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Subtotal</p>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{formatInr(lineTotal)}</p>
+            <p className="mt-2 text-2xl font-semibold text-slate-900">{formatInr(quote.subtotal ?? lineTotal)}</p>
           </div>
           <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tax</p>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{formatInr(0)}</p>
+            <p className="mt-2 text-2xl font-semibold text-slate-900">{formatInr(quote.taxAmount ?? taxTotal)}</p>
           </div>
           <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Discount</p>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{formatInr(0)}</p>
+            <p className="mt-2 text-2xl font-semibold text-slate-900">{formatInr(quote.discountAmount ?? 0)}</p>
           </div>
           <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Grand total</p>
@@ -141,6 +178,21 @@ export default function QuoteDetailPage() {
             </svg>
             Edit Quote
           </Link>
+          <button
+            onClick={handleDownloadPdf}
+            disabled={actionLoading}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-60"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+            Export PDF
+          </button>
+          <button
+            onClick={handleWhatsAppShare}
+            disabled={actionLoading}
+            className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-60"
+          >
+            Share via WhatsApp
+          </button>
           {quote.status !== 'ACCEPTED' && (
             <button
               onClick={handleConvert}
@@ -164,6 +216,7 @@ export default function QuoteDetailPage() {
             </svg>
           </button>
         </div>
+        {shareMessage ? <p role="status" className="mt-3 text-sm text-slate-600">{shareMessage}</p> : null}
       </section>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -200,7 +253,13 @@ export default function QuoteDetailPage() {
             </svg>
             Client
           </h2>
-          {quote.contact ? (
+          {quote.customer ? (
+            <div className="space-y-1 text-sm">
+              <p className="font-medium text-orange-600">{quote.customer.customerName}</p>
+              {quote.customer.email && <p className="text-slate-500">{quote.customer.email}</p>}
+              <p className="text-slate-500">{quote.customerAddress || [quote.customer.addressLine1, quote.customer.addressLine2, quote.customer.city, quote.customer.state, quote.customer.zipCode].filter(Boolean).join(', ')}</p>
+            </div>
+          ) : quote.contact ? (
             <div className="space-y-1 text-sm">
               <Link
                 href={`/dashboard/contacts/${quote.contact.id}`}
@@ -237,13 +296,13 @@ export default function QuoteDetailPage() {
           <tbody className="divide-y divide-slate-100">
             {quote.items.map((item) => (
               <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                <td className="px-5 py-3.5 text-slate-700 font-medium">{item.name}</td>
+                <td className="px-5 py-3.5 text-slate-700 font-medium">{item.name}{item.description && <div className="text-xs font-normal text-slate-400">{item.description}</div>}</td>
                 <td className="px-5 py-3.5 text-slate-500 text-center">{item.quantity}</td>
                 <td className="px-5 py-3.5 text-slate-500 text-right">
                   {formatInr(item.price)}
                 </td>
                 <td className="px-5 py-3.5 text-slate-700 font-medium text-right">
-                  {formatInr(quoteLineTotal(item))}
+                  {formatInr(Math.max(0, quoteLineTotal(item) - (item.discountAmount ?? 0)))}
                 </td>
               </tr>
             ))}
@@ -258,6 +317,11 @@ export default function QuoteDetailPage() {
           </tfoot>
         </table>
       </div>
+
+      {quote.termsAndConditions && <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-700">Terms and conditions</h2>
+        <p className="mt-2 whitespace-pre-wrap text-sm text-slate-500">{quote.termsAndConditions}</p>
+      </section>}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">

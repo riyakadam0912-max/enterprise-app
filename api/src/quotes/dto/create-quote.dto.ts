@@ -56,12 +56,14 @@ export class QuoteItemDto {
 }
 
 export class CreateQuoteDto {
+  @IsOptional()
   @IsNumber()
-  @ApiProperty({ example: 123 })
+  @ApiPropertyOptional({ example: 123 })
   dealId?: number;
 
+  @IsOptional()
   @IsNumber()
-  @ApiProperty({ example: 123 })
+  @ApiPropertyOptional({ example: 123 })
   contactId?: number;
 
   @IsOptional()

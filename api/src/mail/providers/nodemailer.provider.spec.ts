@@ -71,4 +71,50 @@ describe('NodemailerProvider', () => {
       }),
     );
   });
+
+  it('passes PDF attachments through to Nodemailer', async () => {
+    const sendMail = jest.fn().mockResolvedValue({ messageId: 'pdf-1' });
+    const createTransport = nodemailer.createTransport as jest.Mock;
+    createTransport.mockReturnValue({
+      sendMail,
+      verify: jest.fn(),
+    } as unknown as nodemailer.Transporter);
+    const configService = new ConfigService({
+      SMTP_HOST: 'smtp.example.com',
+      SMTP_PORT: 587,
+      SMTP_SECURE: false,
+      SMTP_USER: 'smtp-user@example.com',
+      SMTP_PASS: 'secret',
+      SMTP_FROM_EMAIL: 'quotes@example.com',
+      SMTP_VERIFY_ON_STARTUP: 'false',
+    });
+
+    const provider = new NodemailerProvider(configService);
+    const pdf = Buffer.from('%PDF-1.4 test');
+
+    await provider.send({
+      to: 'customer@example.com',
+      subject: 'Your quote',
+      html: '<p>Your quote is attached.</p>',
+      attachments: [
+        {
+          filename: 'quote-42.pdf',
+          content: pdf,
+          contentType: 'application/pdf',
+        },
+      ],
+    });
+
+    expect(sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attachments: [
+          {
+            filename: 'quote-42.pdf',
+            content: pdf,
+            contentType: 'application/pdf',
+          },
+        ],
+      }),
+    );
+  });
 });
