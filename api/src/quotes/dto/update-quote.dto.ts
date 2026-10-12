@@ -23,6 +23,22 @@ export class UpdateQuoteDto {
   contactId?: number;
 
   @IsOptional()
+  @IsNumber()
+  customerId?: number;
+
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsDateString()
+  quoteDate?: string;
+
+  @IsOptional()
+  @IsString()
+  customerAddress?: string;
+
+  @IsOptional()
   @IsIn(QUOTE_STATUSES)
   @ApiPropertyOptional({ example: 'ACTIVE' })
   status?: string;
@@ -36,6 +52,26 @@ export class UpdateQuoteDto {
   @IsString()
   @ApiPropertyOptional({ example: 'sample-notes' })
   notes?: string;
+
+  @IsOptional()
+  @IsString()
+  termsAndConditions?: string;
+
+  @IsOptional()
+  @IsString()
+  templateKey?: string;
+
+  @IsOptional()
+  @IsNumber()
+  discountAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  taxAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  adjustmentAmount?: number;
 
   @IsOptional()
   @IsArray()

@@ -7,18 +7,32 @@ export interface QuoteItem {
   id:       number;
   quoteId:  number;
   name:     string;
+  productId?: number | null;
+  description?: string | null;
   quantity: number;
   price:    number;
+  discountAmount?: number;
+  taxRate?: number | null;
 }
 
 export interface Quote {
   id:        number;
-  dealId:    number;
-  contactId: number;
+  dealId:    number | null;
+  contactId: number | null;
+  customerId?: number | null;
+  name?: string | null;
+  quoteDate?: string;
+  customerAddress?: string | null;
   total:     number;
+  subtotal?: number;
+  discountAmount?: number;
+  taxAmount?: number;
+  adjustmentAmount?: number;
   status:    QuoteStatus;
   validTill: string;
   notes:     string | null;
+  termsAndConditions?: string | null;
+  templateKey?: string;
   deal:      { id: number; title: string; value: number; stage: string } | null;
   contact:   { id: number; contactName: string; email: string | null; company: string | null } | null;
   items:     QuoteItem[];
@@ -28,15 +42,28 @@ export interface Quote {
 }
 
 export interface CreateQuotePayload {
-  dealId:    number;
-  contactId: number;
+  dealId?:   number;
+  contactId?: number;
+  customerId?: number;
+  name?: string;
+  quoteDate?: string;
+  customerAddress?: string;
   status?:   QuoteStatus;
   validTill: string;
   notes?:    string;
+  termsAndConditions?: string;
+  templateKey?: string;
+  discountAmount?: number;
+  taxAmount?: number;
+  adjustmentAmount?: number;
   items: {
     name:     string;
+    productId?: number;
+    description?: string;
     quantity: number;
     price:    number;
+    discountAmount?: number;
+    taxRate?: number;
   }[];
 }
 

@@ -26,6 +26,14 @@ export class QuoteItemDto {
   @ApiProperty({ example: 'sample-name' })
   name: string = '';
 
+  @IsOptional()
+  @IsNumber()
+  productId?: number;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
   @IsInt()
   @Min(1)
   @ApiProperty({ example: 123 })
@@ -35,16 +43,42 @@ export class QuoteItemDto {
   @Min(0)
   @ApiProperty({ example: 123 })
   price: number = 0;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  discountAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  taxRate?: number;
 }
 
 export class CreateQuoteDto {
   @IsNumber()
   @ApiProperty({ example: 123 })
-  dealId: number = 0;
+  dealId?: number;
 
   @IsNumber()
   @ApiProperty({ example: 123 })
-  contactId: number = 0;
+  contactId?: number;
+
+  @IsOptional()
+  @IsNumber()
+  customerId?: number;
+
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsDateString()
+  quoteDate?: string;
+
+  @IsOptional()
+  @IsString()
+  customerAddress?: string;
 
   @IsOptional()
   @IsIn(QUOTE_STATUSES)
@@ -59,6 +93,28 @@ export class CreateQuoteDto {
   @IsString()
   @ApiPropertyOptional({ example: 'sample-notes' })
   notes?: string;
+
+  @IsOptional()
+  @IsString()
+  termsAndConditions?: string;
+
+  @IsOptional()
+  @IsString()
+  templateKey?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  discountAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  taxAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  adjustmentAmount?: number;
 
   @IsArray()
   @ValidateNested({ each: true })

@@ -15,6 +15,7 @@ const includeRelations = {
   contact: {
     select: { id: true, contactName: true, email: true, company: true },
   },
+  customer: true,
   items: true,
 };
 
@@ -41,36 +42,79 @@ export class QuotesService {
 
   async create(dto: CreateQuoteDto, user: AuthUser) {
     const organizationId = this.validateOrganization(user);
-    const deal = await this.prisma.deal.findUnique({
-      where: { id: dto.dealId, organizationId },
-    });
-    if (!deal) throw new NotFoundException(`Deal #${dto.dealId} not found`);
+    if (dto.dealId) {
+      const deal = await this.prisma.deal.findFirst({
+        where: { id: dto.dealId, organizationId },
+      });
+      if (!deal) throw new NotFoundException(`Deal #${dto.dealId} not found`);
+    }
+    if (dto.contactId) {
+      const contact = await this.prisma.contact.findFirst({
+        where: { id: dto.contactId, organizationId },
+      });
+      if (!contact)
+        throw new NotFoundException(`Contact #${dto.contactId} not found`);
+    }
+    if (dto.customerId) {
+      const customer = await this.prisma.customer.findFirst({
+        where: { id: dto.customerId, organizationId },
+      });
+      if (!customer)
+        throw new NotFoundException(`Customer #${dto.customerId} not found`);
+    }
 
-    const contact = await this.prisma.contact.findUnique({
-      where: { id: dto.contactId, organizationId },
-    });
-    if (!contact)
-      throw new NotFoundException(`Contact #${dto.contactId} not found`);
-
-    const total = dto.items.reduce(
-      (sum, item) => sum + item.quantity * item.price,
+    const subtotal = dto.items.reduce(
+      (sum, item) =>
+        sum + item.quantity * item.price - (item.discountAmount ?? 0),
       0,
     );
+    const taxAmount =
+      dto.taxAmount ??
+      dto.items.reduce(
+        (sum, item) =>
+          sum +
+          (Math.max(
+            0,
+            item.quantity * item.price - (item.discountAmount ?? 0),
+          ) *
+            (item.taxRate ?? 0)) /
+            100,
+        0,
+      );
+    const total =
+      subtotal -
+      (dto.discountAmount ?? 0) +
+      taxAmount +
+      (dto.adjustmentAmount ?? 0);
 
     return this.prisma.quote.create({
       data: {
         organizationId,
         dealId: dto.dealId,
         contactId: dto.contactId,
+        customerId: dto.customerId,
+        name: dto.name,
+        quoteDate: dto.quoteDate ? new Date(dto.quoteDate) : undefined,
+        customerAddress: dto.customerAddress,
         total,
+        subtotal,
+        discountAmount: dto.discountAmount ?? 0,
+        taxAmount,
+        adjustmentAmount: dto.adjustmentAmount ?? 0,
         status: dto.status ?? 'DRAFT',
         validTill: new Date(dto.validTill),
         notes: dto.notes,
+        termsAndConditions: dto.termsAndConditions,
+        templateKey: dto.templateKey ?? 'minimal',
         items: {
           create: dto.items.map((item) => ({
             name: item.name,
+            productId: item.productId,
+            description: item.description,
             quantity: item.quantity,
             price: item.price,
+            discountAmount: item.discountAmount ?? 0,
+            taxRate: item.taxRate,
             organization: {
               connect: { id: organizationId },
             },
@@ -106,26 +150,69 @@ export class QuotesService {
 
     const data: Prisma.QuoteUpdateInput = {};
     if (dto.dealId !== undefined) {
-      data.deal = { connect: { id: dto.dealId } };
+      data.deal = dto.dealId
+        ? { connect: { id: dto.dealId } }
+        : { disconnect: true };
     }
     if (dto.contactId !== undefined) {
-      data.contact = { connect: { id: dto.contactId } };
+      data.contact = dto.contactId
+        ? { connect: { id: dto.contactId } }
+        : { disconnect: true };
     }
+    if (dto.customerId !== undefined) {
+      data.customer = dto.customerId
+        ? { connect: { id: dto.customerId } }
+        : { disconnect: true };
+    }
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.quoteDate !== undefined) data.quoteDate = new Date(dto.quoteDate);
+    if (dto.customerAddress !== undefined)
+      data.customerAddress = dto.customerAddress;
     if (dto.status !== undefined) data.status = dto.status;
     if (dto.notes !== undefined) data.notes = dto.notes;
+    if (dto.termsAndConditions !== undefined)
+      data.termsAndConditions = dto.termsAndConditions;
+    if (dto.templateKey !== undefined) data.templateKey = dto.templateKey;
     if (dto.validTill !== undefined) data.validTill = new Date(dto.validTill);
 
     if (dto.items !== undefined) {
-      data.total = dto.items.reduce(
-        (sum, item) => sum + item.quantity * item.price,
+      const subtotal = dto.items.reduce(
+        (sum, item) =>
+          sum + item.quantity * item.price - (item.discountAmount ?? 0),
         0,
       );
+      const taxAmount =
+        dto.taxAmount ??
+        dto.items.reduce(
+          (sum, item) =>
+            sum +
+            (Math.max(
+              0,
+              item.quantity * item.price - (item.discountAmount ?? 0),
+            ) *
+              (item.taxRate ?? 0)) /
+              100,
+          0,
+        );
+      data.subtotal = subtotal;
+      data.discountAmount = dto.discountAmount ?? 0;
+      data.taxAmount = taxAmount;
+      data.adjustmentAmount = dto.adjustmentAmount ?? 0;
+      data.total =
+        subtotal -
+        (dto.discountAmount ?? 0) +
+        taxAmount +
+        (dto.adjustmentAmount ?? 0);
       data.items = {
         deleteMany: {},
         create: dto.items.map((item) => ({
           name: item.name,
+          productId: item.productId,
+          description: item.description,
           quantity: item.quantity,
           price: item.price,
+          discountAmount: item.discountAmount ?? 0,
+          taxRate: item.taxRate,
           organization: {
             connect: { id: organizationId },
           },
@@ -153,7 +240,7 @@ export class QuotesService {
     const organizationId = this.validateOrganization(user);
     const quote = await this.prisma.quote.findUnique({
       where: { id, organizationId },
-      include: { contact: true },
+      include: { contact: true, customer: true },
     });
     if (!quote) throw new NotFoundException(`Quote #${id} not found`);
 
@@ -163,7 +250,10 @@ export class QuotesService {
       data: {
         organizationId,
         invoiceNo,
-        customer: quote.contact.contactName,
+        customer:
+          quote.customer?.customerName ??
+          quote.contact?.contactName ??
+          'Quote customer',
         totalAmount: quote.total,
         status: 'DRAFT',
         issueDate: new Date(),

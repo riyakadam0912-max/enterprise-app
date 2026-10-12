@@ -939,6 +939,7 @@ model Customer {
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   projects       Project[]
   clientProfiles ClientProfile[]
+  quotes         Quote[]
 
   @@index([organizationId])
   @@index([customerName])
@@ -1069,18 +1070,29 @@ model DynamicForm {
 
 model Quote {
   id             Int          @id @default(autoincrement())
-  dealId         Int
-  contactId      Int
+  dealId         Int?
+  contactId      Int?
+  customerId     Int?
+  name           String?
+  quoteDate      DateTime     @default(now())
+  customerAddress String?
   total          Float
+  subtotal       Float        @default(0)
+  discountAmount Float        @default(0)
+  taxAmount      Float        @default(0)
+  adjustmentAmount Float      @default(0)
   status         String       @default("DRAFT")
   validTill      DateTime
   notes          String?
+  termsAndConditions String?
+  templateKey    String       @default("minimal")
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   deletedAt      DateTime?
   organizationId Int
-  contact        Contact      @relation(fields: [contactId], references: [id])
-  deal           Deal         @relation(fields: [dealId], references: [id])
+  contact        Contact?     @relation(fields: [contactId], references: [id])
+  customer       Customer?    @relation(fields: [customerId], references: [id])
+  deal           Deal?        @relation(fields: [dealId], references: [id])
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   items          QuoteItem[]
 
@@ -1091,8 +1103,12 @@ model QuoteItem {
   id             Int          @id @default(autoincrement())
   quoteId        Int
   name           String
+  productId      Int?
+  description    String?
   quantity       Int
   price          Float
+  discountAmount Float        @default(0)
+  taxRate        Float?
   deletedAt      DateTime?
   organizationId Int
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
