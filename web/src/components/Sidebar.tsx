@@ -101,13 +101,7 @@ const navConfig: NavItem[] = [
       { label: 'Stages',    href: '/dashboard/deals/stages', icon: <KanbanIcon /> },
     ],
   },
-  {
-    type: 'dropdown', id: 'quotes', label: 'Quotes', icon: <QuoteIcon />,
-    children: [
-      { label: '+ New Quote', href: '/dashboard/quotes/add', icon: <PlusCircleIcon /> },
-      { label: 'All Quotes',  href: '/dashboard/quotes',     icon: <ReportIcon /> },
-    ],
-  },
+  { type: 'link', label: 'Quotes', href: '/dashboard/quotes', icon: <QuoteIcon /> },
   {
     type: 'dropdown', id: 'invoices', label: 'Invoices', icon: <FileTextIcon />,
     children: [
