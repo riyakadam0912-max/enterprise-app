@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+type PdfDocumentInstance = InstanceType<typeof PDFDocument>;
 
 export type QuotePdfContext = {
   templateKey?: QuoteTemplateKey;
@@ -80,7 +81,7 @@ const contentWidth = pageWidth - margin.left - margin.right;
 const columns = { item: 219, quantity: 42, unit: 66, rate: 82, amount: 90 };
 
 function drawHeader(
-  doc: PDFKit.PDFDocument,
+  doc: PdfDocumentInstance,
   context: QuotePdfContext,
   style: TemplateStyle,
 ) {
@@ -234,7 +235,7 @@ function drawHeader(
 }
 
 function drawMetadata(
-  doc: PDFKit.PDFDocument,
+  doc: PdfDocumentInstance,
   context: QuotePdfContext,
   style: TemplateStyle,
   y: number,
@@ -267,7 +268,7 @@ function drawMetadata(
   return y + 52;
 }
 
-function drawTableHeader(doc: PDFKit.PDFDocument, style: TemplateStyle) {
+function drawTableHeader(doc: PdfDocumentInstance, style: TemplateStyle) {
   const y = doc.y;
   doc
     .save()
@@ -300,7 +301,7 @@ function drawTableHeader(doc: PDFKit.PDFDocument, style: TemplateStyle) {
 }
 
 function drawItemRow(
-  doc: PDFKit.PDFDocument,
+  doc: PdfDocumentInstance,
   item: QuotePdfContext['items'][number],
   style: TemplateStyle,
 ) {
@@ -382,7 +383,7 @@ function drawItemRow(
 }
 
 function drawSummary(
-  doc: PDFKit.PDFDocument,
+  doc: PdfDocumentInstance,
   context: QuotePdfContext,
   style: TemplateStyle,
 ) {
