@@ -22,6 +22,7 @@ import {
 } from './quote-public-token.utils';
 import { MailService } from '../mail/mail.service';
 import { calculateQuoteTotals } from './quote-calculations';
+import { OrganizationScopeService } from '../organizations/organization-scope.service';
 
 const includeRelations = {
   deal: { select: { id: true, title: true, value: true, stage: true } },
@@ -37,6 +38,7 @@ const includeRelations = {
 export class QuotesService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly organizationScope?: OrganizationScopeService,
     @Optional() private readonly mailService?: MailService,
   ) {}
 
@@ -73,8 +75,15 @@ export class QuotesService {
         throw new NotFoundException(`Contact #${dto.contactId} not found`);
     }
     if (dto.customerId) {
+      const relatedOrganizationIds = this.organizationScope
+        ? await this.organizationScope.getRelatedOrganizationIds(organizationId)
+        : [organizationId];
       const customer = await this.prisma.customer.findFirst({
-        where: { id: dto.customerId, organizationId },
+        where: {
+          id: dto.customerId,
+          organizationId: { in: relatedOrganizationIds },
+          deletedAt: null,
+        },
       });
       if (!customer)
         throw new NotFoundException(`Customer #${dto.customerId} not found`);
@@ -192,9 +201,27 @@ export class QuotesService {
         : { disconnect: true };
     }
     if (dto.customerId !== undefined) {
-      data.customer = dto.customerId
-        ? { connect: { id: dto.customerId } }
-        : { disconnect: true };
+      if (dto.customerId) {
+        const relatedOrganizationIds = this.organizationScope
+          ? await this.organizationScope.getRelatedOrganizationIds(
+              organizationId,
+            )
+          : [organizationId];
+        const customer = await this.prisma.customer.findFirst({
+          where: {
+            id: dto.customerId,
+            organizationId: { in: relatedOrganizationIds },
+            deletedAt: null,
+          },
+          select: { id: true },
+        });
+        if (!customer) {
+          throw new NotFoundException(`Customer #${dto.customerId} not found`);
+        }
+        data.customer = { connect: { id: customer.id } };
+      } else {
+        data.customer = { disconnect: true };
+      }
     }
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.quoteDate !== undefined) data.quoteDate = new Date(dto.quoteDate);

@@ -9,10 +9,14 @@ import type { AuthUser } from '../common/types/auth';
 import { Permission } from '../common/enums/permissions.enum';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+import { OrganizationScopeService } from '../organizations/organization-scope.service';
 
 @Injectable()
 export class CustomersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly organizationScope: OrganizationScopeService,
+  ) {}
 
   private organizationId(user: AuthUser): number {
     if (!user.organizationId)
@@ -54,16 +58,22 @@ export class CustomersService {
 
   async findAll(user: AuthUser) {
     const organizationId = this.organizationId(user);
+    const organizationIds =
+      await this.organizationScope.getRelatedOrganizationIds(organizationId);
     return this.prisma.customer.findMany({
-      where: { organizationId, deletedAt: null },
+      where: { organizationId: { in: organizationIds }, deletedAt: null },
       include: { _count: { select: { projects: true, clientProfiles: true } } },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   async findOne(id: number, user: AuthUser) {
+    const organizationIds =
+      await this.organizationScope.getRelatedOrganizationIds(
+        this.organizationId(user),
+      );
     const customer = await this.prisma.customer.findFirst({
-      where: { id, organizationId: this.organizationId(user), deletedAt: null },
+      where: { id, organizationId: { in: organizationIds }, deletedAt: null },
       include: {
         projects: { select: { id: true, projectName: true, status: true } },
       },
@@ -74,7 +84,7 @@ export class CustomersService {
 
   async update(id: number, dto: UpdateCustomerDto, user: AuthUser) {
     this.assertAccess(user, Permission.CUSTOMER_UPDATE);
-    await this.findOne(id, user);
+    await this.findOwnedOne(id, user);
     return this.prisma.customer.update({
       where: { id },
       data: {
@@ -109,10 +119,18 @@ export class CustomersService {
 
   async remove(id: number, user: AuthUser) {
     this.assertAccess(user, Permission.CUSTOMER_DELETE);
-    await this.findOne(id, user);
+    await this.findOwnedOne(id, user);
     return this.prisma.customer.update({
       where: { id },
       data: { deletedAt: new Date() },
     });
+  }
+
+  private async findOwnedOne(id: number, user: AuthUser) {
+    const customer = await this.prisma.customer.findFirst({
+      where: { id, organizationId: this.organizationId(user), deletedAt: null },
+    });
+    if (!customer) throw new NotFoundException('Customer not found');
+    return customer;
   }
 }

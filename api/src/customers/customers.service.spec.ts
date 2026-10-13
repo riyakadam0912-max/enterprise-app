@@ -26,16 +26,39 @@ describe('CustomersService', () => {
       update: jest.fn(),
     },
   } as any;
-  const service = new CustomersService(prisma);
+  const organizationScope = {
+    getRelatedOrganizationIds: jest.fn().mockResolvedValue([10, 11, 12]),
+  } as any;
+  const service = new CustomersService(prisma, organizationScope);
 
   beforeEach(() => jest.clearAllMocks());
 
-  it('lists customers only from the authenticated organization', async () => {
+  it('lists customers across the authenticated organization family', async () => {
     prisma.customer.findMany.mockResolvedValueOnce([]);
     await service.findAll(admin);
     expect(prisma.customer.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { organizationId: 10, deletedAt: null },
+        where: { organizationId: { in: [10, 11, 12] }, deletedAt: null },
+      }),
+    );
+    expect(organizationScope.getRelatedOrganizationIds).toHaveBeenCalledWith(
+      10,
+    );
+  });
+
+  it('allows reading a customer owned by a sibling organization', async () => {
+    prisma.customer.findFirst.mockResolvedValueOnce({
+      id: 44,
+      organizationId: 11,
+    });
+    await service.findOne(44, admin);
+    expect(prisma.customer.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 44,
+          organizationId: { in: [10, 11, 12] },
+          deletedAt: null,
+        },
       }),
     );
   });
@@ -72,5 +95,16 @@ describe('CustomersService', () => {
         }),
       }),
     );
+  });
+
+  it('keeps customer updates restricted to the owning organization', async () => {
+    prisma.customer.findFirst.mockResolvedValueOnce(null);
+    await expect(
+      service.update(44, { customerName: 'Changed' }, admin),
+    ).rejects.toThrow('Customer not found');
+    expect(prisma.customer.findFirst).toHaveBeenCalledWith({
+      where: { id: 44, organizationId: 10, deletedAt: null },
+    });
+    expect(prisma.customer.update).not.toHaveBeenCalled();
   });
 });

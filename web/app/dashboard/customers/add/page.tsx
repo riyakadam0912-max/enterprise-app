@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { createCustomer, type CustomerInput, type CustomerType } from '@/api/customersApi';
 
 const field = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-100';
@@ -22,6 +22,7 @@ const initialForm: CustomerInput = {
 
 export default function AddCustomerPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [form, setForm] = useState<CustomerInput>(initialForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -35,8 +36,13 @@ export default function AddCustomerPage() {
     setSaving(true);
     setError('');
     try {
-      await createCustomer(form);
-      router.push('/dashboard/customers');
+      const customer = await createCustomer(form);
+      const returnTo = searchParams.get('returnTo');
+      if (returnTo === '/dashboard/quotes/add') {
+        router.push(`${returnTo}?createdCustomerId=${customer.id}`);
+      } else {
+        router.push('/dashboard/customers');
+      }
     } catch {
       setError('Unable to create customer. Check the required fields and try again.');
     } finally {

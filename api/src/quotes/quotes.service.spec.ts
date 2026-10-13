@@ -106,10 +106,64 @@ describe('QuotesService', () => {
         NotFoundException,
       );
       expect(prisma[delegate].findFirst).toHaveBeenCalledWith({
-        where: expect.objectContaining({ organizationId: 10 }),
+        where: expect.objectContaining({
+          organizationId: delegate === 'customer' ? { in: [10] } : 10,
+        }),
       });
     },
   );
+
+  it('accepts a customer owned by a sibling organization in the same family', async () => {
+    const prisma = createPrismaMock();
+    const organizationScope = {
+      getRelatedOrganizationIds: jest.fn().mockResolvedValue([10, 11, 12]),
+    };
+    prisma.customer.findFirst.mockResolvedValue({ id: 7, organizationId: 11 });
+    prisma.quote.create.mockResolvedValue({ id: 42, status: 'DRAFT' });
+    const service = new QuotesService(
+      prisma as never,
+      organizationScope as never,
+    );
+
+    await service.create(
+      {
+        customerId: 7,
+        validTill: '2026-12-31T00:00:00.000Z',
+        items: [{ name: 'Consulting', quantity: 1, price: 100 }],
+      },
+      user,
+    );
+
+    expect(prisma.customer.findFirst).toHaveBeenCalledWith({
+      where: { id: 7, organizationId: { in: [10, 11, 12] }, deletedAt: null },
+    });
+  });
+
+  it('rejects a customer outside the organization family', async () => {
+    const prisma = createPrismaMock();
+    const organizationScope = {
+      getRelatedOrganizationIds: jest.fn().mockResolvedValue([10, 11, 12]),
+    };
+    prisma.customer.findFirst.mockResolvedValue(null);
+    const service = new QuotesService(
+      prisma as never,
+      organizationScope as never,
+    );
+
+    await expect(
+      service.create(
+        {
+          customerId: 99,
+          validTill: '2026-12-31T00:00:00.000Z',
+          items: [{ name: 'Consulting', quantity: 1, price: 100 }],
+        },
+        user,
+      ),
+    ).rejects.toThrow(NotFoundException);
+    expect(prisma.customer.findFirst).toHaveBeenCalledWith({
+      where: { id: 99, organizationId: { in: [10, 11, 12] }, deletedAt: null },
+    });
+  });
 
   it('calculates line discounts, tax, quote discount, and adjustment', async () => {
     const prisma = createPrismaMock();

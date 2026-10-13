@@ -21,7 +21,6 @@ interface ItemRow {
   description?: string;
   quantity: number;
   price: number;
-  discountAmount: number;
   taxRate: number;
 }
 
@@ -32,11 +31,13 @@ const QUOTE_TEMPLATES = [
   { key: 'modern', label: 'Modern' },
   { key: 'classic', label: 'Classic' },
 ] as const;
+const QUOTE_DRAFT_STORAGE_KEY = 'quote-add-draft';
 
 export default function AddQuotePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get('editId');
+  const createdCustomerId = searchParams.get('createdCustomerId');
   const isEditing = Boolean(editId);
   const session = useAuthSession();
   const canCreateService = session.isSuperAdmin || session.role === 'ADMIN' || session.permissions.includes('product.create');
@@ -59,7 +60,7 @@ export default function AddQuotePage() {
   const [tdsRate, setTdsRate] = useState(0);
   const [tcsEnabled, setTcsEnabled] = useState(false);
   const [tcsRate, setTcsRate] = useState(0);
-  const [items, setItems] = useState<ItemRow[]>([{ name: '', unit: 'Unit', type: 'SERVICE', quantity: 1, price: 0, discountAmount: 0, taxRate: 0 }]);
+  const [items, setItems] = useState<ItemRow[]>([{ name: '', unit: 'Unit', type: 'SERVICE', quantity: 1, price: 0, taxRate: 0 }]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customerModalOpen, setCustomerModalOpen] = useState(false);
@@ -68,6 +69,63 @@ export default function AddQuotePage() {
   const [metadataError, setMetadataError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [draftRestored, setDraftRestored] = useState(false);
+
+  useEffect(() => {
+    if (editId) {
+      setDraftRestored(true);
+      return;
+    }
+    const savedDraft = sessionStorage.getItem(QUOTE_DRAFT_STORAGE_KEY);
+    if (savedDraft) {
+      try {
+        const draft = JSON.parse(savedDraft) as {
+          customerId?: string;
+          quoteDate?: string;
+          customerAddress?: string;
+          status?: (typeof QUOTE_STATUSES)[number];
+          templateKey?: (typeof QUOTE_TEMPLATES)[number]['key'];
+          validTill?: string;
+          notes?: string;
+          termsAndConditions?: string;
+          discountAmount?: number;
+          discountType?: 'AMOUNT' | 'PERCENTAGE';
+          discountRate?: number;
+          adjustmentAmount?: number;
+          adjustmentType?: 'AMOUNT' | 'PERCENTAGE';
+          adjustmentRate?: number;
+          tdsEnabled?: boolean;
+          tdsRate?: number;
+          tcsEnabled?: boolean;
+          tcsRate?: number;
+          items?: ItemRow[];
+        };
+        if (draft.customerId !== undefined) setCustomerId(draft.customerId);
+        if (draft.quoteDate) setQuoteDate(draft.quoteDate);
+        if (draft.customerAddress !== undefined) setCustomerAddress(draft.customerAddress);
+        if (draft.status) setStatus(draft.status);
+        if (draft.templateKey) setTemplateKey(draft.templateKey);
+        if (draft.validTill) setValidTill(draft.validTill);
+        if (draft.notes !== undefined) setNotes(draft.notes);
+        if (draft.termsAndConditions !== undefined) setTermsAndConditions(draft.termsAndConditions);
+        if (draft.discountAmount !== undefined) setDiscountAmount(draft.discountAmount);
+        if (draft.discountType) setDiscountType(draft.discountType);
+        if (draft.discountRate !== undefined) setDiscountRate(draft.discountRate);
+        if (draft.adjustmentAmount !== undefined) setAdjustmentAmount(draft.adjustmentAmount);
+        if (draft.adjustmentType) setAdjustmentType(draft.adjustmentType);
+        if (draft.adjustmentRate !== undefined) setAdjustmentRate(draft.adjustmentRate);
+        if (draft.tdsEnabled !== undefined) setTdsEnabled(draft.tdsEnabled);
+        if (draft.tdsRate !== undefined) setTdsRate(draft.tdsRate);
+        if (draft.tcsEnabled !== undefined) setTcsEnabled(draft.tcsEnabled);
+        if (draft.tcsRate !== undefined) setTcsRate(draft.tcsRate);
+        if (draft.items?.length) setItems(draft.items);
+        sessionStorage.removeItem(QUOTE_DRAFT_STORAGE_KEY);
+      } catch {
+        sessionStorage.removeItem(QUOTE_DRAFT_STORAGE_KEY);
+      }
+    }
+    setDraftRestored(true);
+  }, [editId]);
 
   useEffect(() => {
     async function loadMeta() {
@@ -87,6 +145,16 @@ export default function AddQuotePage() {
 
     loadMeta();
   }, []);
+
+  useEffect(() => {
+    if (!draftRestored || !createdCustomerId || metadataLoading) return;
+    const customer = customers.find((entry) => entry.id === Number(createdCustomerId));
+    if (!customer) return;
+    setCustomerId(String(customer.id));
+    setCustomerAddress([customer.addressLine1, customer.addressLine2, customer.city, customer.state, customer.zipCode].filter(Boolean).join(', '));
+    sessionStorage.removeItem(QUOTE_DRAFT_STORAGE_KEY);
+    router.replace('/dashboard/quotes/add');
+  }, [createdCustomerId, customers, draftRestored, metadataLoading, router]);
 
   useEffect(() => {
     if (!editId) return;
@@ -110,7 +178,7 @@ export default function AddQuotePage() {
         setTdsRate(quote.tdsRate ?? 0);
         setTcsEnabled(quote.tcsEnabled ?? false);
         setTcsRate(quote.tcsRate ?? 0);
-        setItems(quote.items.map((item) => ({ name: item.name, productId: item.productId ?? undefined, unit: item.unit ?? 'Unit', type: item.type === 'GOODS' ? 'GOODS' : 'SERVICE', description: item.description ?? '', quantity: item.quantity, price: item.price, discountAmount: item.discountAmount ?? 0, taxRate: item.taxRate ?? 0 })));
+        setItems(quote.items.map((item) => ({ name: item.name, productId: item.productId ?? undefined, unit: item.unit ?? 'Unit', type: item.type === 'GOODS' ? 'GOODS' : 'SERVICE', description: item.description ?? '', quantity: item.quantity, price: item.price, taxRate: item.taxRate ?? 0 })));
       })
       .catch((error) => {
         reportError(error, 'Unable to load quote');
@@ -119,18 +187,17 @@ export default function AddQuotePage() {
   }, [editId]);
 
   const grossSubtotal = useMemo(() => sumLineItems(items), [items]);
-  const lineDiscountTotal = useMemo(() => items.reduce((sum, item) => sum + Math.min(item.quantity * item.price, item.discountAmount), 0), [items]);
-  const subtotal = Math.max(0, grossSubtotal - lineDiscountTotal);
+  const subtotal = grossSubtotal;
   const quoteDiscount = discountType === 'PERCENTAGE' ? subtotal * discountRate / 100 : discountAmount;
   const taxableSubtotal = Math.max(0, subtotal - quoteDiscount);
-  const taxTotal = useMemo(() => items.reduce((sum, item) => sum + Math.max(0, item.quantity * item.price - item.discountAmount) * item.taxRate / 100, 0), [items]);
+  const taxTotal = useMemo(() => items.reduce((sum, item) => sum + item.quantity * item.price * item.taxRate / 100, 0), [items]);
   const tdsAmount = tdsEnabled ? taxableSubtotal * tdsRate / 100 : 0;
   const tcsAmount = tcsEnabled ? taxableSubtotal * tcsRate / 100 : 0;
   const adjustmentTotal = adjustmentType === 'PERCENTAGE' ? taxableSubtotal * adjustmentRate / 100 : adjustmentAmount;
   const total = taxableSubtotal + taxTotal + tcsAmount - tdsAmount + adjustmentTotal;
 
   function addItem() {
-    setItems((prev) => [...prev, { name: '', unit: 'Unit', type: 'SERVICE', quantity: 1, price: 0, discountAmount: 0, taxRate: 0 }]);
+    setItems((prev) => [...prev, { name: '', unit: 'Unit', type: 'SERVICE', quantity: 1, price: 0, taxRate: 0 }]);
   }
 
   function removeItem(index: number) {
@@ -163,6 +230,32 @@ export default function AddQuotePage() {
   function handleCreatedService(product: Product) {
     setProducts((prev) => [...prev, product]);
     if (serviceModalIndex !== null) selectProduct(serviceModalIndex, product);
+  }
+
+  function handleCreateCustomer() {
+    sessionStorage.setItem(QUOTE_DRAFT_STORAGE_KEY, JSON.stringify({
+      customerId,
+      quoteDate,
+      customerAddress,
+      status,
+      templateKey,
+      validTill,
+      notes,
+      termsAndConditions,
+      discountAmount,
+      discountType,
+      discountRate,
+      adjustmentAmount,
+      adjustmentType,
+      adjustmentRate,
+      tdsEnabled,
+      tdsRate,
+      tcsEnabled,
+      tcsRate,
+      items,
+    }));
+    setCustomerModalOpen(false);
+    router.push('/dashboard/customers/add?returnTo=%2Fdashboard%2Fquotes%2Fadd');
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -198,7 +291,7 @@ export default function AddQuotePage() {
       tdsRate: Number(tdsRate),
       tcsEnabled,
       tcsRate: Number(tcsRate),
-      items: items.map((item) => ({ name: item.name.trim(), productId: item.productId, unit: item.unit, type: item.type, description: item.description, quantity: Number(item.quantity), price: Number(item.price), discountAmount: Number(item.discountAmount), taxRate: Number(item.taxRate) })),
+      items: items.map((item) => ({ name: item.name.trim(), productId: item.productId, unit: item.unit, type: item.type, description: item.description, quantity: Number(item.quantity), price: Number(item.price), taxRate: Number(item.taxRate) })),
     };
 
     setLoading(true);
@@ -307,12 +400,8 @@ export default function AddQuotePage() {
                   <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Rate</span>
                   <input type="number" min="0" step="0.01" value={item.price} onChange={(event) => updateItem(index, 'price', Number(event.target.value))} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" />
                 </label>
-                <label className="space-y-1 text-sm">
-                  <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Discount</span>
-                  <input type="number" min="0" step="0.01" value={item.discountAmount} onChange={(event) => updateItem(index, 'discountAmount', Number(event.target.value))} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" />
-                </label>
                 <div className="flex items-center justify-between gap-2 md:justify-end">
-                  <div><span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Amount</span><div className="text-sm font-semibold text-slate-900">{formatInr(Math.max(0, quoteLineTotal(item) - item.discountAmount))}</div></div>
+                  <div><span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Amount</span><div className="text-sm font-semibold text-slate-900">{formatInr(quoteLineTotal(item))}</div></div>
                   <button type="button" onClick={() => removeItem(index)} aria-label="Remove item" title="Remove item" className="rounded-xl border border-slate-200 p-2 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40" disabled={items.length === 1}>
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
                   </button>
@@ -343,7 +432,7 @@ export default function AddQuotePage() {
           </button>
         </div>
       </form>
-      <CustomerPickerModal open={customerModalOpen} customers={customers} selectedId={customerId ? Number(customerId) : undefined} loading={metadataLoading} error={metadataError} onClose={() => setCustomerModalOpen(false)} onSelect={selectCustomer} />
+      <CustomerPickerModal open={customerModalOpen} customers={customers} selectedId={customerId ? Number(customerId) : undefined} loading={metadataLoading} error={metadataError} onClose={() => setCustomerModalOpen(false)} onSelect={selectCustomer} onCreateCustomer={handleCreateCustomer} />
       <ServicePickerModal open={serviceModalIndex !== null} products={products} selectedId={serviceModalIndex === null ? undefined : items[serviceModalIndex]?.productId} canCreate={canCreateService} onClose={() => setServiceModalIndex(null)} onSelect={handleCreatedService} onCustom={addCustomItem} />
     </div>
   );
