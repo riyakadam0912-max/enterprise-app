@@ -102,14 +102,7 @@ const navConfig: NavItem[] = [
     ],
   },
   { type: 'link', label: 'Quotes', href: '/dashboard/quotes', icon: <QuoteIcon /> },
-  {
-    type: 'dropdown', id: 'invoices', label: 'Invoices', icon: <FileTextIcon />,
-    children: [
-      { label: '+ Invoices',   href: '/dashboard/invoices/add',      icon: <PlusCircleIcon /> },
-      { label: 'All Invoices', href: '/dashboard/invoices',           icon: <ReportIcon /> },
-      { label: 'Statuses',     href: '/dashboard/invoices/statuses',  icon: <KanbanIcon /> },
-    ],
-  },
+  { type: 'link', label: 'Invoices', href: '/dashboard/invoices', icon: <FileTextIcon /> },
   {
     type: 'dropdown', id: 'accounts', label: 'Accounts', icon: <CoinsIcon />,
     children: [
