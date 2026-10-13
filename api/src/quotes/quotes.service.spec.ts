@@ -263,7 +263,7 @@ describe('QuotesService', () => {
 
     const pdf = await service.generatePdf(5, user);
 
-    expect(pdf.subarray(0, 8).toString()).toBe('%PDF-1.4');
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
     expect(prisma.quote.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 5, organizationId: 10 } }),
     );

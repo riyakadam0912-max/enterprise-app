@@ -484,6 +484,8 @@ export class QuotesService {
       companyName: 'Enterprise ERP',
       items: quote.items.map((item) => ({
         name: item.name,
+        unit: item.unit,
+        description: item.description,
         quantity: item.quantity,
         price: item.price,
         total: Math.max(0, item.quantity * item.price - item.discountAmount),

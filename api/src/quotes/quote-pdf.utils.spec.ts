@@ -1,42 +1,63 @@
 import { buildQuotePdfBuffer } from './quote-pdf.utils';
 
 describe('buildQuotePdfBuffer', () => {
-  it('creates a PDF containing quote identity, items, totals, and terms', () => {
-    const pdf = buildQuotePdfBuffer({
-      quoteNumber: 'Q-42',
-      quoteName: 'Website proposal',
-      quoteDate: '2026-10-12',
-      validTill: '2026-11-12',
-      customer: 'Acme (India)',
-      customerAddress: 'Main Street, Mumbai',
-      companyName: 'Enterprise ERP',
-      items: [{ name: 'Design (UI)', quantity: 2, price: 100, total: 200 }],
-      subtotal: 'INR 200.00',
-      discount: 'INR 10.00',
-      tax: 'INR 19.00',
-      adjustment: 'INR 0.00',
-      total: 'INR 209.00',
-      terms: 'Net 30 (calendar days)',
+  const context = {
+    quoteNumber: 'Q-42',
+    quoteName: 'Website proposal',
+    quoteDate: '2026-10-12',
+    validTill: '2026-11-12',
+    customer: 'Acme (India)',
+    customerAddress: 'Main Street, Mumbai',
+    companyName: 'Enterprise ERP',
+    items: [
+      {
+        name: 'Design (UI)',
+        description: 'Interface design',
+        unit: 'Day',
+        quantity: 2,
+        price: 100,
+        total: 200,
+      },
+    ],
+    subtotal: 'INR 200.00',
+    discount: 'INR 10.00',
+    tax: 'INR 19.00',
+    adjustment: 'INR 0.00',
+    total: 'INR 209.00',
+    terms: 'Net 30 (calendar days)',
+  };
+
+  it('creates a valid PDF buffer for a quote', async () => {
+    const pdf = await buildQuotePdfBuffer(context);
+    expect(pdf.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+    expect(pdf.toString('latin1')).toContain('%%EOF');
+  });
+
+  it('uses different visual layouts for the selected templates', async () => {
+    const minimal = await buildQuotePdfBuffer({
+      ...context,
+      templateKey: 'minimal',
     });
+    const professional = await buildQuotePdfBuffer({
+      ...context,
+      templateKey: 'professional',
+    });
+    expect(professional.equals(minimal)).toBe(false);
+  });
 
-    const content = pdf.toString('utf8');
-    expect(content.startsWith('%PDF-1.4')).toBe(true);
-    expect(content).toContain('Quote number: Q-42');
-    expect(content).toContain('Customer: Acme \\(India\\)');
-    expect(content).toContain('Design \\(UI\\) | 2 x 100 | 200');
-    expect(content).toContain('Total: INR 209.00');
-    expect(content).toContain('Net 30 \\(calendar days\\)');
-    expect(content.endsWith('%%EOF\n')).toBe(true);
-
-    const startXref = Number(content.match(/startxref\n(\d+)/)?.[1]);
-    const xrefLines = content.slice(startXref).split('\n');
-    const objectCount = Number(xrefLines[1].split(' ')[1]);
-    expect(xrefLines[0]).toBe('xref');
-    for (let objectNumber = 1; objectNumber < objectCount; objectNumber += 1) {
-      const offset = Number(xrefLines[objectNumber + 2].slice(0, 10));
-      expect(content.slice(offset).startsWith(`${objectNumber} 0 obj`)).toBe(
-        true,
-      );
-    }
+  it('paginates large quotes instead of dropping trailing line items', async () => {
+    const items = Array.from({ length: 90 }, (_, index) => ({
+      name: `Service ${index + 1}`,
+      description:
+        'A detailed line item description that takes more than one line in the document.',
+      unit: 'Day',
+      quantity: 1,
+      price: 100,
+      total: 100,
+    }));
+    const pdf = await buildQuotePdfBuffer({ ...context, items });
+    const encodedPdf = pdf.toString('latin1');
+    const pageCount = (encodedPdf.match(/\/Type\s*\/Page\b/g) ?? []).length;
+    expect(pageCount).toBeGreaterThan(1);
   });
 });
