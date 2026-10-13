@@ -3,13 +3,13 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { ArrowLeft, Building2, CalendarDays, Download, FileText, Mail, MessageCircle, Pencil, Send, Trash2 } from 'lucide-react';
 import { useQuote, useUpdateQuote, useDeleteQuote, useConvertQuoteToInvoice } from '@/hooks/useQuotes';
 import { createQuotePublicLink, downloadQuotePdf, sendQuoteEmail } from '@/api/quotesApi';
 //import { Quote } from '@/api/quotesApi';
 import {
   QUOTE_STATUS_STYLES,
   deriveQuoteStatus,
-  daysBetween,
   daysUntil,
   formatDate,
   formatInr,
@@ -19,7 +19,7 @@ import {
 function StatusBadge({ status }: { status: string }) {
   const cls = QUOTE_STATUS_STYLES[status] ?? 'bg-slate-100 text-slate-600 ring-1 ring-slate-200';
   return (
-    <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${cls}`}>
+    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${cls}`}>
       {status}
     </span>
   );
@@ -38,7 +38,6 @@ export default function QuoteDetailPage() {
   const [shareMessage, setShareMessage] = useState<string | null>(null);
   const [emailRecipient, setEmailRecipient] = useState('');
   const quoteStatus = quote ? deriveQuoteStatus(quote.status, quote.validTill) : 'DRAFT';
-  const quoteAge = quote ? daysBetween(quote.createdAt) ?? 0 : 0;
   const validityDays = quote ? daysUntil(quote.validTill) : null;
   const lineTotal = quote ? quote.items.reduce((sum, item) => sum + quoteLineTotal(item) - (item.discountAmount ?? 0), 0) : 0;
   const taxTotal = quote ? quote.items.reduce((sum, item) => sum + Math.max(0, quoteLineTotal(item) - (item.discountAmount ?? 0)) * (item.taxRate ?? 0) / 100, 0) : 0;
@@ -86,7 +85,7 @@ export default function QuoteDetailPage() {
       anchor.href = url;
       anchor.download = `quote-${id}.pdf`;
       anchor.click();
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } finally {
       setActionLoading(false);
     }
@@ -133,246 +132,95 @@ export default function QuoteDetailPage() {
   if (loading) return <div className="p-6 text-sm text-slate-400">Loading quote…</div>;
   if (error || !quote) return <div className="p-6 text-sm text-red-500">{error ?? 'Quote not found'}</div>;
 
+  const iconButtonClass = 'inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50';
+  const quoteCustomerName = quote.customer?.customerName ?? quote.contact?.contactName ?? 'Unassigned customer';
+  const quoteAddress = quote.customerAddress || (quote.customer ? [quote.customer.addressLine1, quote.customer.addressLine2, quote.customer.city, quote.customer.state, quote.customer.zipCode].filter(Boolean).join(', ') : '');
+
   return (
-    <div className="space-y-6 p-6">
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex items-start gap-3">
-            <Link
-              href="/dashboard/quotes"
-              className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-            >
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="15 18 9 12 15 6"/>
-              </svg>
-            </Link>
-            <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-semibold text-slate-900">{quote.name || `Quote #${quote.id}`}</h1>
-                <StatusBadge status={quoteStatus} />
-              </div>
-              <p className="mt-1 text-sm text-slate-500">
-                Created {formatDate(quote.createdAt)} · {quoteAge} days old · {validityDays === null ? 'No validity set' : validityDays >= 0 ? `${validityDays} days left` : `${Math.abs(validityDays)} days expired`}
-              </p>
+    <main className="mx-auto max-w-6xl space-y-8 px-4 py-6 sm:px-6 lg:py-8">
+      <header className="space-y-5 border-b border-slate-200 pb-5">
+        <Link href="/dashboard/quotes" className="inline-flex items-center gap-2 text-sm text-slate-500 transition hover:text-slate-900">
+          <ArrowLeft size={16} strokeWidth={1.8} /> Quotes
+        </Link>
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-2xl font-semibold text-slate-950">{quote.name || `Quote #${quote.id}`}</h1>
+              <StatusBadge status={quoteStatus} />
             </div>
+            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500">
+              <span>Q-{quote.id}</span><span aria-hidden="true">·</span>
+              <span>Created {formatDate(quote.createdAt)}</span><span aria-hidden="true">·</span>
+              <span>{validityDays === null ? 'No expiry' : validityDays >= 0 ? `${validityDays} days remaining` : `${Math.abs(validityDays)} days expired`}</span>
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {quote.status === 'DRAFT' && <button type="button" onClick={handleSend} disabled={actionLoading} className={`${iconButtonClass} border-slate-900 bg-slate-900 text-white hover:bg-slate-800`}><Send size={15} />Send</button>}
+            <Link href={`/dashboard/quotes/add?editId=${quote.id}`} className={iconButtonClass}><Pencil size={15} />Edit</Link>
+            <button type="button" onClick={handleDownloadPdf} disabled={actionLoading} title="Export quote as PDF" className={iconButtonClass}><Download size={15} />PDF</button>
+            <button type="button" onClick={handleWhatsAppShare} disabled={actionLoading} title="Share quote via WhatsApp" className={`${iconButtonClass} text-emerald-700`}><MessageCircle size={15} />WhatsApp</button>
+            {quote.status !== 'ACCEPTED' && <button type="button" onClick={handleConvert} disabled={actionLoading} className={iconButtonClass}><FileText size={15} />Convert</button>}
+            <button type="button" onClick={handleDelete} disabled={actionLoading} title="Delete quote" aria-label="Delete quote" className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-transparent text-slate-400 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"><Trash2 size={16} /></button>
           </div>
         </div>
+        {shareMessage ? <p role="status" className="text-sm text-slate-600">{shareMessage}</p> : null}
+      </header>
 
-        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Subtotal</p>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{formatInr(quote.subtotal ?? lineTotal)}</p>
-          </div>
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tax</p>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{formatInr(quote.taxAmount ?? taxTotal)}</p>
-          </div>
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Discount</p>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{formatInr(quote.discountAmount ?? 0)}</p>
-          </div>
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Grand total</p>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{formatInr(quote.total ?? 0)}</p>
-          </div>
-        </div>
-
-        <div className="mt-5 flex flex-wrap items-center gap-2">
-          {quote.status === 'DRAFT' && (
-            <button
-              onClick={handleSend}
-              disabled={actionLoading}
-              className="inline-flex items-center gap-2 rounded-xl bg-blue-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-600 disabled:opacity-60"
-            >
-              <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-              </svg>
-              Send Quote
-            </button>
-          )}
-          <Link
-            href={`/dashboard/quotes/add?editId=${quote.id}`}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
-          >
-            <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-            </svg>
-            Edit Quote
-          </Link>
-          <button
-            onClick={handleDownloadPdf}
-            disabled={actionLoading}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-60"
-          >
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
-            Export PDF
-          </button>
-          <button
-            onClick={handleWhatsAppShare}
-            disabled={actionLoading}
-            className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-60"
-          >
-            Share via WhatsApp
-          </button>
-          <input
-            type="email"
-            value={emailRecipient}
-            onChange={(event) => setEmailRecipient(event.target.value)}
-            placeholder={quote.customer?.email ?? 'Customer email'}
-            aria-label="Quote email recipient"
-            className="min-w-48 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400"
-          />
-          <button
-            onClick={handleEmailPdf}
-            disabled={actionLoading}
-            className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100 disabled:opacity-60"
-          >
-            Email PDF
-          </button>
-          {quote.status !== 'ACCEPTED' && (
-            <button
-              onClick={handleConvert}
-              disabled={actionLoading}
-              className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-medium text-white shadow-sm shadow-orange-200 transition-colors hover:bg-orange-600 disabled:opacity-60"
-            >
-              <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
-              </svg>
-              Convert to Invoice
-            </button>
-          )}
-          <button
-            onClick={handleDelete}
-            disabled={actionLoading}
-            className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-60"
-            title="Delete quote"
-          >
-            <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
-            </svg>
-          </button>
-        </div>
-        {shareMessage ? <p role="status" className="mt-3 text-sm text-slate-600">{shareMessage}</p> : null}
+      <section aria-label="Quote summary" className="grid grid-cols-2 gap-y-5 border-b border-slate-200 pb-6 sm:grid-cols-3 lg:grid-cols-6">
+        <div><p className="text-xs font-medium text-slate-500">Subtotal</p><p className="mt-1 text-base font-semibold text-slate-900">{formatInr(quote.subtotal ?? lineTotal)}</p></div>
+        <div><p className="text-xs font-medium text-slate-500">Discount</p><p className="mt-1 text-base font-semibold text-slate-900">−{formatInr(quote.discountAmount ?? 0)}</p></div>
+        <div><p className="text-xs font-medium text-slate-500">Tax</p><p className="mt-1 text-base font-semibold text-slate-900">{formatInr(quote.taxAmount ?? taxTotal)}</p></div>
+        {quote.tdsEnabled ? <div><p className="text-xs font-medium text-slate-500">TDS</p><p className="mt-1 text-base font-semibold text-slate-900">−{formatInr(quote.tdsAmount ?? 0)}</p></div> : null}
+        {quote.tcsEnabled ? <div><p className="text-xs font-medium text-slate-500">TCS</p><p className="mt-1 text-base font-semibold text-slate-900">{formatInr(quote.tcsAmount ?? 0)}</p></div> : null}
+        <div className="col-span-2 border-t border-slate-200 pt-4 sm:col-span-1 sm:border-0 sm:pt-0 lg:text-right"><p className="text-xs font-medium text-slate-500">Total</p><p className="mt-1 text-xl font-semibold text-slate-950">{formatInr(quote.total)}</p></div>
       </section>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
-          <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-            <svg viewBox="0 0 24 24" className="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/>
-            </svg>
-            Deal
-          </h2>
-          {quote.deal ? (
-            <div className="space-y-2 text-sm">
-              <Link
-                href={`/dashboard/deals/${quote.deal.id}`}
-                className="font-medium text-orange-600 hover:underline"
-              >
-                {quote.deal.title}
-              </Link>
-              <div className="flex gap-4 text-slate-500">
-                <span>Value: <span className="font-medium text-slate-700">{formatInr(quote.deal.value)}</span></span>
-                <span>Stage: <span className="text-slate-700 font-medium">{quote.deal.stage}</span></span>
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-slate-400">No deal linked</p>
-          )}
+      <section className="grid gap-7 border-b border-slate-200 pb-7 md:grid-cols-2">
+        <div>
+          <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500"><Building2 size={15} />Customer</h2>
+          <p className="mt-3 font-medium text-slate-900">{quoteCustomerName}</p>
+          {quote.customer?.email && <p className="mt-1 text-sm text-slate-600">{quote.customer.email}</p>}
+          {quoteAddress && <p className="mt-1 max-w-xl text-sm leading-6 text-slate-600">{quoteAddress}</p>}
+          {quote.contact && !quote.customer && <>{quote.contact.company && <p className="mt-1 text-sm text-slate-600">{quote.contact.company}</p>}{quote.contact.email && <p className="mt-1 text-sm text-slate-600">{quote.contact.email}</p>}</>}
         </div>
-
-        {/* Contact info */}
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
-          <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-            <svg viewBox="0 0 24 24" className="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>
-            </svg>
-            Client
-          </h2>
-          {quote.customer ? (
-            <div className="space-y-1 text-sm">
-              <p className="font-medium text-orange-600">{quote.customer.customerName}</p>
-              {quote.customer.email && <p className="text-slate-500">{quote.customer.email}</p>}
-              <p className="text-slate-500">{quote.customerAddress || [quote.customer.addressLine1, quote.customer.addressLine2, quote.customer.city, quote.customer.state, quote.customer.zipCode].filter(Boolean).join(', ')}</p>
-            </div>
-          ) : quote.contact ? (
-            <div className="space-y-1 text-sm">
-              <Link
-                href={`/dashboard/contacts/${quote.contact.id}`}
-                className="font-medium text-orange-600 hover:underline"
-              >
-                {quote.contact.contactName}
-              </Link>
-              {quote.contact.company && <p className="text-slate-500">{quote.contact.company}</p>}
-              {quote.contact.email && <p className="text-slate-500">{quote.contact.email}</p>}
-            </div>
-          ) : (
-            <p className="text-sm text-slate-400">No contact linked</p>
-          )}
+        <div className="grid grid-cols-2 gap-5">
+          <div><h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500"><CalendarDays size={15} />Issued</h2><p className="mt-3 text-sm font-medium text-slate-900">{formatDate(quote.quoteDate ?? quote.createdAt)}</p></div>
+          <div><h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500"><CalendarDays size={15} />Valid until</h2><p className="mt-3 text-sm font-medium text-slate-900">{formatDate(quote.validTill)}</p></div>
+          {quote.deal && <div className="col-span-2"><p className="text-xs font-medium text-slate-500">Related deal</p><Link href={`/dashboard/deals/${quote.deal.id}`} className="mt-1 inline-block text-sm font-medium text-orange-700 hover:underline">{quote.deal.title}</Link><p className="mt-1 text-xs text-slate-500">{quote.deal.stage} · {formatInr(quote.deal.value)}</p></div>}
         </div>
-      </div>
+      </section>
 
-      {/* Quote items */}
-      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-700">Quote Items</h2>
-          <div className="text-xs text-slate-400">
-            Valid till: <span className="font-medium text-slate-600">{formatDate(quote.validTill)}</span>
-          </div>
+      <section>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold text-slate-900">Items</h2>
+          <span className="text-xs text-slate-500">{quote.items.length} {quote.items.length === 1 ? 'line' : 'lines'}</span>
         </div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-slate-50 border-b border-slate-100">
-              <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Item</th>
-              <th className="px-5 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wide">Qty</th>
-              <th className="px-5 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wide">Unit Price</th>
-              <th className="px-5 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wide">Subtotal</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {quote.items.map((item) => (
-              <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                <td className="px-5 py-3.5 text-slate-700 font-medium">{item.name}{item.description && <div className="text-xs font-normal text-slate-400">{item.description}</div>}</td>
-                <td className="px-5 py-3.5 text-slate-500 text-center">{item.quantity}</td>
-                <td className="px-5 py-3.5 text-slate-500 text-right">
-                  {formatInr(item.price)}
-                </td>
-                <td className="px-5 py-3.5 text-slate-700 font-medium text-right">
-                  {formatInr(Math.max(0, quoteLineTotal(item) - (item.discountAmount ?? 0)))}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="bg-slate-50 border-t border-slate-200">
-              <td colSpan={3} className="px-5 py-4 text-sm font-semibold text-slate-600 text-right">Total</td>
-              <td className="px-5 py-4 text-lg font-bold text-slate-800 text-right">
-                {formatInr(quote.total ?? 0)}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-
-      {quote.termsAndConditions && <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-700">Terms and conditions</h2>
-        <p className="mt-2 whitespace-pre-wrap text-sm text-slate-500">{quote.termsAndConditions}</p>
-      </section>}
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-slate-700">Workflow notes</h2>
-          <p className="mt-2 text-sm text-slate-500">Quotes are proposals. Send them to start follow-up, convert accepted quotes into invoices, and treat expired proposals as stale opportunities.</p>
-          <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
-            Validity window: {formatDate(quote.validTill)}
-          </div>
+        <div className="overflow-x-auto border-y border-slate-200">
+          <table className="w-full min-w-150 text-sm">
+            <thead><tr className="border-b border-slate-200 text-xs text-slate-500"><th className="py-3 pr-4 text-left font-medium">Description</th><th className="px-3 py-3 text-center font-medium">Qty</th><th className="px-3 py-3 text-right font-medium">Rate</th><th className="py-3 pl-3 text-right font-medium">Amount</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {quote.items.map((item) => <tr key={item.id}>
+                <td className="py-4 pr-4"><p className="font-medium text-slate-900">{item.name}</p>{item.description && <p className="mt-1 text-xs leading-5 text-slate-500">{item.description}</p>}<p className="mt-1 text-xs text-slate-400">{item.unit || 'Unit'}{item.type ? ` · ${item.type === 'GOODS' ? 'Goods' : 'Service'}` : ''}</p></td>
+                <td className="px-3 py-4 text-center text-slate-600">{item.quantity}</td>
+                <td className="px-3 py-4 text-right text-slate-600">{formatInr(item.price)}</td>
+                <td className="py-4 pl-3 text-right font-medium text-slate-900">{formatInr(Math.max(0, quoteLineTotal(item) - (item.discountAmount ?? 0)))}</td>
+              </tr>)}
+            </tbody>
+          </table>
         </div>
+      </section>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-slate-700 mb-2">Notes</h2>
-          <p className="text-sm text-slate-500 whitespace-pre-wrap">{quote.notes ?? 'No internal notes captured.'}</p>
+      <section className="grid gap-8 border-t border-slate-200 pt-6 md:grid-cols-[1fr_20rem]">
+        <div className="space-y-6">
+          {quote.termsAndConditions && <div><h2 className="text-sm font-semibold text-slate-900">Terms and conditions</h2><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{quote.termsAndConditions}</p></div>}
+          <div><h2 className="text-sm font-semibold text-slate-900">Internal notes</h2><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{quote.notes || 'No notes.'}</p></div>
         </div>
-      </div>
-    </div>
+        <div className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Send PDF by email</h2>
+          <div className="flex gap-2"><label className="sr-only" htmlFor="quote-email-recipient">Recipient email</label><input id="quote-email-recipient" type="email" value={emailRecipient} onChange={(event) => setEmailRecipient(event.target.value)} placeholder={quote.customer?.email ?? 'Recipient email'} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400" /><button type="button" onClick={handleEmailPdf} disabled={actionLoading} aria-label="Email PDF" title="Email PDF" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white transition hover:bg-slate-700 disabled:opacity-50"><Mail size={16} /></button></div>
+          <p className="text-xs leading-5 text-slate-500">The selected quote template is attached as a PDF.</p>
+        </div>
+      </section>
+    </main>
   );
 }

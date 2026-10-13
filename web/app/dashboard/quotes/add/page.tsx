@@ -204,6 +204,16 @@ export default function AddQuotePage() {
     setItems((prev) => (prev.length === 1 ? prev : prev.filter((_, current) => current !== index)));
   }
 
+  function removeSelectedItem() {
+    if (serviceModalIndex === null) return;
+    setItems((current) => current.length === 1
+      ? current.map((item, index) => index === serviceModalIndex
+        ? { ...item, name: '', productId: undefined, description: '', price: 0, taxRate: 0 }
+        : item)
+      : current.filter((_, index) => index !== serviceModalIndex));
+    setServiceModalIndex(null);
+  }
+
   function updateItem(index: number, field: keyof ItemRow, value: string | number) {
     setItems((prev) => prev.map((item, current) => (current === index ? { ...item, [field]: value } : item)));
   }
@@ -219,12 +229,6 @@ export default function AddQuotePage() {
     setCustomerId(String(customer.id));
     setCustomerAddress(address);
     setCustomerModalOpen(false);
-  }
-
-  function addCustomItem() {
-    if (serviceModalIndex === null) return;
-    setItems((prev) => prev.map((item, current) => current === serviceModalIndex ? { ...item, productId: undefined } : item));
-    setServiceModalIndex(null);
   }
 
   function handleCreatedService(product: Product) {
@@ -433,7 +437,7 @@ export default function AddQuotePage() {
         </div>
       </form>
       <CustomerPickerModal open={customerModalOpen} customers={customers} selectedId={customerId ? Number(customerId) : undefined} loading={metadataLoading} error={metadataError} onClose={() => setCustomerModalOpen(false)} onSelect={selectCustomer} onCreateCustomer={handleCreateCustomer} />
-      <ServicePickerModal open={serviceModalIndex !== null} products={products} selectedId={serviceModalIndex === null ? undefined : items[serviceModalIndex]?.productId} canCreate={canCreateService} onClose={() => setServiceModalIndex(null)} onSelect={handleCreatedService} onCustom={addCustomItem} />
+      <ServicePickerModal open={serviceModalIndex !== null} products={products} selectedId={serviceModalIndex === null ? undefined : items[serviceModalIndex]?.productId} canCreate={canCreateService} onClose={() => setServiceModalIndex(null)} onSelect={handleCreatedService} onRemoveSelected={removeSelectedItem} />
     </div>
   );
 }

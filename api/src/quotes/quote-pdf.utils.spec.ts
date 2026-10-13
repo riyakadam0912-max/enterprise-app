@@ -27,5 +27,16 @@ describe('buildQuotePdfBuffer', () => {
     expect(content).toContain('Total: INR 209.00');
     expect(content).toContain('Net 30 \\(calendar days\\)');
     expect(content.endsWith('%%EOF\n')).toBe(true);
+
+    const startXref = Number(content.match(/startxref\n(\d+)/)?.[1]);
+    const xrefLines = content.slice(startXref).split('\n');
+    const objectCount = Number(xrefLines[1].split(' ')[1]);
+    expect(xrefLines[0]).toBe('xref');
+    for (let objectNumber = 1; objectNumber < objectCount; objectNumber += 1) {
+      const offset = Number(xrefLines[objectNumber + 2].slice(0, 10));
+      expect(content.slice(offset).startsWith(`${objectNumber} 0 obj`)).toBe(
+        true,
+      );
+    }
   });
 });

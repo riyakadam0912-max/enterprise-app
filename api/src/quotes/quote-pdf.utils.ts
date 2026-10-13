@@ -98,14 +98,13 @@ export function buildQuotePdfBuffer(context: QuotePdfContext) {
 
   const content = contentLines.join('\n');
   const objects = [
-    '%PDF-1.4',
     '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj',
     '2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj',
     '3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj',
     '4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj',
     `5 0 obj << /Length ${Buffer.byteLength(content, 'utf8')} >> stream\n${content}\nendstream endobj`,
   ];
-  let body = '';
+  let body = '%PDF-1.4\n';
   const offsets: number[] = [];
   for (const object of objects) {
     offsets.push(Buffer.byteLength(body, 'utf8'));
