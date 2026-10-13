@@ -419,39 +419,85 @@ export class QuotesService {
     const organizationId = this.validateOrganization(user);
     const quote = await this.prisma.quote.findUnique({
       where: { id, organizationId },
-      include: { contact: true, customer: true },
+      include: { contact: true, customer: true, items: true },
     });
     if (!quote) throw new NotFoundException(`Quote #${id} not found`);
+    if (quote.status === 'CONVERTED') {
+      throw new ForbiddenException(
+        'Quote has already been converted to an invoice',
+      );
+    }
 
     const invoiceNo = `INV-Q${id}-${Date.now()}`;
 
-    const invoice = await this.prisma.invoice.create({
-      data: {
-        organizationId,
-        invoiceNo,
-        customer:
-          quote.customer?.customerName ??
-          quote.contact?.contactName ??
-          'Quote customer',
-        totalAmount: quote.total,
-        status: 'DRAFT',
-        issueDate: new Date(),
-        dueDate: quote.validTill,
-        notes: quote.notes ?? undefined,
-        userId,
-      },
-    });
+    return this.prisma.$transaction(async (transaction) => {
+      const invoice = await transaction.invoice.create({
+        data: {
+          organizationId,
+          invoiceNo,
+          name: quote.name,
+          customer:
+            quote.customer?.customerName ??
+            quote.contact?.contactName ??
+            'Quote customer',
+          customerId: quote.customerId ?? undefined,
+          customerAddress: quote.customerAddress ?? undefined,
+          clientEmail:
+            quote.customer?.email ?? quote.contact?.email ?? undefined,
+          subtotal: quote.subtotal,
+          totalAmount: quote.total,
+          discount: quote.discountAmount,
+          discountType: quote.discountType,
+          discountRate: quote.discountRate,
+          taxAmount: quote.taxAmount,
+          adjustmentAmount: quote.adjustmentAmount,
+          adjustmentType: quote.adjustmentType,
+          adjustmentRate: quote.adjustmentRate,
+          tdsEnabled: quote.tdsEnabled,
+          tdsRate: quote.tdsRate,
+          tdsAmount: quote.tdsAmount,
+          tcsEnabled: quote.tcsEnabled,
+          tcsRate: quote.tcsRate,
+          tcsAmount: quote.tcsAmount,
+          status: 'DRAFT',
+          issueDate: new Date(),
+          dueDate: quote.validTill,
+          notes: quote.notes ?? undefined,
+          termsAndConditions: quote.termsAndConditions ?? undefined,
+          templateKey: quote.templateKey,
+          userId,
+          items: {
+            create: quote.items.map((item) => ({
+              name: item.name,
+              productId: item.productId,
+              description: item.description,
+              unit: item.unit,
+              type: item.type,
+              quantity: item.quantity,
+              price: item.price,
+              discountAmount: item.discountAmount,
+              taxRate: item.taxRate,
+              organizationId,
+            })),
+          },
+        },
+      });
 
-    // Mark quote as accepted after invoice is created
-    await this.prisma.quote.update({
-      where: { id, organizationId },
-      data: { status: 'CONVERTED' },
-    });
-    await this.prisma.quoteStatusHistory.create({
-      data: { quoteId: id, status: 'CONVERTED', source: 'DASHBOARD' },
-    });
+      const conversion = await transaction.quote.updateMany({
+        where: { id, organizationId, status: quote.status },
+        data: { status: 'CONVERTED' },
+      });
+      if (conversion.count !== 1) {
+        throw new ForbiddenException(
+          'Quote has already been converted to an invoice',
+        );
+      }
+      await transaction.quoteStatusHistory.create({
+        data: { quoteId: id, status: 'CONVERTED', source: 'DASHBOARD' },
+      });
 
-    return invoice;
+      return invoice;
+    });
   }
 
   async generatePdf(id: number, user: AuthUser) {

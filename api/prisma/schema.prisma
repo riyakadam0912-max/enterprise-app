@@ -8,58 +8,58 @@ datasource db {
 }
 
 model User {
-  id                         Int                    @id @default(autoincrement())
-  name                       String
-  email                      String                 @unique
-  password                   String
-  role                       Role
-  isActive                   Boolean                @default(true)
-  createdAt                  DateTime               @default(now())
-  updatedAt                  DateTime               @updatedAt
-  employeeId                 Int?                   @unique
-  deletedAt                  DateTime?
-  organizationId             Int?
-  primaryBusinessUnitId      Int?
-  address                    String?
-  managerId                  Int?
-  phone                      String?
-  refreshToken               String?
-  designation                String?
-  passwordResetCodeHash      String?
-  passwordResetCodeExpiresAt DateTime?
-  activities                 Activity[]
-  hrApprovedExpenses         Expense[]              @relation("ExpenseHrApprovedBy")
-  managerApprovedExpenses    Expense[]              @relation("ExpenseManagerApprovedBy")
-  submittedExpenses          Expense[]              @relation("ExpenseSubmittedBy")
-  uploadedFiles              File[]                 @relation("FileUploadedBy")
-  invoices                   Invoice[]
-  ledgerEntries              LedgerEntry[]
-  notificationsCreated       Notification[]
-  managedProjects            Project[]              @relation("ProjectManager")
-  ownedProjects              Project[]              @relation("ProjectOwners")
-  createdProjects             Project[]              @relation("ProjectCreator")
-  managerAssignmentsCreated Project[]              @relation("ProjectManagerAssignedBy")
-  projectLinksCreated        ProjectLink[]
-  sentMessages               ProjectMessage[]       @relation("ProjectMessageSender")
-  sentTaskMessages           TaskMessage[]          @relation("TaskMessageSender")
-  createdTasks               Task[]                 @relation("TaskAssignedBy")
-  assignedTasks              Task[]                 @relation("TaskAssignedTo")
-  reviewedTasks              Task[]                 @relation("TaskReviewedBy")
-  createdTimesheets           Timesheet[]            @relation("TimesheetCreatedBy")
-  taskTimerSessions           TaskTimerSession[]
-  attendanceCheckouts         Attendance[]           @relation("AttendanceCheckoutActor")
-  employee                   Employee?              @relation("UserEmployee", fields: [employeeId], references: [id])
-  manager                    User?                  @relation("UserManager", fields: [managerId], references: [id])
-  teamMembers                User[]                 @relation("UserManager")
-  reportingManagers          UserReportingManager[] @relation("ReportingEmployee")
-  reportingEmployees         UserReportingManager[] @relation("ReportingManager")
-  organization               Organization?          @relation(fields: [organizationId], references: [id])
-  primaryBusinessUnit        BusinessUnit?          @relation("UserPrimaryBusinessUnit", fields: [primaryBusinessUnitId], references: [id], onDelete: SetNull)
-  userRoles                  UserRole[]
-  authSessions               AuthSession[]
-  coManagedProjects          Project[]              @relation("ProjectCoManagers")
-  businessUnitAdminAssignments BusinessUnitAdmin[]  @relation("BusinessUnitAdminUser")
-  clientProfile              ClientProfile?
+  id                           Int                    @id @default(autoincrement())
+  name                         String
+  email                        String                 @unique
+  password                     String
+  role                         Role
+  isActive                     Boolean                @default(true)
+  createdAt                    DateTime               @default(now())
+  updatedAt                    DateTime               @updatedAt
+  employeeId                   Int?                   @unique
+  deletedAt                    DateTime?
+  organizationId               Int?
+  primaryBusinessUnitId        Int?
+  address                      String?
+  managerId                    Int?
+  phone                        String?
+  refreshToken                 String?
+  designation                  String?
+  passwordResetCodeHash        String?
+  passwordResetCodeExpiresAt   DateTime?
+  activities                   Activity[]
+  hrApprovedExpenses           Expense[]              @relation("ExpenseHrApprovedBy")
+  managerApprovedExpenses      Expense[]              @relation("ExpenseManagerApprovedBy")
+  submittedExpenses            Expense[]              @relation("ExpenseSubmittedBy")
+  uploadedFiles                File[]                 @relation("FileUploadedBy")
+  invoices                     Invoice[]
+  ledgerEntries                LedgerEntry[]
+  notificationsCreated         Notification[]
+  managedProjects              Project[]              @relation("ProjectManager")
+  ownedProjects                Project[]              @relation("ProjectOwners")
+  createdProjects              Project[]              @relation("ProjectCreator")
+  managerAssignmentsCreated    Project[]              @relation("ProjectManagerAssignedBy")
+  projectLinksCreated          ProjectLink[]
+  sentMessages                 ProjectMessage[]       @relation("ProjectMessageSender")
+  sentTaskMessages             TaskMessage[]          @relation("TaskMessageSender")
+  createdTasks                 Task[]                 @relation("TaskAssignedBy")
+  assignedTasks                Task[]                 @relation("TaskAssignedTo")
+  reviewedTasks                Task[]                 @relation("TaskReviewedBy")
+  createdTimesheets            Timesheet[]            @relation("TimesheetCreatedBy")
+  taskTimerSessions            TaskTimerSession[]
+  attendanceCheckouts          Attendance[]           @relation("AttendanceCheckoutActor")
+  employee                     Employee?              @relation("UserEmployee", fields: [employeeId], references: [id])
+  manager                      User?                  @relation("UserManager", fields: [managerId], references: [id])
+  teamMembers                  User[]                 @relation("UserManager")
+  reportingManagers            UserReportingManager[] @relation("ReportingEmployee")
+  reportingEmployees           UserReportingManager[] @relation("ReportingManager")
+  organization                 Organization?          @relation(fields: [organizationId], references: [id])
+  primaryBusinessUnit          BusinessUnit?          @relation("UserPrimaryBusinessUnit", fields: [primaryBusinessUnitId], references: [id], onDelete: SetNull)
+  userRoles                    UserRole[]
+  authSessions                 AuthSession[]
+  coManagedProjects            Project[]              @relation("ProjectCoManagers")
+  businessUnitAdminAssignments BusinessUnitAdmin[]    @relation("BusinessUnitAdminUser")
+  clientProfile                ClientProfile?
 
   @@index([organizationId])
   @@index([primaryBusinessUnitId])
@@ -157,6 +157,7 @@ model Organization {
   importLogs               ImportLog[]
   interviews               Interview[]
   invoices                 Invoice[]
+  invoiceItems             InvoiceItem[]
   jobOpenings              JobOpening[]
   leads                    Lead[]
   leaveRequests            LeaveRequest[]
@@ -200,11 +201,11 @@ model Organization {
   workflowNotifications    WorkflowNotification[]
   workflowSteps            WorkflowStep[]
   businessUnits            BusinessUnit[]
-  holidays                 Holiday[]              @relation("HolidayOrganization")
-  familyHolidays           Holiday[]              @relation("HolidayFamilyRoot")
-  clientProfiles            ClientProfile[]
-  clientInvitations         ClientInvitation[]
-  customers                 Customer[]
+  holidays                 Holiday[]                 @relation("HolidayOrganization")
+  familyHolidays           Holiday[]                 @relation("HolidayFamilyRoot")
+  clientProfiles           ClientProfile[]
+  clientInvitations        ClientInvitation[]
+  customers                Customer[]
 
   @@index([status])
   @@index([createdAt])
@@ -221,23 +222,23 @@ enum BusinessUnitStatus {
 }
 
 model BusinessUnit {
-  id             Int                @id @default(autoincrement())
+  id             Int                 @id @default(autoincrement())
   organizationId Int
   parentId       Int?
   name           String
   code           String
   description    String?
   type           String?
-  status         BusinessUnitStatus @default(ACTIVE)
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  parent         BusinessUnit?      @relation("BusinessUnitHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
-  children       BusinessUnit[]     @relation("BusinessUnitHierarchy")
-  users          User[]             @relation("UserPrimaryBusinessUnit")
-  employees      Employee[]         @relation("EmployeeBusinessUnit")
-  projects       Project[]          @relation("ProjectBusinessUnit")
-  tasks          Task[]             @relation("TaskBusinessUnit")
+  status         BusinessUnitStatus  @default(ACTIVE)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent         BusinessUnit?       @relation("BusinessUnitHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children       BusinessUnit[]      @relation("BusinessUnitHierarchy")
+  users          User[]              @relation("UserPrimaryBusinessUnit")
+  employees      Employee[]          @relation("EmployeeBusinessUnit")
+  projects       Project[]           @relation("ProjectBusinessUnit")
+  tasks          Task[]              @relation("TaskBusinessUnit")
   administrators BusinessUnitAdmin[]
 
   @@unique([organizationId, code])
@@ -360,31 +361,31 @@ model Shift {
 }
 
 model Attendance {
-  id             Int              @id @default(autoincrement())
-  employeeId     Int
-  date           DateTime
-  checkIn        DateTime?
-  checkOut       DateTime?
-  workingHours   Float?
-  status         AttendanceStatus
-  createdAt      DateTime         @default(now())
-  shiftId        Int?
-  deletedAt      DateTime?
-  isAutoClosed   Boolean          @default(false)
-  checkoutSource AttendanceCheckoutSource?
+  id              Int                       @id @default(autoincrement())
+  employeeId      Int
+  date            DateTime
+  checkIn         DateTime?
+  checkOut        DateTime?
+  workingHours    Float?
+  status          AttendanceStatus
+  createdAt       DateTime                  @default(now())
+  shiftId         Int?
+  deletedAt       DateTime?
+  isAutoClosed    Boolean                   @default(false)
+  checkoutSource  AttendanceCheckoutSource?
   checkoutActorId Int?
-  isPaidLeave    Boolean?
-  lateMinutes    Int              @default(0)
-  overtimeHours  Float            @default(0)
-  shortfallHours Float            @default(0)
-  remarks        String?
-  requiredHours  Float?
-  organizationId Int
-  employee       Employee         @relation(fields: [employeeId], references: [id])
-  checkoutActor  User?            @relation("AttendanceCheckoutActor", fields: [checkoutActorId], references: [id], onDelete: SetNull)
-  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  shift          Shift?           @relation(fields: [shiftId], references: [id])
-  breaks         AttendanceBreak[]
+  isPaidLeave     Boolean?
+  lateMinutes     Int                       @default(0)
+  overtimeHours   Float                     @default(0)
+  shortfallHours  Float                     @default(0)
+  remarks         String?
+  requiredHours   Float?
+  organizationId  Int
+  employee        Employee                  @relation(fields: [employeeId], references: [id])
+  checkoutActor   User?                     @relation("AttendanceCheckoutActor", fields: [checkoutActorId], references: [id], onDelete: SetNull)
+  organization    Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  shift           Shift?                    @relation(fields: [shiftId], references: [id])
+  breaks          AttendanceBreak[]
 
   @@unique([employeeId, date])
   @@index([date])
@@ -402,43 +403,83 @@ model AttendanceBreak {
 }
 
 model Holiday {
-  id             Int          @id @default(autoincrement())
-  organizationId Int
+  id                       Int           @id @default(autoincrement())
+  organizationId           Int
   familyRootOrganizationId Int?
-  startDate      DateTime     @db.Date
-  endDate        DateTime     @db.Date
-  name           String
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  organization   Organization @relation("HolidayOrganization", fields: [organizationId], references: [id], onDelete: Cascade)
-  familyRoot     Organization? @relation("HolidayFamilyRoot", fields: [familyRootOrganizationId], references: [id], onDelete: Cascade)
+  startDate                DateTime      @db.Date
+  endDate                  DateTime      @db.Date
+  name                     String
+  createdAt                DateTime      @default(now())
+  updatedAt                DateTime      @updatedAt
+  organization             Organization  @relation("HolidayOrganization", fields: [organizationId], references: [id], onDelete: Cascade)
+  familyRoot               Organization? @relation("HolidayFamilyRoot", fields: [familyRootOrganizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, startDate, endDate])
   @@index([familyRootOrganizationId, startDate, endDate])
 }
 
 model Invoice {
-  id             Int          @id @default(autoincrement())
-  invoiceNo      String       @unique
-  totalAmount    Float        @default(0)
-  status         String       @default("DRAFT")
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  userId         Int
-  customer       String?
-  discount       Float        @default(0)
-  dueDate        DateTime?
-  issueDate      DateTime?
-  notes          String?
-  paymentMethod  String?
-  taxAmount      Float        @default(0)
-  deletedAt      DateTime?
-  clientEmail    String?
-  organizationId Int
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User         @relation(fields: [userId], references: [id])
-  payments       Payment[]
+  id                 Int           @id @default(autoincrement())
+  invoiceNo          String        @unique
+  name               String?
+  totalAmount        Float         @default(0)
+  subtotal           Float         @default(0)
+  status             String        @default("DRAFT")
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  userId             Int
+  customer           String?
+  customerId         Int?
+  customerAddress    String?
+  discount           Float         @default(0)
+  discountType       String        @default("AMOUNT")
+  discountRate       Float         @default(0)
+  dueDate            DateTime?
+  issueDate          DateTime?
+  notes              String?
+  termsAndConditions String?
+  templateKey        String        @default("minimal")
+  adjustmentAmount   Float         @default(0)
+  adjustmentType     String        @default("AMOUNT")
+  adjustmentRate     Float         @default(0)
+  tdsEnabled         Boolean       @default(false)
+  tdsRate            Float         @default(0)
+  tdsAmount          Float         @default(0)
+  tcsEnabled         Boolean       @default(false)
+  tcsRate            Float         @default(0)
+  tcsAmount          Float         @default(0)
+  paymentMethod      String?
+  taxAmount          Float         @default(0)
+  deletedAt          DateTime?
+  clientEmail        String?
+  organizationId     Int
+  organization       Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user               User          @relation(fields: [userId], references: [id])
+  customerRecord     Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  items              InvoiceItem[]
+  payments           Payment[]
 
+  @@index([organizationId])
+  @@index([customerId])
+}
+
+model InvoiceItem {
+  id             Int          @id @default(autoincrement())
+  invoiceId      Int
+  organizationId Int
+  name           String
+  productId      Int?
+  description    String?
+  unit           String       @default("Unit")
+  type           String       @default("SERVICE")
+  quantity       Int
+  price          Float
+  discountAmount Float        @default(0)
+  taxRate        Float?
+  invoice        Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
   @@index([organizationId])
 }
 
@@ -514,26 +555,26 @@ model CampaignLead {
 }
 
 model Timesheet {
-  id             Int          @id @default(autoincrement())
-  task           String
-  project        String?
-  projectId      Int?
-  taskId         Int?
-  date           DateTime
-  hours          Float
-  status         String       @default("PENDING")
-  notes          String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  deletedAt      DateTime?
-  organizationId Int
+  id              Int               @id @default(autoincrement())
+  task            String
+  project         String?
+  projectId       Int?
+  taskId          Int?
+  date            DateTime
+  hours           Float
+  status          String            @default("PENDING")
+  notes           String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  deletedAt       DateTime?
+  organizationId  Int
   createdByUserId Int?
-  timerSessionId Int?         @unique
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdByUser  User?        @relation("TimesheetCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  timerSession   TaskTimerSession? @relation(fields: [timerSessionId], references: [id], onDelete: SetNull)
-  projectRef     Project?     @relation("ProjectTimesheets", fields: [projectId], references: [id], onDelete: SetNull)
-  taskRef        Task?        @relation("TaskTimesheets", fields: [taskId], references: [id], onDelete: SetNull)
+  timerSessionId  Int?              @unique
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser   User?             @relation("TimesheetCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  timerSession    TaskTimerSession? @relation(fields: [timerSessionId], references: [id], onDelete: SetNull)
+  projectRef      Project?          @relation("ProjectTimesheets", fields: [projectId], references: [id], onDelete: SetNull)
+  taskRef         Task?             @relation("TaskTimesheets", fields: [taskId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([projectId])
@@ -571,70 +612,70 @@ model Deal {
 }
 
 model Task {
-  id               Int           @id @default(autoincrement())
-  status           String        @default("PENDING")
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  actualHours      Float?
-  assignee         String?
-  dueDate          DateTime?
-  estimatedHours   Float?
-  notes            String?
-  priority         String?
-  project          String?
-  taskName         String
-  dealId           Int?
-  leadId           Int?
-  assignedToId     Int?
-  submissionLink   String?
-  reviewComment    String?
-  deletedAt        DateTime?
-  assignedByUserId Int?
-  assignedToUserId Int?
-  category         String?
-  description      String?
-  links            String?
-  driveLink        String?
-  projectId        Int?
-  reviewedAt       DateTime?
-  reviewedBy       Int?
-  submissionNotes  String?
-  organizationId   Int
-  businessUnitId   Int?
-  legacyTimerTotalSeconds Int   @default(0)
-  assignedByUser   User?         @relation("TaskAssignedBy", fields: [assignedByUserId], references: [id])
-  assignedEmployee Employee?     @relation("TaskAssignee", fields: [assignedToId], references: [id])
-  assignedToUser   User?         @relation("TaskAssignedTo", fields: [assignedToUserId], references: [id])
-  businessUnit     BusinessUnit? @relation("TaskBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
-  deal             Deal?         @relation(fields: [dealId], references: [id])
-  lead             Lead?         @relation(fields: [leadId], references: [id])
-  organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  projectRef       Project?      @relation("ProjectTasks", fields: [projectId], references: [id])
-  reviewedByUser   User?         @relation("TaskReviewedBy", fields: [reviewedBy], references: [id])
-  timerSessions      TaskTimerSession[]
-  timesheets       Timesheet[]   @relation("TaskTimesheets")
-  messages         TaskMessage[]
+  id                      Int                @id @default(autoincrement())
+  status                  String             @default("PENDING")
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+  actualHours             Float?
+  assignee                String?
+  dueDate                 DateTime?
+  estimatedHours          Float?
+  notes                   String?
+  priority                String?
+  project                 String?
+  taskName                String
+  dealId                  Int?
+  leadId                  Int?
+  assignedToId            Int?
+  submissionLink          String?
+  reviewComment           String?
+  deletedAt               DateTime?
+  assignedByUserId        Int?
+  assignedToUserId        Int?
+  category                String?
+  description             String?
+  links                   String?
+  driveLink               String?
+  projectId               Int?
+  reviewedAt              DateTime?
+  reviewedBy              Int?
+  submissionNotes         String?
+  organizationId          Int
+  businessUnitId          Int?
+  legacyTimerTotalSeconds Int                @default(0)
+  assignedByUser          User?              @relation("TaskAssignedBy", fields: [assignedByUserId], references: [id])
+  assignedEmployee        Employee?          @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  assignedToUser          User?              @relation("TaskAssignedTo", fields: [assignedToUserId], references: [id])
+  businessUnit            BusinessUnit?      @relation("TaskBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
+  deal                    Deal?              @relation(fields: [dealId], references: [id])
+  lead                    Lead?              @relation(fields: [leadId], references: [id])
+  organization            Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectRef              Project?           @relation("ProjectTasks", fields: [projectId], references: [id])
+  reviewedByUser          User?              @relation("TaskReviewedBy", fields: [reviewedBy], references: [id])
+  timerSessions           TaskTimerSession[]
+  timesheets              Timesheet[]        @relation("TaskTimesheets")
+  messages                TaskMessage[]
 
   @@index([organizationId])
   @@index([businessUnitId])
 }
 
 model TaskTimerSession {
-  id                    Int      @id @default(autoincrement())
-  taskId                Int
-  userId                Int
-  organizationId        Int
-  status                String   @default("RUNNING")
-  durationSeconds       Int
-  remainingSeconds      Int
-  startedAt             DateTime?
-  totalSeconds          Int      @default(0)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-  task                  Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  timesheet             Timesheet?
+  id               Int          @id @default(autoincrement())
+  taskId           Int
+  userId           Int
+  organizationId   Int
+  status           String       @default("RUNNING")
+  durationSeconds  Int
+  remainingSeconds Int
+  startedAt        DateTime?
+  totalSeconds     Int          @default(0)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  task             Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  timesheet        Timesheet?
 
   @@index([taskId, status])
   @@index([userId, status])
@@ -794,7 +835,7 @@ model Expense {
 }
 
 model Project {
-  id                    Int              @id @default(autoincrement())
+  id                    Int                   @id @default(autoincrement())
   projectName           String
   projectCode           String?
   clientName            String?
@@ -804,7 +845,7 @@ model Project {
   endDate               DateTime?
   specificTask          String?
   manager               String?
-  status                String           @default("NOT_STARTED")
+  status                String                @default("NOT_STARTED")
   priority              String?
   budget                Float?
   description           String?
@@ -813,31 +854,31 @@ model Project {
   client                String?
   projectLead           String?
   driveLink             String?
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
   deletedAt             DateTime?
   managerId             Int?
   createdById           Int?
   managerAssignedById   Int?
   organizationId        Int
   businessUnitId        Int?
-  tags                  String[]         @default([])
-  managerUser           User?            @relation("ProjectManager", fields: [managerId], references: [id])
-  owners                User[]           @relation("ProjectOwners")
-  createdBy             User?            @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  managerAssignedBy     User?            @relation("ProjectManagerAssignedBy", fields: [managerAssignedById], references: [id], onDelete: SetNull)
-  businessUnit          BusinessUnit?    @relation("ProjectBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
-  organization          Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tags                  String[]              @default([])
+  managerUser           User?                 @relation("ProjectManager", fields: [managerId], references: [id])
+  owners                User[]                @relation("ProjectOwners")
+  createdBy             User?                 @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  managerAssignedBy     User?                 @relation("ProjectManagerAssignedBy", fields: [managerAssignedById], references: [id], onDelete: SetNull)
+  businessUnit          BusinessUnit?         @relation("ProjectBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
+  organization          Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   links                 ProjectLink[]
   members               ProjectMember[]
   messages              ProjectMessage[]
   clientAccess          ClientProjectAccess[]
   customerId            Int?
-  customer              Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  tasks                 Task[]           @relation("ProjectTasks")
-  timesheets            Timesheet[]      @relation("ProjectTimesheets")
-  assignedEmployees     Employee[]       @relation("ProjectAssignedEmployees")
-  coManagers            User[]           @relation("ProjectCoManagers")
+  customer              Customer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  tasks                 Task[]                @relation("ProjectTasks")
+  timesheets            Timesheet[]           @relation("ProjectTimesheets")
+  assignedEmployees     Employee[]            @relation("ProjectAssignedEmployees")
+  coManagers            User[]                @relation("ProjectCoManagers")
 
   @@index([organizationId])
   @@index([businessUnitId])
@@ -894,7 +935,7 @@ model ProjectMember {
 }
 
 model Contact {
-  id             Int          @id @default(autoincrement())
+  id             Int             @id @default(autoincrement())
   contactName    String
   email          String?
   phoneNumber    String?
@@ -905,13 +946,13 @@ model Contact {
   website        String?
   linkedin       String?
   contactStatus  String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
   deletedAt      DateTime?
   organizationId Int
   activities     Activity[]
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  deals          Deal[]       @relation("ContactToDeals")
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deals          Deal[]          @relation("ContactToDeals")
   quotes         Quote[]
   clientProfiles ClientProfile[]
 
@@ -919,10 +960,10 @@ model Contact {
 }
 
 model Customer {
-  id             Int              @id @default(autoincrement())
+  id             Int             @id @default(autoincrement())
   organizationId Int
   customerName   String
-  customerType   CustomerType     @default(BUSINESS)
+  customerType   CustomerType    @default(BUSINESS)
   addressLine1   String
   addressLine2   String?
   city           String
@@ -932,14 +973,15 @@ model Customer {
   webAddress     String?
   email          String?
   phoneNumber    String?
-  status         String           @default("ACTIVE")
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  status         String          @default("ACTIVE")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
   deletedAt      DateTime?
-  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   projects       Project[]
   clientProfiles ClientProfile[]
   quotes         Quote[]
+  invoices       Invoice[]
 
   @@index([organizationId])
   @@index([customerName])
@@ -947,21 +989,21 @@ model Customer {
 }
 
 model ClientProfile {
-  id             Int                  @id @default(autoincrement())
+  id             Int                   @id @default(autoincrement())
   organizationId Int
-  userId         Int                  @unique
+  userId         Int                   @unique
   customerId     Int?
   contactId      Int?
-  status         ClientProfileStatus  @default(INVITED)
-  invitedAt      DateTime             @default(now())
+  status         ClientProfileStatus   @default(INVITED)
+  invitedAt      DateTime              @default(now())
   acceptedAt     DateTime?
   lastLoginAt    DateTime?
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  customer       Customer?            @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  contact        Contact?             @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customer       Customer?             @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  contact        Contact?              @relation(fields: [contactId], references: [id], onDelete: Restrict)
   projectAccess  ClientProjectAccess[]
   invitations    ClientInvitation[]
 
@@ -979,7 +1021,7 @@ model ClientProjectAccess {
   canViewTasks    Boolean            @default(false)
   canViewFiles    Boolean            @default(true)
   canViewMessages Boolean            @default(true)
-  canViewInvoices  Boolean            @default(false)
+  canViewInvoices Boolean            @default(false)
   createdAt       DateTime           @default(now())
   revokedAt       DateTime?
   clientProfile   ClientProfile      @relation(fields: [clientProfileId], references: [id], onDelete: Cascade)
@@ -1069,57 +1111,57 @@ model DynamicForm {
 }
 
 model Quote {
-  id             Int          @id @default(autoincrement())
-  dealId         Int?
-  contactId      Int?
-  customerId     Int?
-  name           String?
-  quoteDate      DateTime     @default(now())
-  customerAddress String?
-  total          Float
-  subtotal       Float        @default(0)
-  discountAmount Float        @default(0)
-  taxAmount      Float        @default(0)
-  adjustmentAmount Float      @default(0)
-  discountType     String     @default("AMOUNT")
-  discountRate     Float      @default(0)
-  adjustmentType   String     @default("AMOUNT")
-  adjustmentRate   Float      @default(0)
-  tdsEnabled       Boolean    @default(false)
-  tdsRate          Float      @default(0)
-  tdsAmount        Float      @default(0)
-  tcsEnabled       Boolean    @default(false)
-  tcsRate          Float      @default(0)
-  tcsAmount        Float      @default(0)
-  status         String       @default("DRAFT")
-  validTill      DateTime
-  notes          String?
+  id                 Int                  @id @default(autoincrement())
+  dealId             Int?
+  contactId          Int?
+  customerId         Int?
+  name               String?
+  quoteDate          DateTime             @default(now())
+  customerAddress    String?
+  total              Float
+  subtotal           Float                @default(0)
+  discountAmount     Float                @default(0)
+  taxAmount          Float                @default(0)
+  adjustmentAmount   Float                @default(0)
+  discountType       String               @default("AMOUNT")
+  discountRate       Float                @default(0)
+  adjustmentType     String               @default("AMOUNT")
+  adjustmentRate     Float                @default(0)
+  tdsEnabled         Boolean              @default(false)
+  tdsRate            Float                @default(0)
+  tdsAmount          Float                @default(0)
+  tcsEnabled         Boolean              @default(false)
+  tcsRate            Float                @default(0)
+  tcsAmount          Float                @default(0)
+  status             String               @default("DRAFT")
+  validTill          DateTime
+  notes              String?
   termsAndConditions String?
-  templateKey    String       @default("minimal")
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  deletedAt      DateTime?
-  organizationId Int
-  contact        Contact?     @relation(fields: [contactId], references: [id])
-  customer       Customer?    @relation(fields: [customerId], references: [id])
-  deal           Deal?        @relation(fields: [dealId], references: [id])
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  items          QuoteItem[]
-  publicLink     QuotePublicLink?
-  statusHistory  QuoteStatusHistory[]
+  templateKey        String               @default("minimal")
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  deletedAt          DateTime?
+  organizationId     Int
+  contact            Contact?             @relation(fields: [contactId], references: [id])
+  customer           Customer?            @relation(fields: [customerId], references: [id])
+  deal               Deal?                @relation(fields: [dealId], references: [id])
+  organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  items              QuoteItem[]
+  publicLink         QuotePublicLink?
+  statusHistory      QuoteStatusHistory[]
 
   @@index([organizationId])
 }
 
 model QuotePublicLink {
-  id          Int       @id @default(autoincrement())
-  quoteId     Int       @unique
-  tokenHash   String    @unique
-  expiresAt   DateTime
-  revokedAt   DateTime?
-  createdAt   DateTime  @default(now())
+  id             Int       @id @default(autoincrement())
+  quoteId        Int       @unique
+  tokenHash      String    @unique
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
   lastAccessedAt DateTime?
-  quote       Quote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quote          Quote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
 
   @@index([expiresAt])
 }
@@ -1142,8 +1184,8 @@ model QuoteItem {
   name           String
   productId      Int?
   description    String?
-  unit           String         @default("Unit")
-  type           String         @default("SERVICE")
+  unit           String       @default("Unit")
+  type           String       @default("SERVICE")
   quantity       Int
   price          Float
   discountAmount Float        @default(0)

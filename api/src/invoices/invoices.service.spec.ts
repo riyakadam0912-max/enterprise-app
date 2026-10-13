@@ -135,6 +135,79 @@ describe('InvoicesService', () => {
         }),
       );
     });
+
+    it('calculates totals and persists line items for itemized invoices', async () => {
+      const invoiceDelegate = getPrismaDelegate(mockPrisma, 'invoice');
+      invoiceDelegate.create.mockResolvedValue({
+        id: 22,
+        invoiceNo: 'INV-022',
+      });
+
+      await service.create(
+        createInvoiceDto({
+          totalAmount: 1,
+          taxAmount: undefined,
+          discountAmount: 10,
+          discountType: 'PERCENTAGE',
+          discountRate: 10,
+          items: [
+            {
+              name: 'Consulting',
+              quantity: 2,
+              price: 100,
+              discountAmount: 10,
+              taxRate: 10,
+            },
+          ],
+        }),
+        mockAdminUser,
+      );
+
+      expect(invoiceDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            subtotal: 190,
+            discount: 19,
+            taxAmount: 19,
+            totalAmount: 190,
+            items: {
+              create: [
+                expect.objectContaining({
+                  name: 'Consulting',
+                  quantity: 2,
+                  organization: { connect: { id: 1 } },
+                }),
+              ],
+            },
+          }),
+        }),
+      );
+    });
+
+    it('keeps supporting legacy amount-only invoice creation', async () => {
+      const invoiceDelegate = getPrismaDelegate(mockPrisma, 'invoice');
+      invoiceDelegate.create.mockResolvedValue({
+        id: 23,
+        invoiceNo: 'INV-023',
+      });
+
+      await service.create(
+        createInvoiceDto({ totalAmount: 250, taxAmount: 25, discount: 5 }),
+        mockAdminUser,
+      );
+
+      expect(invoiceDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            subtotal: 230,
+            totalAmount: 250,
+            taxAmount: 25,
+            discount: 5,
+            items: undefined,
+          }),
+        }),
+      );
+    });
   });
 
   describe('findAll', () => {
@@ -191,6 +264,100 @@ describe('InvoicesService', () => {
       );
 
       expect(result.invoiceNo).toBe('INV-002');
+    });
+
+    it('allows non-financial edits after payments without replacing unchanged item rows', async () => {
+      const invoiceDelegate = getPrismaDelegate(mockPrisma, 'invoice');
+      invoiceDelegate.findFirst.mockResolvedValue({
+        id: 1,
+        invoiceNo: 'INV-001',
+        payments: [{ id: 9, amount: 25 }],
+        items: [
+          {
+            id: 2,
+            name: 'Consulting',
+            productId: null,
+            description: null,
+            unit: 'Day',
+            type: 'SERVICE',
+            quantity: 1,
+            price: 100,
+            discountAmount: 0,
+            taxRate: null,
+          },
+        ],
+      });
+      invoiceDelegate.update.mockResolvedValue({
+        id: 1,
+        notes: 'Updated note',
+      });
+
+      await service.update(
+        1,
+        {
+          notes: 'Updated note',
+          items: [
+            {
+              name: 'Consulting',
+              unit: 'Day',
+              type: 'SERVICE',
+              quantity: 1,
+              price: 100,
+              discountAmount: 0,
+              taxRate: 0,
+            },
+          ],
+        },
+        mockAdminUser,
+      );
+
+      const updateInput = invoiceDelegate.update.mock.calls[0][0];
+      expect(updateInput.data.notes).toBe('Updated note');
+      expect(updateInput.data).not.toHaveProperty('items');
+    });
+
+    it('rejects invoice line changes after a payment is recorded', async () => {
+      const invoiceDelegate = getPrismaDelegate(mockPrisma, 'invoice');
+      invoiceDelegate.findFirst.mockResolvedValue({
+        id: 1,
+        invoiceNo: 'INV-001',
+        payments: [{ id: 9, amount: 25 }],
+        items: [
+          {
+            id: 2,
+            name: 'Consulting',
+            productId: null,
+            description: null,
+            unit: 'Day',
+            type: 'SERVICE',
+            quantity: 1,
+            price: 100,
+            discountAmount: 0,
+            taxRate: null,
+          },
+        ],
+      });
+
+      await expect(
+        service.update(
+          1,
+          {
+            items: [
+              {
+                name: 'Consulting',
+                unit: 'Day',
+                type: 'SERVICE',
+                quantity: 1,
+                price: 120,
+                discountAmount: 0,
+                taxRate: 0,
+              },
+            ],
+          },
+          mockAdminUser,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(invoiceDelegate.update).not.toHaveBeenCalled();
     });
   });
 
@@ -250,7 +417,22 @@ describe('InvoicesService', () => {
       const result = await service.sendInvoice(1, {}, mockAdminUser);
 
       expect(result.success).toBe(true);
-      expect(mockMailService.sendEmail).toHaveBeenCalled();
+      expect(mockMailService.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attachments: [
+            expect.objectContaining({
+              filename: 'INV-001.pdf',
+              contentType: 'application/pdf',
+              content: expect.any(Buffer),
+            }),
+          ],
+        }),
+      );
+      const emailInput = (mockMailService.sendEmail as jest.Mock).mock
+        .calls[0][0];
+      expect(
+        emailInput.attachments[0].content.subarray(0, 5).toString('ascii'),
+      ).toBe('%PDF-');
     });
 
     it('should throw BadRequestException if recipient email is missing', async () => {

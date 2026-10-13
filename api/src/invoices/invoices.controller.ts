@@ -11,7 +11,9 @@ import {
   ParseIntPipe,
   HttpCode,
   HttpStatus,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -64,7 +66,7 @@ export class InvoicesController {
     return this.invoicesService.importRecords(body.records, req.user);
   }
 
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.HR)
   @ApiOperation({ summary: 'GET /' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -76,7 +78,7 @@ export class InvoicesController {
     return this.invoicesService.findAll(req.user);
   }
 
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.HR)
   @ApiOperation({ summary: 'GET by-status' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -88,7 +90,23 @@ export class InvoicesController {
     return this.invoicesService.getByStatus(req.user);
   }
 
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.HR)
+  @Get(':id/pdf')
+  async pdf(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+    @Res() response: Response,
+  ) {
+    const buffer = await this.invoicesService.generatePdf(id, req.user);
+    response.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="invoice-${id}.pdf"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    response.end(buffer);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.HR)
   @ApiOperation({ summary: 'GET :id' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })

@@ -16,6 +16,8 @@ import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { renderInvoiceLetter } from './invoice-email.utils';
 import { SendInvoiceDto } from './dto/send-invoice.dto';
 import { AuthUser } from '../common/types/auth';
+import { calculateQuoteTotals } from '../quotes/quote-calculations';
+import { buildInvoicePdfBuffer } from './invoice-pdf.utils';
 
 const STATUSES = [
   'DRAFT',
@@ -31,6 +33,8 @@ const STATUSES = [
 
 const includeRelations = {
   user: { select: { id: true, name: true, email: true } },
+  customerRecord: true,
+  items: true,
   payments: {
     orderBy: { createdAt: 'desc' as const },
   },
@@ -105,20 +109,96 @@ export class InvoicesService {
 
   async create(dto: CreateInvoiceDto, user: AuthUser) {
     const organizationId = this.requireWriteOrganization(user);
+    const items = dto.items;
+    if (items?.length) {
+      await this.validateInvoiceItems(items, organizationId);
+    }
+    const customerRecord = dto.customerId
+      ? await this.findInvoiceCustomer(dto.customerId, organizationId)
+      : null;
+    const totals = items?.length
+      ? calculateQuoteTotals(items, {
+          discountAmount: dto.discountAmount ?? dto.discount,
+          discountRate: dto.discountRate,
+          discountType: dto.discountType,
+          adjustmentAmount: dto.adjustmentAmount,
+          adjustmentRate: dto.adjustmentRate,
+          adjustmentType: dto.adjustmentType,
+          tdsEnabled: dto.tdsEnabled,
+          tdsRate: dto.tdsRate,
+          tcsEnabled: dto.tcsEnabled,
+          tcsRate: dto.tcsRate,
+          explicitTaxAmount: dto.taxAmount,
+        })
+      : null;
+
     return this.prisma.invoice.create({
       data: {
         organization: { connect: { id: organizationId } },
         invoiceNo: dto.invoiceNo,
+        name: dto.name,
         issueDate: dto.issueDate ? new Date(dto.issueDate) : undefined,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
         status: dto.status ?? 'DRAFT',
-        customer: dto.customer,
-        clientEmail: dto.clientEmail,
-        totalAmount: dto.totalAmount ?? 0,
-        taxAmount: dto.taxAmount ?? 0,
-        discount: dto.discount ?? 0,
+        customer: dto.customer ?? customerRecord?.customerName,
+        customerRecord: customerRecord
+          ? { connect: { id: customerRecord.id } }
+          : undefined,
+        customerAddress:
+          dto.customerAddress ??
+          (customerRecord
+            ? [
+                customerRecord.addressLine1,
+                customerRecord.addressLine2,
+                customerRecord.city,
+                customerRecord.state,
+                customerRecord.zipCode,
+              ]
+                .filter(Boolean)
+                .join(', ')
+            : undefined),
+        clientEmail: dto.clientEmail ?? customerRecord?.email,
+        subtotal:
+          totals?.subtotal ??
+          Math.max(
+            0,
+            (dto.totalAmount ?? 0) - (dto.taxAmount ?? 0) + (dto.discount ?? 0),
+          ),
+        totalAmount: totals?.total ?? dto.totalAmount ?? 0,
+        taxAmount: totals?.taxAmount ?? dto.taxAmount ?? 0,
+        discount:
+          totals?.discountAmount ?? dto.discountAmount ?? dto.discount ?? 0,
+        discountType: dto.discountType ?? 'AMOUNT',
+        discountRate: dto.discountRate ?? 0,
+        adjustmentAmount: totals?.adjustmentAmount ?? dto.adjustmentAmount ?? 0,
+        adjustmentType: dto.adjustmentType ?? 'AMOUNT',
+        adjustmentRate: dto.adjustmentRate ?? 0,
+        tdsEnabled: dto.tdsEnabled ?? false,
+        tdsRate: dto.tdsRate ?? 0,
+        tdsAmount: totals?.tdsAmount ?? 0,
+        tcsEnabled: dto.tcsEnabled ?? false,
+        tcsRate: dto.tcsRate ?? 0,
+        tcsAmount: totals?.tcsAmount ?? 0,
         paymentMethod: dto.paymentMethod,
         notes: dto.notes,
+        termsAndConditions: dto.termsAndConditions,
+        templateKey: dto.templateKey ?? 'minimal',
+        items: items?.length
+          ? {
+              create: items.map((item) => ({
+                name: item.name.trim(),
+                productId: item.productId,
+                description: item.description,
+                unit: item.unit ?? 'Unit',
+                type: item.type ?? 'SERVICE',
+                quantity: item.quantity,
+                price: item.price,
+                discountAmount: item.discountAmount ?? 0,
+                taxRate: item.taxRate,
+                organization: { connect: { id: organizationId } },
+              })),
+            }
+          : undefined,
         user: { connect: { id: user.userId } },
       },
       include: includeRelations,
@@ -153,27 +233,182 @@ export class InvoicesService {
 
   async update(id: number, dto: UpdateInvoiceDto, user: AuthUser) {
     const organizationId = this.requireWriteOrganization(user);
-    await this.findOne(id, user);
+    const existing = await this.findOne(id, user);
+    const itemsChanged =
+      dto.items !== undefined &&
+      (dto.items.length !== existing.items.length ||
+        dto.items.some((item, index) => {
+          const current = existing.items[index];
+          return (
+            !current ||
+            item.name.trim() !== current.name ||
+            (item.productId ?? null) !== current.productId ||
+            (item.description ?? null) !== current.description ||
+            (item.unit ?? 'Unit') !== current.unit ||
+            (item.type ?? 'SERVICE') !== current.type ||
+            item.quantity !== current.quantity ||
+            item.price !== current.price ||
+            (item.discountAmount ?? 0) !== current.discountAmount ||
+            Number(item.taxRate ?? 0) !== Number(current.taxRate ?? 0)
+          );
+        }));
+    if (itemsChanged && (existing.payments?.length ?? 0) > 0) {
+      throw new BadRequestException(
+        'Invoice line items cannot be changed after payments have been recorded.',
+      );
+    }
+    if (dto.items !== undefined && dto.items.length === 0) {
+      throw new BadRequestException('Add at least one invoice line item.');
+    }
+    if (dto.items?.length) {
+      await this.validateInvoiceItems(dto.items, organizationId);
+    }
     const data: Prisma.InvoiceUpdateInput = {};
     if (dto.invoiceNo !== undefined) data.invoiceNo = dto.invoiceNo;
+    if (dto.name !== undefined) data.name = dto.name;
     if (dto.issueDate !== undefined)
       data.issueDate = dto.issueDate ? new Date(dto.issueDate) : null;
     if (dto.dueDate !== undefined)
       data.dueDate = dto.dueDate ? new Date(dto.dueDate) : null;
     if (dto.status !== undefined) data.status = dto.status;
     if (dto.customer !== undefined) data.customer = dto.customer;
+    if (dto.customerId !== undefined) {
+      if (dto.customerId) {
+        const customer = await this.findInvoiceCustomer(
+          dto.customerId,
+          organizationId,
+        );
+        data.customerRecord = { connect: { id: customer.id } };
+        if (dto.customer === undefined) data.customer = customer.customerName;
+        if (dto.customerAddress === undefined) {
+          data.customerAddress = [
+            customer.addressLine1,
+            customer.addressLine2,
+            customer.city,
+            customer.state,
+            customer.zipCode,
+          ]
+            .filter(Boolean)
+            .join(', ');
+        }
+      } else {
+        data.customerRecord = { disconnect: true };
+      }
+    }
+    if (dto.customerAddress !== undefined)
+      data.customerAddress = dto.customerAddress;
     if (dto.clientEmail !== undefined) data.clientEmail = dto.clientEmail;
-    if (dto.totalAmount !== undefined) data.totalAmount = dto.totalAmount;
-    if (dto.taxAmount !== undefined) data.taxAmount = dto.taxAmount;
-    if (dto.discount !== undefined) data.discount = dto.discount;
+    if (dto.items?.length) {
+      const totals = calculateQuoteTotals(dto.items, {
+        discountAmount: dto.discountAmount ?? dto.discount,
+        discountRate: dto.discountRate,
+        discountType: dto.discountType,
+        adjustmentAmount: dto.adjustmentAmount,
+        adjustmentRate: dto.adjustmentRate,
+        adjustmentType: dto.adjustmentType,
+        tdsEnabled: dto.tdsEnabled,
+        tdsRate: dto.tdsRate,
+        tcsEnabled: dto.tcsEnabled,
+        tcsRate: dto.tcsRate,
+        explicitTaxAmount: dto.taxAmount,
+      });
+      data.subtotal = totals.subtotal;
+      data.totalAmount = totals.total;
+      data.taxAmount = totals.taxAmount;
+      data.discount = totals.discountAmount;
+      data.adjustmentAmount = totals.adjustmentAmount;
+      data.tdsAmount = totals.tdsAmount;
+      data.tcsAmount = totals.tcsAmount;
+      data.tdsEnabled = dto.tdsEnabled ?? false;
+      data.tdsRate = dto.tdsRate ?? 0;
+      data.tcsEnabled = dto.tcsEnabled ?? false;
+      data.tcsRate = dto.tcsRate ?? 0;
+      if (itemsChanged) {
+        data.items = {
+          deleteMany: {},
+          create: dto.items.map((item) => ({
+            name: item.name.trim(),
+            productId: item.productId,
+            description: item.description,
+            unit: item.unit ?? 'Unit',
+            type: item.type ?? 'SERVICE',
+            quantity: item.quantity,
+            price: item.price,
+            discountAmount: item.discountAmount ?? 0,
+            taxRate: item.taxRate,
+            organization: { connect: { id: organizationId } },
+          })),
+        };
+      }
+    } else {
+      if (dto.totalAmount !== undefined) data.totalAmount = dto.totalAmount;
+      if (dto.taxAmount !== undefined) data.taxAmount = dto.taxAmount;
+      if (dto.discount !== undefined) data.discount = dto.discount;
+    }
+    if (!dto.items?.length && dto.discountAmount !== undefined)
+      data.discount = dto.discountAmount;
+    if (dto.discountType !== undefined) data.discountType = dto.discountType;
+    if (dto.discountRate !== undefined) data.discountRate = dto.discountRate;
+    if (dto.adjustmentAmount !== undefined)
+      data.adjustmentAmount = dto.adjustmentAmount;
+    if (dto.adjustmentType !== undefined)
+      data.adjustmentType = dto.adjustmentType;
+    if (dto.adjustmentRate !== undefined)
+      data.adjustmentRate = dto.adjustmentRate;
+    if (dto.tdsEnabled !== undefined) data.tdsEnabled = dto.tdsEnabled;
+    if (dto.tdsRate !== undefined) data.tdsRate = dto.tdsRate;
+    if (dto.tcsEnabled !== undefined) data.tcsEnabled = dto.tcsEnabled;
+    if (dto.tcsRate !== undefined) data.tcsRate = dto.tcsRate;
     if (dto.paymentMethod !== undefined) data.paymentMethod = dto.paymentMethod;
     if (dto.notes !== undefined) data.notes = dto.notes;
+    if (dto.termsAndConditions !== undefined)
+      data.termsAndConditions = dto.termsAndConditions;
+    if (dto.templateKey !== undefined) data.templateKey = dto.templateKey;
 
     return this.prisma.invoice.update({
       where: { id, organizationId },
       data,
       include: includeRelations,
     });
+  }
+
+  private async findInvoiceCustomer(
+    customerId: number,
+    organizationId: number,
+  ) {
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: customerId, organizationId, deletedAt: null },
+      select: {
+        id: true,
+        customerName: true,
+        addressLine1: true,
+        addressLine2: true,
+        city: true,
+        state: true,
+        zipCode: true,
+        email: true,
+      },
+    });
+    if (!customer)
+      throw new NotFoundException(`Customer #${customerId} not found`);
+    return customer;
+  }
+
+  private async validateInvoiceItems(
+    items: NonNullable<CreateInvoiceDto['items']>,
+    organizationId: number,
+  ) {
+    for (const item of items) {
+      if (item.productId) {
+        const product = await this.prisma.product.findFirst({
+          where: { id: item.productId, organizationId, isActive: true },
+          select: { id: true },
+        });
+        if (!product) {
+          throw new NotFoundException(`Product #${item.productId} not found`);
+        }
+      }
+    }
   }
 
   async sendInvoice(id: number, dto: SendInvoiceDto = {}, user: AuthUser) {
@@ -336,12 +571,11 @@ export class InvoicesService {
       </div>
     `;
 
+    const invoicePdf = await this.generatePdf(id, user);
     const attachments = [
       {
         filename: `${invoice.invoiceNo}.pdf`,
-        content: Buffer.from(
-          `Invoice ${invoice.invoiceNo}\nCustomer: ${invoice.customer ?? 'Valued Customer'}\nAmount: ${totalAmountText}`,
-        ),
+        content: invoicePdf,
         contentType: 'application/pdf',
       },
     ];
@@ -420,6 +654,83 @@ export class InvoicesService {
     }
   }
 
+  async generatePdf(id: number, user: AuthUser): Promise<Buffer> {
+    const invoice = await this.findOne(id, user);
+    const customer = invoice.customerRecord;
+    const address =
+      invoice.customerAddress ??
+      (customer
+        ? [
+            customer.addressLine1,
+            customer.addressLine2,
+            customer.city,
+            customer.state,
+            customer.zipCode,
+          ]
+            .filter(Boolean)
+            .join(', ')
+        : null);
+    const formatAmount = (amount: number | null | undefined) =>
+      `INR ${Number(amount ?? 0).toFixed(2)}`;
+    return buildInvoicePdfBuffer({
+      name: invoice.name,
+      invoiceNo: invoice.invoiceNo,
+      customer:
+        invoice.customer ?? customer?.customerName ?? 'Invoice customer',
+      customerAddress: address,
+      issueDate: invoice.issueDate?.toISOString().slice(0, 10) ?? '—',
+      dueDate: invoice.dueDate?.toISOString().slice(0, 10) ?? '—',
+      subtotal: formatAmount(invoice.subtotal),
+      discount: formatAmount(invoice.discount),
+      tax: formatAmount(invoice.taxAmount),
+      adjustment: invoice.adjustmentAmount
+        ? formatAmount(invoice.adjustmentAmount)
+        : undefined,
+      tds: invoice.tdsEnabled ? formatAmount(invoice.tdsAmount) : undefined,
+      tcs: invoice.tcsEnabled ? formatAmount(invoice.tcsAmount) : undefined,
+      totalAmount: formatAmount(invoice.totalAmount),
+      companyName:
+        this.configService.get<string>('COMPANY_NAME') || 'Enterprise ERP',
+      items: invoice.items?.length
+        ? invoice.items.map((item) => ({
+            name: item.name,
+            description: item.description,
+            unit: item.unit,
+            quantity: item.quantity,
+            price: item.price,
+            total: Math.max(
+              0,
+              item.quantity * item.price - item.discountAmount,
+            ),
+          }))
+        : [
+            {
+              name: invoice.name || invoice.invoiceNo,
+              description: invoice.notes,
+              unit: 'Unit',
+              quantity: 1,
+              price:
+                invoice.subtotal ??
+                Math.max(
+                  0,
+                  invoice.totalAmount - invoice.taxAmount + invoice.discount,
+                ),
+              total:
+                invoice.subtotal ??
+                Math.max(
+                  0,
+                  invoice.totalAmount - invoice.taxAmount + invoice.discount,
+                ),
+            },
+          ],
+      notes: invoice.notes,
+      terms: invoice.termsAndConditions,
+      paymentInstructions: invoice.paymentMethod
+        ? `Payment method: ${invoice.paymentMethod}`
+        : undefined,
+    });
+  }
+
   async remove(id: number, user: AuthUser) {
     const organizationId = this.requireWriteOrganization(user);
     await this.findOne(id, user);
@@ -444,6 +755,24 @@ export class InvoicesService {
         continue;
       }
       try {
+        const totalAmount =
+          typeof r.totalAmount === 'number'
+            ? r.totalAmount
+            : typeof r.totalAmount === 'string'
+              ? Number(r.totalAmount)
+              : 0;
+        const taxAmount =
+          typeof r.taxAmount === 'number'
+            ? r.taxAmount
+            : typeof r.taxAmount === 'string'
+              ? Number(r.taxAmount)
+              : 0;
+        const discount =
+          typeof r.discount === 'number'
+            ? r.discount
+            : typeof r.discount === 'string'
+              ? Number(r.discount)
+              : 0;
         const data: Prisma.InvoiceCreateInput = {
           organization: { connect: { id: organizationId } },
           invoiceNo,
@@ -457,24 +786,10 @@ export class InvoicesService {
               : undefined,
           status: typeof r.status === 'string' ? r.status : 'DRAFT',
           customer: typeof r.customer === 'string' ? r.customer : undefined,
-          totalAmount:
-            typeof r.totalAmount === 'number'
-              ? r.totalAmount
-              : typeof r.totalAmount === 'string'
-                ? Number(r.totalAmount)
-                : 0,
-          taxAmount:
-            typeof r.taxAmount === 'number'
-              ? r.taxAmount
-              : typeof r.taxAmount === 'string'
-                ? Number(r.taxAmount)
-                : 0,
-          discount:
-            typeof r.discount === 'number'
-              ? r.discount
-              : typeof r.discount === 'string'
-                ? Number(r.discount)
-                : 0,
+          subtotal: Math.max(0, totalAmount - taxAmount + discount),
+          totalAmount,
+          taxAmount,
+          discount,
           paymentMethod:
             typeof r.paymentMethod === 'string' ? r.paymentMethod : undefined,
           notes: typeof r.notes === 'string' ? r.notes : undefined,

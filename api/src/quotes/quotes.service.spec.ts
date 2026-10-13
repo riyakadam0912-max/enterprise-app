@@ -18,7 +18,7 @@ const user: AuthUser = {
 };
 
 function createPrismaMock() {
-  return {
+  const prisma = {
     deal: { findFirst: jest.fn() },
     contact: { findFirst: jest.fn() },
     customer: { findFirst: jest.fn() },
@@ -28,11 +28,16 @@ function createPrismaMock() {
       findUnique: jest.fn(),
       findFirst: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
     },
     quoteStatusHistory: { create: jest.fn() },
     invoice: { create: jest.fn() },
     $transaction: jest.fn(),
   };
+  prisma.$transaction.mockImplementation(
+    (callback: (transaction: typeof prisma) => unknown) => callback(prisma),
+  );
+  return prisma;
 }
 
 describe('QuotesService', () => {
@@ -273,14 +278,45 @@ describe('QuotesService', () => {
     const prisma = createPrismaMock();
     prisma.quote.findUnique.mockResolvedValue({
       id: 5,
+      status: 'DRAFT',
+      name: 'Website proposal',
+      customerId: 7,
+      customerAddress: 'Main Street',
+      customer: { customerName: 'Acme', email: 'accounts@acme.test' },
+      contact: null,
+      subtotal: 240,
+      discountAmount: 10,
+      discountType: 'AMOUNT',
+      discountRate: 0,
+      taxAmount: 20,
       total: 250,
+      adjustmentAmount: 0,
+      adjustmentType: 'AMOUNT',
+      adjustmentRate: 0,
+      tdsEnabled: false,
+      tdsRate: 0,
+      tdsAmount: 0,
+      tcsEnabled: false,
+      tcsRate: 0,
+      tcsAmount: 0,
       validTill: new Date('2026-11-01'),
       notes: 'Terms',
-      customer: { customerName: 'Acme' },
-      contact: null,
+      termsAndConditions: 'Payment within 30 days',
+      templateKey: 'professional',
+      items: [
+        {
+          name: 'Design',
+          quantity: 2,
+          price: 120,
+          unit: 'Day',
+          type: 'SERVICE',
+          discountAmount: 0,
+          taxRate: 10,
+        },
+      ],
     });
     prisma.invoice.create.mockResolvedValue({ id: 9, invoiceNo: 'INV-Q5-1' });
-    prisma.quote.update.mockResolvedValue({ id: 5, status: 'CONVERTED' });
+    prisma.quote.updateMany.mockResolvedValue({ count: 1 });
     const service = new QuotesService(prisma as never);
 
     await expect(service.convertToInvoice(5, 1, user)).resolves.toEqual({
@@ -292,12 +328,26 @@ describe('QuotesService', () => {
         data: expect.objectContaining({
           organizationId: 10,
           customer: 'Acme',
+          customerId: 7,
+          clientEmail: 'accounts@acme.test',
+          subtotal: 240,
           totalAmount: 250,
+          termsAndConditions: 'Payment within 30 days',
+          templateKey: 'professional',
+          items: {
+            create: [
+              expect.objectContaining({
+                name: 'Design',
+                quantity: 2,
+                organizationId: 10,
+              }),
+            ],
+          },
         }),
       }),
     );
-    expect(prisma.quote.update).toHaveBeenCalledWith({
-      where: { id: 5, organizationId: 10 },
+    expect(prisma.quote.updateMany).toHaveBeenCalledWith({
+      where: { id: 5, organizationId: 10, status: 'DRAFT' },
       data: { status: 'CONVERTED' },
     });
     expect(prisma.quoteStatusHistory.create).toHaveBeenCalledWith({
