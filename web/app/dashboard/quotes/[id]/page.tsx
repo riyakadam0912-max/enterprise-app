@@ -86,6 +86,24 @@ export default function QuoteDetailPage() {
       anchor.download = `quote-${id}.pdf`;
       anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setShareMessage('PDF download started.');
+    } catch (cause: unknown) {
+      const error = cause as {
+        message?: string;
+        response?: {
+          headers?: Record<string, string | undefined>;
+          data?: { requestId?: string; message?: string };
+        };
+      };
+      const requestId =
+        error.response?.headers?.['x-request-id'] ??
+        error.response?.data?.requestId;
+      const serverMessage = error.response?.data?.message;
+      setShareMessage(
+        requestId
+          ? `PDF export failed. Reference: ${requestId}`
+          : serverMessage ?? error.message ?? 'PDF export failed. Please try again.',
+      );
     } finally {
       setActionLoading(false);
     }
