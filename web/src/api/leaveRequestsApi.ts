@@ -2,11 +2,13 @@ import { apiClient } from './apiClient';
 
 export type LeaveStatus = 'PENDING_MANAGER' | 'PENDING_HR' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 export type LeaveType = 'SICK' | 'CASUAL' | 'PAID' | 'UNPAID' | 'MATERNITY' | 'PATERNITY' | 'MEDICAL' | 'OTHER';
+export type LeaveDuration = 'FULL_DAY' | 'HALF_DAY';
 
 export interface LeaveRequest {
   id:         number;
   startDate:  string;
   endDate:    string;
+  duration?: LeaveDuration;
   leaveType:  LeaveType;
   reason:     string | null;
   status:     LeaveStatus;
@@ -30,6 +32,7 @@ export interface LeaveRequest {
 export interface CreateLeaveRequestPayload {
   startDate:   string;
   endDate:     string;
+  duration?: LeaveDuration;
   leaveType:   LeaveType;
   reason?:     string;
   employeeId?: number;

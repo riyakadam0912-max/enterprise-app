@@ -26,6 +26,7 @@ import {
   managerApproveLeaveRequest,
   rejectLeaveRequest,
   type LeaveRequest,
+  type LeaveDuration,
   type LeaveStatus,
   type LeaveType,
 } from '@/api/leaveRequestsApi';
@@ -34,9 +35,13 @@ const leaveSchema = z.object({
   leaveType: z.enum(['SICK', 'CASUAL', 'PAID', 'UNPAID', 'MATERNITY', 'PATERNITY', 'MEDICAL', 'OTHER']),
   startDate: z.string().min(1, 'Start date is required'),
   endDate: z.string().min(1, 'End date is required'),
+  duration: z.enum(['FULL_DAY', 'HALF_DAY']),
   reason: z.string().min(5, 'Reason must be at least 5 characters'),
 }).refine((values) => new Date(values.endDate).getTime() >= new Date(values.startDate).getTime(), {
   message: 'End date must be on or after start date',
+  path: ['endDate'],
+}).refine((values) => values.duration !== 'HALF_DAY' || values.startDate === values.endDate, {
+  message: 'Half-day leave must be for one date',
   path: ['endDate'],
 });
 
@@ -88,6 +93,7 @@ export default function LeavePage() {
       leaveType: 'CASUAL',
       startDate: '',
       endDate: '',
+      duration: 'FULL_DAY',
       reason: '',
     },
   });
@@ -149,6 +155,11 @@ export default function LeavePage() {
       cell: ({ row }) => formatDate(row.original.endDate),
     },
     {
+      accessorKey: 'duration',
+      header: 'Duration',
+      cell: ({ row }) => row.original.duration === 'HALF_DAY' ? 'Half day (5 hrs)' : 'Full day',
+    },
+    {
       accessorKey: 'status',
       header: 'Status',
       cell: ({ row }) => <StatusBadge status={row.original.status} />,
@@ -205,7 +216,7 @@ export default function LeavePage() {
 
   const totalDays = filteredRequests.reduce((total, request) => {
     const days = Math.max(1, Math.floor((new Date(request.endDate).getTime() - new Date(request.startDate).getTime()) / 86400000) + 1);
-    return total + days;
+    return total + (request.duration === 'HALF_DAY' ? 0.5 : days);
   }, 0);
 
   async function onCreate(values: LeaveFormValues) {
@@ -329,6 +340,14 @@ export default function LeavePage() {
             <FormSelect name="leaveType" label="Leave type" options={leaveTypeOptions} />
             <FormDatePicker name="startDate" label="Start date" />
             <FormDatePicker name="endDate" label="End date" />
+            <FormSelect
+              name="duration"
+              label="Duration"
+              options={[
+                { label: 'Full day', value: 'FULL_DAY' as LeaveDuration },
+                { label: 'Half day (work 5 hours)', value: 'HALF_DAY' as LeaveDuration },
+              ]}
+            />
             <div className="md:col-span-2">
               <FormTextarea name="reason" label="Reason" rows={4} placeholder="Tell us why you need this leave" />
             </div>
@@ -339,7 +358,7 @@ export default function LeavePage() {
       <Dialog
         open={Boolean(rejectTarget)}
         title={rejectTarget ? `Review leave request #${rejectTarget.id}` : 'Leave request'}
-        description={rejectTarget ? `${rejectTarget.employee?.name ?? 'Employee'} • ${formatDate(rejectTarget.startDate)} - ${formatDate(rejectTarget.endDate)}` : undefined}
+        description={rejectTarget ? `${rejectTarget.employee?.name ?? 'Employee'} • ${formatDate(rejectTarget.startDate)} - ${formatDate(rejectTarget.endDate)} • ${rejectTarget.duration === 'HALF_DAY' ? 'Half day, 5 work hours' : 'Full day'}` : undefined}
         onClose={() => {
           setRejectTarget(null);
           setRejectReason('');
@@ -354,6 +373,7 @@ export default function LeavePage() {
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
               <p className="font-semibold text-slate-900">Reason</p>
               <p className="mt-2">{rejectTarget.reason ?? 'N/A'}</p>
+              <p className="mt-3 text-xs text-slate-500">{rejectTarget.duration === 'HALF_DAY' ? 'Half day: employee is expected to work 5 hours, excluding breaks.' : 'Full-day leave'}</p>
               <p className="mt-3 text-xs text-slate-500">Status: {rejectTarget.status}</p>
             </div>
             {isManager ? (

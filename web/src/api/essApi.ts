@@ -75,6 +75,7 @@ export interface LeaveRecord {
   endDate: string;
   reason: string;
   status: string;
+  duration?: 'FULL_DAY' | 'HALF_DAY';
   days: number;
   appliedOn: string;
 }
@@ -366,6 +367,7 @@ export async function getAttendanceHistory(): Promise<AttendanceRecord[]> {
 export async function applyLeave(data: {
   startDate: string;
   endDate: string;
+  duration?: 'FULL_DAY' | 'HALF_DAY';
   leaveType: string;
   reason?: string;
 }): Promise<LeaveResponse> {

@@ -89,6 +89,7 @@ export interface EmployeeAttendanceDay {
   breaks?: { startedAt: string; endedAt: string | null }[];
   onBreak?: boolean;
   shortfallHours?: number;
+  expectedHours?: number;
   lateMinutes: number;
   overtimeHours: number;
   shiftDetails: ShiftDetails | null;

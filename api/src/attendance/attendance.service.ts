@@ -101,6 +101,13 @@ type DailyAttendanceRow = {
   } | null;
 };
 
+type LeaveRequestLite = {
+  startDate: Date;
+  endDate: Date;
+  duration?: string | null;
+  employeeId?: number | null;
+};
+
 @Injectable()
 export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   private automationTimer: ReturnType<typeof setInterval> | null = null;
@@ -301,7 +308,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           row.status === AttendanceStatus.PRESENT ||
           row.status === AttendanceStatus.HALF_DAY
         ) {
-          acc.totalExpectedHours += row.expectedHours ??
+          acc.totalExpectedHours +=
+            row.expectedHours ??
             (row.status === AttendanceStatus.HALF_DAY
               ? requiredHours / 2
               : requiredHours);
@@ -1836,16 +1844,16 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       999,
     );
 
-    const [attendanceRows, leaveRows] = await Promise.all([
-      this.prisma.attendance.findMany({
-        where: {
-          employeeId,
-          date: { gte: monthStart, lte: monthEnd },
-        },
-        include: { shift: true, breaks: true },
-        orderBy: { date: 'asc' },
-      }),
-      this.prisma.leaveRequest.findMany({
+    const attendanceRows = await this.prisma.attendance.findMany({
+      where: {
+        employeeId,
+        date: { gte: monthStart, lte: monthEnd },
+      },
+      include: { shift: true, breaks: true },
+      orderBy: { date: 'asc' },
+    });
+    const leaveRows: LeaveRequestLite[] =
+      await this.prisma.leaveRequest.findMany({
         where: {
           employeeId,
           status: 'APPROVED',
@@ -1853,8 +1861,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           startDate: { lte: monthEnd },
           endDate: { gte: monthStart },
         },
-      }),
-    ]);
+      });
 
     const monthStartHolidayDate = this.parseHolidayDate(
       this.dateKey(monthStart),
@@ -1905,8 +1912,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       const dayKey = this.dateKey(day);
       const isHalfDayLeave = leaveRows.some(
         (row) =>
-          row.duration === 'HALF_DAY' &&
-          this.dateKey(row.startDate) === dayKey,
+          row.duration === 'HALF_DAY' && this.dateKey(row.startDate) === dayKey,
       );
       const onLeave = leaveRows.some(
         (row) =>
@@ -2050,22 +2056,20 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
     const queryStart = weekStart < monthStart ? weekStart : monthStart;
 
-    const [attendanceRows, leaves] = await Promise.all([
-      this.prisma.attendance.findMany({
-        where: { employeeId, date: { gte: queryStart, lte: today } },
-        include: { shift: true, breaks: true },
-      }),
-      this.prisma.leaveRequest.findMany({
-        where: {
-          employeeId,
-          status: 'APPROVED',
-          startDate: { lte: this.endOfDay(monthEnd) },
-          endDate: { gte: queryStart },
-          deletedAt: null,
-        },
-        select: { startDate: true, endDate: true, duration: true },
-      }),
-    ]);
+    const attendanceRows = await this.prisma.attendance.findMany({
+      where: { employeeId, date: { gte: queryStart, lte: today } },
+      include: { shift: true, breaks: true },
+    });
+    const leaves: LeaveRequestLite[] = await this.prisma.leaveRequest.findMany({
+      where: {
+        employeeId,
+        status: 'APPROVED',
+        startDate: { lte: this.endOfDay(monthEnd) },
+        endDate: { gte: queryStart },
+        deletedAt: null,
+      },
+      select: { startDate: true, endDate: true, duration: true },
+    });
     const { holidays, familyRootByOrganization } =
       await this.findApplicableHolidays(
         [employee.organizationId],
@@ -2140,8 +2144,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           continue;
         }
         const isHalfDayLeave = leaves.some(
-          (leave) =>
-            leave.duration === 'HALF_DAY' && isCovered(leave, dayKey),
+          (leave) => leave.duration === 'HALF_DAY' && isCovered(leave, dayKey),
         );
         requiredHours += isHalfDayLeave
           ? 5

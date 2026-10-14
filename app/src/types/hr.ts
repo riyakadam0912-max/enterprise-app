@@ -69,6 +69,7 @@ export type LeaveRecord = {
   endDate: string;
   reason: string;
   status: string;
+  duration?: 'FULL_DAY' | 'HALF_DAY';
   days: number;
   appliedOn: string;
 };

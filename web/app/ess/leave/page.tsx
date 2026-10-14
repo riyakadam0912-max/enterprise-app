@@ -14,6 +14,7 @@ export default function ESSLeavePage() {
   const [formData, setFormData] = useState({
     startDate: '',
     endDate: '',
+    duration: 'FULL_DAY',
     leaveType: 'Casual',
     reason: '',
   });
@@ -38,11 +39,20 @@ export default function ESSLeavePage() {
       setShowError(true);
       return;
     }
+    if (
+      formData.duration === 'HALF_DAY' &&
+      formData.startDate !== formData.endDate
+    ) {
+      setErrorMsg('Half-day leave must be for one date.');
+      setShowError(true);
+      return;
+    }
 
     try {
       await apply({
         startDate: formData.startDate,
         endDate: formData.endDate,
+        duration: formData.duration as 'FULL_DAY' | 'HALF_DAY',
         leaveType: formData.leaveType,
         reason: formData.reason,
       });
@@ -53,6 +63,7 @@ export default function ESSLeavePage() {
       setFormData({
         startDate: '',
         endDate: '',
+        duration: 'FULL_DAY',
         leaveType: 'Casual',
         reason: '',
       });
@@ -113,6 +124,7 @@ export default function ESSLeavePage() {
                 <p className="text-4xl font-bold">{balance.balance}</p>
                 <p className="text-blue-100 text-xs mt-2">days / {balance.year}</p>
               </div>
+
               <div>
                 <p className="text-blue-100 text-sm uppercase mb-2">Total Allocated</p>
                 <p className="text-4xl font-bold">{balance.totalAllocation}</p>
@@ -159,6 +171,21 @@ export default function ESSLeavePage() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-2">Duration</label>
+                <select
+                  value={formData.duration}
+                  onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+                >
+                  <option value="FULL_DAY">Full day</option>
+                  <option value="HALF_DAY">Half day (work 5 hours)</option>
+                </select>
+                {formData.duration === 'HALF_DAY' && (
+                  <p className="mt-1 text-xs text-gray-500">Choose one date. Five working hours excluding breaks are required.</p>
+                )}
               </div>
 
               {/* Dates */}
@@ -246,6 +273,7 @@ export default function ESSLeavePage() {
                     <th className="px-4 py-3 text-left font-semibold text-gray-900">Leave Type</th>
                     <th className="px-4 py-3 text-left font-semibold text-gray-900">From Date</th>
                     <th className="px-4 py-3 text-left font-semibold text-gray-900">To Date</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-900">Duration</th>
                     <th className="px-4 py-3 text-left font-semibold text-gray-900">Days</th>
                     <th className="px-4 py-3 text-left font-semibold text-gray-900">Status</th>
                     <th className="px-4 py-3 text-left font-semibold text-gray-900">Reason</th>
@@ -263,6 +291,7 @@ export default function ESSLeavePage() {
                       <td className="px-4 py-3">
                         {formatDate(new Date(leave.endDate))}
                       </td>
+                      <td className="px-4 py-3">{leave.duration === 'HALF_DAY' ? 'Half day (5 hrs)' : 'Full day'}</td>
                       <td className="px-4 py-3 font-medium">{leave.days}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${

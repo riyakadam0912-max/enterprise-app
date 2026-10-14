@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { createLeaveRequest, LeaveType } from '../../../../src/api/leaveRequestsApi';
+import { createLeaveRequest, LeaveDuration, LeaveType } from '../../../../src/api/leaveRequestsApi';
 import { getEmployees } from '../../../../src/api/employeesApi';
 import { getErrorMessage, reportError, retryAsync } from '@/lib/error-handling';
 import { useAuthSession } from '@/stores/auth-store';
@@ -21,12 +21,20 @@ const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
   OTHER:     'Other',
 };
 
-const EMPTY = {
+const EMPTY: {
+  employeeId: string;
+  startDate: string;
+  endDate: string;
+  duration: LeaveDuration;
+  leaveType: LeaveType | '';
+  reason: string;
+} = {
   employeeId: '',
-  startDate:  '',
-  endDate:    '',
-  leaveType:  '' as LeaveType | '',
-  reason:     '',
+  startDate: '',
+  endDate: '',
+  duration: 'FULL_DAY',
+  leaveType: '',
+  reason: '',
 };
 
 export default function AddLeaveRequestPage() {
@@ -64,6 +72,10 @@ export default function AddLeaveRequestPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (form.duration === 'HALF_DAY' && form.startDate !== form.endDate) {
+      setError('Half-day leave must be for one date.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -79,6 +91,7 @@ export default function AddLeaveRequestPage() {
       await createLeaveRequest({
         startDate:  form.startDate,
         endDate:    form.endDate,
+        duration:   form.duration,
         leaveType:  (form.leaveType || 'OTHER') as LeaveType,
         reason:     form.reason    || undefined,
         employeeId: resolvedEmployeeId,
@@ -191,6 +204,24 @@ export default function AddLeaveRequestPage() {
               placeholder="dd-MMM-yyyy"
               className={inputCls}
             />
+          </div>
+
+          {/* Request duration */}
+          <div className={rowCls}>
+            <label className={labelCls}>Duration</label>
+            <div className="w-full">
+              <select
+                value={form.duration}
+                onChange={(e) => set('duration', e.target.value)}
+                className={inputCls}
+              >
+                <option value="FULL_DAY">Full day</option>
+                <option value="HALF_DAY">Half day (work 5 hours)</option>
+              </select>
+              {form.duration === 'HALF_DAY' && (
+                <p className="mt-1 text-xs text-gray-500">Choose one date. You are expected to work 5 hours, excluding breaks.</p>
+              )}
+            </div>
           </div>
 
           {/* Leave Type */}

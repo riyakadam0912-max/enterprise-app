@@ -159,6 +159,7 @@ export default function AllRequestsPage() {
                   <th className="px-4 py-3 text-left font-medium">Start Date</th>
                   <th className="px-4 py-3 text-left font-medium">End Date</th>
                   <th className="px-4 py-3 text-left font-medium">Leave Type</th>
+                  <th className="px-4 py-3 text-left font-medium">Duration</th>
                   <th className="px-4 py-3 text-left font-medium">Reason</th>
                   <th className="px-4 py-3 text-left font-medium">Status</th>
                   <th className="px-4 py-3 text-left font-medium">Applied On</th>
@@ -169,7 +170,7 @@ export default function AllRequestsPage() {
               <tbody className="divide-y divide-gray-100">
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-16 text-center text-gray-400 text-sm">
+                    <td colSpan={10} className="py-16 text-center text-gray-400 text-sm">
                       No leave requests found
                     </td>
                   </tr>
@@ -182,6 +183,7 @@ export default function AllRequestsPage() {
                       <td className="px-4 py-3 text-gray-600">{formatDate(req.startDate)}</td>
                       <td className="px-4 py-3 text-gray-600">{formatDate(req.endDate)}</td>
                       <td className="px-4 py-3 text-gray-600">{capitalize(req.leaveType)}</td>
+                      <td className="px-4 py-3 text-gray-600">{req.duration === 'HALF_DAY' ? 'Half day (5 hrs)' : 'Full day'}</td>
                       <td className="px-4 py-3 text-gray-600 max-w-40 truncate">{req.reason ?? '-'}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded text-xs font-semibold ${STATUS_COLORS[req.status] ?? 'bg-gray-100 text-gray-600'}`}>
