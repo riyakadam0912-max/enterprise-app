@@ -7,6 +7,7 @@ import {
 import { AttendanceCheckoutSource, type Prisma } from '@prisma/client';
 import type { AuthUser } from '../common/types/auth';
 import { PrismaService } from '../prisma/prisma.service';
+import { countLeaveDaysInPeriod } from '../common/utils/leave-day-count';
 import { ApplyLeaveDto } from './dto/apply-leave.dto';
 import { SubmitExpenseDto } from './dto/submit-expense.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -326,7 +327,9 @@ export class EmployeeSelfServiceService {
       select: { timezone: true },
     });
     const timezone = organization?.timezone ?? 'UTC';
-    const today = attendanceDateFromKey(dateKeyInTimezone(new Date(), timezone));
+    const today = attendanceDateFromKey(
+      dateKeyInTimezone(new Date(), timezone),
+    );
 
     const attendance = await this.prisma.attendance.findUnique({
       where: {
@@ -430,15 +433,6 @@ export class EmployeeSelfServiceService {
       throw new BadRequestException('End date cannot be before start date');
     }
     const duration = dto.duration ?? 'FULL_DAY';
-    if (
-      duration === 'HALF_DAY' &&
-      startDate.toISOString().slice(0, 10) !== endDate.toISOString().slice(0, 10)
-    ) {
-      throw new BadRequestException(
-        'Half-day leave requests must be for a single date',
-      );
-    }
-
     // Check for overlapping leaves
     const overlappingLeave = await this.prisma.leaveRequest.findFirst({
       where: {
@@ -470,10 +464,13 @@ export class EmployeeSelfServiceService {
     });
 
     // Calculate number of days
-    const daysDiff =
-      duration === 'HALF_DAY'
-        ? 0.5
-        : (endDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24) + 1;
+    const daysDiff = countLeaveDaysInPeriod(
+      startDate,
+      endDate,
+      duration,
+      startDate,
+      endDate,
+    );
 
     return {
       success: true,
@@ -509,22 +506,21 @@ export class EmployeeSelfServiceService {
       where: {
         employeeId,
         status: 'APPROVED',
-        startDate: { gte: yearStart },
-        endDate: { lte: yearEnd },
+        startDate: { lte: yearEnd },
+        endDate: { gte: yearStart },
       },
     });
 
     // Calculate total days taken
     let daysTaken = 0;
     approvedLeaves.forEach((leave) => {
-      const days =
-        leave.duration === 'HALF_DAY'
-          ? 0.5
-          : (new Date(leave.endDate).getTime() -
-              new Date(leave.startDate).getTime()) /
-              (1000 * 3600 * 24) +
-            1;
-      daysTaken += days;
+      daysTaken += countLeaveDaysInPeriod(
+        leave.startDate,
+        leave.endDate,
+        leave.duration,
+        yearStart,
+        yearEnd,
+      );
     });
 
     // Default: 20 days per year
@@ -547,13 +543,13 @@ export class EmployeeSelfServiceService {
     });
 
     return leaves.map((leave) => {
-      const days =
-        leave.duration === 'HALF_DAY'
-          ? 0.5
-          : (new Date(leave.endDate).getTime() -
-              new Date(leave.startDate).getTime()) /
-              (1000 * 3600 * 24) +
-            1;
+      const days = countLeaveDaysInPeriod(
+        leave.startDate,
+        leave.endDate,
+        leave.duration,
+        leave.startDate,
+        leave.endDate,
+      );
 
       return {
         id: leave.id,

@@ -20,6 +20,7 @@ import {
   createSubmittedApprovalState,
 } from '../common/workflows/approval-workflow';
 import { DASHBOARD_CACHE_KEY } from '../common/utils/cache-keys';
+import { countLeaveDaysInPeriod } from '../common/utils/leave-day-count';
 import { PrismaService } from '../prisma/prisma.service';
 import { BusinessUnitsService } from '../business-units/business-units.service';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
@@ -155,30 +156,23 @@ export class LeaveRequestsService {
     });
   }
 
-  private computeLeaveDays(startDate: Date, endDate: Date) {
-    const start = new Date(startDate);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(endDate);
-    end.setHours(0, 0, 0, 0);
-    const msPerDay = 24 * 60 * 60 * 1000;
-    return Math.max(
-      1,
-      Math.floor((end.getTime() - start.getTime()) / msPerDay) + 1,
+  private computeLeaveDays(
+    startDate: Date,
+    endDate: Date,
+    duration: string | null | undefined = 'FULL_DAY',
+  ) {
+    return countLeaveDaysInPeriod(
+      startDate,
+      endDate,
+      duration,
+      startDate,
+      endDate,
     );
   }
 
-  private validateDurationDates(
-    duration: string | undefined,
-    startDate: Date,
-    endDate: Date,
-  ) {
-    if (
-      duration === 'HALF_DAY' &&
-      startDate.toISOString().slice(0, 10) !== endDate.toISOString().slice(0, 10)
-    ) {
-      throw new BadRequestException(
-        'Half-day leave requests must be for a single date',
-      );
+  private validateDateRange(startDate: Date, endDate: Date) {
+    if (endDate < startDate) {
+      throw new BadRequestException('End date cannot be before start date');
     }
   }
 
@@ -207,7 +201,7 @@ export class LeaveRequestsService {
     const startDate = new Date(dto.startDate);
     const endDate = new Date(dto.endDate);
     const duration = dto.duration ?? 'FULL_DAY';
-    this.validateDurationDates(duration, startDate, endDate);
+    this.validateDateRange(startDate, endDate);
 
     if (user.role === Role.EMPLOYEE) {
       const ownEmployeeId =
@@ -434,9 +428,10 @@ export class LeaveRequestsService {
     const updatedStartDate = dto.startDate
       ? new Date(dto.startDate)
       : existing.startDate;
-    const updatedEndDate = dto.endDate ? new Date(dto.endDate) : existing.endDate;
-    const updatedDuration = dto.duration ?? existing.duration ?? 'FULL_DAY';
-    this.validateDurationDates(updatedDuration, updatedStartDate, updatedEndDate);
+    const updatedEndDate = dto.endDate
+      ? new Date(dto.endDate)
+      : existing.endDate;
+    this.validateDateRange(updatedStartDate, updatedEndDate);
     if (dto.duration !== undefined) data.duration = dto.duration;
     if (dto.leaveType !== undefined) data.leaveType = dto.leaveType;
     if (dto.reason !== undefined) data.reason = dto.reason;
@@ -517,10 +512,11 @@ export class LeaveRequestsService {
     }
     const organizationId = request.organizationId;
 
-    const leaveDays =
-      request.duration === 'HALF_DAY'
-        ? 0.5
-        : this.computeLeaveDays(request.startDate, request.endDate);
+    const leaveDays = this.computeLeaveDays(
+      request.startDate,
+      request.endDate,
+      request.duration,
+    );
 
     const result = await this.workflowEngine.approveWorkflow({
       definitionKey: 'leave-request-approval',

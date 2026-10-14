@@ -10,11 +10,7 @@ import {
   DelegateMock,
 } from '../../test/helpers/mocks.helper';
 import { Role } from '../common/enums/role.enum';
-import {
-  BadRequestException,
-  ForbiddenException,
-  NotFoundException,
-} from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { AuthUser } from '../common/types/auth';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { UpdateLeaveRequestDto } from './dto/update-leave-request.dto';
@@ -112,18 +108,48 @@ describe('LeaveRequestsService', () => {
   });
 
   describe('create', () => {
-    it('rejects a half-day request spanning multiple dates', async () => {
-      await expect(
-        service.create(
-          {
-            startDate: '2026-01-01',
-            endDate: '2026-01-02',
-            leaveType: 'CASUAL',
+    it('creates a half-day request spanning multiple dates', async () => {
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      const leaveRequestDelegate = getPrismaDelegate(
+        mockPrisma,
+        'leaveRequest',
+      );
+      employeeDelegate.findFirst.mockResolvedValueOnce({
+        id: 101,
+        organizationId: 1,
+        user: null,
+      });
+      leaveRequestDelegate.create.mockResolvedValueOnce({
+        id: 10,
+        employeeId: 101,
+        startDate: new Date('2026-01-01'),
+        endDate: new Date('2026-01-03'),
+        duration: 'HALF_DAY',
+      });
+
+      const result = await service.create(
+        {
+          startDate: '2026-01-01',
+          endDate: '2026-01-03',
+          leaveType: 'CASUAL',
+          duration: 'HALF_DAY',
+          employeeId: 101,
+        } as CreateLeaveRequestDto,
+        mockAdminUser,
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({ id: 10, duration: 'HALF_DAY' }),
+      );
+      expect(leaveRequestDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            startDate: new Date('2026-01-01'),
+            endDate: new Date('2026-01-03'),
             duration: 'HALF_DAY',
-          } as CreateLeaveRequestDto,
-          mockAdminUser,
-        ),
-      ).rejects.toThrow(BadRequestException);
+          }),
+        }),
+      );
     });
 
     it('should throw ForbiddenException if user has no organizationId', async () => {
@@ -792,7 +818,7 @@ describe('LeaveRequestsService', () => {
       );
     });
 
-    it('deducts half a leave day and does not write a full-day attendance row', async () => {
+    it('deducts half a day per date and does not write full-day attendance rows', async () => {
       const leaveRequestDelegate = getPrismaDelegate(
         mockPrisma,
         'leaveRequest',
@@ -805,7 +831,7 @@ describe('LeaveRequestsService', () => {
         approvalTrail: null,
         employeeId: 101,
         startDate: new Date('2026-01-01'),
-        endDate: new Date('2026-01-01'),
+        endDate: new Date('2026-01-03'),
         duration: 'HALF_DAY',
         leaveType: 'CASUAL',
       });
@@ -831,7 +857,7 @@ describe('LeaveRequestsService', () => {
 
       expect(employeeDelegate.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: { leaveBalance: 1.5 },
+          data: { leaveBalance: 0.5 },
         }),
       );
       expect(attendanceDelegate.upsert).not.toHaveBeenCalled();

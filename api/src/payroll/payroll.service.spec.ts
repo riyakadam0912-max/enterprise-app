@@ -167,4 +167,41 @@ describe('PayrollService', () => {
     expect(metrics.totalExpectedHours).toBe(10);
     expect(metrics.totalShortfallHours).toBe(0);
   });
+
+  it('counts a multi-date half-day range per date in payroll', async () => {
+    mockPrisma.attendance.findMany.mockResolvedValue([
+      {
+        date: new Date('2026-08-10T00:00:00.000Z'),
+        status: 'PRESENT',
+        workingHours: 5,
+        requiredHours: 8,
+      },
+      {
+        date: new Date('2026-08-11T00:00:00.000Z'),
+        status: 'PRESENT',
+        workingHours: 5,
+        requiredHours: 8,
+      },
+    ]);
+    mockPrisma.leaveRequest.findMany.mockResolvedValue([
+      {
+        startDate: new Date('2026-08-10T00:00:00.000Z'),
+        endDate: new Date('2026-08-11T00:00:00.000Z'),
+        duration: 'HALF_DAY',
+        isPaid: true,
+      },
+    ]);
+    mockPrisma.holiday.findMany.mockResolvedValue([]);
+
+    const metrics = await (service as any).getAttendanceMetricsForCycle(
+      7,
+      8,
+      2026,
+      1,
+    );
+
+    expect(metrics.paidLeaves).toBe(1);
+    expect(metrics.totalExpectedHours).toBe(10);
+    expect(metrics.totalShortfallHours).toBe(0);
+  });
 });

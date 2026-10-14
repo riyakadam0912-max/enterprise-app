@@ -1912,7 +1912,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       const dayKey = this.dateKey(day);
       const isHalfDayLeave = leaveRows.some(
         (row) =>
-          row.duration === 'HALF_DAY' && this.dateKey(row.startDate) === dayKey,
+          row.duration === 'HALF_DAY' &&
+          row.startDate <= this.endOfDay(day) &&
+          row.endDate >= this.startOfDay(day),
       );
       const onLeave = leaveRows.some(
         (row) =>

@@ -39,15 +39,6 @@ export default function ESSLeavePage() {
       setShowError(true);
       return;
     }
-    if (
-      formData.duration === 'HALF_DAY' &&
-      formData.startDate !== formData.endDate
-    ) {
-      setErrorMsg('Half-day leave must be for one date.');
-      setShowError(true);
-      return;
-    }
-
     try {
       await apply({
         startDate: formData.startDate,
@@ -184,7 +175,7 @@ export default function ESSLeavePage() {
                   <option value="HALF_DAY">Half day (work 5 hours)</option>
                 </select>
                 {formData.duration === 'HALF_DAY' && (
-                  <p className="mt-1 text-xs text-gray-500">Choose one date. Five working hours excluding breaks are required.</p>
+                    <p className="mt-1 text-xs text-gray-500">Each date counts as half a day. Five working hours excluding breaks are required per date.</p>
                 )}
               </div>
 
@@ -291,7 +282,7 @@ export default function ESSLeavePage() {
                       <td className="px-4 py-3">
                         {formatDate(new Date(leave.endDate))}
                       </td>
-                      <td className="px-4 py-3">{leave.duration === 'HALF_DAY' ? 'Half day (5 hrs)' : 'Full day'}</td>
+                      <td className="px-4 py-3">{leave.duration === 'HALF_DAY' ? 'Half day (5 hrs/date)' : 'Full day'}</td>
                       <td className="px-4 py-3 font-medium">{leave.days}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${

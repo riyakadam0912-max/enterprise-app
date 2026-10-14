@@ -40,9 +40,6 @@ const leaveSchema = z.object({
 }).refine((values) => new Date(values.endDate).getTime() >= new Date(values.startDate).getTime(), {
   message: 'End date must be on or after start date',
   path: ['endDate'],
-}).refine((values) => values.duration !== 'HALF_DAY' || values.startDate === values.endDate, {
-  message: 'Half-day leave must be for one date',
-  path: ['endDate'],
 });
 
 type LeaveFormValues = z.infer<typeof leaveSchema>;
@@ -157,7 +154,7 @@ export default function LeavePage() {
     {
       accessorKey: 'duration',
       header: 'Duration',
-      cell: ({ row }) => row.original.duration === 'HALF_DAY' ? 'Half day (5 hrs)' : 'Full day',
+      cell: ({ row }) => row.original.duration === 'HALF_DAY' ? 'Half day (5 hrs/date)' : 'Full day',
     },
     {
       accessorKey: 'status',
@@ -216,7 +213,7 @@ export default function LeavePage() {
 
   const totalDays = filteredRequests.reduce((total, request) => {
     const days = Math.max(1, Math.floor((new Date(request.endDate).getTime() - new Date(request.startDate).getTime()) / 86400000) + 1);
-    return total + (request.duration === 'HALF_DAY' ? 0.5 : days);
+    return total + (request.duration === 'HALF_DAY' ? days * 0.5 : days);
   }, 0);
 
   async function onCreate(values: LeaveFormValues) {
@@ -358,7 +355,7 @@ export default function LeavePage() {
       <Dialog
         open={Boolean(rejectTarget)}
         title={rejectTarget ? `Review leave request #${rejectTarget.id}` : 'Leave request'}
-        description={rejectTarget ? `${rejectTarget.employee?.name ?? 'Employee'} • ${formatDate(rejectTarget.startDate)} - ${formatDate(rejectTarget.endDate)} • ${rejectTarget.duration === 'HALF_DAY' ? 'Half day, 5 work hours' : 'Full day'}` : undefined}
+        description={rejectTarget ? `${rejectTarget.employee?.name ?? 'Employee'} • ${formatDate(rejectTarget.startDate)} - ${formatDate(rejectTarget.endDate)} • ${rejectTarget.duration === 'HALF_DAY' ? 'Half day per date, 5 work hours each date' : 'Full day'}` : undefined}
         onClose={() => {
           setRejectTarget(null);
           setRejectReason('');
@@ -373,7 +370,7 @@ export default function LeavePage() {
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
               <p className="font-semibold text-slate-900">Reason</p>
               <p className="mt-2">{rejectTarget.reason ?? 'N/A'}</p>
-              <p className="mt-3 text-xs text-slate-500">{rejectTarget.duration === 'HALF_DAY' ? 'Half day: employee is expected to work 5 hours, excluding breaks.' : 'Full-day leave'}</p>
+              <p className="mt-3 text-xs text-slate-500">{rejectTarget.duration === 'HALF_DAY' ? 'Employee is expected to work 5 hours per requested date, excluding breaks.' : 'Full-day leave'}</p>
               <p className="mt-3 text-xs text-slate-500">Status: {rejectTarget.status}</p>
             </div>
             {isManager ? (

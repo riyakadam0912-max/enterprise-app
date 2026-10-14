@@ -183,7 +183,7 @@ export default function AllRequestsPage() {
                       <td className="px-4 py-3 text-gray-600">{formatDate(req.startDate)}</td>
                       <td className="px-4 py-3 text-gray-600">{formatDate(req.endDate)}</td>
                       <td className="px-4 py-3 text-gray-600">{capitalize(req.leaveType)}</td>
-                      <td className="px-4 py-3 text-gray-600">{req.duration === 'HALF_DAY' ? 'Half day (5 hrs)' : 'Full day'}</td>
+                      <td className="px-4 py-3 text-gray-600">{req.duration === 'HALF_DAY' ? 'Half day (5 hrs/date)' : 'Full day'}</td>
                       <td className="px-4 py-3 text-gray-600 max-w-40 truncate">{req.reason ?? '-'}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded text-xs font-semibold ${STATUS_COLORS[req.status] ?? 'bg-gray-100 text-gray-600'}`}>

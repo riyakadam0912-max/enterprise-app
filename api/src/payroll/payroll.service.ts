@@ -146,9 +146,11 @@ export class PayrollService {
           const halfDayLeave = leaveRows.some(
             (leave) =>
               leave.duration === 'HALF_DAY' &&
-              leave.startDate.toISOString().slice(0, 10) === dateKey,
+              leave.startDate.toISOString().slice(0, 10) <= dateKey &&
+              leave.endDate.toISOString().slice(0, 10) >= dateKey,
           );
-          if (row.status === 'PRESENT') return sum + (halfDayLeave ? 5 : required);
+          if (row.status === 'PRESENT')
+            return sum + (halfDayLeave ? 5 : required);
           if (row.status === 'HALF_DAY') {
             return sum + (halfDayLeave ? 5 : required / 2);
           }

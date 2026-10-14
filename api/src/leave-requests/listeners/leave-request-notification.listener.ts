@@ -52,7 +52,7 @@ export class LeaveRequestNotificationListener {
 
     const notificationMessage =
       `Employee ${event.employeeName} has requested ${daysRequested} day(s) of ` +
-      `${event.leaveType} ${event.duration === 'HALF_DAY' ? 'half-day leave (5 work hours required)' : 'leave'} from ${event.startDate.toDateString()} to ${leaveEndDate.toDateString()}. ` +
+      `${event.leaveType} ${event.duration === 'HALF_DAY' ? 'half-day leave (5 work hours required per date)' : 'leave'} from ${event.startDate.toDateString()} to ${leaveEndDate.toDateString()}. ` +
       `Reason: ${event.reason || 'Not specified'}`;
 
     await this.notificationsService.create(

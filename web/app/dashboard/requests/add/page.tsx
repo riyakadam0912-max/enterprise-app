@@ -72,10 +72,6 @@ export default function AddLeaveRequestPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (form.duration === 'HALF_DAY' && form.startDate !== form.endDate) {
-      setError('Half-day leave must be for one date.');
-      return;
-    }
     setSubmitting(true);
     setError(null);
     try {
@@ -219,7 +215,7 @@ export default function AddLeaveRequestPage() {
                 <option value="HALF_DAY">Half day (work 5 hours)</option>
               </select>
               {form.duration === 'HALF_DAY' && (
-                <p className="mt-1 text-xs text-gray-500">Choose one date. You are expected to work 5 hours, excluding breaks.</p>
+                <p className="mt-1 text-xs text-gray-500">Each date counts as half a day. Work 5 hours per date, excluding breaks.</p>
               )}
             </div>
           </div>

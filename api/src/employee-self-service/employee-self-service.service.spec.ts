@@ -53,6 +53,44 @@ describe('EmployeeSelfServiceService', () => {
     jest.useRealTimers();
   });
 
+  it('accepts a multi-date half-day request and reports half a day per date', async () => {
+    const user = createUser({ employeeId: 22 });
+    const employeeDelegate = getMockPrismaDelegate(mockPrisma, 'employee');
+    const leaveRequestDelegate = getMockPrismaDelegate(
+      mockPrisma,
+      'leaveRequest',
+    );
+    employeeDelegate.findFirst.mockResolvedValue({ id: 22 });
+    employeeDelegate.findUnique.mockResolvedValue({ id: 22 });
+    leaveRequestDelegate.findFirst.mockResolvedValue(null);
+    leaveRequestDelegate.create.mockResolvedValue({
+      id: 5,
+      leaveType: 'CASUAL',
+      startDate: new Date('2026-08-10T00:00:00.000Z'),
+      endDate: new Date('2026-08-12T00:00:00.000Z'),
+      duration: 'HALF_DAY',
+      status: 'PENDING',
+    });
+
+    const result = await service.applyLeave(user, {
+      startDate: '2026-08-10',
+      endDate: '2026-08-12',
+      duration: 'HALF_DAY',
+      leaveType: 'CASUAL',
+    });
+
+    expect(result.data.days).toBe(1.5);
+    expect(leaveRequestDelegate.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          startDate: new Date('2026-08-10'),
+          endDate: new Date('2026-08-12'),
+          duration: 'HALF_DAY',
+        }),
+      }),
+    );
+  });
+
   it('resolves a linked employee only within the current organization and active records', async () => {
     const user = createUser();
     const userDelegate = getMockPrismaDelegate(mockPrisma, 'user');
