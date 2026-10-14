@@ -484,6 +484,21 @@ describe('AttendanceService', () => {
       shift: mockEmployee.shift,
     });
     expect(prisma.attendance.create).toHaveBeenCalledTimes(1);
+    expect(prisma.leaveRequest.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ duration: 'FULL_DAY' }),
+      }),
+    );
+  });
+
+  it('uses the half-day five-hour target for attendance shortfall', () => {
+    expect(
+      (service as any).calculateShortfallHours(
+        5,
+        { requiredHours: 8 },
+        5,
+      ),
+    ).toBe(0);
   });
 
   it('allows Sunday catch-up check-in while work hours remain outstanding', async () => {

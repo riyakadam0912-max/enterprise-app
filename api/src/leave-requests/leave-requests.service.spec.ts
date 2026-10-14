@@ -10,7 +10,11 @@ import {
   DelegateMock,
 } from '../../test/helpers/mocks.helper';
 import { Role } from '../common/enums/role.enum';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { AuthUser } from '../common/types/auth';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { UpdateLeaveRequestDto } from './dto/update-leave-request.dto';
@@ -108,6 +112,20 @@ describe('LeaveRequestsService', () => {
   });
 
   describe('create', () => {
+    it('rejects a half-day request spanning multiple dates', async () => {
+      await expect(
+        service.create(
+          {
+            startDate: '2026-01-01',
+            endDate: '2026-01-02',
+            leaveType: 'CASUAL',
+            duration: 'HALF_DAY',
+          } as CreateLeaveRequestDto,
+          mockAdminUser,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
     it('should throw ForbiddenException if user has no organizationId', async () => {
       await expect(
         service.create(
@@ -772,6 +790,51 @@ describe('LeaveRequestsService', () => {
           create: expect.objectContaining({ status: 'LEAVE' }),
         }),
       );
+    });
+
+    it('deducts half a leave day and does not write a full-day attendance row', async () => {
+      const leaveRequestDelegate = getPrismaDelegate(
+        mockPrisma,
+        'leaveRequest',
+      );
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      const attendanceDelegate = getPrismaDelegate(mockPrisma, 'attendance');
+      leaveRequestDelegate.findFirst.mockResolvedValueOnce({
+        id: 2,
+        status: 'PENDING_HR',
+        approvalTrail: null,
+        employeeId: 101,
+        startDate: new Date('2026-01-01'),
+        endDate: new Date('2026-01-01'),
+        duration: 'HALF_DAY',
+        leaveType: 'CASUAL',
+      });
+      (mockWorkflowEngine.approveWorkflow as jest.Mock).mockResolvedValueOnce({
+        legacyState: { approvalTrail: [] },
+      });
+      (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn) =>
+        fn(mockPrisma),
+      );
+      employeeDelegate.findFirst.mockResolvedValueOnce({
+        id: 101,
+        organizationId: 1,
+        leaveBalance: 2,
+        shiftId: 1,
+      });
+      leaveRequestDelegate.update.mockResolvedValueOnce({
+        id: 2,
+        status: 'APPROVED',
+        duration: 'HALF_DAY',
+      });
+
+      await service.hrApprove(2, mockHRUser);
+
+      expect(employeeDelegate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { leaveBalance: 1.5 },
+        }),
+      );
+      expect(attendanceDelegate.upsert).not.toHaveBeenCalled();
     });
   });
 

@@ -1,0 +1,3 @@
+-- This migration is intentionally a no-op.
+-- The family-wide holiday support was introduced in the preceding migration
+-- 20261003180000_add_family_wide_holidays.

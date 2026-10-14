@@ -296,7 +296,7 @@ model Employee {
   designation           String?
   email                 String?
   hireDate              DateTime?
-  leaveBalance          Int?
+  leaveBalance          Float?
   manager               String?
   name                  String
   phoneNumber           String?
@@ -701,6 +701,7 @@ model LeaveRequest {
   id             Int          @id @default(autoincrement())
   startDate      DateTime
   endDate        DateTime
+  duration       String       @default("FULL_DAY")
   leaveType      String
   reason         String?
   status         String       @default("PENDING")

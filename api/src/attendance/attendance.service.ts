@@ -82,6 +82,7 @@ type DailyAttendanceRow = {
   breakHours: number;
   onBreak: boolean;
   shortfallHours: number;
+  expectedHours?: number;
   lateMinutes: number;
   overtimeHours: number;
   status: AttendanceStatus;
@@ -263,9 +264,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   private calculateShortfallHours(
     workingHours: number | null,
     shift: ShiftLite | null,
+    requiredHoursOverride?: number,
   ) {
     if (workingHours == null) return 0;
-    const requiredHours = shift?.requiredHours ?? 8;
+    const requiredHours = requiredHoursOverride ?? shift?.requiredHours ?? 8;
     return Number(Math.max(0, requiredHours - workingHours).toFixed(2));
   }
 
@@ -299,10 +301,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           row.status === AttendanceStatus.PRESENT ||
           row.status === AttendanceStatus.HALF_DAY
         ) {
-          acc.totalExpectedHours +=
-            row.status === AttendanceStatus.HALF_DAY
+          acc.totalExpectedHours += row.expectedHours ??
+            (row.status === AttendanceStatus.HALF_DAY
               ? requiredHours / 2
-              : requiredHours;
+              : requiredHours);
         }
         return acc;
       },
@@ -683,12 +685,17 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     return employee;
   }
 
-  private async findApprovedLeaveForDay(employeeId: number, day: Date) {
+  private async findApprovedLeaveForDay(
+    employeeId: number,
+    day: Date,
+    duration: 'FULL_DAY' | 'HALF_DAY' = 'FULL_DAY',
+  ) {
     return await this.prisma.leaveRequest.findFirst({
       where: {
         deletedAt: null,
         employeeId,
         status: 'APPROVED',
+        duration,
         startDate: { lte: this.endOfDay(day) },
         endDate: { gte: this.startOfDay(day) },
       },
@@ -1456,7 +1463,16 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       breakIntervals,
     );
     const overtimeHours = this.calculateOvertimeHours(workingHours, shift);
-    const shortfallHours = this.calculateShortfallHours(workingHours, shift);
+    const halfDayLeave = await this.findApprovedLeaveForDay(
+      employeeId,
+      new Date(record.date),
+      'HALF_DAY',
+    );
+    const shortfallHours = this.calculateShortfallHours(
+      workingHours,
+      shift,
+      halfDayLeave ? 5 : undefined,
+    );
     const lateMinutes = (record as any).lateMinutes ?? 0;
 
     const status = this.calculateStatus({
@@ -1630,6 +1646,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         where: {
           employeeId: { in: ids },
           status: 'APPROVED',
+          duration: 'FULL_DAY',
           startDate: { lte: this.endOfDay(day) },
           endDate: { gte: this.startOfDay(day) },
         },
@@ -1832,6 +1849,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         where: {
           employeeId,
           status: 'APPROVED',
+          deletedAt: null,
           startDate: { lte: monthEnd },
           endDate: { gte: monthStart },
         },
@@ -1871,6 +1889,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       workingHours: number | null;
       breaks: { startedAt: string; endedAt: string | null }[];
       shortfallHours: number;
+      expectedHours?: number;
       lateMinutes: number;
       overtimeHours: number;
       shiftDetails: (ShiftLite & { minPresentHours: number }) | null;
@@ -1883,8 +1902,15 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       }
       const attendance =
         attendanceMap.get(this.startOfDay(day).getTime()) ?? null;
+      const dayKey = this.dateKey(day);
+      const isHalfDayLeave = leaveRows.some(
+        (row) =>
+          row.duration === 'HALF_DAY' &&
+          this.dateKey(row.startDate) === dayKey,
+      );
       const onLeave = leaveRows.some(
         (row) =>
+          row.duration !== 'HALF_DAY' &&
           row.startDate <= this.endOfDay(day) &&
           row.endDate >= this.startOfDay(day),
       );
@@ -1949,6 +1975,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           endedAt: interval.endedAt?.toISOString() ?? null,
         })),
         shortfallHours,
+        expectedHours: isHalfDayLeave ? 5 : undefined,
         lateMinutes: attendance?.lateMinutes ?? 0,
         overtimeHours: attendance?.overtimeHours ?? 0,
         shiftDetails: effectiveShift,
@@ -1981,6 +2008,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         }, 0),
         onBreak: false,
         shortfallHours: d.shortfallHours,
+        expectedHours: d.expectedHours,
         lateMinutes: d.lateMinutes,
         overtimeHours: d.overtimeHours,
         status: d.status,
@@ -2035,7 +2063,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           endDate: { gte: queryStart },
           deletedAt: null,
         },
-        select: { startDate: true, endDate: true },
+        select: { startDate: true, endDate: true, duration: true },
       }),
     ]);
     const { holidays, familyRootByOrganization } =
@@ -2104,11 +2132,20 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
                 familyRootByOrganization,
               ) && isCovered(holiday, dayKey),
           ) ||
-          leaves.some((leave) => isCovered(leave, dayKey))
+          leaves.some(
+            (leave) =>
+              leave.duration !== 'HALF_DAY' && isCovered(leave, dayKey),
+          )
         ) {
           continue;
         }
-        requiredHours += row?.requiredHours ?? shift.requiredHours;
+        const isHalfDayLeave = leaves.some(
+          (leave) =>
+            leave.duration === 'HALF_DAY' && isCovered(leave, dayKey),
+        );
+        requiredHours += isHalfDayLeave
+          ? 5
+          : (row?.requiredHours ?? shift.requiredHours);
         scheduledDays += 1;
       }
       requiredHours = Number(requiredHours.toFixed(2));
@@ -2474,6 +2511,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         employeeId: { in: employeeIds },
         deletedAt: null,
         status: 'APPROVED',
+        duration: 'FULL_DAY',
         startDate: { lte: monthEnd },
         endDate: { gte: monthStart },
       },
@@ -2869,11 +2907,20 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       checkIn && checkOut
         ? this.calculateWorkingHours(checkIn, checkOut, orderedBreaks)
         : null;
+    const halfDayLeave = await this.findApprovedLeaveForDay(
+      record.employeeId,
+      nextDate,
+      'HALF_DAY',
+    );
     const overtimeHours =
       workingHours != null
         ? this.calculateOvertimeHours(workingHours, shift)
         : 0;
-    const shortfallHours = this.calculateShortfallHours(workingHours, shift);
+    const shortfallHours = this.calculateShortfallHours(
+      workingHours,
+      shift,
+      halfDayLeave ? 5 : undefined,
+    );
     const lateMinutes = checkIn
       ? this.calculateLateMinutes(
           checkIn,
@@ -2983,8 +3030,17 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         checkOut,
         breakIntervals,
       );
+      const halfDayLeave = await this.findApprovedLeaveForDay(
+        attendance.employeeId,
+        attendance.date,
+        'HALF_DAY',
+      );
       const overtimeHours = this.calculateOvertimeHours(workingHours, shift);
-      const shortfallHours = this.calculateShortfallHours(workingHours, shift);
+      const shortfallHours = this.calculateShortfallHours(
+        workingHours,
+        shift,
+        halfDayLeave ? 5 : undefined,
+      );
       const lateMinutes = attendance.lateMinutes ?? 0;
 
       await this.prisma.$transaction(async (tx) => {

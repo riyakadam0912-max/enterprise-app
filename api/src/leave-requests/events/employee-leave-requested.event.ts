@@ -16,5 +16,6 @@ export class EmployeeLeaveRequestedEvent {
     public readonly endDate: Date,
     public readonly reason?: string,
     public readonly organizationId?: number,
+    public readonly duration?: string,
   ) {}
 }

@@ -429,6 +429,15 @@ export class EmployeeSelfServiceService {
     if (endDate < startDate) {
       throw new BadRequestException('End date cannot be before start date');
     }
+    const duration = dto.duration ?? 'FULL_DAY';
+    if (
+      duration === 'HALF_DAY' &&
+      startDate.toISOString().slice(0, 10) !== endDate.toISOString().slice(0, 10)
+    ) {
+      throw new BadRequestException(
+        'Half-day leave requests must be for a single date',
+      );
+    }
 
     // Check for overlapping leaves
     const overlappingLeave = await this.prisma.leaveRequest.findFirst({
@@ -452,6 +461,7 @@ export class EmployeeSelfServiceService {
         employeeId,
         startDate,
         endDate,
+        duration,
         leaveType: dto.leaveType,
         reason: dto.reason,
         status: 'PENDING',
@@ -461,7 +471,9 @@ export class EmployeeSelfServiceService {
 
     // Calculate number of days
     const daysDiff =
-      (endDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24) + 1;
+      duration === 'HALF_DAY'
+        ? 0.5
+        : (endDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24) + 1;
 
     return {
       success: true,
@@ -471,6 +483,7 @@ export class EmployeeSelfServiceService {
         leaveType: leaveRequest.leaveType,
         startDate: leaveRequest.startDate,
         endDate: leaveRequest.endDate,
+        duration: leaveRequest.duration,
         status: leaveRequest.status,
         days: daysDiff,
       },
@@ -505,10 +518,12 @@ export class EmployeeSelfServiceService {
     let daysTaken = 0;
     approvedLeaves.forEach((leave) => {
       const days =
-        (new Date(leave.endDate).getTime() -
-          new Date(leave.startDate).getTime()) /
-          (1000 * 3600 * 24) +
-        1;
+        leave.duration === 'HALF_DAY'
+          ? 0.5
+          : (new Date(leave.endDate).getTime() -
+              new Date(leave.startDate).getTime()) /
+              (1000 * 3600 * 24) +
+            1;
       daysTaken += days;
     });
 
@@ -533,10 +548,12 @@ export class EmployeeSelfServiceService {
 
     return leaves.map((leave) => {
       const days =
-        (new Date(leave.endDate).getTime() -
-          new Date(leave.startDate).getTime()) /
-          (1000 * 3600 * 24) +
-        1;
+        leave.duration === 'HALF_DAY'
+          ? 0.5
+          : (new Date(leave.endDate).getTime() -
+              new Date(leave.startDate).getTime()) /
+              (1000 * 3600 * 24) +
+            1;
 
       return {
         id: leave.id,
@@ -545,6 +562,7 @@ export class EmployeeSelfServiceService {
         endDate: leave.endDate,
         reason: leave.reason,
         status: leave.status,
+        duration: leave.duration,
         days,
         appliedOn: leave.appliedOn,
       };

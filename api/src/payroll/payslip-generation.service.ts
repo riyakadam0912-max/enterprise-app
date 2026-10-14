@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { countLeaveDaysInPeriod } from '../common/utils/leave-day-count';
 import { PayrollCalculationService } from './payroll-calculation.service';
 
 @Injectable()
@@ -443,31 +444,33 @@ export class PayslipGenerationService {
 
     const paidLeaves = leaveRecords
       .filter((row) => (row.isPaid ?? true) === true)
-      .reduce((sum, row) => {
-        const from = new Date(
-          Math.max(startDate.getTime(), new Date(row.startDate).getTime()),
-        );
-        const to = new Date(
-          Math.min(endDate.getTime(), new Date(row.endDate).getTime()),
-        );
-        const days =
-          Math.floor((to.getTime() - from.getTime()) / (24 * 3600 * 1000)) + 1;
-        return sum + Math.max(0, days);
-      }, 0);
+      .reduce(
+        (sum, row) =>
+          sum +
+          countLeaveDaysInPeriod(
+            row.startDate,
+            row.endDate,
+            row.duration,
+            startDate,
+            endDate,
+          ),
+        0,
+      );
 
     const unpaidLeaves = leaveRecords
       .filter((row) => (row.isPaid ?? true) === false)
-      .reduce((sum, row) => {
-        const from = new Date(
-          Math.max(startDate.getTime(), new Date(row.startDate).getTime()),
-        );
-        const to = new Date(
-          Math.min(endDate.getTime(), new Date(row.endDate).getTime()),
-        );
-        const days =
-          Math.floor((to.getTime() - from.getTime()) / (24 * 3600 * 1000)) + 1;
-        return sum + Math.max(0, days);
-      }, 0);
+      .reduce(
+        (sum, row) =>
+          sum +
+          countLeaveDaysInPeriod(
+            row.startDate,
+            row.endDate,
+            row.duration,
+            startDate,
+            endDate,
+          ),
+        0,
+      );
 
     // Typical working days in a month (22)
     const totalWorkingDays = 22;

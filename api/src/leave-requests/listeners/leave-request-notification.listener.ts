@@ -45,11 +45,14 @@ export class LeaveRequestNotificationListener {
     event: EmployeeLeaveRequestedEvent,
   ): Promise<void> {
     const leaveEndDate = new Date(event.endDate);
-    const daysRequested = this.calculateDays(event.startDate, event.endDate);
+    const daysRequested =
+      event.duration === 'HALF_DAY'
+        ? 0.5
+        : this.calculateDays(event.startDate, event.endDate);
 
     const notificationMessage =
       `Employee ${event.employeeName} has requested ${daysRequested} day(s) of ` +
-      `${event.leaveType} leave from ${event.startDate.toDateString()} to ${leaveEndDate.toDateString()}. ` +
+      `${event.leaveType} ${event.duration === 'HALF_DAY' ? 'half-day leave (5 work hours required)' : 'leave'} from ${event.startDate.toDateString()} to ${leaveEndDate.toDateString()}. ` +
       `Reason: ${event.reason || 'Not specified'}`;
 
     await this.notificationsService.create(

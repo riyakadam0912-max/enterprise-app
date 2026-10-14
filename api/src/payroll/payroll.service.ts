@@ -21,6 +21,7 @@ import { DASHBOARD_CACHE_KEY } from '../common/utils/cache-keys';
 import type { AuthUser } from '../common/types/auth';
 import { Role } from '../common/enums/role.enum';
 import { BusinessUnitsService } from '../business-units/business-units.service';
+import { countLeaveDaysInPeriod } from '../common/utils/leave-day-count';
 
 @Injectable()
 export class PayrollService {
@@ -141,8 +142,16 @@ export class PayrollService {
       attendanceRows
         .reduce((sum: number, row) => {
           const required = row.requiredHours || 8;
-          if (row.status === 'PRESENT') return sum + required;
-          if (row.status === 'HALF_DAY') return sum + required / 2;
+          const dateKey = row.date.toISOString().slice(0, 10);
+          const halfDayLeave = leaveRows.some(
+            (leave) =>
+              leave.duration === 'HALF_DAY' &&
+              leave.startDate.toISOString().slice(0, 10) === dateKey,
+          );
+          if (row.status === 'PRESENT') return sum + (halfDayLeave ? 5 : required);
+          if (row.status === 'HALF_DAY') {
+            return sum + (halfDayLeave ? 5 : required / 2);
+          }
           return sum;
         }, 0)
         .toFixed(2),
@@ -153,31 +162,33 @@ export class PayrollService {
 
     const paidLeaves = leaveRows
       .filter((row) => (row.isPaid ?? true) === true)
-      .reduce((sum: number, row) => {
-        const from = new Date(
-          Math.max(startDate.getTime(), new Date(row.startDate).getTime()),
-        );
-        const to = new Date(
-          Math.min(endDate.getTime(), new Date(row.endDate).getTime()),
-        );
-        const days =
-          Math.floor((to.getTime() - from.getTime()) / (24 * 3600 * 1000)) + 1;
-        return sum + Math.max(0, days);
-      }, 0);
+      .reduce(
+        (sum, row) =>
+          sum +
+          countLeaveDaysInPeriod(
+            row.startDate,
+            row.endDate,
+            row.duration,
+            startDate,
+            endDate,
+          ),
+        0,
+      );
 
     const unpaidLeaves = leaveRows
       .filter((row) => (row.isPaid ?? true) === false)
-      .reduce((sum: number, row) => {
-        const from = new Date(
-          Math.max(startDate.getTime(), new Date(row.startDate).getTime()),
-        );
-        const to = new Date(
-          Math.min(endDate.getTime(), new Date(row.endDate).getTime()),
-        );
-        const days =
-          Math.floor((to.getTime() - from.getTime()) / (24 * 3600 * 1000)) + 1;
-        return sum + Math.max(0, days);
-      }, 0);
+      .reduce(
+        (sum, row) =>
+          sum +
+          countLeaveDaysInPeriod(
+            row.startDate,
+            row.endDate,
+            row.duration,
+            startDate,
+            endDate,
+          ),
+        0,
+      );
 
     const totalWorkingDays = 22;
 

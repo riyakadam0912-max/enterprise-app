@@ -92,6 +92,7 @@ describe('PayrollService', () => {
   it('balances flexible-day shortfall across the payroll month', async () => {
     mockPrisma.attendance.findMany.mockResolvedValue([
       {
+        date: new Date('2026-08-03T00:00:00.000Z'),
         status: 'PRESENT',
         workingHours: 5,
         requiredHours: 8,
@@ -99,6 +100,7 @@ describe('PayrollService', () => {
         lateMinutes: 0,
       },
       {
+        date: new Date('2026-08-04T00:00:00.000Z'),
         status: 'PRESENT',
         workingHours: 10,
         requiredHours: 8,
@@ -120,5 +122,49 @@ describe('PayrollService', () => {
     expect(metrics.totalExpectedHours).toBe(16);
     expect(metrics.totalShortfallHours).toBe(1);
     expect(metrics.overtimeHours).toBe(2);
+  });
+
+  it('counts paid and unpaid half-day leave as half days and five expected hours', async () => {
+    mockPrisma.attendance.findMany.mockResolvedValue([
+      {
+        date: new Date('2026-08-10T00:00:00.000Z'),
+        status: 'PRESENT',
+        workingHours: 5,
+        requiredHours: 8,
+      },
+      {
+        date: new Date('2026-08-11T00:00:00.000Z'),
+        status: 'PRESENT',
+        workingHours: 5,
+        requiredHours: 8,
+      },
+    ]);
+    mockPrisma.leaveRequest.findMany.mockResolvedValue([
+      {
+        startDate: new Date('2026-08-10T00:00:00.000Z'),
+        endDate: new Date('2026-08-10T00:00:00.000Z'),
+        duration: 'HALF_DAY',
+        isPaid: true,
+      },
+      {
+        startDate: new Date('2026-08-11T00:00:00.000Z'),
+        endDate: new Date('2026-08-11T00:00:00.000Z'),
+        duration: 'HALF_DAY',
+        isPaid: false,
+      },
+    ]);
+    mockPrisma.holiday.findMany.mockResolvedValue([]);
+
+    const metrics = await (service as any).getAttendanceMetricsForCycle(
+      7,
+      8,
+      2026,
+      1,
+    );
+
+    expect(metrics.paidLeaves).toBe(0.5);
+    expect(metrics.unpaidLeaves).toBe(0.5);
+    expect(metrics.totalExpectedHours).toBe(10);
+    expect(metrics.totalShortfallHours).toBe(0);
   });
 });

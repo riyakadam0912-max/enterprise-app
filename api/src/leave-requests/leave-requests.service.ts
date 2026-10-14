@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -166,6 +167,21 @@ export class LeaveRequestsService {
     );
   }
 
+  private validateDurationDates(
+    duration: string | undefined,
+    startDate: Date,
+    endDate: Date,
+  ) {
+    if (
+      duration === 'HALF_DAY' &&
+      startDate.toISOString().slice(0, 10) !== endDate.toISOString().slice(0, 10)
+    ) {
+      throw new BadRequestException(
+        'Half-day leave requests must be for a single date',
+      );
+    }
+  }
+
   private enumerateDays(startDate: Date, endDate: Date) {
     const cursor = new Date(startDate);
     cursor.setHours(0, 0, 0, 0);
@@ -188,6 +204,10 @@ export class LeaveRequestsService {
         ? await this.resolveCurrentEmployeeId(user)
         : (user.employeeId ?? null);
     const employeeId = dto.employeeId ?? currentEmployeeId;
+    const startDate = new Date(dto.startDate);
+    const endDate = new Date(dto.endDate);
+    const duration = dto.duration ?? 'FULL_DAY';
+    this.validateDurationDates(duration, startDate, endDate);
 
     if (user.role === Role.EMPLOYEE) {
       const ownEmployeeId =
@@ -246,8 +266,9 @@ export class LeaveRequestsService {
       data: {
         organizationId,
         employeeId,
-        startDate: new Date(dto.startDate),
-        endDate: new Date(dto.endDate),
+        startDate,
+        endDate,
+        duration,
         leaveType: dto.leaveType,
         reason: dto.reason,
         status: 'PENDING_MANAGER',
@@ -272,11 +293,14 @@ export class LeaveRequestsService {
           employeeId,
           requestorUserId: user.userId,
           leaveType: dto.leaveType,
+          duration,
+          requiredWorkHours: duration === 'HALF_DAY' ? 5 : undefined,
           startDate: leaveRequest.startDate.toISOString(),
           endDate: leaveRequest.endDate.toISOString(),
         },
         metadata: {
           leaveType: dto.leaveType,
+          duration,
           reason: dto.reason ?? null,
         },
       });
@@ -313,6 +337,7 @@ export class LeaveRequestsService {
         leaveRequest.endDate,
         dto.reason,
         organizationId,
+        duration,
       );
 
       this.eventEmitter.emit('employee.leave_requested', event);
@@ -406,6 +431,13 @@ export class LeaveRequestsService {
 
     if (dto.startDate !== undefined) data.startDate = new Date(dto.startDate);
     if (dto.endDate !== undefined) data.endDate = new Date(dto.endDate);
+    const updatedStartDate = dto.startDate
+      ? new Date(dto.startDate)
+      : existing.startDate;
+    const updatedEndDate = dto.endDate ? new Date(dto.endDate) : existing.endDate;
+    const updatedDuration = dto.duration ?? existing.duration ?? 'FULL_DAY';
+    this.validateDurationDates(updatedDuration, updatedStartDate, updatedEndDate);
+    if (dto.duration !== undefined) data.duration = dto.duration;
     if (dto.leaveType !== undefined) data.leaveType = dto.leaveType;
     if (dto.reason !== undefined) data.reason = dto.reason;
     const updated = await this.prisma.leaveRequest.update({
@@ -485,7 +517,10 @@ export class LeaveRequestsService {
     }
     const organizationId = request.organizationId;
 
-    const leaveDays = this.computeLeaveDays(request.startDate, request.endDate);
+    const leaveDays =
+      request.duration === 'HALF_DAY'
+        ? 0.5
+        : this.computeLeaveDays(request.startDate, request.endDate);
 
     const result = await this.workflowEngine.approveWorkflow({
       definitionKey: 'leave-request-approval',
@@ -529,7 +564,7 @@ export class LeaveRequestsService {
         },
       });
 
-      if (request.employeeId) {
+      if (request.employeeId && request.duration !== 'HALF_DAY') {
         for (const leaveDay of this.enumerateDays(
           approved.startDate,
           approved.endDate,
