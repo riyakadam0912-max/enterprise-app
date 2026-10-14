@@ -1909,7 +1909,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       }
       const attendance =
         attendanceMap.get(this.startOfDay(day).getTime()) ?? null;
-      const dayKey = this.dateKey(day);
       const isHalfDayLeave = leaveRows.some(
         (row) =>
           row.duration === 'HALF_DAY' &&
