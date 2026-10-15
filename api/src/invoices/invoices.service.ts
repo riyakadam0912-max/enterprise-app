@@ -18,6 +18,8 @@ import { SendInvoiceDto } from './dto/send-invoice.dto';
 import { AuthUser } from '../common/types/auth';
 import { calculateQuoteTotals } from '../quotes/quote-calculations';
 import { buildInvoicePdfBuffer } from './invoice-pdf.utils';
+import { loadPdfLogo } from '../common/utils/pdf-logo.utils';
+import { FileManagementService } from '../file-management/file-management.service';
 
 const STATUSES = [
   'DRAFT',
@@ -74,6 +76,7 @@ export class InvoicesService {
     private readonly mailService: MailService,
     private readonly auditLogsService: AuditLogsService,
     private readonly configService: ConfigService,
+    private readonly fileManagementService: FileManagementService,
   ) {}
 
   private isPlatformAdmin(user: AuthUser): boolean {
@@ -657,6 +660,18 @@ export class InvoicesService {
   async generatePdf(id: number, user: AuthUser): Promise<Buffer> {
     const invoice = await this.findOne(id, user);
     const customer = invoice.customerRecord;
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: invoice.organizationId },
+      select: {
+        name: true,
+        logoUrl: true,
+        address: true,
+        city: true,
+        state: true,
+        country: true,
+        postalCode: true,
+      },
+    });
     const address =
       invoice.customerAddress ??
       (customer
@@ -690,7 +705,25 @@ export class InvoicesService {
       tcs: invoice.tcsEnabled ? formatAmount(invoice.tcsAmount) : undefined,
       totalAmount: formatAmount(invoice.totalAmount),
       companyName:
-        this.configService.get<string>('COMPANY_NAME') || 'Enterprise ERP',
+        organization?.name ??
+        this.configService.get<string>('COMPANY_NAME') ??
+        'Enterprise ERP',
+      companyAddress: organization
+        ? [
+            organization.address,
+            organization.city,
+            organization.state,
+            organization.postalCode,
+            organization.country,
+          ]
+            .filter(Boolean)
+            .join(', ')
+        : undefined,
+      logo:
+        (await this.fileManagementService.getOrganizationLogoBuffer(
+          invoice.organizationId,
+          organization?.logoUrl,
+        )) ?? (await loadPdfLogo(organization?.logoUrl)),
       items: invoice.items?.length
         ? invoice.items.map((item) => ({
             name: item.name,

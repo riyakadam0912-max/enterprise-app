@@ -5,9 +5,16 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { MailModule } from '../mail/mail.module';
 import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { ConfigModule } from '@nestjs/config';
+import { FileManagementModule } from '../file-management/file-management.module';
 
 @Module({
-  imports: [PrismaModule, MailModule, AuditLogsModule, ConfigModule],
+  imports: [
+    PrismaModule,
+    MailModule,
+    AuditLogsModule,
+    ConfigModule,
+    FileManagementModule,
+  ],
   controllers: [InvoicesController],
   providers: [InvoicesService],
 })

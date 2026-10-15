@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 import { buildQuotePdfBuffer } from './quote-pdf.utils';
 
 describe('buildQuotePdfBuffer', () => {
@@ -31,6 +32,9 @@ describe('buildQuotePdfBuffer', () => {
     const pdf = await buildQuotePdfBuffer(context);
     expect(pdf.subarray(0, 5).toString('ascii')).toBe('%PDF-');
     expect(pdf.toString('latin1')).toContain('%%EOF');
+    const pageCount = (pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) ?? [])
+      .length;
+    expect(pageCount).toBe(1);
   });
 
   it('uses different visual layouts for the selected templates', async () => {
@@ -43,6 +47,20 @@ describe('buildQuotePdfBuffer', () => {
       templateKey: 'professional',
     });
     expect(professional.equals(minimal)).toBe(false);
+  });
+
+  it('renders an organization logo without adding an extra page', async () => {
+    const logo = await sharp({
+      create: { width: 12, height: 12, channels: 4, background: '#315B50' },
+    })
+      .png()
+      .toBuffer();
+    const pdf = await buildQuotePdfBuffer({ ...context, logo });
+    const pageCount = (pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) ?? [])
+      .length;
+
+    expect(pdf.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+    expect(pageCount).toBe(1);
   });
 
   it('paginates large quotes instead of dropping trailing line items', async () => {

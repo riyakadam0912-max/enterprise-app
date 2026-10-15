@@ -3,6 +3,7 @@ type PdfDocumentInstance = InstanceType<typeof PDFDocument>;
 
 export type QuotePdfContext = {
   templateKey?: QuoteTemplateKey;
+  logo?: Buffer;
   quoteNumber: string;
   quoteName?: string | null;
   quoteDate: string;
@@ -10,6 +11,7 @@ export type QuotePdfContext = {
   customer: string;
   customerAddress?: string | null;
   companyName: string;
+  companyAddress?: string | null;
   items: Array<{
     name: string;
     unit?: string | null;
@@ -41,7 +43,6 @@ type TemplateStyle = {
   tint: string;
   text: string;
   muted: string;
-  header: 'minimal' | 'band' | 'editorial' | 'bordered';
 };
 
 const templateStyles: Record<QuoteTemplateKey, TemplateStyle> = {
@@ -50,28 +51,24 @@ const templateStyles: Record<QuoteTemplateKey, TemplateStyle> = {
     tint: '#F1F5F9',
     text: '#17212F',
     muted: '#64748B',
-    header: 'minimal',
   },
   professional: {
     accent: '#245579',
     tint: '#EAF1F6',
     text: '#16354C',
     muted: '#607487',
-    header: 'band',
   },
   modern: {
     accent: '#B64D35',
     tint: '#FBF0EC',
     text: '#49251F',
     muted: '#80645E',
-    header: 'editorial',
   },
   classic: {
     accent: '#66513B',
     tint: '#F4F0E9',
     text: '#3F3428',
     muted: '#776A5A',
-    header: 'bordered',
   },
 };
 
@@ -86,152 +83,40 @@ function drawHeader(
   style: TemplateStyle,
 ) {
   const title = context.quoteName?.trim() || 'Quotation';
-  if (style.header === 'band') {
-    doc.roundedRect(margin.left, 38, contentWidth, 112, 4).fill(style.accent);
-    doc
-      .fillColor('#FFFFFF')
-      .font('Helvetica-Bold')
-      .fontSize(9)
-      .text(context.companyName, margin.left + 18, 54);
-    doc
-      .fillColor('#DDEAF2')
-      .font('Helvetica-Bold')
-      .fontSize(8)
-      .text('QUOTATION', margin.left + 18, 76, { characterSpacing: 1.2 });
-    doc
-      .fillColor('#FFFFFF')
-      .font('Helvetica-Bold')
-      .fontSize(21)
-      .text(title, margin.left + 18, 94, { width: 330 });
-    doc
-      .fillColor('#E6EEF4')
-      .font('Helvetica')
-      .fontSize(9)
-      .text(context.quoteNumber, margin.left + 18, 124);
-    doc
-      .fillColor('#FFFFFF')
-      .font('Helvetica-Bold')
-      .fontSize(8)
-      .text('VALID UNTIL', 438, 84, { width: 88, align: 'right' });
-    doc
-      .fillColor('#FFFFFF')
-      .font('Helvetica')
-      .fontSize(9)
-      .text(context.validTill, 418, 101, { width: 108, align: 'right' });
-    return 172;
+  const brandX = context.logo ? margin.left + 52 : margin.left;
+  if (context.logo) {
+    doc.image(context.logo, margin.left, 38, { fit: [38, 38] });
   }
-
-  if (style.header === 'editorial') {
-    doc.fillColor(style.accent).rect(margin.left, 40, 5, 91).fill();
-    doc
-      .fillColor(style.accent)
-      .font('Helvetica-Bold')
-      .fontSize(8)
-      .text('QUOTATION', margin.left + 16, 43, { characterSpacing: 1.3 });
-    doc
-      .fillColor(style.text)
-      .font('Helvetica-Bold')
-      .fontSize(24)
-      .text(title, margin.left + 16, 61, { width: 340 });
+  doc.fillColor(style.text).font('Helvetica-Bold').fontSize(10);
+  doc.text(context.companyName, brandX, 41, { width: 280 });
+  if (context.companyAddress) {
     doc
       .fillColor(style.muted)
       .font('Helvetica')
-      .fontSize(9)
-      .text(
-        `${context.companyName}  /  ${context.quoteNumber}`,
-        margin.left + 16,
-        101,
-      );
-    doc
-      .fillColor(style.accent)
-      .font('Helvetica-Bold')
-      .fontSize(8)
-      .text('VALID UNTIL', 432, 63, { width: 94, align: 'right' });
-    doc
-      .fillColor(style.text)
-      .font('Helvetica')
-      .fontSize(10)
-      .text(context.validTill, 420, 80, { width: 106, align: 'right' });
-    return 151;
+      .fontSize(7.5)
+      .text(context.companyAddress, brandX, 56, { width: 280 });
   }
-
-  if (style.header === 'bordered') {
-    doc
-      .lineWidth(1.2)
-      .strokeColor(style.accent)
-      .rect(margin.left, 38, contentWidth, 104)
-      .stroke();
-    doc
-      .fillColor(style.muted)
-      .font('Helvetica-Bold')
-      .fontSize(8)
-      .text(context.companyName.toUpperCase(), margin.left + 16, 53, {
-        characterSpacing: 0.8,
-      });
-    doc
-      .fillColor(style.text)
-      .font('Helvetica-Bold')
-      .fontSize(21)
-      .text(title, margin.left + 16, 75, { width: 340 });
-    doc
-      .fillColor(style.accent)
-      .font('Helvetica-Bold')
-      .fontSize(8)
-      .text(`QUOTE ${context.quoteNumber}`, margin.left + 16, 114);
-    doc
-      .fillColor(style.muted)
-      .font('Helvetica-Bold')
-      .fontSize(8)
-      .text('VALID UNTIL', 430, 76, { width: 80, align: 'right' });
-    doc
-      .fillColor(style.text)
-      .font('Helvetica')
-      .fontSize(9)
-      .text(context.validTill, 420, 94, { width: 90, align: 'right' });
-    return 164;
-  }
-
   doc
     .fillColor(style.accent)
     .font('Helvetica-Bold')
-    .fontSize(9)
-    .text(context.companyName, margin.left, 42);
-  doc
-    .fillColor(style.muted)
-    .font('Helvetica-Bold')
     .fontSize(8)
-    .text('QUOTATION', 415, 42, {
+    .text('QUOTATION', 415, 41, {
       width: 111,
       align: 'right',
-      characterSpacing: 1,
+      characterSpacing: 0.8,
     });
   doc
     .fillColor(style.text)
     .font('Helvetica-Bold')
-    .fontSize(23)
-    .text(title, margin.left, 70, { width: 360 });
+    .fontSize(22)
+    .text(title, margin.left, 86, { width: 350 });
   doc
-    .fillColor(style.muted)
-    .font('Helvetica')
-    .fontSize(9)
-    .text(context.quoteNumber, margin.left, 104);
-  doc
-    .fillColor(style.muted)
-    .font('Helvetica-Bold')
-    .fontSize(8)
-    .text('VALID UNTIL', 416, 83, { width: 110, align: 'right' });
-  doc
-    .fillColor(style.text)
-    .font('Helvetica')
-    .fontSize(9)
-    .text(context.validTill, 416, 99, { width: 110, align: 'right' });
-  doc
-    .moveTo(margin.left, 128)
-    .lineTo(pageWidth - margin.right, 128)
-    .lineWidth(0.7)
+    .moveTo(margin.left, 137)
+    .lineTo(pageWidth - margin.right, 137)
+    .lineWidth(0.6)
     .strokeColor('#DDE3E9')
     .stroke();
-  return 147;
+  return 153;
 }
 
 function drawMetadata(
@@ -387,11 +272,7 @@ function drawSummary(
   context: QuotePdfContext,
   style: TemplateStyle,
 ) {
-  const summaryHeight = 150;
-  if (doc.y + summaryHeight > doc.page.height - margin.bottom) doc.addPage();
   const width = 235;
-  const x = pageWidth - margin.right - width;
-  let y = doc.y + 14;
   const rows: Array<[string, string]> = [
     ['Subtotal', context.subtotal],
     ['Discount', context.discount],
@@ -400,6 +281,10 @@ function drawSummary(
     ...(context.tcs ? [['TCS', context.tcs] as [string, string]] : []),
     ['Adjustment', context.adjustment],
   ];
+  const summaryHeight = rows.length * 17 + 55;
+  if (doc.y + summaryHeight > doc.page.height - margin.bottom) doc.addPage();
+  const x = pageWidth - margin.right - width;
+  let y = doc.y + 14;
   for (const [label, value] of rows) {
     doc
       .fillColor(style.muted)
@@ -488,7 +373,9 @@ export async function buildQuotePdfBuffer(
     drawSummary(doc, context, style);
 
     if (context.terms?.trim()) {
-      if (doc.y + 45 > doc.page.height - margin.bottom) doc.addPage();
+      const termsHeight =
+        doc.heightOfString(context.terms.trim(), { width: contentWidth }) + 30;
+      if (doc.y + termsHeight > doc.page.height - margin.bottom) doc.addPage();
       doc
         .moveTo(margin.left, doc.y)
         .lineTo(pageWidth - margin.right, doc.y)
@@ -519,7 +406,7 @@ export async function buildQuotePdfBuffer(
       pageIndex += 1
     ) {
       doc.switchToPage(pageIndex);
-      const footerY = doc.page.height - 34;
+      const footerY = doc.page.height - margin.bottom - 12;
       doc
         .moveTo(margin.left, footerY - 8)
         .lineTo(pageWidth - margin.right, footerY - 8)

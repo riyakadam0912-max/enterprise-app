@@ -1,4 +1,4 @@
-import { apiClient } from './apiClient';
+import { apiClient } from "./apiClient";
 
 export interface Organization {
   id: number;
@@ -29,11 +29,13 @@ export interface Organization {
 
 export type AccessibleOrganization = Pick<
   Organization,
-  'id' | 'name' | 'slug' | 'logoUrl' | 'parentId'
+  "id" | "name" | "slug" | "logoUrl" | "parentId"
 >;
 
-export async function getAccessibleOrganizations(): Promise<AccessibleOrganization[]> {
-  return apiClient<AccessibleOrganization[]>('/organizations/accessible');
+export async function getAccessibleOrganizations(): Promise<
+  AccessibleOrganization[]
+> {
+  return apiClient<AccessibleOrganization[]>("/organizations/accessible");
 }
 
 export interface PlatformStats {
@@ -62,22 +64,27 @@ export async function listOrganizations(params?: {
 }): Promise<Organization[]> {
   try {
     const query = new URLSearchParams();
-    if (params?.parentId != null) query.set('parentId', String(params.parentId));
-    if (params?.search) query.set('search', params.search);
-    if (params?.status) query.set('status', params.status);
-    if (params?.page != null) query.set('page', String(params.page));
-    if (params?.limit != null) query.set('limit', String(params.limit));
+    if (params?.parentId != null)
+      query.set("parentId", String(params.parentId));
+    if (params?.search) query.set("search", params.search);
+    if (params?.status) query.set("status", params.status);
+    if (params?.page != null) query.set("page", String(params.page));
+    if (params?.limit != null) query.set("limit", String(params.limit));
     const qs = query.toString();
-    return await apiClient<Organization[]>(`/organizations${qs ? `?${qs}` : ''}`);
+    return await apiClient<Organization[]>(
+      `/organizations${qs ? `?${qs}` : ""}`,
+    );
   } catch (error: unknown) {
     throw error instanceof Error
       ? error
-      : new Error('Failed to load organizations');
+      : new Error("Failed to load organizations");
   }
 }
 
 /** List child organizations of the given parent org. */
-export async function listChildOrganizations(parentId: number): Promise<Organization[]> {
+export async function listChildOrganizations(
+  parentId: number,
+): Promise<Organization[]> {
   return listOrganizations({ parentId });
 }
 
@@ -91,38 +98,83 @@ export async function getOrganizationById(id: number): Promise<Organization> {
 }
 
 export async function getMyOrganization(): Promise<Organization> {
-  return apiClient<Organization>('/organizations/me');
+  return apiClient<Organization>("/organizations/me");
 }
 
 export async function updateMyOrganization(
-  payload: Partial<Pick<Organization, 'name' | 'slug' | 'email' | 'phone' | 'address' | 'city' | 'state' | 'country' | 'timezone' | 'currency' | 'website' | 'industry'>>,
+  payload: Partial<
+    Pick<
+      Organization,
+      | "name"
+      | "slug"
+      | "email"
+      | "phone"
+      | "address"
+      | "city"
+      | "state"
+      | "country"
+      | "timezone"
+      | "currency"
+      | "website"
+      | "industry"
+    >
+  >,
 ): Promise<Organization> {
-  return apiClient<Organization>('/organizations/me', {
-    method: 'PATCH',
+  return apiClient<Organization>("/organizations/me", {
+    method: "PATCH",
     body: JSON.stringify({ ...payload, businessEmail: payload.email }),
   });
 }
 
 export async function updateOrganization(
   id: number,
-  payload: Partial<Pick<Organization, 'name' | 'slug' | 'email' | 'phone' | 'address' | 'city' | 'state' | 'country' | 'timezone' | 'currency' | 'website' | 'industry' | 'status'>>,
+  payload: Partial<
+    Pick<
+      Organization,
+      | "name"
+      | "slug"
+      | "email"
+      | "phone"
+      | "address"
+      | "city"
+      | "state"
+      | "country"
+      | "timezone"
+      | "currency"
+      | "website"
+      | "industry"
+      | "status"
+    >
+  >,
 ): Promise<Organization> {
   return apiClient<Organization>(`/organizations/${id}`, {
-    method: 'PATCH',
+    method: "PATCH",
     body: JSON.stringify({ ...payload, businessEmail: payload.email }),
   });
 }
 
+export async function uploadOrganizationLogo(
+  organizationId: number,
+  file: File,
+): Promise<{ logoUrl: string }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return apiClient<{ logoUrl: string }>(
+    `/organizations/${organizationId}/logo`,
+    { method: "POST", body: formData },
+  );
+}
+
 export async function deleteOrganization(id: number): Promise<void> {
-  await apiClient(`/organizations/${id}`, { method: 'DELETE' });
+  await apiClient(`/organizations/${id}`, { method: "DELETE" });
 }
 
 export async function getPlatformStats(): Promise<PlatformStats> {
   try {
-    return await apiClient<PlatformStats>('/organizations/platform-stats');
+    return await apiClient<PlatformStats>("/organizations/platform-stats");
   } catch (error: unknown) {
     throw error instanceof Error
       ? error
-      : new Error('Failed to load platform statistics');
+      : new Error("Failed to load platform statistics");
   }
 }

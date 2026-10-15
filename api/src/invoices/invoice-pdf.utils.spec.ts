@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 import { buildInvoicePdfBuffer } from './invoice-pdf.utils';
 
 describe('buildInvoicePdfBuffer', () => {
@@ -29,6 +30,9 @@ describe('buildInvoicePdfBuffer', () => {
 
     expect(pdf.subarray(0, 5).toString('ascii')).toBe('%PDF-');
     expect(pdf.toString('latin1')).toContain('%%EOF');
+    const pageCount = (pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) ?? [])
+      .length;
+    expect(pageCount).toBe(1);
   });
 
   it('paginates invoices with many line items', async () => {
@@ -56,5 +60,30 @@ describe('buildInvoicePdfBuffer', () => {
       .length;
 
     expect(pageCount).toBeGreaterThan(1);
+  });
+
+  it('renders an organization logo without adding an extra page', async () => {
+    const logo = await sharp({
+      create: { width: 12, height: 12, channels: 4, background: '#315B50' },
+    })
+      .png()
+      .toBuffer();
+    const pdf = await buildInvoicePdfBuffer({
+      invoiceNo: 'INV-2026-010',
+      customer: 'Acme Limited',
+      issueDate: '2026-10-13',
+      dueDate: '2026-11-12',
+      subtotal: 'INR 200.00',
+      discount: 'INR 0.00',
+      tax: 'INR 0.00',
+      totalAmount: 'INR 200.00',
+      companyName: 'Acme Company',
+      logo,
+    });
+    const pageCount = (pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) ?? [])
+      .length;
+
+    expect(pdf.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+    expect(pageCount).toBe(1);
   });
 });

@@ -122,4 +122,79 @@ describe('OrganizationsService', () => {
       }),
     );
   });
+
+  it('uploads a logo for an organization in the admin home family and stores its object path', async () => {
+    const prisma = {
+      organization: {
+        findFirst: jest.fn().mockResolvedValue({ id: 3, parentId: 2 }),
+        findUnique: jest.fn().mockResolvedValue({ id: 2, parentId: null }),
+        update: jest.fn().mockResolvedValue({ id: 3 }),
+      },
+    } as any;
+    const fileManagement = {
+      uploadOrganizationLogo: jest.fn().mockResolvedValue({
+        path: 'organizations/organization/3/logo/logo.png',
+        url: 'signed-logo-url',
+      }),
+    } as any;
+    const service = new OrganizationsService(prisma, fileManagement);
+
+    const result = await service.uploadOrganizationLogo(
+      3,
+      {
+        originalname: 'logo.png',
+        mimetype: 'image/png',
+        size: 100,
+      } as Express.Multer.File,
+      {
+        id: 7,
+        userId: 7,
+        role: 'ADMIN',
+        roles: ['ADMIN'],
+        organizationId: 2,
+        homeOrganizationId: 2,
+      } as any,
+    );
+
+    expect(fileManagement.uploadOrganizationLogo).toHaveBeenCalledWith(
+      expect.objectContaining({ originalname: 'logo.png' }),
+      3,
+      expect.objectContaining({ organizationId: 3, userId: 7 }),
+    );
+    expect(prisma.organization.update).toHaveBeenCalledWith({
+      where: { id: 3 },
+      data: { logoUrl: 'organizations/organization/3/logo/logo.png' },
+    });
+    expect(result).toEqual({ logoUrl: 'signed-logo-url' });
+  });
+
+  it('rejects organization logo uploads outside the admin home family', async () => {
+    const prisma = {
+      organization: {
+        findFirst: jest.fn().mockResolvedValue({ id: 9, parentId: null }),
+      },
+    } as any;
+    const fileManagement = { uploadOrganizationLogo: jest.fn() } as any;
+    const service = new OrganizationsService(prisma, fileManagement);
+
+    await expect(
+      service.uploadOrganizationLogo(
+        9,
+        {
+          originalname: 'logo.png',
+          mimetype: 'image/png',
+          size: 100,
+        } as Express.Multer.File,
+        {
+          id: 7,
+          userId: 7,
+          role: 'ADMIN',
+          roles: ['ADMIN'],
+          organizationId: 2,
+          homeOrganizationId: 2,
+        } as any,
+      ),
+    ).rejects.toThrow(ForbiddenException);
+    expect(fileManagement.uploadOrganizationLogo).not.toHaveBeenCalled();
+  });
 });

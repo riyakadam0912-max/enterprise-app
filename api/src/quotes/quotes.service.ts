@@ -23,6 +23,8 @@ import {
 import { MailService } from '../mail/mail.service';
 import { calculateQuoteTotals } from './quote-calculations';
 import { OrganizationScopeService } from '../organizations/organization-scope.service';
+import { loadPdfLogo } from '../common/utils/pdf-logo.utils';
+import { FileManagementService } from '../file-management/file-management.service';
 
 const includeRelations = {
   deal: { select: { id: true, title: true, value: true, stage: true } },
@@ -40,6 +42,7 @@ export class QuotesService {
     private readonly prisma: PrismaService,
     private readonly organizationScope?: OrganizationScopeService,
     @Optional() private readonly mailService?: MailService,
+    @Optional() private readonly fileManagementService?: FileManagementService,
   ) {}
 
   private validateOrganization(user: AuthUser): number {
@@ -502,6 +505,20 @@ export class QuotesService {
 
   async generatePdf(id: number, user: AuthUser) {
     const quote = await this.findOne(id, user);
+    const organization = this.prisma.organization?.findUnique
+      ? await this.prisma.organization.findUnique({
+          where: { id: quote.organizationId },
+          select: {
+            name: true,
+            logoUrl: true,
+            address: true,
+            city: true,
+            state: true,
+            country: true,
+            postalCode: true,
+          },
+        })
+      : null;
     const customerName =
       quote.customer?.customerName ??
       quote.contact?.contactName ??
@@ -527,7 +544,23 @@ export class QuotesService {
       validTill: quote.validTill.toISOString().slice(0, 10),
       customer: customerName,
       customerAddress,
-      companyName: 'Enterprise ERP',
+      companyName: organization?.name ?? 'Enterprise ERP',
+      companyAddress: organization
+        ? [
+            organization.address,
+            organization.city,
+            organization.state,
+            organization.postalCode,
+            organization.country,
+          ]
+            .filter(Boolean)
+            .join(', ')
+        : undefined,
+      logo:
+        (await this.fileManagementService?.getOrganizationLogoBuffer(
+          quote.organizationId,
+          organization?.logoUrl,
+        )) ?? (await loadPdfLogo(organization?.logoUrl)),
       items: quote.items.map((item) => ({
         name: item.name,
         unit: item.unit,

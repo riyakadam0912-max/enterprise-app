@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthUser } from '../common/types/auth';
@@ -10,6 +11,8 @@ import { hashPassword } from '../users/utils/hash-password';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { Role } from '../common/enums/role.enum';
+import { FileManagementService } from '../file-management/file-management.service';
+import type { FileUserContext } from '../file-management/file-management.types';
 
 export interface OrganizationSummary {
   id: number;
@@ -82,7 +85,26 @@ function toOrganizationSummary(
 
 @Injectable()
 export class OrganizationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly fileManagementService?: FileManagementService,
+  ) {}
+
+  private async resolveOrganizationLogos<
+    T extends { id: number; logoUrl?: string | null },
+  >(organizations: T[]): Promise<T[]> {
+    if (!this.fileManagementService) return organizations;
+    const fileManagementService = this.fileManagementService;
+    return Promise.all(
+      organizations.map(async (organization) => ({
+        ...organization,
+        logoUrl: await fileManagementService.resolveOrganizationLogoUrl(
+          organization.id,
+          organization.logoUrl,
+        ),
+      })),
+    );
+  }
 
   private buildSlug(name: string, fallback: string): string {
     const base = name
@@ -202,15 +224,19 @@ export class OrganizationsService {
           .map((organization) => organization.id);
         frontier.forEach((organizationId) => accessibleIds.add(organizationId));
       }
-      return organizations.filter((organization) =>
-        accessibleIds.has(organization.id),
+      return this.resolveOrganizationLogos(
+        organizations.filter((organization) =>
+          accessibleIds.has(organization.id),
+        ),
       );
     }
 
     if (assignedOrganizationIds != null) {
       const accessibleIds = new Set(assignedOrganizationIds);
-      return organizations.filter((organization) =>
-        accessibleIds.has(organization.id),
+      return this.resolveOrganizationLogos(
+        organizations.filter((organization) =>
+          accessibleIds.has(organization.id),
+        ),
       );
     }
     return [];
@@ -439,8 +465,74 @@ export class OrganizationsService {
     return {
       success: true,
       message: 'Organization loaded successfully',
-      data: organization,
+      data: (await this.resolveOrganizationLogos([organization]))[0],
     };
+  }
+
+  async uploadOrganizationLogo(
+    id: number,
+    file: Express.Multer.File,
+    user: AuthUser,
+  ) {
+    if (!this.fileManagementService) {
+      throw new ForbiddenException('Organization logo storage is unavailable');
+    }
+    if (!this.isPlatformAdmin(user) && !this.isOrganizationAdmin(user)) {
+      throw new ForbiddenException(
+        'Only organization administrators can upload logos',
+      );
+    }
+    const organization = await this.prisma.organization.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, parentId: true },
+    });
+    if (!organization) throw new NotFoundException('Organization not found');
+
+    if (!this.isPlatformAdmin(user)) {
+      const homeOrganizationId = user.homeOrganizationId ?? user.organizationId;
+      const visited = new Set<number>();
+      let current: { id: number; parentId: number | null } | null =
+        organization;
+      let isWithinOrganizationFamily = false;
+      while (current && !visited.has(current.id)) {
+        if (current.id === homeOrganizationId) {
+          isWithinOrganizationFamily = true;
+          break;
+        }
+        visited.add(current.id);
+        current =
+          current.parentId == null
+            ? null
+            : await this.prisma.organization.findUnique({
+                where: { id: current.parentId },
+                select: { id: true, parentId: true },
+              });
+      }
+      if (!isWithinOrganizationFamily) {
+        throw new ForbiddenException('Organization access denied');
+      }
+    }
+
+    const fileUser: FileUserContext = {
+      userId: user.userId ?? user.id,
+      role: user.role,
+      roles: user.roles,
+      employeeId: user.employeeId,
+      userName: user.name,
+      organizationId: id,
+      isPlatformAdmin: user.isPlatformAdmin,
+      isSuperAdmin: user.isSuperAdmin,
+    };
+    const uploaded = await this.fileManagementService.uploadOrganizationLogo(
+      file,
+      id,
+      fileUser,
+    );
+    await this.prisma.organization.update({
+      where: { id },
+      data: { logoUrl: uploaded.path },
+    });
+    return { logoUrl: uploaded.url };
   }
 
   async getMyOrganization(user: AuthUser) {
@@ -484,7 +576,7 @@ export class OrganizationsService {
     return {
       success: true,
       message: 'Organization loaded successfully',
-      data: organization,
+      data: (await this.resolveOrganizationLogos([organization]))[0],
     };
   }
 
@@ -547,7 +639,7 @@ export class OrganizationsService {
     return {
       success: true,
       message: 'Organization updated successfully',
-      data: updatedOrganization,
+      data: (await this.resolveOrganizationLogos([updatedOrganization]))[0],
     };
   }
 
@@ -626,7 +718,7 @@ export class OrganizationsService {
     return {
       success: true,
       message: 'Organization updated successfully',
-      data: updatedOrganization,
+      data: (await this.resolveOrganizationLogos([updatedOrganization]))[0],
     };
   }
 
@@ -796,6 +888,8 @@ export class OrganizationsService {
       },
     });
 
-    return organizations.map(toOrganizationSummary);
+    return this.resolveOrganizationLogos(
+      organizations.map(toOrganizationSummary),
+    );
   }
 }

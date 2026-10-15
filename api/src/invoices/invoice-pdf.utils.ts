@@ -1,6 +1,7 @@
 import PDFDocument from 'pdfkit';
 
 export type InvoicePdfContext = {
+  logo?: Buffer;
   name?: string | null;
   invoiceNo: string;
   customer: string;
@@ -15,6 +16,7 @@ export type InvoicePdfContext = {
   tcs?: string;
   totalAmount: string;
   companyName: string;
+  companyAddress?: string | null;
   items?: Array<{
     name: string;
     description?: string | null;
@@ -47,53 +49,64 @@ export async function buildInvoicePdfBuffer(
     doc.on('error', reject);
     doc.on('end', () => resolve(Buffer.concat(chunks)));
 
+    const brandX = context.logo ? margin + 52 : margin;
+    if (context.logo) {
+      doc.image(context.logo, margin, 38, { fit: [38, 38] });
+    }
     doc
-      .fillColor('#245579')
+      .fillColor('#26343B')
       .font('Helvetica-Bold')
-      .fontSize(9)
-      .text(context.companyName, margin, 42);
+      .fontSize(10)
+      .text(context.companyName, brandX, 41, { width: 280 });
+    if (context.companyAddress) {
+      doc
+        .fillColor('#64717A')
+        .font('Helvetica')
+        .fontSize(7.5)
+        .text(context.companyAddress, brandX, 56, { width: 280 });
+    }
     doc
-      .fillColor('#64748B')
+      .fillColor('#315B50')
       .font('Helvetica-Bold')
       .fontSize(8)
-      .text('INVOICE', 415, 42, {
+      .text('INVOICE', 415, 41, {
         width: 132,
         align: 'right',
-        characterSpacing: 1,
+        characterSpacing: 0.8,
       });
     doc
-      .fillColor('#17212F')
+      .fillColor('#26343B')
       .font('Helvetica-Bold')
-      .fontSize(23)
+      .fontSize(22)
       .text(
         context.name?.trim() || `Invoice ${context.invoiceNo}`,
         margin,
-        70,
-        { width: 355 },
+        84,
+        { width: 330 },
       );
     doc
-      .fillColor('#64748B')
+      .fillColor('#64717A')
       .font('Helvetica')
       .fontSize(9)
-      .text(context.invoiceNo, margin, 105);
+      .text(context.invoiceNo, margin, 115);
     doc
-      .fillColor('#64748B')
+      .fillColor('#64717A')
       .font('Helvetica-Bold')
       .fontSize(8)
-      .text('AMOUNT DUE', 420, 76, { width: 127, align: 'right' });
+      .text('AMOUNT DUE', 420, 86, { width: 127, align: 'right' });
     doc
-      .fillColor('#17212F')
+      .fillColor('#26343B')
       .font('Helvetica-Bold')
       .fontSize(14)
-      .text(context.totalAmount, 400, 92, { width: 147, align: 'right' });
+      .text(context.totalAmount, 400, 102, { width: 147, align: 'right' });
     doc
-      .moveTo(margin, 128)
-      .lineTo(pageWidth - margin, 128)
-      .lineWidth(0.7)
+      .moveTo(margin, 138)
+      .lineTo(pageWidth - margin, 138)
+      .lineWidth(0.6)
       .strokeColor('#DDE3E9')
       .stroke();
 
-    let y = 150;
+    let y = 158;
     const drawLabel = (
       label: string,
       value: string,
@@ -135,8 +148,8 @@ export async function buildInvoicePdfBuffer(
     }
 
     const drawTableHeader = () => {
-      doc.roundedRect(margin, y, contentWidth, 24, 2).fill('#EAF1F6');
-      doc.fillColor('#607487').font('Helvetica-Bold').fontSize(7.5);
+      doc.roundedRect(margin, y, contentWidth, 24, 2).fill('#EDF3F0');
+      doc.fillColor('#64717A').font('Helvetica-Bold').fontSize(7.5);
       doc.text('DESCRIPTION', margin + 8, y + 8, { width: 255 });
       doc.text('QTY', 360, y + 8, { width: 42, align: 'right' });
       doc.text('RATE', 406, y + 8, { width: 62, align: 'right' });
@@ -158,18 +171,18 @@ export async function buildInvoicePdfBuffer(
         drawTableHeader();
       }
       doc
-        .fillColor('#17212F')
+        .fillColor('#26343B')
         .font('Helvetica-Bold')
         .fontSize(8.5)
         .text(item.name, margin + 8, y + 5, { width: 240 });
       if (item.description)
         doc
-          .fillColor('#64748B')
+          .fillColor('#64717A')
           .font('Helvetica')
           .fontSize(7.5)
           .text(item.description, margin + 8, doc.y + 1, { width: 240 });
       doc
-        .fillColor('#17212F')
+        .fillColor('#26343B')
         .font('Helvetica')
         .fontSize(8.5)
         .text(`${item.quantity} ${item.unit ?? 'Unit'}`, 352, y + 5, {
@@ -203,7 +216,7 @@ export async function buildInvoicePdfBuffer(
         ? [['Adjustment', context.adjustment] as [string, string]]
         : []),
     ];
-    if (y + summaryRows.length * 17 + 48 > doc.page.height - 55) {
+    if (y + summaryRows.length * 17 + 48 > doc.page.height - 64) {
       doc.addPage();
       y = 55;
     } else y += 12;
@@ -223,16 +236,16 @@ export async function buildInvoicePdfBuffer(
       .moveTo(summaryX, y + 2)
       .lineTo(pageWidth - margin, y + 2)
       .lineWidth(1)
-      .strokeColor('#245579')
+      .strokeColor('#315B50')
       .stroke();
     y += 13;
     doc
-      .fillColor('#17212F')
+      .fillColor('#26343B')
       .font('Helvetica-Bold')
       .fontSize(10)
       .text('TOTAL DUE', summaryX, y, { width: 125 });
     doc
-      .fillColor('#245579')
+      .fillColor('#315B50')
       .fontSize(13)
       .text(context.totalAmount, summaryX + 125, y - 2, {
         width: 105,
@@ -249,18 +262,18 @@ export async function buildInvoicePdfBuffer(
       doc.font('Helvetica').fontSize(8);
       const sectionHeight =
         doc.heightOfString(value.trim(), { width: contentWidth }) + 36;
-      if (y + sectionHeight > doc.page.height - 58) {
+      if (y + sectionHeight > doc.page.height - 64) {
         doc.addPage();
         y = 50;
       }
       doc
-        .fillColor('#17212F')
+        .fillColor('#26343B')
         .font('Helvetica-Bold')
         .fontSize(8)
         .text(label, margin, y);
       y += 13;
       doc
-        .fillColor('#64748B')
+        .fillColor('#64717A')
         .font('Helvetica')
         .fontSize(8)
         .text(value.trim(), margin, y, { width: contentWidth, lineGap: 2 });
@@ -274,7 +287,7 @@ export async function buildInvoicePdfBuffer(
       pageIndex += 1
     ) {
       doc.switchToPage(pageIndex);
-      const footerY = doc.page.height - 34;
+      const footerY = doc.page.height - 64;
       doc
         .moveTo(margin, footerY - 8)
         .lineTo(pageWidth - margin, footerY - 8)

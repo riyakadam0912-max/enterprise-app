@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ForbiddenException,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
@@ -27,6 +28,7 @@ import { compressImage } from './utils/image-compression';
 import { StreamableFile } from '@nestjs/common';
 import { Readable } from 'stream';
 import { extname } from 'path';
+import sharp from 'sharp';
 
 type FileRecord = Record<string, any>;
 
@@ -122,6 +124,172 @@ export class FileManagementService {
       results.push(await this.writeFileRecord(file, dto, user));
     }
     return results;
+  }
+
+  async uploadOrganizationLogo(
+    file: UploadedFileInput,
+    organizationId: number,
+    user: FileUserContext,
+  ) {
+    if (this.storageProvider.name !== 's3') {
+      throw new ServiceUnavailableException(
+        'Organization logo uploads require AWS S3 storage',
+      );
+    }
+    if (!file) throw new BadRequestException('A logo image is required');
+    const allowedTypes: Record<string, string[]> = {
+      'image/png': ['.png'],
+      'image/jpeg': ['.jpg', '.jpeg'],
+      'image/webp': ['.webp'],
+    };
+    const allowedExtensions = allowedTypes[file.mimetype];
+    if (
+      !allowedExtensions ||
+      !allowedExtensions.includes(extname(file.originalname).toLowerCase())
+    ) {
+      throw new BadRequestException('Logo must be a PNG, JPEG, or WebP image');
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      throw new BadRequestException('Logo image must be 5 MB or smaller');
+    }
+    let imageMetadata: sharp.Metadata;
+    try {
+      imageMetadata = await sharp(file.buffer, {
+        failOn: 'error',
+        limitInputPixels: 4_000_000,
+      }).metadata();
+    } catch {
+      throw new BadRequestException(
+        'Logo must be a valid PNG, JPEG, or WebP image',
+      );
+    }
+    const expectedFormat =
+      file.mimetype === 'image/jpeg' ? 'jpeg' : file.mimetype.slice(6);
+    if (imageMetadata.format !== expectedFormat) {
+      throw new BadRequestException(
+        'Logo content does not match its image type',
+      );
+    }
+
+    const scopedUser = { ...user, organizationId };
+    const previous = await this.prismaCompat.file.findFirst({
+      where: {
+        organizationId,
+        module: 'organizations',
+        entityType: 'Organization',
+        entityId: organizationId,
+        category: 'logo',
+        status: 'ACTIVE',
+        deletedAt: null,
+      },
+      orderBy: [{ version: 'desc' }, { createdAt: 'desc' }],
+    });
+    const uploaded = await this.writeFileRecord(
+      file,
+      {
+        module: 'organizations',
+        entityType: 'Organization',
+        entityId: organizationId,
+        category: 'logo',
+        tags: 'organization-logo',
+        isPublic: 'false',
+      },
+      scopedUser,
+      previous ?? undefined,
+    );
+    if (previous) {
+      await this.prismaCompat.file.update({
+        where: { id: previous.id, organizationId },
+        data: { status: 'ARCHIVED' },
+      });
+    }
+    return uploaded;
+  }
+
+  private async findOrganizationLogoRecord(
+    organizationId: number,
+    storedPath: string,
+  ) {
+    if (!storedPath || storedPath.startsWith('http')) return null;
+    return this.prismaCompat.file.findFirst({
+      where: {
+        organizationId,
+        module: 'organizations',
+        entityType: 'Organization',
+        entityId: organizationId,
+        category: 'logo',
+        path: storedPath,
+        status: 'ACTIVE',
+        deletedAt: null,
+      },
+      select: { id: true, path: true },
+    });
+  }
+
+  async getOrganizationLogoBuffer(
+    organizationId: number,
+    storedPath?: string | null,
+  ): Promise<Buffer | undefined> {
+    if (!storedPath) return undefined;
+    try {
+      const record = await this.findOrganizationLogoRecord(
+        organizationId,
+        storedPath,
+      );
+      if (!record) return undefined;
+      const stream = await this.storageProvider.getReadStream({
+        storedPath: record.path,
+      });
+      const chunks: Buffer[] = [];
+      let totalBytes = 0;
+      for await (const chunk of stream as AsyncIterable<Buffer | string>) {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        totalBytes += buffer.byteLength;
+        if (totalBytes > 512 * 1024) {
+          (stream as Readable).destroy();
+          return undefined;
+        }
+        chunks.push(buffer);
+      }
+      const normalizedLogo = await sharp(Buffer.concat(chunks), {
+        failOn: 'error',
+        limitInputPixels: 4_000_000,
+      })
+        .rotate()
+        .resize({
+          width: 480,
+          height: 240,
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .png()
+        .toBuffer();
+      return normalizedLogo.byteLength <= 512 * 1024
+        ? normalizedLogo
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async resolveOrganizationLogoUrl(
+    organizationId: number,
+    storedPath?: string | null,
+  ): Promise<string | null> {
+    if (!storedPath) return null;
+    try {
+      const record = await this.findOrganizationLogoRecord(
+        organizationId,
+        storedPath,
+      );
+      if (!record) return storedPath;
+      return await this.storageProvider.generateSignedUrl({
+        storedPath: record.path,
+        expiresInSeconds: 3600,
+      });
+    } catch {
+      return storedPath;
+    }
   }
 
   async findAll(query: FileListQuery = {}, user?: Partial<FileUserContext>) {
@@ -746,6 +914,7 @@ export class FileManagementService {
       this.storageProvider.name === 's3' ? signedDownloadUrl : file.url;
     return {
       ...file,
+      path: file.path,
       url: imageUrl,
       downloadUrl: `/files/download/${file.id}`,
       previewUrl:

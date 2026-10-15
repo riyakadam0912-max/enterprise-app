@@ -15,7 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { PhoneDialCodeInput } from '@/components/ui/phone-dial-code-input';
 import { apiClient } from '@/api/apiClient';
-import { updateOrganization, type Organization } from '@/api/organizationsApi';
+import { updateOrganization, uploadOrganizationLogo, type Organization } from '@/api/organizationsApi';
 import { toast } from '@/providers/toast-provider';
 import {
   getCountryOptions,
@@ -36,18 +36,10 @@ const schema = z
     slug: z.string().optional().or(z.literal('')),
     industry: z.string().optional(),
     organizationSize: z.string().optional(),
-    businessEmail: z
-      .string()
-      .email('Enter a valid business email')
-      .optional()
-      .or(z.literal('')),
+    businessEmail: z.string().email('Enter a valid business email').optional().or(z.literal('')),
     /** Full phone e.g. "+91 9876543210" */
     phone: z.string().optional().or(z.literal('')),
-    website: z
-      .string()
-      .url('Enter a valid URL')
-      .optional()
-      .or(z.literal('')),
+    website: z.string().url('Enter a valid URL').optional().or(z.literal('')),
     /** ISO country code "IN" */
     country: z.string().optional(),
     /** ISO state code "MH" */
@@ -61,16 +53,8 @@ const schema = z
     currency: z.string().optional(),
     status: z.string().optional(),
     adminName: z.string().optional(),
-    adminEmail: z
-      .string()
-      .email('Enter a valid admin email')
-      .optional()
-      .or(z.literal('')),
-    adminPassword: z
-      .string()
-      .min(8, 'Password must be at least 8 characters')
-      .optional()
-      .or(z.literal('')),
+    adminEmail: z.string().email('Enter a valid admin email').optional().or(z.literal('')),
+    adminPassword: z.string().min(8, 'Password must be at least 8 characters').optional().or(z.literal('')),
     confirmPassword: z.string().optional(),
     sendWelcomeEmail: z.boolean().optional(),
     enableImmediately: z.boolean().optional(),
@@ -83,11 +67,7 @@ const schema = z
         message: 'Use lowercase letters, numbers, and hyphens only',
       });
     }
-    if (
-      values.adminEmail &&
-      values.adminPassword &&
-      values.adminPassword !== values.confirmPassword
-    ) {
+    if (values.adminEmail && values.adminPassword && values.adminPassword !== values.confirmPassword) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['confirmPassword'],
@@ -178,6 +158,8 @@ export function OrganizationCreateModal({
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
 
   const {
     register,
@@ -211,10 +193,7 @@ export function OrganizationCreateModal({
     );
   }, [watchedName, watchedSlug]);
 
-  const timezoneOptions = useMemo(
-    () => getTimezoneOptions(watchedCountry ?? ''),
-    [watchedCountry],
-  );
+  const timezoneOptions = useMemo(() => getTimezoneOptions(watchedCountry ?? ''), [watchedCountry]);
 
   // Cascading resets
   useEffect(() => {
@@ -247,20 +226,19 @@ export function OrganizationCreateModal({
       previousCountry.current = values.country;
       previousState.current = values.state;
       reset(values);
+      setLogoFile(null);
+      setLogoPreviewUrl(organization?.logoUrl ?? null);
     }
   }, [open, organization, reset]);
 
-  const stateOptions = useMemo(
-    () => getStateOptions(watchedCountry ?? ''),
-    [watchedCountry],
-  );
+  const stateOptions = useMemo(() => getStateOptions(watchedCountry ?? ''), [watchedCountry]);
 
-  const cityOptions = useMemo(
-    () => getCityOptions(watchedCountry ?? '', watchedState ?? ''),
-    [watchedCountry, watchedState],
-  );
+  const cityOptions = useMemo(() => getCityOptions(watchedCountry ?? '', watchedState ?? ''), [watchedCountry, watchedState]);
 
   const handleClose = () => {
+    if (logoPreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(logoPreviewUrl);
+    setLogoFile(null);
+    setLogoPreviewUrl(null);
     reset(getDefaultValues());
     setError(null);
     setSuccess(false);
@@ -270,6 +248,7 @@ export function OrganizationCreateModal({
   const onSubmit: SubmitHandler<FormValues> = async (values) => {
     setSubmitting(true);
     setError(null);
+    let organizationSaved = false;
     try {
       const payload = {
         name: values.name.trim(),
@@ -294,13 +273,20 @@ export function OrganizationCreateModal({
         parentId: parentId ?? undefined,
       };
 
+      let organizationId = organization?.id;
       if (organization) {
         await updateOrganization(organization.id, payload);
+        organizationSaved = true;
       } else {
-        await apiClient('/organizations', {
+        const created = await apiClient<{ id: number }>('/organizations', {
           method: 'POST',
           body: JSON.stringify(payload),
         });
+        organizationId = created.id;
+        organizationSaved = true;
+      }
+      if (logoFile && organizationId) {
+        await uploadOrganizationLogo(organizationId, logoFile);
       }
 
       setSuccess(true);
@@ -310,14 +296,17 @@ export function OrganizationCreateModal({
         `${payload.name} is now available for your platform team.`,
       );
       reset(getDefaultValues());
+      setLogoFile(null);
       window.setTimeout(() => {
         handleClose();
         setSuccess(false);
       }, 1200);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Unable to create organization';
+      const detail = err instanceof Error ? err.message : 'Unable to create organization';
+      const message = organizationSaved ? `Organization details were saved, but its logo could not be uploaded: ${detail}` : detail;
+      if (organizationSaved) onCreated();
       setError(message);
-      toast.error('Creation failed', message);
+      toast.error(organizationSaved ? 'Logo upload failed' : 'Creation failed', message);
     } finally {
       setSubmitting(false);
     }
@@ -363,16 +352,11 @@ export function OrganizationCreateModal({
                 Organization created successfully.
               </div>
             ) : null}
-            {error ? (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                {error}
-              </div>
-            ) : null}
+            {error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
 
             <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
               {/* ── Left column ── */}
               <div className="space-y-4">
-
                 {/* Name + Legal Name */}
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
@@ -380,39 +364,24 @@ export function OrganizationCreateModal({
                       Organization Name <span className="text-rose-500">*</span>
                     </label>
                     <Input {...register('name')} placeholder="Ekdrishti Group" />
-                    {errors.name ? (
-                      <p className="mt-1 text-xs text-rose-600">{errors.name.message}</p>
-                    ) : null}
+                    {errors.name ? <p className="mt-1 text-xs text-rose-600">{errors.name.message}</p> : null}
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Legal Name
-                    </label>
-                    <Input
-                      {...register('legalName')}
-                      placeholder="Ekdrishti Group PVT LTD"
-                    />
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Legal Name</label>
+                    <Input {...register('legalName')} placeholder="Ekdrishti Group PVT LTD" />
                   </div>
                 </div>
 
                 {/* Slug + Industry */}
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Slug
-                    </label>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Slug</label>
                     <Input {...register('slug')} placeholder="ekdrishti-group" />
-                    {errors.slug ? (
-                      <p className="mt-1 text-xs text-rose-600">{errors.slug.message}</p>
-                    ) : null}
-                    {slugPreview ? (
-                      <p className="mt-1 text-xs text-slate-500">Preview: {slugPreview}</p>
-                    ) : null}
+                    {errors.slug ? <p className="mt-1 text-xs text-rose-600">{errors.slug.message}</p> : null}
+                    {slugPreview ? <p className="mt-1 text-xs text-slate-500">Preview: {slugPreview}</p> : null}
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Industry
-                    </label>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Industry</label>
                     <Input {...register('industry')} placeholder="Technology" />
                   </div>
                 </div>
@@ -420,9 +389,7 @@ export function OrganizationCreateModal({
                 {/* Org size */}
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Organization Size
-                    </label>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Organization Size</label>
                     <Select {...register('organizationSize')}>
                       <option value="">Select size</option>
                       <option value="1-10">1–10</option>
@@ -433,59 +400,33 @@ export function OrganizationCreateModal({
                     </Select>
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Business Email
-                    </label>
-                    <Input
-                      type="email"
-                      {...register('businessEmail')}
-                      placeholder="ops@example.com"
-                    />
-                    {errors.businessEmail ? (
-                      <p className="mt-1 text-xs text-rose-600">
-                        {errors.businessEmail.message}
-                      </p>
-                    ) : null}
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Business Email</label>
+                    <Input type="email" {...register('businessEmail')} placeholder="ops@example.com" />
+                    {errors.businessEmail ? <p className="mt-1 text-xs text-rose-600">{errors.businessEmail.message}</p> : null}
                   </div>
                 </div>
 
                 {/* Phone (with dial code) */}
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Phone
-                  </label>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Phone</label>
                   <Controller
                     name="phone"
                     control={control}
-                    render={({ field }) => (
-                      <PhoneDialCodeInput
-                        value={field.value ?? ''}
-                        onChange={field.onChange}
-                      />
-                    )}
+                    render={({ field }) => <PhoneDialCodeInput value={field.value ?? ''} onChange={field.onChange} />}
                   />
                 </div>
 
                 {/* Website */}
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Website
-                  </label>
-                  <Input
-                    {...register('website')}
-                    placeholder="https://example.com"
-                  />
-                  {errors.website ? (
-                    <p className="mt-1 text-xs text-rose-600">{errors.website.message}</p>
-                  ) : null}
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Website</label>
+                  <Input {...register('website')} placeholder="https://example.com" />
+                  {errors.website ? <p className="mt-1 text-xs text-rose-600">{errors.website.message}</p> : null}
                 </div>
 
                 {/* Country → State → City (cascading) */}
                 <div className="grid gap-4 md:grid-cols-3">
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Country
-                    </label>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Country</label>
                     <Controller
                       name="country"
                       control={control}
@@ -500,9 +441,7 @@ export function OrganizationCreateModal({
                     />
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      State / Region
-                    </label>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">State / Region</label>
                     <Controller
                       name="state"
                       control={control}
@@ -511,18 +450,14 @@ export function OrganizationCreateModal({
                           options={stateOptions}
                           value={field.value ?? ''}
                           onChange={field.onChange}
-                          placeholder={
-                            watchedCountry ? 'Select state' : 'Select country first'
-                          }
+                          placeholder={watchedCountry ? 'Select state' : 'Select country first'}
                           disabled={!watchedCountry || stateOptions.length === 0}
                         />
                       )}
                     />
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      City
-                    </label>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">City</label>
                     <Controller
                       name="city"
                       control={control}
@@ -531,9 +466,7 @@ export function OrganizationCreateModal({
                           options={cityOptions}
                           value={field.value ?? ''}
                           onChange={field.onChange}
-                          placeholder={
-                            watchedState ? 'Select city' : 'Select state first'
-                          }
+                          placeholder={watchedState ? 'Select city' : 'Select state first'}
                           disabled={!watchedState || cityOptions.length === 0}
                         />
                       )}
@@ -544,16 +477,12 @@ export function OrganizationCreateModal({
                 {/* Address + Timezone + Currency */}
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Address
-                    </label>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Address</label>
                     <Textarea {...register('address')} />
                   </div>
                   <div className="space-y-4">
                     <div>
-                      <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                        Time Zone
-                      </label>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-700">Time Zone</label>
                       <Controller
                         name="timezone"
                         control={control}
@@ -568,9 +497,7 @@ export function OrganizationCreateModal({
                       />
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                        Currency
-                      </label>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-700">Currency</label>
                       <Controller
                         name="currency"
                         control={control}
@@ -590,22 +517,68 @@ export function OrganizationCreateModal({
 
               {/* ── Right column ── */}
               <div className="space-y-4 rounded-3xl border border-slate-200/80 bg-slate-50 p-4">
-                {/* Logo placeholder */}
+                {/* Organization logo */}
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Logo Upload
-                  </label>
-                  <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-5 text-center text-sm text-slate-500">
-                    Drag-and-drop upload is not wired to a backend endpoint yet.
-                    The organization can still be created without a logo.
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Organization logo</label>
+                  <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-400">
+                      {logoPreviewUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={logoPreviewUrl} alt="Organization logo preview" className="h-full w-full object-contain p-1" />
+                      ) : (
+                        'Logo'
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        aria-label="Choose organization logo"
+                        onChange={(event) => {
+                          const file = event.currentTarget.files?.[0];
+                          if (!file) return;
+                          if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+                            setError('Choose a PNG, JPEG, or WebP logo.');
+                            event.currentTarget.value = '';
+                            return;
+                          }
+                          if (file.size > 5 * 1024 * 1024) {
+                            setError('Logo image must be 5 MB or smaller.');
+                            event.currentTarget.value = '';
+                            return;
+                          }
+                          if (logoPreviewUrl?.startsWith('blob:')) {
+                            URL.revokeObjectURL(logoPreviewUrl);
+                          }
+                          setError(null);
+                          setLogoFile(file);
+                          setLogoPreviewUrl(URL.createObjectURL(file));
+                        }}
+                        className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
+                      />
+                      <p className="mt-2 text-xs text-slate-500">PNG, JPEG, or WebP. Maximum 5 MB; compressed before storage.</p>
+                    </div>
+                    {logoFile && logoPreviewUrl ? (
+                      <button
+                        type="button"
+                        aria-label="Discard selected logo"
+                        title="Discard selected logo"
+                        onClick={() => {
+                          if (logoPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(logoPreviewUrl);
+                          setLogoFile(null);
+                          setLogoPreviewUrl(organization?.logoUrl ?? null);
+                        }}
+                        className="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    ) : null}
                   </div>
                 </div>
 
                 {/* Status */}
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Organization Status
-                  </label>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Organization Status</label>
                   <Select {...register('status')}>
                     <option value="ACTIVE">Active</option>
                     <option value="SUSPENDED">Suspended</option>
@@ -615,76 +588,52 @@ export function OrganizationCreateModal({
                 </div>
 
                 {/* Primary admin */}
-                {!isEditing ? <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <h3 className="text-sm font-semibold text-slate-900">Primary Admin</h3>
-                  <div className="mt-3 space-y-3">
-                    <div>
-                      <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                        Admin Name
-                      </label>
-                      <Input {...register('adminName')} placeholder="Avery Chen" />
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                        Admin Email
-                      </label>
-                      <Input
-                        type="email"
-                        {...register('adminEmail')}
-                        placeholder="avery@example.com"
-                      />
-                      {errors.adminEmail ? (
-                        <p className="mt-1 text-xs text-rose-600">
-                          {errors.adminEmail.message}
-                        </p>
-                      ) : null}
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                        Admin Password
-                      </label>
-                      <Input type="password" {...register('adminPassword')} />
-                      {errors.adminPassword ? (
-                        <p className="mt-1 text-xs text-rose-600">
-                          {errors.adminPassword.message}
-                        </p>
-                      ) : null}
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                        Confirm Password
-                      </label>
-                      <Input type="password" {...register('confirmPassword')} />
-                      {errors.confirmPassword ? (
-                        <p className="mt-1 text-xs text-rose-600">
-                          {errors.confirmPassword.message}
-                        </p>
-                      ) : null}
+                {!isEditing ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <h3 className="text-sm font-semibold text-slate-900">Primary Admin</h3>
+                    <div className="mt-3 space-y-3">
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-slate-700">Admin Name</label>
+                        <Input {...register('adminName')} placeholder="Avery Chen" />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-slate-700">Admin Email</label>
+                        <Input type="email" {...register('adminEmail')} placeholder="avery@example.com" />
+                        {errors.adminEmail ? <p className="mt-1 text-xs text-rose-600">{errors.adminEmail.message}</p> : null}
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-slate-700">Admin Password</label>
+                        <Input type="password" {...register('adminPassword')} />
+                        {errors.adminPassword ? <p className="mt-1 text-xs text-rose-600">{errors.adminPassword.message}</p> : null}
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-slate-700">Confirm Password</label>
+                        <Input type="password" {...register('confirmPassword')} />
+                        {errors.confirmPassword ? <p className="mt-1 text-xs text-rose-600">{errors.confirmPassword.message}</p> : null}
+                      </div>
                     </div>
                   </div>
-                </div> : null}
+                ) : null}
 
                 {/* Options */}
-                {!isEditing ? <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
-                  <label className="flex items-center gap-3">
-                    <Checkbox {...register('sendWelcomeEmail')} defaultChecked />
-                    <span>Send welcome email</span>
-                  </label>
-                  <label className="flex items-center gap-3">
-                    <Checkbox {...register('enableImmediately')} defaultChecked />
-                    <span>Enable immediately</span>
-                  </label>
-                </div> : null}
+                {!isEditing ? (
+                  <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+                    <label className="flex items-center gap-3">
+                      <Checkbox {...register('sendWelcomeEmail')} defaultChecked />
+                      <span>Send welcome email</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <Checkbox {...register('enableImmediately')} defaultChecked />
+                      <span>Enable immediately</span>
+                    </label>
+                  </div>
+                ) : null}
               </div>
             </div>
 
             {/* Footer */}
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200/80 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => reset(getDefaultValues())}
-              >
+              <Button type="button" variant="outline" onClick={() => reset(getDefaultValues())}>
                 <RotateCcw className="mr-2 h-4 w-4" />
                 Reset
               </Button>
