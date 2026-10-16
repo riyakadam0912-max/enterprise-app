@@ -82,6 +82,7 @@ export default function LeavePage() {
   const role = session.role ?? '';
   const employeeId = session.employeeId;
   const isEmployee = role.toUpperCase() === 'EMPLOYEE';
+  const canCreateOwnRequest = isEmployee || role.toUpperCase() === 'MANAGER';
   const isManager = ['MANAGER', 'ADMIN', 'HR'].includes(role.toUpperCase());
 
   const form = useForm<LeaveFormValues>({
@@ -171,8 +172,16 @@ export default function LeavePage() {
       header: 'Actions',
       cell: ({ row }) => {
         const request = row.original;
-        const canApprove = isManager && (request.status === 'PENDING_MANAGER' || request.status === 'PENDING_HR');
-        const canReject = isManager && request.status !== 'REJECTED' && request.status !== 'CANCELLED';
+        const isOwnManagerRequest =
+          role.toUpperCase() === 'MANAGER' && request.employeeId === employeeId;
+        const canApprove =
+          isManager &&
+          !isOwnManagerRequest &&
+          (request.status === 'PENDING_MANAGER' || request.status === 'PENDING_HR');
+        const canReject =
+          ['ADMIN', 'HR', 'SUPER_ADMIN'].includes(role.toUpperCase()) &&
+          request.status !== 'REJECTED' &&
+          request.status !== 'CANCELLED';
 
         return (
           <div className="flex flex-wrap gap-2">
@@ -209,7 +218,7 @@ export default function LeavePage() {
         );
       },
     },
-  ], [isManager]);
+  ], [employeeId, isManager, role]);
 
   const totalDays = filteredRequests.reduce((total, request) => {
     const days = Math.max(1, Math.floor((new Date(request.endDate).getTime() - new Date(request.startDate).getTime()) / 86400000) + 1);
@@ -257,7 +266,7 @@ export default function LeavePage() {
       actions={
         <>
           <Button variant="outline" onClick={() => void 0}>Export</Button>
-          {isEmployee ? (
+          {canCreateOwnRequest ? (
             <Button onClick={() => setCreateOpen(true)}>
               <Plus className="h-4 w-4" />
               New Request

@@ -68,6 +68,7 @@ export class LeaveRequestsService {
           id: user.employeeId,
           organizationId,
           deletedAt: null,
+          user: { id: user.userId },
         },
         select: { id: true },
       });
@@ -80,6 +81,7 @@ export class LeaveRequestsService {
             email: user.email,
             organizationId,
             deletedAt: null,
+            user: { id: user.userId },
           },
           orderBy: { id: 'asc' },
           select: { id: true },
@@ -124,7 +126,18 @@ export class LeaveRequestsService {
     if (user.role === Role.EMPLOYEE) {
       employeeId = await this.resolveCurrentEmployeeId(user);
     } else if (user.role === Role.MANAGER) {
-      employeeWhere = { ...employeeWhere, user: { managerId: user.userId } };
+      employeeWhere = {
+        OR: [
+          {
+            organizationId,
+            deletedAt: null,
+            user: { id: user.userId },
+          },
+          {
+            AND: [buWhere, { user: { managerId: user.userId } }],
+          },
+        ],
+      };
     }
 
     const where: Prisma.LeaveRequestWhereInput = {
@@ -194,7 +207,7 @@ export class LeaveRequestsService {
   async create(dto: CreateLeaveRequestDto, user: AuthUser) {
     let organizationId = this.getOrganizationId(user);
     const currentEmployeeId =
-      user.role === Role.EMPLOYEE
+      user.role === Role.EMPLOYEE || user.role === Role.MANAGER
         ? await this.resolveCurrentEmployeeId(user)
         : (user.employeeId ?? null);
     const employeeId = dto.employeeId ?? currentEmployeeId;
@@ -203,12 +216,13 @@ export class LeaveRequestsService {
     const duration = dto.duration ?? 'FULL_DAY';
     this.validateDateRange(startDate, endDate);
 
-    if (user.role === Role.EMPLOYEE) {
+    if (user.role === Role.EMPLOYEE || user.role === Role.MANAGER) {
       const ownEmployeeId =
         currentEmployeeId ?? (await this.resolveCurrentEmployeeId(user));
       if (dto.employeeId !== undefined && dto.employeeId !== ownEmployeeId) {
+        const roleName = user.role === Role.MANAGER ? 'Managers' : 'Employees';
         throw new ForbiddenException(
-          'Employees can only create leave requests for themselves',
+          `${roleName} can only create leave requests for themselves`,
         );
       }
     }
@@ -230,7 +244,7 @@ export class LeaveRequestsService {
     const employee = await this.prisma.employee.findFirst({
       where: {
         id: employeeId,
-        ...(user.role === Role.EMPLOYEE
+        ...(user.role === Role.EMPLOYEE || user.role === Role.MANAGER
           ? { organizationId, deletedAt: null }
           : user.role === Role.ADMIN || user.role === Role.HR
             ? descendantIds.length > 0
@@ -463,6 +477,11 @@ export class LeaveRequestsService {
     if (request.status !== 'PENDING_MANAGER') {
       throw new ForbiddenException(
         'Leave request is not pending manager approval',
+      );
+    }
+    if (request.employee?.user?.id === user.userId) {
+      throw new ForbiddenException(
+        'Managers cannot approve their own leave requests',
       );
     }
     const organizationId = request.organizationId;

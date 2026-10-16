@@ -41,13 +41,15 @@ export default function AddLeaveRequestPage() {
   const router = useRouter();
   const session = useAuthSession();
   const isEmployeeRole = session.role === 'EMPLOYEE';
+  const isManagerRole = session.role === 'MANAGER';
+  const isSelfServiceRole = isEmployeeRole || isManagerRole;
   const [form, setForm]         = useState(EMPTY);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]       = useState<string | null>(null);
 
   useEffect(() => {
-    if (isEmployeeRole) {
+    if (isSelfServiceRole) {
       setEmployees([]);
       setForm((current) => ({
         ...current,
@@ -65,7 +67,7 @@ export default function AddLeaveRequestPage() {
     }
 
     loadEmployees();
-  }, [isEmployeeRole, session.employeeId]);
+  }, [isSelfServiceRole, session.employeeId]);
 
   const set = (key: keyof typeof form, value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -75,11 +77,11 @@ export default function AddLeaveRequestPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const resolvedEmployeeId = isEmployeeRole
+      const resolvedEmployeeId = isSelfServiceRole
         ? session.employeeId ?? undefined
         : form.employeeId ? parseInt(form.employeeId) : undefined;
 
-      if (!resolvedEmployeeId) {
+      if (!resolvedEmployeeId && !isManagerRole) {
         setError(isEmployeeRole ? 'Your employee profile is not linked to this account.' : 'Please select an employee.');
         return;
       }
@@ -104,10 +106,10 @@ export default function AddLeaveRequestPage() {
 
   const handleReset = () => setForm({
     ...EMPTY,
-    employeeId: isEmployeeRole && session.employeeId ? String(session.employeeId) : '',
+    employeeId: isSelfServiceRole && session.employeeId ? String(session.employeeId) : '',
   });
 
-  const employeeDisplayName = isEmployeeRole ? (session.user?.name || 'Current Employee') : '';
+  const employeeDisplayName = isSelfServiceRole ? (session.user?.name || 'Current Employee') : '';
 
   const inputCls =
     'w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-orange-400 bg-white';
@@ -142,7 +144,7 @@ export default function AddLeaveRequestPage() {
           )}
 
           {/* Employee */}
-          {isEmployeeRole ? (
+          {isSelfServiceRole ? (
             <div className={rowCls}>
               <label className={labelCls}>
                 Employee <span className="text-red-500">*</span>

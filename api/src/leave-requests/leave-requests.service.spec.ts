@@ -179,6 +179,77 @@ describe('LeaveRequestsService', () => {
       ).rejects.toThrow(ForbiddenException);
     });
 
+    it('should allow a manager to create a leave request for themselves', async () => {
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      const leaveRequestDelegate = getPrismaDelegate(
+        mockPrisma,
+        'leaveRequest',
+      );
+      const manager = createMockAuthUser(Role.MANAGER, {
+        userId: 3,
+        employeeId: 303,
+      });
+      employeeDelegate.findFirst
+        .mockResolvedValueOnce({ id: 303 })
+        .mockResolvedValueOnce({
+          id: 303,
+          organizationId: 1,
+          user: {
+            id: 3,
+            name: 'Test Manager',
+            email: 'manager@example.com',
+            managerId: null,
+          },
+        });
+      leaveRequestDelegate.create.mockResolvedValueOnce({
+        id: 11,
+        employeeId: 303,
+        startDate: new Date('2026-01-01'),
+        endDate: new Date('2026-01-02'),
+      });
+
+      await expect(
+        service.create(
+          {
+            startDate: '2026-01-01',
+            endDate: '2026-01-02',
+            leaveType: 'SICK',
+          } as CreateLeaveRequestDto,
+          manager,
+        ),
+      ).resolves.toMatchObject({ id: 11, employeeId: 303 });
+      expect(leaveRequestDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ employeeId: 303 }),
+        }),
+      );
+    });
+
+    it('should forbid a manager from creating a leave request for another employee', async () => {
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      const leaveRequestDelegate = getPrismaDelegate(
+        mockPrisma,
+        'leaveRequest',
+      );
+      employeeDelegate.findFirst.mockResolvedValueOnce({ id: 303 });
+
+      await expect(
+        service.create(
+          {
+            startDate: '2026-01-01',
+            endDate: '2026-01-02',
+            leaveType: 'SICK',
+            employeeId: 304,
+          } as CreateLeaveRequestDto,
+          createMockAuthUser(Role.MANAGER, {
+            userId: 3,
+            employeeId: 303,
+          }),
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(leaveRequestDelegate.create).not.toHaveBeenCalled();
+    });
+
     it('should resolve a stale employee claim by email within the organization', async () => {
       const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
       const leaveRequestDelegate = getPrismaDelegate(
@@ -536,6 +607,38 @@ describe('LeaveRequestsService', () => {
         }),
       );
     });
+
+    it('includes a manager own leave request alongside their team requests', async () => {
+      const leaveRequestDelegate = getPrismaDelegate(
+        mockPrisma,
+        'leaveRequest',
+      );
+      const manager = createMockAuthUser(Role.MANAGER, { userId: 3 });
+      leaveRequestDelegate.findMany.mockResolvedValueOnce([]);
+
+      await service.findAll(manager);
+
+      expect(leaveRequestDelegate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            employee: expect.objectContaining({
+              OR: expect.arrayContaining([
+                expect.objectContaining({
+                  user: { id: manager.userId },
+                }),
+                expect.objectContaining({
+                  AND: expect.arrayContaining([
+                    expect.objectContaining({
+                      user: { managerId: manager.userId },
+                    }),
+                  ]),
+                }),
+              ]),
+            }),
+          }),
+        }),
+      );
+    });
   });
 
   describe('findOne', () => {
@@ -708,6 +811,25 @@ describe('LeaveRequestsService', () => {
       const result = await service.managerApprove(1, mockManagerUser);
       expect(result).toEqual({ id: 1, status: 'PENDING_HR' });
       expect(mockWorkflowEngine.approveWorkflow).toHaveBeenCalledTimes(1);
+    });
+
+    it('should forbid a manager from approving their own leave request', async () => {
+      const leaveRequestDelegate = getPrismaDelegate(
+        mockPrisma,
+        'leaveRequest',
+      );
+      leaveRequestDelegate.findFirst.mockResolvedValueOnce({
+        id: 1,
+        employeeId: 303,
+        status: 'PENDING_MANAGER',
+        approvalTrail: null,
+        employee: { user: { id: mockManagerUser.userId } },
+      });
+
+      await expect(
+        service.managerApprove(1, mockManagerUser),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockWorkflowEngine.approveWorkflow).not.toHaveBeenCalled();
     });
   });
 
