@@ -73,7 +73,7 @@ export default function StatusesPage() {
         </div>
         <Link
           href="/dashboard/timesheets/add"
-          className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-700"
+          className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700"
         >
           + New entry
         </Link>

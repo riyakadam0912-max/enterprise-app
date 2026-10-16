@@ -2335,10 +2335,100 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       ),
     );
     const timezoneByOrganization = new Map(organizations);
+    const taskTimeRanges = new Map<number, { start: Date; end: Date }>();
+    for (const employee of employees) {
+      const timezone =
+        timezoneByOrganization.get(employee.organizationId) ?? 'UTC';
+      const today = attendanceDateFromKey(dateKeyInTimezone(now, timezone));
+      const weekStart = new Date(today);
+      weekStart.setUTCDate(
+        weekStart.getUTCDate() - ((weekStart.getUTCDay() + 6) % 7),
+      );
+      const weekEnd = new Date(weekStart);
+      weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
+      const start = localMidnightAtDateInTimezone(
+        this.dateKey(weekStart),
+        timezone,
+      );
+      const end = localMidnightAtDateInTimezone(
+        this.dateKey(weekEnd),
+        timezone,
+      );
+      if (!start || !end) {
+        throw new BadRequestException(
+          'Unable to calculate weekly task time in organization timezone',
+        );
+      }
+      taskTimeRanges.set(employee.id, { start, end });
+    }
+
+    const minTaskRangeStart = Math.min(
+      ...[...taskTimeRanges.values()].map(({ start }) => start.getTime()),
+    );
+    const maxTaskRangeEnd = Math.max(
+      ...[...taskTimeRanges.values()].map(({ end }) => end.getTime()),
+    );
+    const employeeIds = employees.map((employee) => employee.id);
+    const timerScope = {
+      organizationId: { in: [...timezoneByOrganization.keys()] },
+      user: { employeeId: { in: employeeIds } },
+    };
+    const [taskIntervals, activeTaskTimers] =
+      employeeIds.length > 0
+        ? await Promise.all([
+            this.prisma.taskTimerInterval.findMany({
+              where: {
+                timerSession: timerScope,
+                startedAt: { lt: new Date(maxTaskRangeEnd) },
+                endedAt: { gt: new Date(minTaskRangeStart) },
+              },
+              select: {
+                startedAt: true,
+                endedAt: true,
+                timerSession: {
+                  select: {
+                    user: { select: { employeeId: true } },
+                  },
+                },
+              },
+            }),
+            this.prisma.taskTimerSession.findMany({
+              where: {
+                ...timerScope,
+                status: 'RUNNING',
+                startedAt: { not: null, lt: now },
+              },
+              select: {
+                startedAt: true,
+                user: { select: { employeeId: true } },
+              },
+            }),
+          ])
+        : [[], []];
+    const taskIntervalsByEmployee = new Map<
+      number,
+      { startedAt: Date; endedAt: Date }[]
+    >();
+    for (const interval of taskIntervals) {
+      const employeeId = interval.timerSession.user.employeeId;
+      if (employeeId == null) continue;
+      const employeeIntervals = taskIntervalsByEmployee.get(employeeId) ?? [];
+      employeeIntervals.push(interval);
+      taskIntervalsByEmployee.set(employeeId, employeeIntervals);
+    }
+    for (const timer of activeTaskTimers) {
+      const employeeId = timer.user.employeeId;
+      if (employeeId == null || !timer.startedAt) continue;
+      const employeeIntervals = taskIntervalsByEmployee.get(employeeId) ?? [];
+      employeeIntervals.push({ startedAt: timer.startedAt, endedAt: now });
+      taskIntervalsByEmployee.set(employeeId, employeeIntervals);
+    }
+
     const rows: Array<{
       employeeId: number;
       employeeName: string;
       department: string | null;
+      taskTrackedHours: number;
       week: Awaited<
         ReturnType<AttendanceService['getWorkHourBalancesForEmployee']>
       >['week'];
@@ -2352,10 +2442,23 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             now,
             timezoneByOrganization.get(employee.organizationId) ?? 'UTC',
           );
+          const taskRange = taskTimeRanges.get(employee.id);
+          const taskTrackedHours = taskRange
+            ? Number(
+                (
+                  sumIntervalSeconds(
+                    taskIntervalsByEmployee.get(employee.id) ?? [],
+                    taskRange.start,
+                    new Date(Math.min(now.getTime(), taskRange.end.getTime())),
+                  ) / 3600
+                ).toFixed(2),
+              )
+            : 0;
           return {
             employeeId: employee.id,
             employeeName: employee.name,
             department: employee.department ?? null,
+            taskTrackedHours,
             week: balances.week,
           };
         }),

@@ -29,7 +29,10 @@ function createPrismaMock() {
       deleteMany: jest.fn(),
       createMany: jest.fn(),
     },
-    taskTimerSession: { findFirst: jest.fn().mockResolvedValue(null) },
+    taskTimerSession: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     taskTimerInterval: { findMany: jest.fn().mockResolvedValue([]) },
     holiday: {
       findMany: jest.fn().mockResolvedValue([]),
@@ -1849,6 +1852,62 @@ describe('AttendanceService', () => {
         where: expect.objectContaining({
           organizationId: { in: [1] },
           deletedAt: null,
+        }),
+      }),
+    );
+  });
+
+  it('includes weekly timer intervals and active timers in team worked hours', async () => {
+    jest.setSystemTime(new Date('2026-10-16T12:00:00.000Z'));
+    const shift = {
+      id: 3,
+      name: 'Weekday',
+      type: 'FIXED',
+      startTime: '09:00',
+      endTime: '18:00',
+      requiredHours: 8,
+      minPresentHours: 5,
+      gracePeriodMinutes: 15,
+      weeklyHolidayDay: 0,
+      workingDays: [1, 2, 3, 4, 5],
+    };
+    prisma.employee.findMany.mockResolvedValue([
+      {
+        id: 7,
+        name: 'Ava',
+        department: 'Ops',
+        organizationId: 1,
+        hireDate: null,
+        shift,
+      },
+    ]);
+    prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
+    prisma.attendance.findMany.mockResolvedValue([]);
+    prisma.holiday.findMany.mockResolvedValue([]);
+    prisma.leaveRequest.findMany.mockResolvedValue([]);
+    prisma.taskTimerInterval.findMany.mockResolvedValue([
+      {
+        startedAt: new Date('2026-10-16T09:00:00.000Z'),
+        endedAt: new Date('2026-10-16T10:00:00.000Z'),
+        timerSession: { user: { employeeId: 7 } },
+      },
+    ]);
+    prisma.taskTimerSession.findMany.mockResolvedValue([
+      {
+        startedAt: new Date('2026-10-16T10:00:00.000Z'),
+        user: { employeeId: 7 },
+      },
+    ]);
+
+    const result = await service.getTeamWeeklyWorkHours(mockUser);
+
+    expect(result.employees[0].taskTrackedHours).toBe(3);
+    expect(result.employees[0].week.completedHours).toBe(0);
+    expect(prisma.taskTimerInterval.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          startedAt: { lt: new Date('2026-10-19T00:00:00.000Z') },
+          endedAt: { gt: new Date('2026-10-12T00:00:00.000Z') },
         }),
       }),
     );

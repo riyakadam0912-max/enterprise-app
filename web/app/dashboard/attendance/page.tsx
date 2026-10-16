@@ -1701,7 +1701,7 @@ export default function AttendancePage() {
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-label="Team weekly work hours">
           <div className="border-b border-slate-200 px-5 py-3">
             <h2 className="text-sm font-semibold text-slate-900">Team work hours this week</h2>
-            <p className="mt-1 text-xs text-slate-500">Full scheduled target, net hours worked, and break time by employee.</p>
+            <p className="mt-1 text-xs text-slate-500">Worked shows task-timer hours; attendance, breaks, and remaining hours use check-in/out records.</p>
           </div>
           <div className="max-h-80 overflow-auto">
             <table className="min-w-full text-sm">
@@ -1710,6 +1710,7 @@ export default function AttendancePage() {
                   <th className="px-4 py-2">Employee</th>
                   <th className="px-4 py-2">Scheduled</th>
                   <th className="px-4 py-2">Worked</th>
+                  <th className="px-4 py-2">Attendance</th>
                   <th className="px-4 py-2">Breaks</th>
                   <th className="px-4 py-2">Remaining</th>
                 </tr>
@@ -1722,13 +1723,14 @@ export default function AttendancePage() {
                       <span className="ml-2 text-xs text-slate-400">{employee.department ?? ''}</span>
                     </td>
                     <td className="px-4 py-2 text-slate-600">{formatHoursDuration(employee.week.requiredHours)} · {employee.week.scheduledDays} days</td>
-                    <td className="px-4 py-2 font-medium text-slate-800">{formatHoursDuration(employee.week.completedHours)}</td>
+                    <td className="px-4 py-2 font-medium text-slate-800">{formatHoursDuration(employee.taskTrackedHours)}</td>
+                    <td className="px-4 py-2 text-slate-600">{formatHoursDuration(employee.week.completedHours)}</td>
                     <td className="px-4 py-2 text-slate-600">{formatHoursDuration(employee.week.breakHours)}</td>
                     <td className="px-4 py-2 text-slate-600">{formatHoursDuration(employee.week.remainingHours)}</td>
                   </tr>
                 ))}
                 {teamWeeklyHours?.employees.length === 0 && (
-                  <tr><td colSpan={5} className="px-4 py-6 text-center text-slate-500">No employees in this scope.</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-500">No employees in this scope.</td></tr>
                 )}
               </tbody>
             </table>

@@ -188,6 +188,7 @@ export interface TeamWeeklyWorkHours {
     employeeId: number;
     employeeName: string;
     department: string | null;
+    taskTrackedHours: number;
     week: WorkHourPeriodBalance;
   }>;
 }
