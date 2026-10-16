@@ -601,6 +601,7 @@ describe('TasksService', () => {
       taskDelegate.findFirst.mockResolvedValueOnce({
         id: 1,
         status: 'PENDING',
+        organizationId: 1,
       });
       taskDelegate.update.mockResolvedValueOnce({
         id: 1,
@@ -613,6 +614,38 @@ describe('TasksService', () => {
         mockAdminUser,
       );
       expect(result).toEqual({ id: 1, taskName: 'Updated Task' });
+    });
+
+    it('should allow a super admin to update a task', async () => {
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      taskDelegate.findFirst.mockResolvedValueOnce({
+        id: 1,
+        status: 'PENDING',
+        organizationId: 1,
+      });
+      taskDelegate.update.mockResolvedValueOnce({
+        id: 1,
+        taskName: 'Updated by super admin',
+      });
+
+      const result = await service.update(
+        1,
+        { taskName: 'Updated by super admin' } as UpdateTaskDto,
+        createMockAuthUser(Role.SUPER_ADMIN),
+      );
+
+      expect(result).toEqual({
+        id: 1,
+        taskName: 'Updated by super admin',
+      });
+      expect(taskDelegate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 1, organizationId: 1 },
+          data: expect.objectContaining({
+            taskName: 'Updated by super admin',
+          }),
+        }),
+      );
     });
 
     it('should persist task description and reference links independently', async () => {

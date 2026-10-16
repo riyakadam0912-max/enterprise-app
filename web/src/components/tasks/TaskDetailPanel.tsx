@@ -190,7 +190,8 @@ function TaskDetailPanelBody({
   const isAssignee = Boolean(currentUserId != null && task.assignedToUserId === currentUserId);
   const canEmployeeAct = isEmployee && isAssignee;
   const canReview = isManagerOrAdmin && taskStatus === 'SUBMITTED';
-  const canEdit = Boolean(onEditTask) && isManagerOrAdmin;
+  const canEdit =
+    Boolean(onEditTask) && (isManagerOrAdmin || role === 'SUPER_ADMIN');
   const canChangeStatus = isManagerOrAdmin && taskStatus !== 'SUBMITTED';
   const showSubmissionSection = canEmployeeAct && (taskStatus === 'IN_PROGRESS' || taskStatus === 'REJECTED');
   const showStartButton = canEmployeeAct && taskStatus === 'PENDING';

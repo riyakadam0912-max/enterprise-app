@@ -295,7 +295,7 @@ function TaskDetailModal({
   const showEmployeeSubmit = isAssignee && ['IN_PROGRESS', 'REJECTED'].includes(taskStatus);
   const showAwaitingReview = taskStatus === 'SUBMITTED' && !isAssignee;
   const showApproved = taskStatus === 'APPROVED';
-  const isManagerOrAdmin = role === 'ADMIN' || role === 'MANAGER';
+  const canEditTasks = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER';
   const canReview = (role === 'ADMIN' || role === 'MANAGER') && taskStatus === 'SUBMITTED';
   const canChangeStatus = role === 'ADMIN' || role === 'MANAGER';
   const submissionDate = activeTask.updatedAt ?? activeTask.createdAt;
@@ -365,7 +365,7 @@ function TaskDetailModal({
               category={category}
               overdue={pastDue}
               editing={showEditForm}
-              onEdit={isManagerOrAdmin ? () => {
+              onEdit={canEditTasks ? () => {
                 onTabChange('overview');
                 setShowEditForm((current) => !current);
               } : undefined}
@@ -423,7 +423,7 @@ function TaskDetailModal({
                   </div>
                 </div>
 
-                {isManagerOrAdmin && showEditForm && (
+                {canEditTasks && showEditForm && (
                   <div className="space-y-3 rounded-2xl border border-blue-200 bg-blue-50/40 p-5">
                     <p className="text-sm font-semibold text-slate-900">Edit task details</p>
                     <input value={editTaskName} onChange={(e) => setEditTaskName(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="Task title" />
