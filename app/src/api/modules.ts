@@ -67,6 +67,7 @@ export type Timesheet = {
   date: string;
   hours: number;
   status: string;
+  source?: "MANUAL" | "TASK_TIMER" | "IMPORT" | string;
   project?: string | null;
   notes?: string | null;
   createdAt?: string;
@@ -75,6 +76,7 @@ export type Timesheet = {
   reviewedAt?: string | null;
   reviewedByUserId?: number | null;
   reviewedByUser?: { id: number; name: string } | null;
+  createdByUser?: { id: number; name: string } | null;
   rejectionReason?: string | null;
   employee?: { name?: string | null } | null;
 };

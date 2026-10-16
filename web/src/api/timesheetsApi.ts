@@ -1,4 +1,4 @@
-import { apiClient } from './apiClient';
+import { apiClient } from "./apiClient";
 
 export interface TimesheetRow {
   id: number;
@@ -8,9 +8,11 @@ export interface TimesheetRow {
   taskId: number | null;
   date: string;
   hours: number;
-  status: 'PENDING' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | string;
+  status: "PENDING" | "SUBMITTED" | "APPROVED" | "REJECTED" | string;
+  source?: "MANUAL" | "TASK_TIMER" | "IMPORT" | string;
   notes: string | null;
   employeeId: number | null;
+  createdAt?: string;
   createdByUserId?: number | null;
   submittedAt?: string | null;
   reviewedAt?: string | null;
@@ -52,9 +54,11 @@ export interface CreateTimesheetPayload {
   notes?: string | null;
 }
 
-export async function createTimesheet(payload: CreateTimesheetPayload): Promise<TimesheetRow> {
-  return apiClient<TimesheetRow>('/timesheets', {
-    method: 'POST',
+export async function createTimesheet(
+  payload: CreateTimesheetPayload,
+): Promise<TimesheetRow> {
+  return apiClient<TimesheetRow>("/timesheets", {
+    method: "POST",
     body: JSON.stringify(payload),
   });
 }
@@ -68,33 +72,39 @@ export async function updateTimesheet(
   payload: Partial<CreateTimesheetPayload>,
 ): Promise<TimesheetRow> {
   return apiClient<TimesheetRow>(`/timesheets/${id}`, {
-    method: 'PATCH',
+    method: "PATCH",
     body: JSON.stringify(payload),
   });
 }
 
 export async function submitTimesheet(id: number): Promise<TimesheetRow> {
-  return apiClient<TimesheetRow>(`/timesheets/${id}/submit`, { method: 'POST' });
+  return apiClient<TimesheetRow>(`/timesheets/${id}/submit`, {
+    method: "POST",
+  });
 }
 
 export async function reviewTimesheet(
   id: number,
-  decision: 'APPROVED' | 'REJECTED',
+  decision: "APPROVED" | "REJECTED",
   reason?: string,
 ): Promise<TimesheetRow> {
   return apiClient<TimesheetRow>(`/timesheets/${id}/review`, {
-    method: 'POST',
+    method: "POST",
     body: JSON.stringify({ decision, reason }),
   });
 }
 
-export async function getTimesheetsReport(filters: TimesheetFilters = {}): Promise<TimesheetReportResponse> {
+export async function getTimesheetsReport(
+  filters: TimesheetFilters = {},
+): Promise<TimesheetReportResponse> {
   const params = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
-    if (value !== undefined && value !== '') {
+    if (value !== undefined && value !== "") {
       params.set(key, String(value));
     }
   });
   const qs = params.toString();
-  return apiClient<TimesheetReportResponse>(`/timesheets/report${qs ? '?' + qs : ''}`);
+  return apiClient<TimesheetReportResponse>(
+    `/timesheets/report${qs ? "?" + qs : ""}`,
+  );
 }

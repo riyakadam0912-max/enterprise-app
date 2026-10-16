@@ -174,6 +174,11 @@ export class TimesheetsService {
             { task: { contains: search, mode: 'insensitive' } },
             { project: { contains: search, mode: 'insensitive' } },
             { notes: { contains: search, mode: 'insensitive' } },
+            {
+              createdByUser: {
+                name: { contains: search, mode: 'insensitive' },
+              },
+            },
           ],
         },
       ];
@@ -203,6 +208,7 @@ export class TimesheetsService {
         date: t.date.toISOString().split('T')[0],
         hours: t.hours,
         status: t.status,
+        source: t.source,
         submittedAt: t.submittedAt?.toISOString() ?? null,
         reviewedAt: t.reviewedAt?.toISOString() ?? null,
         reviewedByUserId: t.reviewedByUserId,
@@ -242,6 +248,7 @@ export class TimesheetsService {
         date: new Date(dto.date),
         hours: dto.hours,
         status: 'PENDING',
+        source: 'MANUAL',
         submittedAt: null,
         notes: dto.notes,
       },
@@ -261,6 +268,7 @@ export class TimesheetsService {
             : { in: organizationIds },
       },
       include: {
+        createdByUser: { select: { id: true, name: true } },
         organization: { select: { id: true, name: true } },
         reviewedByUser: { select: { id: true, name: true } },
       },
@@ -436,6 +444,7 @@ export class TimesheetsService {
             date: new Date(date),
             hours,
             status: 'PENDING',
+            source: 'IMPORT',
             notes,
             createdByUserId: user.userId ?? user.id,
           },

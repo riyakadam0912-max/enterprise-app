@@ -897,6 +897,7 @@ export class TasksService {
           date: session.createdAt,
           hours: Math.max(1, totalSeconds) / 3600,
           status: 'PENDING',
+          source: 'TASK_TIMER',
           notes: notes?.trim() || 'Tracked with task timer',
           createdByUserId: userId,
         },

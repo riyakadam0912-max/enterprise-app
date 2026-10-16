@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { apiClient } from '@/api/apiClient';
-import { reportError, getErrorMessage } from '@/lib/error-handling';
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import { apiClient } from "@/api/apiClient";
+import { reportError, getErrorMessage } from "@/lib/error-handling";
 
 const EMPTY_FORM = {
-  task: '',
-  date: '',
-  hours: '',
-  project: '',
-  notes: '',
+  task: "",
+  date: "",
+  hours: "",
+  project: "",
+  notes: "",
 };
 
 export default function AddTimesheetPage() {
@@ -19,7 +19,8 @@ export default function AddTimesheetPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const set = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }));
+  const set = (key: string, value: string) =>
+    setForm((f) => ({ ...f, [key]: value }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,15 +35,15 @@ export default function AddTimesheetPage() {
         notes: form.notes.trim() || undefined,
       };
 
-      await apiClient('/timesheets', {
-        method: 'POST',
+      await apiClient("/timesheets", {
+        method: "POST",
         body: JSON.stringify(payload),
       });
-      router.push('/dashboard/timesheets');
+      router.push("/dashboard/timesheets");
     } catch (err: unknown) {
-      const message = getErrorMessage(err, 'Failed to save timesheet');
+      const message = getErrorMessage(err, "Failed to save timesheet");
       setError(message);
-      reportError(err, 'Timesheet submission failed');
+      reportError(err, "Timesheet submission failed");
     } finally {
       setSaving(false);
     }
@@ -53,122 +54,118 @@ export default function AddTimesheetPage() {
     setError(null);
   };
 
-  const fieldClass = 'w-full border border-slate-300 rounded px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white';
-  const labelClass = 'block text-sm font-medium text-slate-700 mb-1 w-32 shrink-0 pt-2';
+  const fieldClass =
+    "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-800 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100";
 
   return (
-    <div className="space-y-6 p-6">
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h1 className="text-3xl font-semibold text-slate-900">New time entry</h1>
-        <p className="mt-2 max-w-2xl text-sm text-slate-500">Save your work as a draft, then submit it when it’s ready for review.</p>
+    <div className="mx-auto max-w-5xl space-y-6 p-6">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+          Work log
+        </p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">
+          New time entry
+        </h1>
+        <p className="mt-2 text-sm text-slate-500">
+          Capture the work clearly. You can review and submit it when you’re
+          ready.
+        </p>
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm max-w-3xl">
-          <form onSubmit={handleSubmit} className="space-y-5">
-
-          <div className="flex items-start gap-4">
-            <label className={labelClass}>Task</label>
-            <div className="flex-1">
-              <input
-                type="text"
-                value={form.task}
-                onChange={(e) => set('task', e.target.value)}
-                required
-                className={fieldClass}
-              />
-            </div>
-          </div>
-
-          <div className="flex items-start gap-4">
-            <label className={labelClass}>Date</label>
-            <div className="flex-1">
-              <input
-                type="date"
-                value={form.date}
-                onChange={(e) => set('date', e.target.value)}
-                required
-                className={fieldClass}
-              />
-            </div>
-          </div>
-
-          <div className="flex items-start gap-4">
-            <label className={labelClass}>Hours</label>
-            <div className="flex-1">
-              <input
-                type="number"
-                min="0.25"
-                step="0.25"
-                value={form.hours}
-                onChange={(e) => set('hours', e.target.value)}
-                required
-                className={fieldClass}
-              />
-            </div>
-          </div>
-
-          <div className="flex items-start gap-4">
-            <label className={labelClass}>Project</label>
-            <div className="flex-1">
-              <input
-                type="text"
-                value={form.project}
-                onChange={(e) => set('project', e.target.value)}
-                className={fieldClass}
-              />
-            </div>
-          </div>
-
-          <div className="flex items-start gap-4">
-            <label className={labelClass}>Notes</label>
-            <div className="flex-1">
-              <textarea
-                rows={4}
-                value={form.notes}
-                onChange={(e) => set('notes', e.target.value)}
-                className={`${fieldClass} resize-none`}
-              />
-            </div>
-          </div>
-
-          {error && <p className="text-red-500 text-sm ml-36">{error}</p>}
-
-          <div className="flex items-center gap-3 pt-2 ml-36">
-            <button
-              type="submit"
-              disabled={saving}
-              className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold px-6 py-2 rounded transition-colors disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : 'Save draft'}
-            </button>
-            <button
-              type="button"
-              onClick={handleReset}
-              className="border border-slate-300 text-slate-700 text-sm font-medium px-6 py-2 rounded hover:bg-slate-50 transition-colors"
-            >
-              Reset
-            </button>
-          </div>
-
-          </form>
+      <form
+        onSubmit={handleSubmit}
+        className="max-w-3xl space-y-6 rounded-2xl border border-slate-200 bg-white p-6"
+      >
+        <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+          <p className="text-sm font-medium text-slate-700">Saved as Draft</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Only you can edit it until you submit it for review.
+          </p>
         </div>
 
-        <aside className="space-y-4">
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-semibold text-slate-800">What makes a good timesheet</p>
-            <ul className="mt-3 space-y-2 text-sm text-slate-600">
-              <li>Task should describe the actual work completed.</li>
-              <li>Review task, date, and hours before submission.</li>
-              <li>Project and notes help reviewers respond faster.</li>
-            </ul>
-          </div>
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-semibold text-slate-800">Approval cue</p>
-            <p className="mt-2 text-sm text-slate-500">Drafts stay editable. Submitted entries are routed to your manager or an authorized reviewer.</p>
-          </div>
-        </aside>
-      </div>
+        <label className="block space-y-2 text-sm font-medium text-slate-700">
+          Task
+          <input
+            type="text"
+            value={form.task}
+            onChange={(e) => set("task", e.target.value)}
+            required
+            className={fieldClass}
+            placeholder="What work did you complete?"
+          />
+        </label>
+
+        <div className="grid gap-5 sm:grid-cols-2">
+          <label className="block space-y-2 text-sm font-medium text-slate-700">
+            Date
+            <input
+              type="date"
+              value={form.date}
+              onChange={(e) => set("date", e.target.value)}
+              required
+              className={fieldClass}
+            />
+          </label>
+
+          <label className="block space-y-2 text-sm font-medium text-slate-700">
+            Duration (hours)
+            <input
+              type="number"
+              min="0.25"
+              step="0.25"
+              value={form.hours}
+              onChange={(e) => set("hours", e.target.value)}
+              required
+              className={fieldClass}
+            />
+          </label>
+        </div>
+
+        <label className="block space-y-2 text-sm font-medium text-slate-700">
+          Project
+          <input
+            type="text"
+            value={form.project}
+            onChange={(e) => set("project", e.target.value)}
+            className={fieldClass}
+            placeholder="Optional"
+          />
+        </label>
+
+        <label className="block space-y-2 text-sm font-medium text-slate-700">
+          Notes
+          <textarea
+            rows={5}
+            value={form.notes}
+            onChange={(e) => set("notes", e.target.value)}
+            className={`${fieldClass} resize-y`}
+            placeholder="Add context that will help your reviewer"
+          />
+        </label>
+
+        {error && (
+          <p role="alert" className="text-sm text-rose-600">
+            {error}
+          </p>
+        )}
+
+        <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-5">
+          <button
+            type="button"
+            onClick={handleReset}
+            className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+          >
+            Reset
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save draft"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

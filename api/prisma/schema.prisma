@@ -564,6 +564,7 @@ model Timesheet {
   date             DateTime
   hours            Float
   status           String            @default("PENDING")
+  source           String            @default("MANUAL")
   submittedAt      DateTime?
   reviewedAt       DateTime?
   reviewedByUserId Int?

@@ -93,6 +93,7 @@ describe('TimesheetsService', () => {
           date: new Date('2026-01-01'),
           hours: 8,
           status: 'PENDING',
+          source: 'TASK_TIMER',
         },
       ];
       timesheetDelegate.findMany.mockResolvedValueOnce(mockTimesheets);
@@ -103,6 +104,7 @@ describe('TimesheetsService', () => {
         mockAdminUser,
       );
       expect(result.data.length).toEqual(1);
+      expect(result.data[0].source).toEqual('TASK_TIMER');
       expect(result.total).toEqual(1);
       expect(result.page).toEqual(1);
       expect(result.limit).toEqual(10);
@@ -351,6 +353,7 @@ describe('TimesheetsService', () => {
             organizationId: 1,
             createdByUserId: mockAdminUser.userId,
             status: 'PENDING',
+            source: 'MANUAL',
           }),
         }),
       );
@@ -590,6 +593,14 @@ describe('TimesheetsService', () => {
       const result = await service.importRecords(records, mockAdminUser);
       expect(result.imported).toEqual(1);
       expect(result.errors.length).toEqual(1);
+      expect(timesheetDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'PENDING',
+            source: 'IMPORT',
+          }),
+        }),
+      );
     });
 
     it('should throw error if no task', async () => {

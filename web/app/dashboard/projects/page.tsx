@@ -38,6 +38,7 @@ import { useStableNow } from '@/hooks/useStableNow';
 import { useAuthSession } from '@/stores/auth-store';
 import { ProjectGrid } from '@/components/projects/ProjectGrid';
 import { dateTimeLocalToIso, formatDateTime } from '@/utils/dateUtils';
+import { formatHoursDuration } from '@/lib/time-format';
 
 type ProjectTab = 'overview' | 'tasks' | 'users' | 'reports' | 'issues' | 'timeLogs' | 'chat';
 
@@ -333,6 +334,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     task: string;
     hours: number;
     status: string;
+    source?: string;
     note: string | null;
   }>>([]);
   const [timeLogLoading, setTimeLogLoading] = useState(false);
@@ -718,6 +720,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
           task: entry.task,
           hours: Number(entry.hours ?? 0),
           status: entry.status,
+          source: entry.source,
           note: entry.notes ?? '',
         })),
       );
@@ -2075,23 +2078,23 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
                 <article className="rounded-xl border border-slate-200 bg-white p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total hours</p>
-                  <p className="mt-2 text-2xl font-semibold text-slate-900">{timeLogSummary.totalHours.toFixed(1)}h</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-900">{formatHoursDuration(timeLogSummary.totalHours)}</p>
                 </article>
                 <article className="rounded-xl border border-slate-200 bg-white p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Draft</p>
-                  <p className="mt-2 text-2xl font-semibold text-slate-600">{timeLogSummary.draftHours.toFixed(1)}h</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-600">{formatHoursDuration(timeLogSummary.draftHours)}</p>
                 </article>
                 <article className="rounded-xl border border-slate-200 bg-white p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Submitted</p>
-                  <p className="mt-2 text-2xl font-semibold text-amber-600">{timeLogSummary.submittedHours.toFixed(1)}h</p>
+                  <p className="mt-2 text-2xl font-semibold text-amber-600">{formatHoursDuration(timeLogSummary.submittedHours)}</p>
                 </article>
                 <article className="rounded-xl border border-slate-200 bg-white p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Approved</p>
-                  <p className="mt-2 text-2xl font-semibold text-emerald-600">{timeLogSummary.approvedHours.toFixed(1)}h</p>
+                  <p className="mt-2 text-2xl font-semibold text-emerald-600">{formatHoursDuration(timeLogSummary.approvedHours)}</p>
                 </article>
                 <article className="rounded-xl border border-slate-200 bg-white p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Rejected</p>
-                  <p className="mt-2 text-2xl font-semibold text-rose-600">{timeLogSummary.rejectedHours.toFixed(1)}h</p>
+                  <p className="mt-2 text-2xl font-semibold text-rose-600">{formatHoursDuration(timeLogSummary.rejectedHours)}</p>
                 </article>
               </div>
 
@@ -2122,7 +2125,8 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                       </div>
 
                       <div className="flex items-center gap-3 sm:justify-end">
-                        <span className="text-sm font-semibold text-slate-800">{Number(entry.hours).toFixed(1)}h</span>
+                        <span className="text-sm font-semibold tabular-nums text-slate-800">{formatHoursDuration(Number(entry.hours))}</span>
+                        <span className="hidden text-xs text-slate-400 sm:inline">{entry.source === 'TASK_TIMER' ? 'Task timer' : entry.source === 'IMPORT' ? 'Import' : entry.source === 'MANUAL' ? 'Manual' : 'Legacy'}</span>
                         <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${
                           entry.status === 'APPROVED'
                             ? 'bg-emerald-50 text-emerald-700'

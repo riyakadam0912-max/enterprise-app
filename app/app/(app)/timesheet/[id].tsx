@@ -13,9 +13,19 @@ import {
 import { apiError } from '@/src/api/client';
 import { reviewTimesheet, submitTimesheet, timesheet } from '@/src/api/modules';
 import { useAuth } from '@/src/providers/AuthProvider';
+import { formatHoursDuration } from '@/src/utils/time-format';
 
 const statusLabel = (status: string) =>
   status === 'PENDING' ? 'Draft' : status.charAt(0) + status.slice(1).toLowerCase();
+
+const sourceLabel = (source?: string) =>
+  source === 'TASK_TIMER'
+    ? 'Task timer'
+    : source === 'IMPORT'
+      ? 'Import'
+      : source === 'MANUAL'
+        ? 'Manual entry'
+        : 'Legacy entry';
 
 export default function TimesheetDetail() {
   const router = useRouter();
@@ -82,6 +92,12 @@ export default function TimesheetDetail() {
   const canEdit = owner && ['PENDING', 'REJECTED'].includes(current.status);
   const canSubmit = canEdit;
   const canReview = reviewer && !owner && current.status === 'SUBMITTED';
+  const statusColors: Record<string, { backgroundColor: string; color: string }> = {
+    PENDING: { backgroundColor: '#f1f5f9', color: '#475569' },
+    SUBMITTED: { backgroundColor: '#fffbeb', color: '#a16207' },
+    APPROVED: { backgroundColor: '#f0fdfa', color: '#0f766e' },
+    REJECTED: { backgroundColor: '#fff1f2', color: '#be123c' },
+  };
 
   return (
     <>
@@ -92,14 +108,15 @@ export default function TimesheetDetail() {
             <Text style={styles.eyebrow}>WORK LOG</Text>
             <Text style={styles.title}>{current.task}</Text>
           </View>
-          <View style={styles.statusPill}><Text style={styles.statusText}>{statusLabel(current.status)}</Text></View>
+          <View style={[styles.statusPill, { backgroundColor: statusColors[current.status]?.backgroundColor ?? '#f1f5f9' }]}><Text style={[styles.statusText, { color: statusColors[current.status]?.color ?? '#475569' }]}>{statusLabel(current.status)}</Text></View>
         </View>
 
         <View style={styles.card}>
           {[
             ['Date', current.date],
-            ['Hours', String(current.hours)],
+            ['Duration', formatHoursDuration(current.hours)],
             ['Project', current.project ?? 'Not set'],
+            ['Source', sourceLabel(current.source)],
             ['Notes', current.notes ?? 'Not set'],
           ].map(([label, value]) => (
             <View key={label} style={styles.detailRow}>
@@ -111,6 +128,14 @@ export default function TimesheetDetail() {
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Submission &amp; review</Text>
+          {current.createdByUser?.name ? <Text style={styles.detail}>Created by {current.createdByUser.name}</Text> : null}
+          <View style={styles.timeline}>
+            <View style={styles.timelineStep}><View style={styles.timelineDot} /><Text style={styles.timelineText}>Draft</Text></View>
+            <View style={[styles.timelineLine, current.submittedAt && styles.timelineLineActive]} />
+            <View style={styles.timelineStep}><View style={[styles.timelineDot, current.submittedAt && styles.timelineDotActive]} /><Text style={[styles.timelineText, !current.submittedAt && styles.timelineTextMuted]}>Submitted</Text></View>
+            <View style={[styles.timelineLine, current.reviewedAt && styles.timelineLineActive]} />
+            <View style={styles.timelineStep}><View style={[styles.timelineDot, current.reviewedAt && styles.timelineDotActive]} /><Text style={[styles.timelineText, !current.reviewedAt && styles.timelineTextMuted]}>{current.status === 'REJECTED' ? 'Returned' : 'Reviewed'}</Text></View>
+          </View>
           <Text style={styles.detail}>
             {current.createdAt
               ? `Created as a draft ${new Date(current.createdAt).toLocaleString()}`
@@ -133,7 +158,7 @@ export default function TimesheetDetail() {
         ) : null}
         {canReview ? (
           <View style={styles.reviewActions}>
-            <Pressable accessibilityRole="button" disabled={reviewMutation.isPending} onPress={() => reviewMutation.mutate('APPROVED')} style={styles.approveAction}>
+            <Pressable accessibilityRole="button" disabled={reviewMutation.isPending} onPress={() => Alert.alert('Approve this work log?', 'This confirms the reported hours and locks the entry from further edits.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Approve', onPress: () => reviewMutation.mutate('APPROVED') }])} style={styles.approveAction}>
               <Text style={styles.approveText}>{reviewMutation.isPending ? 'Saving…' : 'Approve'}</Text>
             </Pressable>
             <Pressable accessibilityRole="button" onPress={() => { setReviewError(''); setRejectOpen(true); }} style={styles.rejectAction}>
@@ -189,6 +214,14 @@ const styles = {
   label: { color: '#94a3b8', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.7 } as const,
   detail: { color: '#334155', marginTop: 5, lineHeight: 20 } as const,
   sectionTitle: { color: '#172033', fontSize: 16, fontWeight: '800', marginBottom: 8 } as const,
+  timeline: { flexDirection: 'row', alignItems: 'center', marginVertical: 13 } as const,
+  timelineStep: { alignItems: 'center', gap: 5 } as const,
+  timelineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#cbd5e1' } as const,
+  timelineDotActive: { backgroundColor: '#0f766e' } as const,
+  timelineLine: { flex: 1, height: 1, backgroundColor: '#e2e8f0', marginHorizontal: 5 } as const,
+  timelineLineActive: { backgroundColor: '#5eead4' } as const,
+  timelineText: { color: '#475569', fontSize: 10, fontWeight: '700' } as const,
+  timelineTextMuted: { color: '#94a3b8' } as const,
   muted: { color: '#64748b', marginTop: 5, lineHeight: 19 } as const,
   reason: { marginTop: 12, padding: 12, borderRadius: 12, backgroundColor: '#fff1f2' } as const,
   reasonLabel: { color: '#be123c', fontWeight: '700', fontSize: 12, marginBottom: 5 } as const,

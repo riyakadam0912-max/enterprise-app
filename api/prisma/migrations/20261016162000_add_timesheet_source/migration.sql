@@ -1,0 +1,9 @@
+ALTER TABLE "Timesheet"
+ADD COLUMN "source" TEXT NOT NULL DEFAULT 'UNSPECIFIED';
+
+UPDATE "Timesheet"
+SET "source" = 'TASK_TIMER'
+WHERE "timerSessionId" IS NOT NULL;
+
+ALTER TABLE "Timesheet"
+ALTER COLUMN "source" SET DEFAULT 'MANUAL';
