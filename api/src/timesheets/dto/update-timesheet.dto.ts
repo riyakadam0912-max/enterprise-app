@@ -1,10 +1,4 @@
-import {
-  IsDateString,
-  IsIn,
-  IsNumber,
-  IsOptional,
-  IsString,
-} from 'class-validator';
+import { IsDateString, IsNumber, IsOptional, IsString } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateTimesheetDto {
@@ -37,11 +31,6 @@ export class UpdateTimesheetDto {
   @IsNumber()
   @ApiPropertyOptional({ example: 7.5 })
   hours?: number;
-
-  @IsOptional()
-  @IsIn(['PENDING', 'SUBMITTED', 'APPROVED', 'REJECTED'])
-  @ApiPropertyOptional({ example: 'SUBMITTED' })
-  status?: string;
 
   @IsOptional()
   @IsString()

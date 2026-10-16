@@ -4,13 +4,19 @@ import React, { useEffect, useRef, useState } from 'react';
 import { getTimesheetsReport, TimesheetRow } from '@/api/timesheetsApi';
 import { reportError } from '@/lib/error-handling';
 
-const COLUMNS = ['Submitted', 'Approved', 'Rejected'] as const;
-type ColStatus = typeof COLUMNS[number];
+const COLUMNS = [
+  { label: 'Draft', status: 'PENDING' },
+  { label: 'Submitted', status: 'SUBMITTED' },
+  { label: 'Approved', status: 'APPROVED' },
+  { label: 'Rejected', status: 'REJECTED' },
+] as const;
+type ColStatus = typeof COLUMNS[number]['label'];
 
 const COL_STYLE: Record<ColStatus, { header: string; card: string }> = {
-  Submitted: { header: 'border-l-4 border-red-500',    card: 'border-l-2 border-red-300' },
-  Approved:  { header: 'border-l-4 border-purple-600',  card: 'border-l-2 border-purple-400' },
-  Rejected:  { header: 'border-l-4 border-emerald-500', card: 'border-l-2 border-emerald-400' },
+  Draft: { header: 'border-l-4 border-slate-300', card: 'border-l-2 border-slate-300' },
+  Submitted: { header: 'border-l-4 border-amber-400', card: 'border-l-2 border-amber-300' },
+  Approved: { header: 'border-l-4 border-teal-600', card: 'border-l-2 border-teal-400' },
+  Rejected: { header: 'border-l-4 border-rose-400', card: 'border-l-2 border-rose-300' },
 };
 
 const SHOW_AS_OPTIONS = ['List', 'Calendar', 'Timeline', 'Spreadsheet', 'Kanban'] as const;
@@ -51,7 +57,7 @@ export default function StatusesPage() {
   }, []);
 
   const getColRows = (col: ColStatus) =>
-    rows.filter((r) => r.status.toUpperCase() === col.toUpperCase());
+    rows.filter((r) => r.status.toUpperCase() === COLUMNS.find((column) => column.label === col)?.status);
 
   return (
     <div className="p-6">
@@ -139,8 +145,8 @@ export default function StatusesPage() {
       {loading ? (
         <p className="text-sm text-slate-400 text-center py-12">Loading…</p>
       ) : (
-        <div className="grid grid-cols-3 gap-5">
-          {COLUMNS.map((col) => {
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-4">
+          {COLUMNS.map(({ label: col }) => {
             const colRows = getColRows(col);
             const styles = COL_STYLE[col];
             return (

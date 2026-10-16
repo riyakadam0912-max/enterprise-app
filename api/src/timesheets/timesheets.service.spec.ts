@@ -6,7 +6,7 @@ import {
   DelegateMock,
 } from '../../test/helpers/mocks.helper';
 import { Role } from '../common/enums/role.enum';
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { AuthUser } from '../common/types/auth';
 import { CreateTimesheetDto } from './dto/create-timesheet.dto';
 import { QueryTimesheetDto } from './dto/query-timesheet.dto';
@@ -259,6 +259,18 @@ describe('TimesheetsService', () => {
           where: expect.objectContaining({
             OR: expect.arrayContaining([
               { createdByUserId: _mockManagerUser.userId },
+              {
+                createdByUser: {
+                  OR: expect.arrayContaining([
+                    { managerId: _mockManagerUser.userId },
+                    {
+                      reportingManagers: {
+                        some: { managerId: _mockManagerUser.userId },
+                      },
+                    },
+                  ]),
+                },
+              },
               { projectRef: { managerId: _mockManagerUser.userId } },
               {
                 projectRef: {
@@ -329,7 +341,6 @@ describe('TimesheetsService', () => {
           task: 'Test Task',
           date: '2026-01-01',
           hours: 8,
-          status: 'APPROVED',
         } as CreateTimesheetDto,
         mockAdminUser,
       );
@@ -380,23 +391,190 @@ describe('TimesheetsService', () => {
       await expect(
         service.update(5, { hours: 2 }, _mockEmployeeUser),
       ).rejects.toThrow(ForbiddenException);
-      expect(timesheetDelegate.update).not.toHaveBeenCalled();
+      expect(timesheetDelegate.updateMany).not.toHaveBeenCalled();
     });
 
-    it('prevents employees from changing timesheet status', async () => {
+    it('prevents editing a submitted timesheet', async () => {
       const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
       timesheetDelegate.findFirst.mockResolvedValueOnce({
         id: 5,
         organizationId: 1,
         createdByUserId: _mockEmployeeUser.userId,
-        status: 'PENDING',
+        status: 'SUBMITTED',
         date: new Date('2026-01-01'),
       });
 
       await expect(
-        service.update(5, { status: 'APPROVED' }, _mockEmployeeUser),
+        service.update(5, { hours: 2 }, _mockEmployeeUser),
       ).rejects.toThrow(ForbiddenException);
-      expect(timesheetDelegate.update).not.toHaveBeenCalled();
+      expect(timesheetDelegate.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('updates only a draft and returns the refreshed entry', async () => {
+      const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
+      const draft = {
+        id: 5,
+        organizationId: 1,
+        createdByUserId: _mockEmployeeUser.userId,
+        status: 'PENDING',
+        date: new Date('2026-01-01'),
+      };
+      timesheetDelegate.findFirst
+        .mockResolvedValueOnce(draft)
+        .mockResolvedValueOnce({ ...draft, hours: 3 });
+      timesheetDelegate.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      const result = await service.update(5, { hours: 3 }, _mockEmployeeUser);
+
+      expect(result.hours).toBe(3);
+      expect(timesheetDelegate.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: 'PENDING',
+            createdByUserId: _mockEmployeeUser.userId,
+          }),
+          data: { hours: 3 },
+        }),
+      );
+    });
+  });
+
+  describe('submit and review', () => {
+    it('allows the owner to submit a rejected entry for review again', async () => {
+      const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
+      const rejected = {
+        id: 5,
+        organizationId: 1,
+        createdByUserId: _mockEmployeeUser.userId,
+        status: 'REJECTED',
+        date: new Date('2026-01-01'),
+      };
+      timesheetDelegate.findFirst
+        .mockResolvedValueOnce(rejected)
+        .mockResolvedValueOnce({ ...rejected, status: 'SUBMITTED' });
+      timesheetDelegate.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      await service.submit(5, _mockEmployeeUser);
+
+      expect(timesheetDelegate.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ status: 'REJECTED' }),
+          data: expect.objectContaining({
+            status: 'SUBMITTED',
+            submittedAt: expect.any(Date),
+          }),
+        }),
+      );
+      expect(
+        timesheetDelegate.updateMany.mock.calls[0][0].data,
+      ).not.toHaveProperty('rejectionReason');
+    });
+
+    it('allows only the owner to submit an entry', async () => {
+      const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
+      timesheetDelegate.findFirst.mockResolvedValueOnce({
+        id: 5,
+        organizationId: 1,
+        createdByUserId: 9,
+        status: 'PENDING',
+        date: new Date('2026-01-01'),
+      });
+
+      await expect(service.submit(5, mockAdminUser)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(timesheetDelegate.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('does not allow approved entries to be resubmitted', async () => {
+      const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
+      timesheetDelegate.findFirst.mockResolvedValueOnce({
+        id: 5,
+        organizationId: 1,
+        createdByUserId: _mockEmployeeUser.userId,
+        status: 'APPROVED',
+        date: new Date('2026-01-01'),
+      });
+
+      await expect(service.submit(5, _mockEmployeeUser)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(timesheetDelegate.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('requires a reason when rejecting a submitted entry', async () => {
+      const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
+      timesheetDelegate.findFirst.mockResolvedValueOnce({
+        id: 5,
+        organizationId: 1,
+        createdByUserId: _mockEmployeeUser.userId,
+        status: 'SUBMITTED',
+        date: new Date('2026-01-01'),
+      });
+
+      await expect(
+        service.review(
+          5,
+          { decision: 'REJECTED' },
+          createMockAuthUser(Role.MANAGER, { userId: 2 }),
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(timesheetDelegate.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('prevents a manager from reviewing their own timesheet', async () => {
+      const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
+      const manager = createMockAuthUser(Role.MANAGER, { userId: 2 });
+      timesheetDelegate.findFirst.mockResolvedValueOnce({
+        id: 5,
+        organizationId: 1,
+        createdByUserId: manager.userId,
+        status: 'SUBMITTED',
+        date: new Date('2026-01-01'),
+      });
+
+      await expect(
+        service.review(5, { decision: 'APPROVED' }, manager),
+      ).rejects.toThrow(ForbiddenException);
+      expect(timesheetDelegate.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('records the reviewer and decision when approving a submitted entry', async () => {
+      const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
+      timesheetDelegate.findFirst
+        .mockResolvedValueOnce({
+          id: 5,
+          organizationId: 1,
+          createdByUserId: _mockEmployeeUser.userId,
+          status: 'SUBMITTED',
+          date: new Date('2026-01-01'),
+        })
+        .mockResolvedValueOnce({
+          id: 5,
+          organizationId: 1,
+          createdByUserId: _mockEmployeeUser.userId,
+          status: 'APPROVED',
+          date: new Date('2026-01-01'),
+        });
+      timesheetDelegate.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      await service.review(
+        5,
+        { decision: 'APPROVED' },
+        createMockAuthUser(Role.MANAGER, { userId: 2 }),
+      );
+
+      expect(timesheetDelegate.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ status: 'SUBMITTED' }),
+          data: expect.objectContaining({
+            status: 'APPROVED',
+            reviewedByUserId: 2,
+            reviewedAt: expect.any(Date),
+            rejectionReason: null,
+          }),
+        }),
+      );
     });
   });
 

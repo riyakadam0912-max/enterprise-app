@@ -2,7 +2,6 @@ import {
   IsString,
   IsNumber,
   IsOptional,
-  IsIn,
   IsDateString,
   IsInt,
 } from 'class-validator';
@@ -35,11 +34,6 @@ export class CreateTimesheetDto {
   @IsNumber()
   @ApiProperty({ example: 123 })
   hours!: number;
-
-  @IsOptional()
-  @IsIn(['PENDING', 'SUBMITTED', 'APPROVED', 'REJECTED'])
-  @ApiPropertyOptional({ example: 'ACTIVE' })
-  status?: string;
 
   @IsOptional()
   @IsString()

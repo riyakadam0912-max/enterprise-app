@@ -337,12 +337,10 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
   }>>([]);
   const [timeLogLoading, setTimeLogLoading] = useState(false);
   const [timeLogForm, setTimeLogForm] = useState({
-    employee: '',
     date: new Date().toISOString().slice(0, 10),
     task: '',
     hours: '2',
     note: '',
-    status: 'PENDING' as 'PENDING' | 'APPROVED' | 'REJECTED',
   });
   const [chatDraft, setChatDraft] = useState('');
   const [chatMentions, setChatMentions] = useState<ProjectMessageMention[]>([]);
@@ -684,14 +682,19 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
 
   const timeLogSummary = useMemo(() => {
     const totalHours = timeLogEntries.reduce((sum, entry) => sum + Number(entry.hours || 0), 0);
-    const approvedHours = timeLogEntries
-      .filter((entry) => entry.status === 'APPROVED')
-      .reduce((sum, entry) => sum + Number(entry.hours || 0), 0);
-    const pendingHours = timeLogEntries
-      .filter((entry) => entry.status === 'PENDING')
-      .reduce((sum, entry) => sum + Number(entry.hours || 0), 0);
+    const hoursByStatus = timeLogEntries.reduce(
+      (summary, entry) => {
+        const status = entry.status.toUpperCase();
+        if (status === 'PENDING') summary.draftHours += Number(entry.hours || 0);
+        if (status === 'SUBMITTED') summary.submittedHours += Number(entry.hours || 0);
+        if (status === 'APPROVED') summary.approvedHours += Number(entry.hours || 0);
+        if (status === 'REJECTED') summary.rejectedHours += Number(entry.hours || 0);
+        return summary;
+      },
+      { draftHours: 0, submittedHours: 0, approvedHours: 0, rejectedHours: 0 },
+    );
 
-    return { totalHours, approvedHours, pendingHours };
+    return { totalHours, ...hoursByStatus };
   }, [timeLogEntries]);
 
   async function loadProjectTimeLogs(projectId: number) {
@@ -737,18 +740,15 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
         taskId: selectedTask?.id ?? null,
         date: timeLogForm.date,
         hours: Number(timeLogForm.hours || 0),
-        status: timeLogForm.status,
         notes: timeLogForm.note.trim() || undefined,
       });
 
       setShowTimeLogEntry(false);
       setTimeLogForm({
-        employee: '',
         date: new Date().toISOString().slice(0, 10),
         task: selectedTask?.taskName ?? '',
         hours: '2',
         note: '',
-        status: 'PENDING',
       });
       await loadProjectTimeLogs(selectedProjectId);
     } catch (err) {
@@ -1479,25 +1479,12 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Timesheet</p>
                 <h2 className="mt-1 text-xl font-semibold text-slate-950">Add time entry</h2>
+                <p className="mt-1 text-sm text-slate-500">This entry will be saved as a draft under your account.</p>
               </div>
               <button type="button" onClick={() => setShowTimeLogEntry(false)} className="text-2xl leading-none text-slate-400 hover:text-slate-900" aria-label="Close time log drawer">×</button>
             </div>
 
             <div className="flex-1 space-y-4 overflow-y-auto px-6 py-6">
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Employee</label>
-                <select
-                  value={timeLogForm.employee}
-                  onChange={(event) => setTimeLogForm((current) => ({ ...current, employee: event.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-                >
-                  <option value="">Select employee</option>
-                  {employees.map((employee) => (
-                    <option key={employee.id} value={employee.name}>{employee.name}</option>
-                  ))}
-                </select>
-              </div>
-
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Date</label>
@@ -1529,19 +1516,6 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                   className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
                   placeholder="Task or activity"
                 />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Status</label>
-                <select
-                  value={timeLogForm.status}
-                  onChange={(event) => setTimeLogForm((current) => ({ ...current, status: event.target.value as 'PENDING' | 'APPROVED' | 'REJECTED' }))}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-                >
-                  <option value="PENDING">Pending</option>
-                  <option value="APPROVED">Approved</option>
-                  <option value="REJECTED">Rejected</option>
-                </select>
               </div>
 
               <div className="space-y-2">
@@ -2098,18 +2072,26 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                 </button>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
                 <article className="rounded-xl border border-slate-200 bg-white p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total hours</p>
                   <p className="mt-2 text-2xl font-semibold text-slate-900">{timeLogSummary.totalHours.toFixed(1)}h</p>
+                </article>
+                <article className="rounded-xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Draft</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-600">{timeLogSummary.draftHours.toFixed(1)}h</p>
+                </article>
+                <article className="rounded-xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Submitted</p>
+                  <p className="mt-2 text-2xl font-semibold text-amber-600">{timeLogSummary.submittedHours.toFixed(1)}h</p>
                 </article>
                 <article className="rounded-xl border border-slate-200 bg-white p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Approved</p>
                   <p className="mt-2 text-2xl font-semibold text-emerald-600">{timeLogSummary.approvedHours.toFixed(1)}h</p>
                 </article>
                 <article className="rounded-xl border border-slate-200 bg-white p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pending</p>
-                  <p className="mt-2 text-2xl font-semibold text-amber-600">{timeLogSummary.pendingHours.toFixed(1)}h</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Rejected</p>
+                  <p className="mt-2 text-2xl font-semibold text-rose-600">{timeLogSummary.rejectedHours.toFixed(1)}h</p>
                 </article>
               </div>
 
@@ -2146,9 +2128,11 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                             ? 'bg-emerald-50 text-emerald-700'
                             : entry.status === 'REJECTED'
                               ? 'bg-rose-50 text-rose-700'
-                              : 'bg-amber-50 text-amber-700'
+                              : entry.status === 'PENDING'
+                                ? 'bg-slate-100 text-slate-600'
+                                : 'bg-amber-50 text-amber-700'
                         }`}>
-                          {entry.status}
+                          {entry.status === 'PENDING' ? 'Draft' : entry.status.charAt(0) + entry.status.slice(1).toLowerCase()}
                         </span>
                       </div>
                     </div>

@@ -58,7 +58,6 @@ export type CreateTimesheetPayload = {
   task: string;
   date: string;
   hours: number;
-  status?: string;
   project?: string;
   notes?: string;
 };
@@ -70,6 +69,13 @@ export type Timesheet = {
   status: string;
   project?: string | null;
   notes?: string | null;
+  createdAt?: string;
+  createdByUserId?: number | null;
+  submittedAt?: string | null;
+  reviewedAt?: string | null;
+  reviewedByUserId?: number | null;
+  reviewedByUser?: { id: number; name: string } | null;
+  rejectionReason?: string | null;
   employee?: { name?: string | null } | null;
 };
 export type Lead = {
@@ -196,6 +202,18 @@ export async function updateTimesheet(
 ) {
   return unwrap<Timesheet>(
     (await api.patch(`/timesheets/${id}`, payload)).data,
+  );
+}
+export async function submitTimesheet(id: number) {
+  return unwrap<Timesheet>((await api.post(`/timesheets/${id}/submit`)).data);
+}
+export async function reviewTimesheet(
+  id: number,
+  decision: "APPROVED" | "REJECTED",
+  reason?: string,
+) {
+  return unwrap<Timesheet>(
+    (await api.post(`/timesheets/${id}/review`, { decision, reason })).data,
   );
 }
 export async function leads() {

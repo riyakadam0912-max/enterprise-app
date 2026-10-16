@@ -17,6 +17,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { QueryTimesheetDto } from './dto/query-timesheet.dto';
 import { CreateTimesheetDto } from './dto/create-timesheet.dto';
 import { UpdateTimesheetDto } from './dto/update-timesheet.dto';
+import { ReviewTimesheetDto } from './dto/review-timesheet.dto';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../common/types/request';
 @ApiTags('HR - Timesheets')
@@ -48,6 +49,30 @@ export class TimesheetsController {
   @HttpCode(201)
   create(@Body() dto: CreateTimesheetDto, @Req() req: AuthenticatedRequest) {
     return this.timesheetsService.create(dto, req.user);
+  }
+
+  @ApiOperation({ summary: 'POST :id/submit' })
+  @ApiResponse({ status: 200, description: 'Timesheet submitted for review.' })
+  @Post(':id/submit')
+  @HttpCode(HttpStatus.OK)
+  submit(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.timesheetsService.submit(id, req.user);
+  }
+
+  @ApiOperation({ summary: 'POST :id/review' })
+  @ApiResponse({ status: 200, description: 'Timesheet review saved.' })
+  @ApiBody({ type: ReviewTimesheetDto })
+  @Post(':id/review')
+  @HttpCode(HttpStatus.OK)
+  review(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReviewTimesheetDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.timesheetsService.review(id, dto, req.user);
   }
 
   @ApiOperation({ summary: 'GET :id' })

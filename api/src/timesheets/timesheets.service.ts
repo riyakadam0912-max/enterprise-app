@@ -1,9 +1,15 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueryTimesheetDto } from './dto/query-timesheet.dto';
 import { CreateTimesheetDto } from './dto/create-timesheet.dto';
 import { UpdateTimesheetDto } from './dto/update-timesheet.dto';
+import { ReviewTimesheetDto } from './dto/review-timesheet.dto';
 import type { AuthUser } from '../common/types/auth';
 import { Role } from '../common/enums/role.enum';
 import { OrganizationScopeService } from '../organizations/organization-scope.service';
@@ -38,6 +44,14 @@ export class TimesheetsService {
       return {
         OR: [
           { createdByUserId: userId },
+          {
+            createdByUser: {
+              OR: [
+                { managerId: userId },
+                { reportingManagers: { some: { managerId: userId } } },
+              ],
+            },
+          },
           { projectRef: { managerId: userId } },
           { projectRef: { coManagers: { some: { id: userId } } } },
         ],
@@ -173,6 +187,7 @@ export class TimesheetsService {
         orderBy: { date: 'desc' },
         include: {
           createdByUser: { select: { id: true, name: true } },
+          reviewedByUser: { select: { id: true, name: true } },
           organization: { select: { id: true, name: true } },
         },
       }),
@@ -188,12 +203,18 @@ export class TimesheetsService {
         date: t.date.toISOString().split('T')[0],
         hours: t.hours,
         status: t.status,
+        submittedAt: t.submittedAt?.toISOString() ?? null,
+        reviewedAt: t.reviewedAt?.toISOString() ?? null,
+        reviewedByUserId: t.reviewedByUserId,
+        reviewedByUser: t.reviewedByUser,
+        rejectionReason: t.rejectionReason,
         project: t.project ?? null,
         notes: t.notes ?? null,
         employee: t.createdByUser
           ? { id: t.createdByUser.id, name: t.createdByUser.name }
           : null,
         employeeId: t.createdByUserId ?? null,
+        createdByUserId: t.createdByUserId ?? null,
         createdByUser: t.createdByUser ?? null,
         organization: t.organization,
       })),
@@ -213,7 +234,7 @@ export class TimesheetsService {
     return this.prisma.timesheet.create({
       data: {
         organizationId,
-        createdByUserId: user.userId,
+        createdByUserId: user.userId ?? user.id,
         task: dto.task,
         project: dto.project,
         projectId: dto.projectId,
@@ -221,6 +242,7 @@ export class TimesheetsService {
         date: new Date(dto.date),
         hours: dto.hours,
         status: 'PENDING',
+        submittedAt: null,
         notes: dto.notes,
       },
     });
@@ -238,7 +260,10 @@ export class TimesheetsService {
             ? organizationIds[0]
             : { in: organizationIds },
       },
-      include: { organization: { select: { id: true, name: true } } },
+      include: {
+        organization: { select: { id: true, name: true } },
+        reviewedByUser: { select: { id: true, name: true } },
+      },
     });
     if (!timesheet)
       throw new ForbiddenException('Timesheet not found in your organization');
@@ -247,33 +272,36 @@ export class TimesheetsService {
 
   async update(id: number, dto: UpdateTimesheetDto, user: AuthUser) {
     const existing = await this.findOne(id, user);
+    const userId = user.userId ?? user.id;
+    const isOwner = existing.createdByUserId === userId;
+    const canAdminister = new Set<Role>([
+      Role.ADMIN,
+      Role.HR,
+      Role.SUPER_ADMIN,
+    ]).has(user.role);
+    if (!isOwner && !canAdminister) {
+      throw new ForbiddenException(
+        'Only the timesheet owner or an organization administrator can edit this entry',
+      );
+    }
+    if (existing.status !== 'PENDING' && existing.status !== 'REJECTED') {
+      throw new ForbiddenException(
+        'Only draft or rejected timesheets can be edited',
+      );
+    }
     await this.validateRelatedRecords(
       dto.projectId === undefined ? existing.projectId : dto.projectId,
       dto.taskId === undefined ? existing.taskId : dto.taskId,
       existing.organizationId,
     );
-    const isApprover = new Set<Role>([
-      Role.ADMIN,
-      Role.HR,
-      Role.SUPER_ADMIN,
-    ]).has(user.role);
-    if (
-      user.role === Role.EMPLOYEE &&
-      existing.createdByUserId !== (user.userId ?? user.id)
-    ) {
-      throw new ForbiddenException(
-        'Employees can only edit their own timesheets',
-      );
-    }
-    if (dto.status !== undefined && !isApprover) {
-      throw new ForbiddenException(
-        'Only administrators and HR can change timesheet status',
-      );
-    }
-    if (existing.status === 'APPROVED')
-      throw new ForbiddenException('Approved timesheets cannot be edited');
-    return this.prisma.timesheet.update({
-      where: { id, organizationId: existing.organizationId },
+    const updated = await this.prisma.timesheet.updateMany({
+      where: {
+        id,
+        organizationId: existing.organizationId,
+        createdByUserId: existing.createdByUserId,
+        deletedAt: null,
+        status: existing.status,
+      },
       data: {
         ...(dto.task !== undefined && { task: dto.task }),
         ...(dto.project !== undefined && { project: dto.project }),
@@ -281,10 +309,90 @@ export class TimesheetsService {
         ...(dto.taskId !== undefined && { taskId: dto.taskId }),
         ...(dto.date !== undefined && { date: new Date(dto.date) }),
         ...(dto.hours !== undefined && { hours: dto.hours }),
-        ...(dto.status !== undefined && { status: dto.status }),
         ...(dto.notes !== undefined && { notes: dto.notes }),
       },
     });
+    if (updated.count !== 1) {
+      throw new ConflictException('Timesheet changed; refresh and edit again');
+    }
+    return this.findOne(id, user);
+  }
+
+  async submit(id: number, user: AuthUser) {
+    const existing = await this.findOne(id, user);
+    const userId = user.userId ?? user.id;
+    if (existing.createdByUserId !== userId) {
+      throw new ForbiddenException('Only the timesheet owner can submit it');
+    }
+    if (existing.status !== 'PENDING' && existing.status !== 'REJECTED') {
+      throw new BadRequestException(
+        'Only draft or rejected timesheets can be submitted',
+      );
+    }
+    const updated = await this.prisma.timesheet.updateMany({
+      where: {
+        id,
+        organizationId: existing.organizationId,
+        createdByUserId: userId,
+        deletedAt: null,
+        status: existing.status,
+      },
+      data: {
+        status: 'SUBMITTED',
+        submittedAt: new Date(),
+      },
+    });
+    if (updated.count !== 1) {
+      throw new ConflictException(
+        'Timesheet changed; refresh and submit again',
+      );
+    }
+    return this.findOne(id, user);
+  }
+
+  async review(id: number, dto: ReviewTimesheetDto, user: AuthUser) {
+    const existing = await this.findOne(id, user);
+    const isOrganizationReviewer = new Set<Role>([
+      Role.ADMIN,
+      Role.HR,
+      Role.SUPER_ADMIN,
+    ]).has(user.role);
+    if (!isOrganizationReviewer && user.role !== Role.MANAGER) {
+      throw new ForbiddenException('You are not allowed to review timesheets');
+    }
+    if (existing.createdByUserId === (user.userId ?? user.id)) {
+      throw new ForbiddenException('You cannot review your own timesheet');
+    }
+    if (existing.status !== 'SUBMITTED') {
+      throw new BadRequestException(
+        'Only submitted timesheets can be reviewed',
+      );
+    }
+    const reason = dto.reason?.trim() ?? '';
+    if (dto.decision === 'REJECTED' && !reason) {
+      throw new BadRequestException('A reason is required when rejecting');
+    }
+
+    const updated = await this.prisma.timesheet.updateMany({
+      where: {
+        id,
+        organizationId: existing.organizationId,
+        deletedAt: null,
+        status: 'SUBMITTED',
+      },
+      data: {
+        status: dto.decision,
+        reviewedAt: new Date(),
+        reviewedByUserId: user.userId ?? user.id,
+        rejectionReason: dto.decision === 'REJECTED' ? reason : null,
+      },
+    });
+    if (updated.count !== 1) {
+      throw new ConflictException(
+        'Timesheet changed; refresh and review again',
+      );
+    }
+    return this.findOne(id, user);
   }
 
   async importRecords(
@@ -329,7 +437,7 @@ export class TimesheetsService {
             hours,
             status: 'PENDING',
             notes,
-            createdByUserId: user.userId,
+            createdByUserId: user.userId ?? user.id,
           },
         });
         imported++;

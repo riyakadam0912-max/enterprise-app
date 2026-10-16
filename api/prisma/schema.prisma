@@ -46,6 +46,7 @@ model User {
   assignedTasks                Task[]                 @relation("TaskAssignedTo")
   reviewedTasks                Task[]                 @relation("TaskReviewedBy")
   createdTimesheets            Timesheet[]            @relation("TimesheetCreatedBy")
+  reviewedTimesheets           Timesheet[]            @relation("TimesheetReviewedBy")
   taskTimerSessions            TaskTimerSession[]
   attendanceCheckouts          Attendance[]           @relation("AttendanceCheckoutActor")
   employee                     Employee?              @relation("UserEmployee", fields: [employeeId], references: [id])
@@ -555,31 +556,38 @@ model CampaignLead {
 }
 
 model Timesheet {
-  id              Int               @id @default(autoincrement())
-  task            String
-  project         String?
-  projectId       Int?
-  taskId          Int?
-  date            DateTime
-  hours           Float
-  status          String            @default("PENDING")
-  notes           String?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  deletedAt       DateTime?
-  organizationId  Int
-  createdByUserId Int?
-  timerSessionId  Int?              @unique
-  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdByUser   User?             @relation("TimesheetCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  timerSession    TaskTimerSession? @relation(fields: [timerSessionId], references: [id], onDelete: SetNull)
-  projectRef      Project?          @relation("ProjectTimesheets", fields: [projectId], references: [id], onDelete: SetNull)
-  taskRef         Task?             @relation("TaskTimesheets", fields: [taskId], references: [id], onDelete: SetNull)
+  id               Int               @id @default(autoincrement())
+  task             String
+  project          String?
+  projectId        Int?
+  taskId           Int?
+  date             DateTime
+  hours            Float
+  status           String            @default("PENDING")
+  submittedAt      DateTime?
+  reviewedAt       DateTime?
+  reviewedByUserId Int?
+  rejectionReason  String?
+  notes            String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  deletedAt        DateTime?
+  organizationId   Int
+  createdByUserId  Int?
+  timerSessionId   Int?              @unique
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser    User?             @relation("TimesheetCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  reviewedByUser   User?             @relation("TimesheetReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  timerSession     TaskTimerSession? @relation(fields: [timerSessionId], references: [id], onDelete: SetNull)
+  projectRef       Project?          @relation("ProjectTimesheets", fields: [projectId], references: [id], onDelete: SetNull)
+  taskRef          Task?             @relation("TaskTimesheets", fields: [taskId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([projectId])
   @@index([taskId])
   @@index([createdByUserId])
+  @@index([reviewedByUserId])
+  @@index([organizationId, status, submittedAt])
 }
 
 model Deal {

@@ -8,9 +8,15 @@ export interface TimesheetRow {
   taskId: number | null;
   date: string;
   hours: number;
-  status: string;
+  status: 'PENDING' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | string;
   notes: string | null;
   employeeId: number | null;
+  createdByUserId?: number | null;
+  submittedAt?: string | null;
+  reviewedAt?: string | null;
+  reviewedByUserId?: number | null;
+  reviewedByUser?: { id: number; name: string } | null;
+  rejectionReason?: string | null;
   organization?: { id: number; name: string };
   employee: { id: number; name: string } | null;
   createdByUser?: { id: number; name: string } | null;
@@ -43,7 +49,6 @@ export interface CreateTimesheetPayload {
   taskId?: number | null;
   date: string;
   hours: number;
-  status?: string;
   notes?: string | null;
 }
 
@@ -51,6 +56,35 @@ export async function createTimesheet(payload: CreateTimesheetPayload): Promise<
   return apiClient<TimesheetRow>('/timesheets', {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+}
+
+export async function getTimesheet(id: number): Promise<TimesheetRow> {
+  return apiClient<TimesheetRow>(`/timesheets/${id}`);
+}
+
+export async function updateTimesheet(
+  id: number,
+  payload: Partial<CreateTimesheetPayload>,
+): Promise<TimesheetRow> {
+  return apiClient<TimesheetRow>(`/timesheets/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function submitTimesheet(id: number): Promise<TimesheetRow> {
+  return apiClient<TimesheetRow>(`/timesheets/${id}/submit`, { method: 'POST' });
+}
+
+export async function reviewTimesheet(
+  id: number,
+  decision: 'APPROVED' | 'REJECTED',
+  reason?: string,
+): Promise<TimesheetRow> {
+  return apiClient<TimesheetRow>(`/timesheets/${id}/review`, {
+    method: 'POST',
+    body: JSON.stringify({ decision, reason }),
   });
 }
 
