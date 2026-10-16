@@ -431,17 +431,9 @@ export class AttendanceController {
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateAttendanceDto,
-    @Req()
-    req: {
-      user: {
-        userId: number;
-        role: Role;
-        employeeId?: number | null;
-        organizationId: number;
-      };
-    },
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.attendanceService.update(id, dto, req.user);
+    return this.attendanceService.update(id, dto, this.scopedUser(req));
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)

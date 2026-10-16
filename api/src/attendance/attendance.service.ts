@@ -3172,7 +3172,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       }
 
       return tx.attendance.update({
-        where: { id, organizationId: user.organizationId },
+        where: { id, organizationId: record.organizationId },
         data: {
           date: nextDate,
           checkIn,

@@ -302,6 +302,39 @@ describe('AttendanceService', () => {
     );
   });
 
+  it('allows a super admin to edit attendance in the selected organization', async () => {
+    prisma.attendance.findFirst.mockResolvedValue({
+      id: 48,
+      employeeId: 7,
+      organizationId: 42,
+      date: new Date('2026-10-06T00:00:00.000Z'),
+      checkIn: new Date('2026-10-06T09:00:00.000Z'),
+      checkOut: new Date('2026-10-06T18:00:00.000Z'),
+      status: AttendanceStatus.PRESENT,
+      breaks: [],
+      employee: { hireDate: null, shift: null },
+      shift: null,
+    });
+    prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
+    prisma.attendance.update.mockResolvedValue({ id: 48 });
+    jest.spyOn(service as any, 'calculateLateMinutes').mockReturnValue(0);
+    jest
+      .spyOn(service as any, 'findApprovedLeaveForDay')
+      .mockResolvedValue(null);
+
+    await service.update(
+      48,
+      { status: AttendanceStatus.PRESENT } as any,
+      { ...mockUser, role: Role.SUPER_ADMIN, organizationId: 1 } as any,
+    );
+
+    expect(prisma.attendance.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 48, organizationId: 42 },
+      }),
+    );
+  });
+
   it('preserves and subtracts existing breaks when only attendance fields are edited', async () => {
     prisma.attendance.findFirst.mockResolvedValue({
       id: 45,
