@@ -96,8 +96,8 @@ export default function AddTaskPage() {
         driveLink:      form.driveLink.trim()      || undefined,
       });
       router.push('/dashboard/tasks');
-    } catch {
-      setError('Failed to create task. Please try again.');
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Failed to create task. Please try again.');
     } finally {
       setSaving(false);
     }

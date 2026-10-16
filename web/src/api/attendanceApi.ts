@@ -123,6 +123,17 @@ export interface MyAttendanceResponse {
   shiftDetails: ShiftDetails | null;
 }
 
+export interface DailyTaskWorkSummary {
+  date: string;
+  taskTrackedSeconds: number;
+  attendanceWorkedSeconds: number;
+  scheduledSeconds: number;
+  activeTimer: {
+    taskName: string;
+    startedAt: string;
+  } | null;
+}
+
 export interface AttendanceMonthlySummary {
   presentDays: number;
   absentDays: number;
@@ -293,6 +304,10 @@ export function getMyAttendance(filters: AttendanceFilters = {}): Promise<Attend
 
 export function getMyAttendanceSnapshot(): Promise<MyAttendanceResponse> {
   return apiClient<MyAttendanceResponse>('/attendance/my');
+}
+
+export function getMyTaskWorkSummary(): Promise<DailyTaskWorkSummary> {
+  return apiClient<DailyTaskWorkSummary>('/attendance/task-work');
 }
 
 export function getWorkHourBalances(): Promise<WorkHourBalances> {

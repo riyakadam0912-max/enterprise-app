@@ -109,6 +109,13 @@ export function localMidnightAfterDateInTimezone(
   return localShiftStart(nextDateKey(dateKey), '00:00', safeTimezone(timezone));
 }
 
+export function localMidnightAtDateInTimezone(
+  dateKey: string,
+  timezone?: string | null,
+) {
+  return localShiftStart(dateKey, '00:00', safeTimezone(timezone));
+}
+
 export function shiftEndInTimezone(
   dateKey: string,
   shift: { startTime: string | null; endTime: string | null },

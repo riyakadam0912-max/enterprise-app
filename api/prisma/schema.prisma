@@ -661,25 +661,37 @@ model Task {
 }
 
 model TaskTimerSession {
-  id               Int          @id @default(autoincrement())
+  id               Int                 @id @default(autoincrement())
   taskId           Int
   userId           Int
   organizationId   Int
-  status           String       @default("RUNNING")
+  status           String              @default("RUNNING")
   durationSeconds  Int
   remainingSeconds Int
   startedAt        DateTime?
-  totalSeconds     Int          @default(0)
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-  task             Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  totalSeconds     Int                 @default(0)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  task             Task                @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   timesheet        Timesheet?
+  intervals        TaskTimerInterval[]
 
   @@index([taskId, status])
   @@index([userId, status])
   @@index([organizationId])
+}
+
+model TaskTimerInterval {
+  id             Int              @id @default(autoincrement())
+  timerSessionId Int
+  startedAt      DateTime
+  endedAt        DateTime
+  timerSession   TaskTimerSession @relation(fields: [timerSessionId], references: [id], onDelete: Cascade)
+
+  @@index([timerSessionId, startedAt])
+  @@index([startedAt, endedAt])
 }
 
 model TaskMessage {

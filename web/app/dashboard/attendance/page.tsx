@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArrowRight, CalendarDays, CalendarRange, Clock3, Pencil, Plus, Trash2, UsersRound, X } from 'lucide-react';
-import { assignShift, AttendanceRecord, AttendanceStatus, createHoliday, createShift, deleteHoliday, deleteShift, getHolidays, getMonthlyAttendanceReport, getShifts, getTeamWeeklyWorkHours, getWorkHourBalances, HolidayRecord, ShiftRecord, startAttendanceBreak, stopAttendanceBreak, TeamWeeklyWorkHours, updateHoliday, updateShift, WorkHourBalances } from '@/api/attendanceApi';
+import { assignShift, AttendanceRecord, AttendanceStatus, createHoliday, createShift, DailyTaskWorkSummary, deleteHoliday, deleteShift, getHolidays, getMonthlyAttendanceReport, getMyTaskWorkSummary, getShifts, getTeamWeeklyWorkHours, getWorkHourBalances, HolidayRecord, ShiftRecord, startAttendanceBreak, stopAttendanceBreak, TeamWeeklyWorkHours, updateHoliday, updateShift, WorkHourBalances } from '@/api/attendanceApi';
 import { useAttendance, useCheckIn, useCheckOut, useTodayAttendance, useUpdateAttendance } from '@/hooks/useAttendance';
 import { useEmployees } from '@/hooks/useEmployees';
 import TableActions from '@/components/common/TableActions';
@@ -219,6 +219,136 @@ function WorkHourProgress({ label, balance }: { label: string; balance: WorkHour
         )}
       </div>
     </div>
+  );
+}
+
+function DailyTaskWorkCard({ enabled }: { enabled: boolean }) {
+  const [summary, setSummary] = useState<DailyTaskWorkSummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshCount, setRefreshCount] = useState(0);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const result = await getMyTaskWorkSummary();
+        if (!cancelled) {
+          setSummary(result);
+          setError(null);
+        }
+      } catch (reason) {
+        if (!cancelled) {
+          setError(reason instanceof Error ? reason.message : 'Unable to load today’s task time.');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void load();
+    const interval = window.setInterval(() => void load(), 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [enabled, refreshCount]);
+
+  if (!enabled) return null;
+  if (loading && !summary) {
+    return <div className="rounded-3xl border border-slate-200 bg-white p-5 text-sm text-slate-500">Loading today’s task time…</div>;
+  }
+  if (error && !summary) {
+    return (
+      <div className="rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
+        <p>{error}</p>
+        <button type="button" onClick={() => { setLoading(true); setRefreshCount((count) => count + 1); }} className="mt-2 font-semibold underline underline-offset-2">
+          Try again
+        </button>
+      </div>
+    );
+  }
+  if (!summary) return null;
+
+  const target = summary.scheduledSeconds;
+  const taskSeconds = summary.taskTrackedSeconds;
+  const otherSeconds = Math.max(0, summary.attendanceWorkedSeconds - taskSeconds);
+  const circumference = 2 * Math.PI * 40;
+  const taskLength = target > 0 ? Math.min(circumference, circumference * taskSeconds / target) : 0;
+  const otherLength = target > 0
+    ? Math.min(circumference - taskLength, circumference * otherSeconds / target)
+    : 0;
+  const taskPercent = target > 0 ? Math.min(100, Math.round(taskSeconds / target * 100)) : 0;
+  const targetRemaining = Math.max(0, target - summary.attendanceWorkedSeconds);
+
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Today’s work</p>
+          <h3 className="mt-1 text-lg font-semibold text-slate-900">Task time &amp; attendance</h3>
+        </div>
+        {summary.activeTimer && (
+          <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+            Live
+          </span>
+        )}
+      </div>
+      <div className="mt-5 flex flex-col items-center gap-5 sm:flex-row">
+        <div
+          role="img"
+          aria-label={`Task tracked ${formatHoursDuration(taskSeconds / 3600)} of ${formatHoursDuration(target / 3600)} scheduled`}
+          className="relative grid h-32 w-32 shrink-0 place-items-center"
+        >
+          <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full -rotate-90">
+            <circle cx="50" cy="50" r="40" fill="none" stroke="#e2e8f0" strokeWidth="8" />
+            <circle
+              cx="50" cy="50" r="40" fill="none" stroke="#0f766e" strokeWidth="8"
+              strokeDasharray={`${taskLength} ${circumference}`}
+              strokeLinecap="round"
+            />
+            {otherLength > 0 && (
+              <circle
+                cx="50" cy="50" r="40" fill="none" stroke="#99f6e4" strokeWidth="8"
+                strokeDasharray={`${otherLength} ${circumference}`}
+                strokeDashoffset={-taskLength}
+              />
+            )}
+          </svg>
+          <div className="text-center">
+            <p className="text-lg font-semibold leading-tight text-slate-900">{formatHoursDuration(taskSeconds / 3600)}</p>
+            <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">task-tracked</p>
+          </div>
+        </div>
+        <div className="min-w-0 flex-1 space-y-3">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="inline-flex items-center gap-2 text-slate-600"><span className="h-2 w-2 rounded-full bg-teal-700" />Task-tracked</span>
+            <span className="font-semibold tabular-nums text-slate-900">{formatHoursDuration(taskSeconds / 3600)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="inline-flex items-center gap-2 text-slate-600"><span className="h-2 w-2 rounded-full bg-teal-200" />Other attended work</span>
+            <span className="font-semibold tabular-nums text-slate-900">{formatHoursDuration(otherSeconds / 3600)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-sm">
+            <span className="text-slate-500">{targetRemaining > 0 ? 'Shift target remaining' : summary.attendanceWorkedSeconds > target && target > 0 ? 'Over target' : 'Shift target complete'}</span>
+            <span className="font-medium tabular-nums text-slate-700">
+              {target > 0 && summary.attendanceWorkedSeconds > target
+                ? formatHoursDuration((summary.attendanceWorkedSeconds - target) / 3600)
+                : formatHoursDuration(targetRemaining / 3600)}
+            </span>
+          </div>
+          {summary.activeTimer && (
+            <p className="truncate text-xs text-slate-500">Tracking: {summary.activeTimer.taskName}</p>
+          )}
+          <p className="text-xs text-slate-400">
+            {formatHoursDuration(summary.attendanceWorkedSeconds / 3600)} attended of {formatHoursDuration(target / 3600)} scheduled
+          </p>
+          {error && <p className="text-xs text-rose-600">Could not refresh live time: {error}</p>}
+          <span className="sr-only">Task time is {taskPercent}% of the scheduled shift.</span>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -988,6 +1118,8 @@ export default function AttendancePage() {
           onBreakAction={() => handleEmployeeAction('break')}
         />
       )}
+
+      {accountLinked && <DailyTaskWorkCard enabled={accountLinked} />}
 
       {(!canViewAdminAttendance || session.role === 'HR') && (checkInMutation.error || checkOutMutation.error) && (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

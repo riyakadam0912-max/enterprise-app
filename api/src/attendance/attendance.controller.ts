@@ -333,6 +333,13 @@ export class AttendanceController {
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'GET my task-tracked work time for today' })
+  @Get('task-work')
+  getMyTaskWorkSummary(@Req() req: AuthenticatedRequest) {
+    return this.attendanceService.getMyTaskWorkSummary(this.scopedUser(req));
+  }
+
+  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'GET my weekly and monthly work-hour balances' })
   @Get('work-hours')
   getMyWorkHourBalances(

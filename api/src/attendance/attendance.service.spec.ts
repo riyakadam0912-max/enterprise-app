@@ -30,6 +30,7 @@ function createPrismaMock() {
       createMany: jest.fn(),
     },
     taskTimerSession: { findFirst: jest.fn().mockResolvedValue(null) },
+    taskTimerInterval: { findMany: jest.fn().mockResolvedValue([]) },
     holiday: {
       findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue(null),
@@ -127,6 +128,64 @@ describe('AttendanceService', () => {
   afterEach(() => {
     jest.useRealTimers();
     jest.clearAllMocks();
+  });
+
+  it('summarizes task and attendance time using the organization-local day', async () => {
+    jest.setSystemTime(new Date('2026-10-16T05:00:00.000Z'));
+    const employee = {
+      id: 7,
+      organizationId: 1,
+      shift: { requiredHours: 8 },
+    };
+    prisma.employee.findFirst
+      .mockResolvedValueOnce({ id: 7 })
+      .mockResolvedValueOnce(employee);
+    prisma.organization.findUnique.mockResolvedValueOnce({
+      timezone: 'Asia/Kolkata',
+    });
+    prisma.taskTimerInterval.findMany.mockResolvedValueOnce([
+      {
+        startedAt: new Date('2026-10-15T23:00:00.000Z'),
+        endedAt: new Date('2026-10-16T01:00:00.000Z'),
+      },
+    ]);
+    prisma.taskTimerSession.findFirst.mockResolvedValueOnce({
+      startedAt: new Date('2026-10-16T04:00:00.000Z'),
+      task: { taskName: 'Prepare campaign assets' },
+    });
+    prisma.attendance.findUnique.mockResolvedValueOnce({
+      checkIn: new Date('2026-10-16T00:00:00.000Z'),
+      checkOut: null,
+      requiredHours: null,
+      shift: { requiredHours: 8 },
+      breaks: [
+        {
+          startedAt: new Date('2026-10-16T02:00:00.000Z'),
+          endedAt: new Date('2026-10-16T02:30:00.000Z'),
+        },
+      ],
+    });
+
+    const result = await service.getMyTaskWorkSummary(mockUser);
+
+    expect(result).toEqual({
+      date: '2026-10-16',
+      taskTrackedSeconds: 10_800,
+      attendanceWorkedSeconds: 16_200,
+      scheduledSeconds: 28_800,
+      activeTimer: {
+        taskName: 'Prepare campaign assets',
+        startedAt: '2026-10-16T04:00:00.000Z',
+      },
+    });
+    expect(prisma.taskTimerInterval.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          startedAt: { lt: new Date('2026-10-16T05:00:00.000Z') },
+          endedAt: { gt: new Date('2026-10-15T18:30:00.000Z') },
+        }),
+      }),
+    );
   });
 
   it('summarizes daily attendance after applying status filters', async () => {

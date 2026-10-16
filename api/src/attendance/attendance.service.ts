@@ -30,9 +30,11 @@ import {
   attendanceDateFromKey,
   calculateLateMinutesInTimezone,
   dateKeyInTimezone,
+  localMidnightAtDateInTimezone,
   localMidnightAfterDateInTimezone,
 } from './attendance-time.utils';
 import { calculateNetWorkingHours } from './attendance-work-time.utils';
+import { sumIntervalSeconds } from './task-work-time.utils';
 import { TasksService } from '../tasks/tasks.service';
 import type { AuthUser } from '../common/types/auth';
 
@@ -1800,6 +1802,108 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       overtimeHours: row.overtimeHours,
       status: row.status,
       shiftDetails: row.shiftDetails,
+    };
+  }
+
+  async getMyTaskWorkSummary(user: AttendanceUser) {
+    const employeeId = await this.resolveCurrentEmployeeId(user);
+    const employee = await this.ensureEmployee(employeeId, user);
+    const organizationId = employee.organizationId;
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { timezone: true },
+    });
+    const timezone = organization?.timezone ?? 'UTC';
+    const now = new Date();
+    const dateKey = dateKeyInTimezone(now, timezone);
+    const rangeStart = localMidnightAtDateInTimezone(dateKey, timezone);
+    const rangeEnd = localMidnightAfterDateInTimezone(dateKey, timezone);
+    if (!rangeStart || !rangeEnd) {
+      throw new BadRequestException(
+        'Unable to calculate today in organization timezone',
+      );
+    }
+    const measuredEnd = new Date(Math.min(now.getTime(), rangeEnd.getTime()));
+
+    const [intervals, activeTimer, attendance] = await Promise.all([
+      this.prisma.taskTimerInterval.findMany({
+        where: {
+          timerSession: { userId: user.userId, organizationId },
+          startedAt: { lt: measuredEnd },
+          endedAt: { gt: rangeStart },
+        },
+        select: { startedAt: true, endedAt: true },
+      }),
+      this.prisma.taskTimerSession.findFirst({
+        where: { userId: user.userId, organizationId, status: 'RUNNING' },
+        select: {
+          startedAt: true,
+          task: { select: { taskName: true } },
+        },
+      }),
+      this.prisma.attendance.findUnique({
+        where: {
+          employeeId_date: {
+            employeeId,
+            date: attendanceDateFromKey(dateKey),
+          },
+        },
+        include: { breaks: true, shift: true },
+      }),
+    ]);
+
+    const taskIntervals = [...intervals];
+    if (activeTimer?.startedAt && measuredEnd > activeTimer.startedAt) {
+      taskIntervals.push({
+        startedAt: activeTimer.startedAt,
+        endedAt: measuredEnd,
+      });
+    }
+    const taskTrackedSeconds = sumIntervalSeconds(
+      taskIntervals,
+      rangeStart,
+      measuredEnd,
+    );
+
+    let attendanceWorkedSeconds = 0;
+    if (attendance?.checkIn) {
+      const workStart = Math.max(
+        rangeStart.getTime(),
+        attendance.checkIn.getTime(),
+      );
+      const workEnd = Math.min(
+        measuredEnd.getTime(),
+        attendance.checkOut?.getTime() ?? measuredEnd.getTime(),
+      );
+      const breakMilliseconds = attendance.breaks.reduce((total, interval) => {
+        const breakStart = Math.max(workStart, interval.startedAt.getTime());
+        const breakEnd = Math.min(
+          workEnd,
+          interval.endedAt?.getTime() ?? measuredEnd.getTime(),
+        );
+        return total + Math.max(0, breakEnd - breakStart);
+      }, 0);
+      attendanceWorkedSeconds = Math.floor(
+        Math.max(0, workEnd - workStart - breakMilliseconds) / 1000,
+      );
+    }
+
+    const scheduledHours =
+      attendance?.requiredHours ??
+      attendance?.shift?.requiredHours ??
+      employee.shift?.requiredHours ??
+      0;
+    return {
+      date: dateKey,
+      taskTrackedSeconds,
+      attendanceWorkedSeconds,
+      scheduledSeconds: Math.max(0, Math.round(scheduledHours * 3600)),
+      activeTimer: activeTimer?.startedAt
+        ? {
+            taskName: activeTimer.task.taskName,
+            startedAt: activeTimer.startedAt.toISOString(),
+          }
+        : null,
     };
   }
 

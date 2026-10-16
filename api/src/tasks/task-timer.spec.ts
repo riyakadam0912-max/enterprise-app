@@ -44,6 +44,7 @@ describe('TasksService per-user task timer sessions', () => {
   };
   let tx: {
     taskTimerSession: { updateMany: jest.Mock };
+    taskTimerInterval: { create: jest.Mock };
     timesheet: { create: jest.Mock };
   };
 
@@ -52,6 +53,7 @@ describe('TasksService per-user task timer sessions', () => {
       taskTimerSession: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      taskTimerInterval: { create: jest.fn().mockResolvedValue({ id: 51 }) },
       timesheet: { create: jest.fn().mockResolvedValue({ id: 77 }) },
     };
     prisma = {
@@ -201,6 +203,69 @@ describe('TasksService per-user task timer sessions', () => {
         status: 'PENDING',
         createdByUserId: 11,
         hours: expect.any(Number),
+      }),
+    });
+    expect(tx.taskTimerInterval.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        timerSessionId: 101,
+        startedAt,
+        endedAt: expect.any(Date),
+      }),
+    });
+  });
+
+  it('persists the completed run segment when a timer is paused', async () => {
+    const startedAt = new Date(Date.now() - 30_000);
+    prisma.taskTimerSession.findFirst.mockResolvedValueOnce({
+      id: 101,
+      taskId: 8,
+      userId: 11,
+      organizationId,
+      status: 'RUNNING',
+      durationSeconds: 0,
+      remainingSeconds: 0,
+      startedAt,
+      totalSeconds: 0,
+      createdAt: startedAt,
+    });
+
+    await service.updateTimer(
+      8,
+      { action: 'pause' },
+      makeUser(11, Role.EMPLOYEE, 101),
+    );
+
+    expect(tx.taskTimerInterval.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        timerSessionId: 101,
+        startedAt,
+        endedAt: expect.any(Date),
+      }),
+    });
+  });
+
+  it('persists the run segment when attendance pauses the active timer', async () => {
+    const startedAt = new Date(Date.now() - 30_000);
+    prisma.taskTimerSession.findFirst.mockResolvedValueOnce({
+      id: 101,
+      taskId: 8,
+      userId: 11,
+      organizationId,
+      status: 'RUNNING',
+      durationSeconds: 0,
+      remainingSeconds: 0,
+      startedAt,
+      totalSeconds: 0,
+      createdAt: startedAt,
+    });
+
+    await service.pauseActiveTimerForUser(makeUser(11, Role.EMPLOYEE, 101));
+
+    expect(tx.taskTimerInterval.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        timerSessionId: 101,
+        startedAt,
+        endedAt: expect.any(Date),
       }),
     });
   });

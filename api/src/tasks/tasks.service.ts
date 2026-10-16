@@ -340,16 +340,19 @@ export class TasksService {
             },
           });
 
+    const isProjectEmployee = project?.assignedEmployees?.some(
+      (employee) => employee.id === assignee.employeeId,
+    );
+    const isDirectReportForProjectlessTask =
+      !project && assignee.managerId === user.userId;
     if (
       (dto.assignedToUserId || dto.employeeId) &&
       user.role === Role.MANAGER &&
       (String(assignee.role) !== String(Role.EMPLOYEE) ||
-        !project?.assignedEmployees?.some(
-          (employee) => employee.id === assignee.employeeId,
-        ))
+        (!isDirectReportForProjectlessTask && !isProjectEmployee))
     ) {
       throw new ForbiddenException(
-        'Managers can assign tasks only to employees assigned to the project',
+        'Managers can assign projectless tasks only to their employees and project tasks only to project employees',
       );
     }
 
@@ -593,25 +596,37 @@ export class TasksService {
       if (session.status !== 'RUNNING' || !session.startedAt) {
         throw new BadRequestException('Only a running timer can be paused');
       }
+      const startedAt = session.startedAt;
       const elapsedSeconds = Math.max(
         0,
-        Math.floor((now.getTime() - session.startedAt.getTime()) / 1000),
+        Math.floor((now.getTime() - startedAt.getTime()) / 1000),
       );
-      const updated = await this.db.taskTimerSession.updateMany({
-        where: {
-          id: session.id,
-          status: 'RUNNING',
-          startedAt: session.startedAt,
-        },
-        data: {
-          status: 'PAUSED',
-          startedAt: null,
-          totalSeconds: session.totalSeconds + elapsedSeconds,
-        },
+      await this.db.$transaction(async (tx) => {
+        const updated = await tx.taskTimerSession.updateMany({
+          where: {
+            id: session.id,
+            status: 'RUNNING',
+            startedAt,
+          },
+          data: {
+            status: 'PAUSED',
+            startedAt: null,
+            totalSeconds: session.totalSeconds + elapsedSeconds,
+          },
+        });
+        if (updated.count !== 1) {
+          throw new ConflictException('Timer changed; refresh and try again');
+        }
+        if (elapsedSeconds > 0) {
+          await tx.taskTimerInterval.create({
+            data: {
+              timerSessionId: session.id,
+              startedAt,
+              endedAt: new Date(startedAt.getTime() + elapsedSeconds * 1000),
+            },
+          });
+        }
       });
-      if (updated.count !== 1) {
-        throw new ConflictException('Timer changed; refresh and try again');
-      }
       return this.findTaskWithTimerSessions(taskId, organizationId);
     }
 
@@ -687,21 +702,36 @@ export class TasksService {
           Math.floor((now.getTime() - session.startedAt.getTime()) / 1000),
         )
       : 0;
-    const updated = await db.taskTimerSession.updateMany({
-      where: {
-        id: session.id,
-        status: 'RUNNING',
-        startedAt: session.startedAt,
-      },
-      data: {
-        status: 'PAUSED',
-        startedAt: null,
-        totalSeconds: session.totalSeconds + elapsedSeconds,
-      },
-    });
-    if (updated.count !== 1) {
-      throw new ConflictException('Timer changed; refresh and try again');
-    }
+    const pause = async (tx: Prisma.TransactionClient) => {
+      const updated = await tx.taskTimerSession.updateMany({
+        where: {
+          id: session.id,
+          status: 'RUNNING',
+          startedAt: session.startedAt,
+        },
+        data: {
+          status: 'PAUSED',
+          startedAt: null,
+          totalSeconds: session.totalSeconds + elapsedSeconds,
+        },
+      });
+      if (updated.count !== 1) {
+        throw new ConflictException('Timer changed; refresh and try again');
+      }
+      if (session.startedAt && elapsedSeconds > 0) {
+        await tx.taskTimerInterval.create({
+          data: {
+            timerSessionId: session.id,
+            startedAt: session.startedAt,
+            endedAt: new Date(
+              session.startedAt.getTime() + elapsedSeconds * 1000,
+            ),
+          },
+        });
+      }
+    };
+    if (transaction) await pause(transaction);
+    else await this.db.$transaction(pause);
     return session.id;
   }
 
@@ -840,6 +870,21 @@ export class TasksService {
       });
       if (updated.count !== 1) {
         throw new ConflictException('Timer changed; refresh and try again');
+      }
+      if (
+        session.status === 'RUNNING' &&
+        session.startedAt &&
+        elapsedSeconds > 0
+      ) {
+        await tx.taskTimerInterval.create({
+          data: {
+            timerSessionId: session.id,
+            startedAt: session.startedAt,
+            endedAt: new Date(
+              session.startedAt.getTime() + elapsedSeconds * 1000,
+            ),
+          },
+        });
       }
       await tx.timesheet.create({
         data: {

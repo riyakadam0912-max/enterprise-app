@@ -5,7 +5,7 @@ import Svg, { Circle } from 'react-native-svg';
 import { Link } from 'expo-router';
 import { CalendarCheck } from '@/src/components/icons';
 import { apiError } from '@/src/api/client';
-import { attendanceHistory, attendanceSummary, attendanceToday, attendanceWorkHourBalances, checkIn, checkOut, startAttendanceBreak, stopAttendanceBreak, type WorkHourBalances } from '@/src/api/attendance';
+import { attendanceHistory, attendanceSummary, attendanceTaskWorkSummary, attendanceToday, attendanceWorkHourBalances, checkIn, checkOut, startAttendanceBreak, stopAttendanceBreak, type DailyTaskWorkSummary, type WorkHourBalances } from '@/src/api/attendance';
 import { useBusinessUnit } from '@/src/providers/BusinessUnitProvider';
 import { useOrganization } from '@/src/providers/OrganizationProvider';
 import { useAuth } from '@/src/providers/AuthProvider';
@@ -67,6 +67,63 @@ function WorkHourProgress({ label, balance }: { label: string; balance: WorkHour
 	);
 }
 
+function DailyTaskWorkProgress({ summary }: { summary: DailyTaskWorkSummary }) {
+	const target = summary.scheduledSeconds;
+	const otherSeconds = Math.max(0, summary.attendanceWorkedSeconds - summary.taskTrackedSeconds);
+	const radius = 38;
+	const circumference = 2 * Math.PI * radius;
+	const taskLength = target > 0 ? Math.min(circumference, circumference * summary.taskTrackedSeconds / target) : 0;
+	const otherLength = target > 0 ? Math.min(circumference - taskLength, circumference * otherSeconds / target) : 0;
+	const remainingSeconds = Math.max(0, target - summary.attendanceWorkedSeconds);
+	const overTargetSeconds = Math.max(0, summary.attendanceWorkedSeconds - target);
+
+	return (
+		<View style={{ backgroundColor: tokens.colors.surface, borderRadius: tokens.radius.card, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#e2e8f0' }}>
+			<View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+				<View>
+					<Text style={{ color: tokens.colors.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.4 }}>TODAY&apos;S WORK</Text>
+					<Text style={{ color: tokens.colors.ink, fontSize: 16, fontWeight: '700', marginTop: 4 }}>Task time &amp; attendance</Text>
+				</View>
+				{summary.activeTimer ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#ecfdf5', paddingHorizontal: 9, paddingVertical: 5, borderRadius: 99 }}><View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#10b981' }} /><Text style={{ color: '#047857', fontSize: 11, fontWeight: '700' }}>Live</Text></View> : null}
+			</View>
+			<View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 18 }}>
+				<View
+					accessibilityRole="image"
+					accessibilityLabel={`Task tracked ${formatHoursDuration(summary.taskTrackedSeconds / 3600)} of ${formatHoursDuration(target / 3600)} scheduled`}
+					style={{ width: 94, height: 94, alignItems: 'center', justifyContent: 'center' }}
+				>
+					<Svg width={94} height={94} viewBox="0 0 94 94" style={{ position: 'absolute' }}>
+						<Circle cx={47} cy={47} r={radius} fill="none" stroke="#e2e8f0" strokeWidth={8} />
+						<Circle cx={47} cy={47} r={radius} fill="none" stroke="#0f766e" strokeWidth={8} strokeDasharray={`${taskLength} ${circumference}`} strokeLinecap="round" rotation={-90} origin="47, 47" />
+						{otherLength > 0 ? <Circle cx={47} cy={47} r={radius} fill="none" stroke="#99f6e4" strokeWidth={8} strokeDasharray={`${otherLength} ${circumference}`} strokeLinecap="round" rotation={-90 + taskLength / circumference * 360} origin="47, 47" /> : null}
+					</Svg>
+					<Text style={{ color: tokens.colors.ink, fontSize: 11, fontWeight: '800' }}>{formatHoursDuration(summary.taskTrackedSeconds / 3600)}</Text>
+					<Text style={{ color: tokens.colors.muted, fontSize: 8, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.8 }}>Task-tracked</Text>
+				</View>
+				<View style={{ flex: 1, gap: 10 }}>
+					<View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+						<View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}><View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#0f766e' }} /><Text style={{ color: tokens.colors.muted, fontSize: 12 }}>Task-tracked</Text></View>
+						<Text style={{ color: tokens.colors.ink, fontSize: 12, fontWeight: '700' }}>{formatHoursDuration(summary.taskTrackedSeconds / 3600)}</Text>
+					</View>
+					<View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+						<View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}><View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#99f6e4' }} /><Text style={{ color: tokens.colors.muted, fontSize: 12 }}>Other attended</Text></View>
+						<Text style={{ color: tokens.colors.ink, fontSize: 12, fontWeight: '700' }}>{formatHoursDuration(otherSeconds / 3600)}</Text>
+					</View>
+					<View style={{ borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 8 }}>
+						<Text style={{ color: tokens.colors.muted, fontSize: 11 }}>
+							{target > 0 && overTargetSeconds > 0 ? `Over target · ${formatHoursDuration(overTargetSeconds / 3600)}` : `${formatHoursDuration(remainingSeconds / 3600)} shift target remaining`}
+						</Text>
+						<Text style={{ color: tokens.colors.muted, fontSize: 10, marginTop: 4 }}>
+							{formatHoursDuration(summary.attendanceWorkedSeconds / 3600)} attended of {formatHoursDuration(target / 3600)} scheduled
+						</Text>
+						{summary.activeTimer ? <Text numberOfLines={1} style={{ color: '#047857', fontSize: 10, marginTop: 4 }}>Tracking: {summary.activeTimer.taskName}</Text> : null}
+					</View>
+				</View>
+			</View>
+		</View>
+	);
+}
+
 export default function Attendance() {
 	const client = useQueryClient();
 	const { activeId } = useBusinessUnit();
@@ -75,6 +132,7 @@ export default function Attendance() {
 	const canManageAttendance = ['HR', 'ADMIN', 'SUPER_ADMIN'].includes(session?.role ?? '');
 	const [toolsOpen, setToolsOpen] = useState(false);
 	const today = useQuery({ queryKey: ['attendance', 'today', organizationId, activeId], queryFn: attendanceToday });
+	const taskWork = useQuery({ queryKey: ['attendance', 'task-work', organizationId, activeId], queryFn: attendanceTaskWorkSummary, refetchInterval: 15000 });
 	const history = useQuery({ queryKey: ['attendance', 'history', organizationId, activeId], queryFn: attendanceHistory });
 	const summary = useQuery({ queryKey: ['attendance', 'summary', organizationId, activeId], queryFn: () => attendanceSummary() });
 	const balances = useQuery({ queryKey: ['attendance', 'work-hours', organizationId, activeId], queryFn: attendanceWorkHourBalances });
@@ -111,6 +169,9 @@ export default function Attendance() {
 				<AppButton label={today.data?.onBreak ? 'End break' : 'Start break'} variant="secondary" disabled={!canBreak} loading={mutation.isPending} onPress={() => mutation.mutate(today.data?.onBreak ? 'break-stop' : 'break-start')} style={styles.attendanceButton} />
 			</View>
 		</View>
+		{taskWork.isLoading ? <StatePanel kind="loading" message="Loading today’s task time..." /> : null}
+		{taskWork.isError ? <StatePanel kind="error" message={apiError(taskWork.error)} onRetry={() => void taskWork.refetch()} /> : null}
+		{taskWork.data ? <DailyTaskWorkProgress summary={taskWork.data} /> : null}
 		<Text style={{ fontSize: 20, fontWeight: '800', color: '#172033', marginTop: 24, marginBottom: 10 }}>Work-hour progress</Text>
 		{balances.isError ? <Text style={{ color: '#be123c' }}>{apiError(balances.error)}</Text> : null}
 		{(['week', 'month'] as const).map((period) => {

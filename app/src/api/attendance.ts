@@ -30,6 +30,19 @@ export async function attendanceToday(): Promise<AttendanceToday> {
 	const value = payload as Record<string, unknown>;
 	 return { date: typeof value.date === 'string' ? value.date : emptyToday.date, status: typeof value.status === 'string' ? value.status as AttendanceToday['status'] : 'ABSENT', checkIn: typeof value.checkIn === 'string' ? value.checkIn : null, checkOut: typeof value.checkOut === 'string' ? value.checkOut : null, workingHours: typeof value.workingHours === 'number' ? value.workingHours : null, breaks: Array.isArray(value.breaks) ? value.breaks.filter((item): item is { startedAt: string; endedAt: string | null } => Boolean(item && typeof item === 'object' && typeof (item as { startedAt?: unknown }).startedAt === 'string')).map((item) => ({ startedAt: item.startedAt, endedAt: typeof item.endedAt === 'string' ? item.endedAt : null })) : [], onBreak: value.onBreak === true, lateMinutes: typeof value.lateMinutes === 'number' ? value.lateMinutes : 0, overtimeHours: typeof value.overtimeHours === 'number' ? value.overtimeHours : 0, shortfallHours: typeof value.shortfallHours === 'number' ? value.shortfallHours : 0, shift: recordFromApi({ date: typeof value.date === 'string' ? value.date : emptyToday.date, ...value })?.shift ?? null };
 }
+
+export type DailyTaskWorkSummary = {
+	date: string;
+	taskTrackedSeconds: number;
+	attendanceWorkedSeconds: number;
+	scheduledSeconds: number;
+	activeTimer: { taskName: string; startedAt: string } | null;
+};
+
+export async function attendanceTaskWorkSummary(): Promise<DailyTaskWorkSummary> {
+	return unwrap<DailyTaskWorkSummary>((await api.get('/attendance/task-work')).data);
+}
+
 export async function attendanceHistory(): Promise<AttendanceRecord[]> {
 	const payload = unwrap<unknown>((await api.get('/attendance/me', { params: { limit: 10, page: 1 } })).data);
 	const rows = payload && typeof payload === 'object' && Array.isArray((payload as { data?: unknown[] }).data) ? (payload as { data: unknown[] }).data : [];
