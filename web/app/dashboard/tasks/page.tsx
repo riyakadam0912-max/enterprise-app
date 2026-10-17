@@ -144,6 +144,7 @@ function TaskDetailModal({
   onSubmitTask,
   onReviewTask,
   onEditTask,
+  onDeleteTask,
   onUpdateStatus,
   onLoadMessages,
   onSendMessage,
@@ -168,6 +169,7 @@ function TaskDetailModal({
     estimatedHours: number | null;
     dueDate: string | null;
   }) => Promise<void>;
+  onDeleteTask: (taskId: number) => Promise<void>;
   onUpdateStatus: (taskId: number, status: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED') => Promise<void>;
   onLoadMessages: (taskId: number) => Promise<ChatMessage[]>;
   onSendMessage: (taskId: number, content: string) => Promise<ChatMessage>;
@@ -296,6 +298,7 @@ function TaskDetailModal({
   const showAwaitingReview = taskStatus === 'SUBMITTED' && !isAssignee;
   const showApproved = taskStatus === 'APPROVED';
   const canEditTasks = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER';
+  const canDeleteTasks = role === 'SUPER_ADMIN' || role === 'ADMIN';
   const canReview = (role === 'ADMIN' || role === 'MANAGER') && taskStatus === 'SUBMITTED';
   const canChangeStatus = role === 'ADMIN' || role === 'MANAGER';
   const submissionDate = activeTask.updatedAt ?? activeTask.createdAt;
@@ -369,6 +372,7 @@ function TaskDetailModal({
                 onTabChange('overview');
                 setShowEditForm((current) => !current);
               } : undefined}
+              onDelete={canDeleteTasks && !busy ? () => void onDeleteTask(activeTask.id) : undefined}
               onClose={onClose}
             />
             <div className="px-5 sm:px-7">
@@ -758,6 +762,7 @@ export default function AllTasksPage() {
   const [visibleTaskColumns, setVisibleTaskColumns] = useState<Record<string, boolean>>(() => Object.fromEntries(TASK_GRID_COLUMNS.map((column) => [column.key, true])));
 
   const isManagerOrAdmin = role === 'ADMIN' || role === 'MANAGER';
+  const canDeleteTasks = role === 'SUPER_ADMIN' || role === 'ADMIN';
   const visibleTaskColumnList = useMemo(
     () => TASK_GRID_COLUMNS.filter((column) => visibleTaskColumns[column.key] !== false),
     [visibleTaskColumns],
@@ -860,9 +865,14 @@ export default function AllTasksPage() {
 
   async function deleteSelectedTasks() {
     if (selectedTaskIds.length === 0 || !window.confirm(`Delete ${selectedTaskIds.length} selected task(s)?`)) return;
-    await Promise.all(selectedTaskIds.map((id) => deleteTask(id)));
-    setTasks((current) => current.filter((task) => !selectedTaskIds.includes(task.id)));
-    setSelectedTaskIds([]);
+    try {
+      await Promise.all(selectedTaskIds.map((id) => deleteTask(id)));
+      setTasks((current) => current.filter((task) => !selectedTaskIds.includes(task.id)));
+      setSelectedTaskIds([]);
+      toast.success('Tasks deleted', 'Selected tasks were deleted successfully');
+    } catch (error) {
+      handleTaskActionError(error);
+    }
   }
 
   function updateTaskInState(taskId: number, updater: (task: Task) => Task) {
@@ -994,6 +1004,22 @@ export default function AllTasksPage() {
       void loadTasks();
     } catch (error) {
       if (!handleTaskActionError(error)) throw error;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDeleteTask(taskId: number) {
+    if (!window.confirm('Delete this task? This action cannot be undone.')) return;
+    setBusy(true);
+    try {
+      await deleteTask(taskId);
+      setTasks((current) => current.filter((task) => task.id !== taskId));
+      setSelectedTaskIds((current) => current.filter((id) => id !== taskId));
+      setSelectedTaskId(null);
+      toast.success('Task deleted', 'The task was deleted successfully');
+    } catch (error) {
+      handleTaskActionError(error);
     } finally {
       setBusy(false);
     }
@@ -1159,7 +1185,7 @@ export default function AllTasksPage() {
             <div className="flex items-center gap-2 border-b border-orange-100 bg-orange-50 px-4 py-2">
               <span className="text-xs font-semibold text-orange-700">{selectedTaskIds.length} selected</span>
               <button type="button" onClick={exportSelectedTasks} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">Export CSV</button>
-              <button type="button" onClick={() => void deleteSelectedTasks()} className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white">Delete</button>
+              {canDeleteTasks && <button type="button" onClick={() => void deleteSelectedTasks()} className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white">Delete</button>}
               <button type="button" onClick={() => setSelectedTaskIds([])} className="text-xs font-semibold text-slate-500">Clear</button>
             </div>
           )}
@@ -1309,6 +1335,7 @@ export default function AllTasksPage() {
           onSubmitTask={handleSubmit}
           onReviewTask={handleReview}
           onEditTask={handleEditTask}
+          onDeleteTask={handleDeleteTask}
           onUpdateStatus={handleStatusUpdate}
           onLoadMessages={loadTaskMessages}
           onSendMessage={sendTaskChatMessage}

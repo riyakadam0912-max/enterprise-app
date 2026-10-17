@@ -1779,7 +1779,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     });
     if (employee.shift?.type === 'FLEXIBLE') {
       const existingBreak = await this.prisma.attendance.findFirst({
-        where: { employeeId, breaks: { some: { endedAt: null } } },
+        where: {
+          employeeId,
+          organizationId: employee.organizationId ?? user.organizationId,
+          breaks: { some: { endedAt: null } },
+        },
         orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
         include: { breaks: true },
       });
@@ -1838,20 +1842,52 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   async stopBreak(user: AttendanceUser) {
     const employeeId = await this.resolveScopedEmployeeId(user);
     const employee = await this.ensureEmployee(employeeId, user);
+    if (employee.shift?.type === 'FLEXIBLE') {
+      const activeRecords = await this.prisma.attendance.findMany({
+        where: {
+          employeeId,
+          organizationId: employee.organizationId ?? user.organizationId,
+          breaks: { some: { endedAt: null } },
+        },
+        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+        include: { breaks: { where: { endedAt: null } } },
+      });
+      const openBreaks = activeRecords.flatMap((record) => record.breaks);
+      if (openBreaks.length === 0) {
+        throw new BadRequestException('No break is in progress');
+      }
+
+      const endedAt = new Date();
+      const updatedBreaks = await this.prisma.$transaction((tx) =>
+        Promise.all(
+          openBreaks.map((interval) =>
+            tx.attendanceBreak.update({
+              where: { id: interval.id },
+              data: { endedAt },
+            }),
+          ),
+        ),
+      );
+      await this.invalidateDashboardCache();
+      return {
+        break: updatedBreaks[0],
+        onBreak: false,
+        closedBreakCount: updatedBreaks.length,
+      };
+    }
+
     const record = await this.prisma.attendance.findFirst({
-      where:
-        employee.shift?.type === 'FLEXIBLE'
-          ? { employeeId, breaks: { some: { endedAt: null } } }
-          : { employeeId, checkIn: { not: null }, checkOut: null },
+      where: {
+        employeeId,
+        organizationId: employee.organizationId ?? user.organizationId,
+        checkIn: { not: null },
+        checkOut: null,
+      },
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
       include: { breaks: true },
     });
     if (!record)
-      throw new BadRequestException(
-        employee.shift?.type === 'FLEXIBLE'
-          ? 'No break is in progress'
-          : 'No active check-in record found',
-      );
+      throw new BadRequestException('No active check-in record found');
     const openBreak = record.breaks.find(
       (interval) => interval.endedAt === null,
     );

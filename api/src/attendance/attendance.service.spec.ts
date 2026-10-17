@@ -1250,6 +1250,57 @@ describe('AttendanceService', () => {
     expect(result.onBreak).toBe(false);
   });
 
+  it('closes all outstanding flexible breaks so stale intervals cannot block timers', async () => {
+    prisma.employee.findFirst
+      .mockResolvedValueOnce({ id: 7 })
+      .mockResolvedValueOnce({
+        id: 7,
+        organizationId: 1,
+        shift: { type: 'FLEXIBLE' },
+      });
+    prisma.attendance.findMany.mockResolvedValue([
+      {
+        id: 11,
+        breaks: [
+          { id: 21, attendanceId: 11, startedAt: new Date(), endedAt: null },
+        ],
+      },
+      {
+        id: 12,
+        breaks: [
+          { id: 22, attendanceId: 12, startedAt: new Date(), endedAt: null },
+        ],
+      },
+    ]);
+    prisma.attendanceBreak.update.mockImplementation(
+      async ({
+        where,
+        data,
+      }: {
+        where: { id: number };
+        data: { endedAt: Date };
+      }) => ({
+        id: where.id,
+        endedAt: data.endedAt,
+      }),
+    );
+
+    const result = await service.stopBreak(mockUser);
+
+    expect(prisma.attendance.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          employeeId: 7,
+          organizationId: 1,
+          breaks: { some: { endedAt: null } },
+        }),
+      }),
+    );
+    expect(prisma.attendanceBreak.update).toHaveBeenCalledTimes(2);
+    expect(result.closedBreakCount).toBe(2);
+    expect(result.onBreak).toBe(false);
+  });
+
   it('builds the daily attendance table with unscheduled and leave statuses', async () => {
     prisma.employee.findMany.mockResolvedValue([
       {

@@ -39,6 +39,7 @@ describe('TasksService per-user task timer sessions', () => {
       create: jest.Mock;
       updateMany: jest.Mock;
     };
+    employee: { findFirst: jest.Mock };
     attendance: { findFirst: jest.Mock };
     $transaction: jest.Mock;
   };
@@ -67,6 +68,9 @@ describe('TasksService per-user task timer sessions', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 101 }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      employee: {
+        findFirst: jest.fn().mockResolvedValue({ shift: { type: 'FIXED' } }),
       },
       attendance: {
         findFirst: jest.fn().mockResolvedValue({ id: 201 }),
@@ -157,6 +161,28 @@ describe('TasksService per-user task timer sessions', () => {
       ),
     ).rejects.toThrow('Check in and end any break');
     expect(prisma.taskTimerSession.create).not.toHaveBeenCalled();
+  });
+
+  it('allows a flexible employee to start a timer when no break is active', async () => {
+    prisma.employee.findFirst.mockResolvedValue({
+      shift: { type: 'FLEXIBLE' },
+    });
+    prisma.attendance.findFirst.mockResolvedValueOnce(null);
+
+    await service.updateTimer(
+      8,
+      { action: 'start' },
+      makeUser(11, Role.EMPLOYEE, 101),
+    );
+
+    expect(prisma.attendance.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          breaks: { some: { endedAt: null } },
+        }),
+      }),
+    );
+    expect(prisma.taskTimerSession.create).toHaveBeenCalledTimes(1);
   });
 
   it('links a stopped session to exactly one attributed pending timesheet', async () => {

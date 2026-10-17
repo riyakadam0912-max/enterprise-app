@@ -469,8 +469,10 @@ describe('TasksService', () => {
         shiftId: 4,
         organization: { timezone: 'UTC' },
       });
-      getPrismaDelegate(mockPrisma, 'taskCrewAssignment')
-        .findFirst.mockResolvedValueOnce({ id: 91 });
+      getPrismaDelegate(
+        mockPrisma,
+        'taskCrewAssignment',
+      ).findFirst.mockResolvedValueOnce({ id: 91 });
       attendanceDelegate.findUnique.mockResolvedValueOnce({
         id: 32,
         status: 'ABSENT',
@@ -955,6 +957,17 @@ describe('TasksService', () => {
       taskDelegate.findFirst.mockResolvedValueOnce({ id: 1 });
       taskDelegate.update.mockResolvedValueOnce({ id: 1 });
       await service.remove(1, mockAdminUser);
+      expect(taskDelegate.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('should soft delete task for super admin', async () => {
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      taskDelegate.findFirst.mockResolvedValueOnce({ id: 1 });
+      taskDelegate.update.mockResolvedValueOnce({ id: 1 });
+      await service.remove(
+        1,
+        createMockAuthUser(Role.SUPER_ADMIN, { userId: 9 }),
+      );
       expect(taskDelegate.update).toHaveBeenCalledTimes(1);
     });
   });

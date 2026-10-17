@@ -1,6 +1,6 @@
 'use client';
 
-import { CalendarDays, CircleCheck, CircleX, Clock3, Flag, FileText, FolderKanban, Pencil, UserRound, UserRoundCog, X } from 'lucide-react';
+import { CalendarDays, CircleCheck, CircleX, Clock3, Flag, FileText, FolderKanban, Pencil, Trash2, UserRound, UserRoundCog, X } from 'lucide-react';
 import { UserIdentity } from '@/components/common/UserIdentity';
 
 type TaskDetailHeaderProps = {
@@ -12,6 +12,7 @@ type TaskDetailHeaderProps = {
   overdue?: boolean;
   editing?: boolean;
   onEdit?: () => void;
+  onDelete?: () => void;
   onClose: () => void;
 };
 
@@ -64,6 +65,7 @@ export function TaskDetailHeader({
   overdue = false,
   editing = false,
   onEdit,
+  onDelete,
   onClose,
 }: TaskDetailHeaderProps) {
   const normalizedStatus = status.trim().toUpperCase() || 'PENDING';
@@ -94,6 +96,17 @@ export function TaskDetailHeader({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2">
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50"
+            aria-label="Delete task"
+            title="Delete task"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+          </button>
+        )}
         {onEdit && (
           <button
             type="button"
