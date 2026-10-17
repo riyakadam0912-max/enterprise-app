@@ -60,7 +60,7 @@ function WorkHourProgress({ label, balance }: { label: string; balance: WorkHour
 			<View style={{ flex: 1 }}>
 				<Text style={{ color: tokens.colors.ink, fontWeight: '700' }}>{label}</Text>
 				{isFlexible ? <>
-					<Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 4 }}>{balance.workingDayEquivalents?.toFixed(2) ?? '0.00'} working days earned from task time</Text>
+					<Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 4 }}>{balance.workingDayEquivalents?.toFixed(2) ?? '0.00'} working days earned from credited work</Text>
 					<Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 3 }}>{balance.activeDays ?? 0} active dates · {formatHoursDuration(balance.remainingHours)} to next day</Text>
 				</> : <>
 					<Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 4 }}>of {formatHoursDuration(balance.requiredHours)} scheduled</Text>
@@ -78,12 +78,15 @@ function DailyTaskWorkProgress({ summary }: { summary: DailyTaskWorkSummary }) {
 	const target = isFlexible
 		? (summary.workdayHours ?? 8) * 3600
 		: summary.scheduledSeconds;
+	const creditedSeconds = isFlexible
+		? summary.creditedWorkSeconds ?? summary.attendanceWorkedSeconds
+		: summary.taskTrackedSeconds;
 	const otherSeconds = Math.max(0, summary.attendanceWorkedSeconds - summary.taskTrackedSeconds);
 	const radius = 38;
 	const circumference = 2 * Math.PI * radius;
-	const taskLength = target > 0 ? Math.min(circumference, circumference * summary.taskTrackedSeconds / target) : 0;
+	const taskLength = target > 0 ? Math.min(circumference, circumference * creditedSeconds / target) : 0;
 	const otherLength = target > 0 ? Math.min(circumference - taskLength, circumference * otherSeconds / target) : 0;
-	const flexibleProgressSeconds = target > 0 ? summary.taskTrackedSeconds % target : 0;
+	const flexibleProgressSeconds = target > 0 ? creditedSeconds % target : 0;
 	const remainingSeconds = isFlexible
 		? target - flexibleProgressSeconds
 		: Math.max(0, target - summary.attendanceWorkedSeconds);
@@ -102,7 +105,7 @@ function DailyTaskWorkProgress({ summary }: { summary: DailyTaskWorkSummary }) {
 				<View
 					accessibilityRole="image"
 					accessibilityLabel={isFlexible
-						? `${formatHoursDuration(summary.taskTrackedSeconds / 3600)} task hours; 8 hours equals one working day`
+						? `${formatHoursDuration(creditedSeconds / 3600)} credited work hours; 8 hours equals one working day`
 						: `Task tracked ${formatHoursDuration(summary.taskTrackedSeconds / 3600)} of ${formatHoursDuration(target / 3600)} scheduled`}
 					style={{ width: 94, height: 94, alignItems: 'center', justifyContent: 'center' }}
 				>
@@ -111,14 +114,14 @@ function DailyTaskWorkProgress({ summary }: { summary: DailyTaskWorkSummary }) {
 						<Circle cx={47} cy={47} r={radius} fill="none" stroke="#0f766e" strokeWidth={8} strokeDasharray={`${taskLength} ${circumference}`} strokeLinecap="round" rotation={-90} origin="47, 47" />
 						{otherLength > 0 ? <Circle cx={47} cy={47} r={radius} fill="none" stroke="#99f6e4" strokeWidth={8} strokeDasharray={`${otherLength} ${circumference}`} strokeLinecap="round" rotation={-90 + taskLength / circumference * 360} origin="47, 47" /> : null}
 					</Svg>
-					<Text style={{ color: tokens.colors.ink, fontSize: 11, fontWeight: '800' }}>{formatHoursDuration(summary.taskTrackedSeconds / 3600)}</Text>
-					<Text style={{ color: tokens.colors.muted, fontSize: 8, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.8 }}>Task-tracked</Text>
+					<Text style={{ color: tokens.colors.ink, fontSize: 11, fontWeight: '800' }}>{formatHoursDuration(creditedSeconds / 3600)}</Text>
+					<Text style={{ color: tokens.colors.muted, fontSize: 8, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.8 }}>{isFlexible ? 'Credited' : 'Task-tracked'}</Text>
 				</View>
 				<View style={{ flex: 1, gap: 10 }}>
 					{isFlexible ? <Text style={{ color: tokens.colors.muted, fontSize: 12 }}>{summary.workingDayEquivalent?.toFixed(2) ?? '0.00'} working days earned today</Text> : null}
 					<View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-						<View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}><View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#0f766e' }} /><Text style={{ color: tokens.colors.muted, fontSize: 12 }}>Task-tracked</Text></View>
-						<Text style={{ color: tokens.colors.ink, fontSize: 12, fontWeight: '700' }}>{formatHoursDuration(summary.taskTrackedSeconds / 3600)}</Text>
+						<View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}><View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#0f766e' }} /><Text style={{ color: tokens.colors.muted, fontSize: 12 }}>{isFlexible ? 'Credited work' : 'Task-tracked'}</Text></View>
+						<Text style={{ color: tokens.colors.ink, fontSize: 12, fontWeight: '700' }}>{formatHoursDuration(creditedSeconds / 3600)}</Text>
 					</View>
 					{!isFlexible ? <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
 						<View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}><View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#99f6e4' }} /><Text style={{ color: tokens.colors.muted, fontSize: 12 }}>Other attended</Text></View>
@@ -134,7 +137,7 @@ function DailyTaskWorkProgress({ summary }: { summary: DailyTaskWorkSummary }) {
 						</Text>
 						<Text style={{ color: tokens.colors.muted, fontSize: 10, marginTop: 4 }}>
 							{isFlexible
-								? `${formatHoursDuration(summary.taskTrackedSeconds / 3600)} task time · 8 hours = 1 working day`
+								? `${formatHoursDuration(summary.taskTrackedSeconds / 3600)} task time${(summary.legacyAttendanceSeconds ?? 0) > 0 ? ` · ${formatHoursDuration((summary.legacyAttendanceSeconds ?? 0) / 3600)} legacy attendance credited` : ''} · 8 hours = 1 working day`
 								: `${formatHoursDuration(summary.attendanceWorkedSeconds / 3600)} attended of ${formatHoursDuration(target / 3600)} scheduled`}
 						</Text>
 						{summary.activeTimer ? <Text numberOfLines={1} style={{ color: '#047857', fontSize: 10, marginTop: 4 }}>Tracking: {summary.activeTimer.taskName}</Text> : null}

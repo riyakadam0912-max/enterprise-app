@@ -38,6 +38,8 @@ export type DailyTaskWorkSummary = {
 	scheduledSeconds: number;
 	shiftType?: string;
 	workdayHours?: number;
+	creditedWorkSeconds?: number;
+	legacyAttendanceSeconds?: number;
 	workingDayEquivalent?: number;
 	activeTimer: { taskName: string; startedAt: string } | null;
 };

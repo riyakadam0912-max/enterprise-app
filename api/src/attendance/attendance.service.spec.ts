@@ -830,6 +830,46 @@ describe('AttendanceService', () => {
     });
   });
 
+  it('credits flexible attendance hours when no task timer was recorded that day', async () => {
+    jest.setSystemTime(new Date('2026-10-16T12:00:00.000Z'));
+    const employee = {
+      id: 7,
+      organizationId: 1,
+      shift: { type: 'FLEXIBLE', requiredHours: 8 },
+    };
+    prisma.employee.findFirst
+      .mockResolvedValueOnce({ id: 7 })
+      .mockResolvedValueOnce(employee);
+    prisma.organization.findUnique.mockResolvedValueOnce({ timezone: 'UTC' });
+    prisma.taskTimerInterval.findMany.mockResolvedValueOnce([]);
+    prisma.taskTimerSession.findFirst.mockResolvedValueOnce(null);
+    prisma.attendance.findUnique.mockResolvedValueOnce({
+      date: new Date('2026-10-16T00:00:00.000Z'),
+      checkIn: new Date('2026-10-16T08:00:00.000Z'),
+      checkOut: new Date('2026-10-16T12:00:00.000Z'),
+      requiredHours: 8,
+      shift: { requiredHours: 8 },
+      breaks: [
+        {
+          startedAt: new Date('2026-10-16T10:00:00.000Z'),
+          endedAt: new Date('2026-10-16T10:30:00.000Z'),
+        },
+      ],
+    });
+
+    const result = await service.getMyTaskWorkSummary(mockUser);
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        taskTrackedSeconds: 0,
+        attendanceWorkedSeconds: 12_600,
+        creditedWorkSeconds: 12_600,
+        legacyAttendanceSeconds: 12_600,
+        workingDayEquivalent: 0.44,
+      }),
+    );
+  });
+
   it('does not write checkout when the timer cannot be finalized', async () => {
     const mockEmployee = {
       id: 7,
@@ -1722,7 +1762,7 @@ describe('AttendanceService', () => {
   });
 
   it('reports flexible monthly working days from task hours rather than attendance rows', async () => {
-    jest.setSystemTime(new Date('2026-03-20T12:00:00.000Z'));
+    jest.setSystemTime(new Date('2026-10-20T12:00:00.000Z'));
     prisma.employee.findMany.mockResolvedValueOnce([
       {
         id: 7,
@@ -1739,18 +1779,85 @@ describe('AttendanceService', () => {
     prisma.leaveRequest.findMany.mockResolvedValue([]);
     prisma.taskTimerInterval.findMany.mockResolvedValue([
       {
-        startedAt: new Date('2026-03-10T08:00:00.000Z'),
-        endedAt: new Date('2026-03-10T10:00:00.000Z'),
+        startedAt: new Date('2026-10-17T08:00:00.000Z'),
+        endedAt: new Date('2026-10-17T10:00:00.000Z'),
       },
       {
-        startedAt: new Date('2026-03-12T08:00:00.000Z'),
-        endedAt: new Date('2026-03-12T11:00:00.000Z'),
+        startedAt: new Date('2026-10-18T08:00:00.000Z'),
+        endedAt: new Date('2026-10-18T11:00:00.000Z'),
       },
       {
-        startedAt: new Date('2026-03-16T08:00:00.000Z'),
-        endedAt: new Date('2026-03-16T11:00:00.000Z'),
+        startedAt: new Date('2026-10-19T08:00:00.000Z'),
+        endedAt: new Date('2026-10-19T11:00:00.000Z'),
       },
     ]);
+    prisma.taskTimerSession.findMany.mockResolvedValue([]);
+
+    const result = await service.getMonthlyReport(
+      { year: 2026, month: 10 } as any,
+      mockUser as any,
+    );
+
+    expect(result.rows[0]).toEqual(
+      expect.objectContaining({
+        isFlexible: true,
+        workingDayEquivalents: 1,
+        workingDays: 1,
+        presentCount: 1,
+        totalWorkedHours: 8,
+        attendancePercent: 0,
+      }),
+    );
+  });
+
+  it('includes legacy attendance hours in flexible monthly working-day equivalents', async () => {
+    jest.setSystemTime(new Date('2026-03-20T12:00:00.000Z'));
+    prisma.employee.findMany.mockResolvedValueOnce([
+      {
+        id: 7,
+        name: 'Ava',
+        hireDate: null,
+        department: 'Sales',
+        designation: 'Associate',
+        shift: { type: 'FLEXIBLE', requiredHours: 6 },
+        organization: { id: 1, name: 'Main', timezone: 'UTC' },
+        user: { role: 'EMPLOYEE' },
+      },
+    ]);
+    prisma.attendance.findMany.mockResolvedValue([
+      {
+        id: 21,
+        employeeId: 7,
+        date: new Date('2026-03-10T00:00:00.000Z'),
+        checkIn: new Date('2026-03-10T08:00:00.000Z'),
+        checkOut: new Date('2026-03-10T10:00:00.000Z'),
+        workingHours: 2,
+        breaks: [],
+        status: AttendanceStatus.PRESENT,
+      },
+      {
+        id: 22,
+        employeeId: 7,
+        date: new Date('2026-03-12T00:00:00.000Z'),
+        checkIn: new Date('2026-03-12T08:00:00.000Z'),
+        checkOut: new Date('2026-03-12T11:00:00.000Z'),
+        workingHours: 3,
+        breaks: [],
+        status: AttendanceStatus.PRESENT,
+      },
+      {
+        id: 23,
+        employeeId: 7,
+        date: new Date('2026-03-16T00:00:00.000Z'),
+        checkIn: new Date('2026-03-16T08:00:00.000Z'),
+        checkOut: new Date('2026-03-16T11:00:00.000Z'),
+        workingHours: 3,
+        breaks: [],
+        status: AttendanceStatus.PRESENT,
+      },
+    ]);
+    prisma.leaveRequest.findMany.mockResolvedValue([]);
+    prisma.taskTimerInterval.findMany.mockResolvedValue([]);
     prisma.taskTimerSession.findMany.mockResolvedValue([]);
 
     const result = await service.getMonthlyReport(
@@ -1765,7 +1872,6 @@ describe('AttendanceService', () => {
         workingDays: 1,
         presentCount: 1,
         totalWorkedHours: 8,
-        attendancePercent: 0,
       }),
     );
   });
@@ -1884,7 +1990,7 @@ describe('AttendanceService', () => {
   });
 
   it('earns one flexible working day from eight task hours across three dates', async () => {
-    const now = new Date('2026-10-16T12:00:00.000Z');
+    const now = new Date('2026-10-19T12:00:00.000Z');
     const shift = {
       id: 4,
       name: 'Flexible',
@@ -1899,16 +2005,16 @@ describe('AttendanceService', () => {
     prisma.attendance.findMany.mockResolvedValue([]);
     prisma.taskTimerInterval.findMany.mockResolvedValue([
       {
-        startedAt: new Date('2026-10-14T08:00:00.000Z'),
-        endedAt: new Date('2026-10-14T10:00:00.000Z'),
+        startedAt: new Date('2026-10-17T08:00:00.000Z'),
+        endedAt: new Date('2026-10-17T10:00:00.000Z'),
       },
       {
-        startedAt: new Date('2026-10-15T08:00:00.000Z'),
-        endedAt: new Date('2026-10-15T11:00:00.000Z'),
+        startedAt: new Date('2026-10-18T08:00:00.000Z'),
+        endedAt: new Date('2026-10-18T11:00:00.000Z'),
       },
       {
-        startedAt: new Date('2026-10-16T07:00:00.000Z'),
-        endedAt: new Date('2026-10-16T10:00:00.000Z'),
+        startedAt: new Date('2026-10-19T07:00:00.000Z'),
+        endedAt: new Date('2026-10-19T10:00:00.000Z'),
       },
     ]);
 
@@ -1923,17 +2029,166 @@ describe('AttendanceService', () => {
       expect.objectContaining({
         flexible: true,
         workdayHours: 8,
-        completedHours: 8,
-        activeDays: 3,
-        workingDayEquivalents: 1,
-        remainingHours: 8,
-        progressPercent: 100,
+        completedHours: 3,
+        activeDays: 1,
+        workingDayEquivalents: 0.38,
       }),
     );
     expect(balances.month).toEqual(
       expect.objectContaining({
         completedHours: 8,
         workingDayEquivalents: 1,
+      }),
+    );
+  });
+
+  it('credits legacy flexible attendance from check-in/out across multiple dates', async () => {
+    const now = new Date('2026-10-16T12:00:00.000Z');
+    const shift = {
+      id: 4,
+      name: 'Flexible',
+      type: 'FLEXIBLE',
+      startTime: '09:00',
+      endTime: '17:00',
+      requiredHours: 6,
+      minPresentHours: 4,
+      gracePeriodMinutes: 0,
+      weeklyHolidayDay: 0,
+    };
+    prisma.attendance.findMany.mockResolvedValue([
+      {
+        date: new Date('2026-10-14T00:00:00.000Z'),
+        checkIn: new Date('2026-10-14T08:00:00.000Z'),
+        checkOut: new Date('2026-10-14T10:00:00.000Z'),
+        workingHours: 2,
+        shift,
+        breaks: [],
+      },
+      {
+        date: new Date('2026-10-15T00:00:00.000Z'),
+        checkIn: new Date('2026-10-15T08:00:00.000Z'),
+        checkOut: new Date('2026-10-15T11:00:00.000Z'),
+        workingHours: 3,
+        shift,
+        breaks: [],
+      },
+      {
+        date: new Date('2026-10-16T00:00:00.000Z'),
+        checkIn: new Date('2026-10-16T07:00:00.000Z'),
+        checkOut: new Date('2026-10-16T10:00:00.000Z'),
+        workingHours: 3,
+        shift,
+        breaks: [],
+      },
+    ]);
+    prisma.taskTimerInterval.findMany.mockResolvedValue([]);
+
+    const balances = await (service as any).getWorkHourBalancesForEmployee(
+      7,
+      { id: 7, organizationId: 1, hireDate: null, shift },
+      now,
+      'UTC',
+    );
+
+    expect(balances.week).toEqual(
+      expect.objectContaining({
+        completedHours: 8,
+        activeDays: 3,
+        workingDayEquivalents: 1,
+      }),
+    );
+    expect(balances.month).toEqual(
+      expect.objectContaining({
+        completedHours: 8,
+        activeDays: 3,
+        workingDayEquivalents: 1,
+      }),
+    );
+  });
+
+  it('uses task time instead of legacy attendance for dates with task intervals', async () => {
+    const now = new Date('2026-10-17T12:00:00.000Z');
+    const shift = {
+      id: 4,
+      name: 'Flexible',
+      type: 'FLEXIBLE',
+      startTime: '09:00',
+      endTime: '17:00',
+      requiredHours: 8,
+      minPresentHours: 4,
+      gracePeriodMinutes: 0,
+      weeklyHolidayDay: 0,
+    };
+    prisma.attendance.findMany.mockResolvedValue([
+      {
+        date: new Date('2026-10-17T00:00:00.000Z'),
+        checkIn: new Date('2026-10-17T08:00:00.000Z'),
+        checkOut: new Date('2026-10-17T16:00:00.000Z'),
+        workingHours: 8,
+        shift,
+        breaks: [],
+      },
+    ]);
+    prisma.taskTimerInterval.findMany.mockResolvedValue([
+      {
+        startedAt: new Date('2026-10-17T08:00:00.000Z'),
+        endedAt: new Date('2026-10-17T10:00:00.000Z'),
+      },
+    ]);
+
+    const balances = await (service as any).getWorkHourBalancesForEmployee(
+      7,
+      { id: 7, organizationId: 1, hireDate: null, shift },
+      now,
+      'UTC',
+    );
+
+    expect(balances.week).toEqual(
+      expect.objectContaining({
+        completedHours: 2,
+        activeDays: 1,
+        workingDayEquivalents: 0.25,
+      }),
+    );
+  });
+
+  it('does not use check-in/out as work credit on or after the task-time cutover', async () => {
+    const now = new Date('2026-10-17T12:00:00.000Z');
+    const shift = {
+      id: 4,
+      name: 'Flexible',
+      type: 'FLEXIBLE',
+      startTime: '09:00',
+      endTime: '17:00',
+      requiredHours: 8,
+      minPresentHours: 4,
+      gracePeriodMinutes: 0,
+      weeklyHolidayDay: 0,
+    };
+    prisma.attendance.findMany.mockResolvedValue([
+      {
+        date: new Date('2026-10-17T00:00:00.000Z'),
+        checkIn: new Date('2026-10-17T08:00:00.000Z'),
+        checkOut: new Date('2026-10-17T16:00:00.000Z'),
+        workingHours: 8,
+        shift,
+        breaks: [],
+      },
+    ]);
+    prisma.taskTimerInterval.findMany.mockResolvedValue([]);
+
+    const balances = await (service as any).getWorkHourBalancesForEmployee(
+      7,
+      { id: 7, organizationId: 1, hireDate: null, shift },
+      now,
+      'UTC',
+    );
+
+    expect(balances.week).toEqual(
+      expect.objectContaining({
+        completedHours: 0,
+        activeDays: 0,
+        workingDayEquivalents: 0,
       }),
     );
   });

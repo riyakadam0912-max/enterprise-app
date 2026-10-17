@@ -274,7 +274,7 @@ export default function ESSAttendancePage() {
                   <h2 className="font-semibold text-gray-900">{label}</h2>
                   {isFlexible ? (
                     <>
-                      <p className="mt-1 text-sm text-gray-600">{balance.workingDayEquivalents?.toFixed(2) ?? '0.00'} working days earned from task time</p>
+                      <p className="mt-1 text-sm text-gray-600">{balance.workingDayEquivalents?.toFixed(2) ?? '0.00'} working days earned from credited work</p>
                       <p className="mt-1 text-sm text-gray-600">{balance.activeDays ?? 0} active dates · {formatHoursDuration(balance.remainingHours)} to next day</p>
                     </>
                   ) : (

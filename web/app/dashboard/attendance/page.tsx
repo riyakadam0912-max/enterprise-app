@@ -200,7 +200,7 @@ function WorkHourProgress({ label, balance }: { label: string; balance: WorkHour
         role="progressbar"
         aria-label={
           isFlexible
-            ? `${formatHoursDuration(balance.completedHours)} task hours, ${balance.workingDayEquivalents?.toFixed(2) ?? '0.00'} working days earned`
+            ? `${formatHoursDuration(balance.completedHours)} credited work hours, ${balance.workingDayEquivalents?.toFixed(2) ?? '0.00'} working days earned`
             : `${label} hours completed against ${targetHours.toFixed(2)} hour target`
         }
         aria-valuenow={progressPercent}
@@ -216,7 +216,7 @@ function WorkHourProgress({ label, balance }: { label: string; balance: WorkHour
         {isFlexible ? (
           <>
             <p className="mt-1 text-xs font-medium text-slate-600">
-              {balance.workingDayEquivalents?.toFixed(2) ?? '0.00'} working days earned from task time
+              {balance.workingDayEquivalents?.toFixed(2) ?? '0.00'} working days earned from credited work
             </p>
             <p className="mt-1 text-xs text-slate-500">
               {balance.activeDays ?? 0} active dates · {formatHoursDuration(flexibleRemaining)} to next day
@@ -298,17 +298,20 @@ function DailyTaskWorkCard({ enabled }: { enabled: boolean }) {
     ? (summary.workdayHours ?? 8) * 3600
     : summary.scheduledSeconds;
   const taskSeconds = summary.taskTrackedSeconds;
+  const creditedSeconds = isFlexible
+    ? summary.creditedWorkSeconds ?? summary.attendanceWorkedSeconds
+    : taskSeconds;
   const otherSeconds = isFlexible
     ? 0
     : Math.max(0, summary.attendanceWorkedSeconds - taskSeconds);
   const circumference = 2 * Math.PI * 40;
-  const taskLength = target > 0 ? Math.min(circumference, circumference * taskSeconds / target) : 0;
+  const taskLength = target > 0 ? Math.min(circumference, circumference * creditedSeconds / target) : 0;
   const otherLength = target > 0
     ? Math.min(circumference - taskLength, circumference * otherSeconds / target)
     : 0;
-  const taskPercent = target > 0 ? Math.min(100, Math.round(taskSeconds / target * 100)) : 0;
+  const taskPercent = target > 0 ? Math.min(100, Math.round(creditedSeconds / target * 100)) : 0;
   const targetRemaining = isFlexible
-    ? target - (taskSeconds % target)
+    ? target - (creditedSeconds % target)
     : Math.max(0, target - summary.attendanceWorkedSeconds);
 
   return (
@@ -331,7 +334,7 @@ function DailyTaskWorkCard({ enabled }: { enabled: boolean }) {
         <div
           role="img"
           aria-label={isFlexible
-            ? `${formatHoursDuration(taskSeconds / 3600)} task hours; 8 hours equals one working day`
+            ? `${formatHoursDuration(creditedSeconds / 3600)} credited work hours; 8 hours equals one working day`
             : `Task tracked ${formatHoursDuration(taskSeconds / 3600)} of ${formatHoursDuration(target / 3600)} scheduled`}
           className="relative grid h-32 w-32 shrink-0 place-items-center"
         >
@@ -351,14 +354,14 @@ function DailyTaskWorkCard({ enabled }: { enabled: boolean }) {
             )}
           </svg>
           <div className="text-center">
-            <p className="text-lg font-semibold leading-tight text-slate-900">{formatHoursDuration(taskSeconds / 3600)}</p>
-            <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">task-tracked</p>
+            <p className="text-lg font-semibold leading-tight text-slate-900">{formatHoursDuration(creditedSeconds / 3600)}</p>
+            <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">{isFlexible ? 'credited work' : 'task-tracked'}</p>
           </div>
         </div>
         <div className="min-w-0 flex-1 space-y-3">
           <div className="flex items-center justify-between gap-3 text-sm">
-            <span className="inline-flex items-center gap-2 text-slate-600"><span className="h-2 w-2 rounded-full bg-teal-700" />Task-tracked</span>
-            <span className="font-semibold tabular-nums text-slate-900">{formatHoursDuration(taskSeconds / 3600)}</span>
+            <span className="inline-flex items-center gap-2 text-slate-600"><span className="h-2 w-2 rounded-full bg-teal-700" />{isFlexible ? 'Credited work' : 'Task-tracked'}</span>
+            <span className="font-semibold tabular-nums text-slate-900">{formatHoursDuration(creditedSeconds / 3600)}</span>
           </div>
           {!isFlexible && <div className="flex items-center justify-between gap-3 text-sm">
             <span className="inline-flex items-center gap-2 text-slate-600"><span className="h-2 w-2 rounded-full bg-teal-200" />Other attended work</span>
@@ -379,7 +382,7 @@ function DailyTaskWorkCard({ enabled }: { enabled: boolean }) {
           )}
           <p className="text-xs text-slate-400">
             {isFlexible
-              ? `${formatHoursDuration(taskSeconds / 3600)} task time · check-in/out does not determine earned hours`
+              ? `${formatHoursDuration(taskSeconds / 3600)} task time${(summary.legacyAttendanceSeconds ?? 0) > 0 ? ` · ${formatHoursDuration((summary.legacyAttendanceSeconds ?? 0) / 3600)} legacy attendance credited` : ''} · 8 hours = 1 working day`
               : `${formatHoursDuration(summary.attendanceWorkedSeconds / 3600)} attended of ${formatHoursDuration(target / 3600)} scheduled`}
           </p>
           {error && <p className="text-xs text-rose-600">Could not refresh live time: {error}</p>}
