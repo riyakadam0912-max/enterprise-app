@@ -2132,6 +2132,26 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       scopedIds,
       user,
     );
+    if (!date) {
+      const flexibleEmployeeIds = rows
+        .filter((row) => row.shiftDetails?.type === 'FLEXIBLE')
+        .map((row) => row.employeeId);
+      if (flexibleEmployeeIds.length > 0) {
+        const openBreakRows = await this.prisma.attendance.findMany({
+          where: {
+            employeeId: { in: flexibleEmployeeIds },
+            breaks: { some: { endedAt: null } },
+          },
+          select: { employeeId: true },
+        });
+        const employeesOnBreak = new Set(
+          openBreakRows.map((row) => row.employeeId),
+        );
+        for (const row of rows) {
+          if (employeesOnBreak.has(row.employeeId)) row.onBreak = true;
+        }
+      }
+    }
 
     return {
       date: day.toISOString(),

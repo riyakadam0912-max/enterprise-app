@@ -392,6 +392,32 @@ describe('AttendanceService', () => {
     );
   });
 
+  it('shows an active flexible break from an earlier attendance date in today status', async () => {
+    prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
+    jest.spyOn(service as any, 'buildDailySnapshot').mockResolvedValue({
+      rows: [
+        {
+          employeeId: 7,
+          shiftDetails: { type: 'FLEXIBLE' },
+          onBreak: false,
+        },
+      ],
+      summary: {},
+    });
+    prisma.attendance.findMany.mockResolvedValue([{ employeeId: 7 }]);
+
+    const result = await service.getToday(mockUser);
+
+    expect(prisma.attendance.findMany).toHaveBeenCalledWith({
+      where: {
+        employeeId: { in: [7] },
+        breaks: { some: { endedAt: null } },
+      },
+      select: { employeeId: true },
+    });
+    expect(result.rows[0].onBreak).toBe(true);
+  });
+
   it('returns an already-checked-out conflict for a stale checkout request', async () => {
     jest.setSystemTime(new Date('2026-03-14T00:01:00.000Z'));
     jest.spyOn(service as any, 'resolveScopedEmployeeId').mockResolvedValue(7);
