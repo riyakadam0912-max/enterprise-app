@@ -1,5 +1,4 @@
 import { apiClient } from './apiClient';
-import { withAuthRefreshLock } from './axiosClient';
 
 export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
 
@@ -49,12 +48,6 @@ export async function getCurrentUser(): Promise<AuthPayload> {
     }
     throw new Error(`Unable to determine current user: ${String(error)}`);
   }
-}
-
-export async function refreshCurrentSession(): Promise<AuthPayload> {
-  return withAuthRefreshLock(() =>
-    apiClient<AuthPayload>('/auth/refresh', { method: 'POST' }),
-  );
 }
 
 export async function logoutUser(): Promise<LogoutResponse> {
