@@ -176,6 +176,9 @@ export default function EmployeeAttendancePage() {
                           <p>{new Date(day.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })} - {day.checkOut ? new Date(day.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : 'In progress'}</p>
                         )}
                         {day.workingHours != null && <p>{formatHoursDuration(day.workingHours)}</p>}
+                        {day.creditedWorkSeconds !== undefined && (
+                          <p className="text-[10px] text-teal-700">Flexible credited time</p>
+                        )}
                         {day.breaks?.map((interval) => {
                           const start = new Date(interval.startedAt);
                           const end = interval.endedAt ? new Date(interval.endedAt) : null;

@@ -180,19 +180,8 @@ export class AttendanceController {
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @ApiBody({ type: CreateShiftDto })
   @Post('shifts')
-  createShift(
-    @Body() dto: CreateShiftDto,
-    @Req()
-    req: {
-      user: {
-        userId: number;
-        role: Role;
-        employeeId?: number | null;
-        organizationId: number;
-      };
-    },
-  ) {
-    return this.attendanceService.createShift(dto, req.user);
+  createShift(@Body() dto: CreateShiftDto, @Req() req: AuthenticatedRequest) {
+    return this.attendanceService.createShift(dto, this.scopedUser(req));
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)
@@ -214,19 +203,8 @@ export class AttendanceController {
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @ApiBody({ type: AssignShiftDto })
   @Post('shifts/assign')
-  assignShift(
-    @Body() dto: AssignShiftDto,
-    @Req()
-    req: {
-      user: {
-        userId: number;
-        role: Role;
-        employeeId?: number | null;
-        organizationId: number;
-      };
-    },
-  ) {
-    return this.attendanceService.assignShift(dto, req.user);
+  assignShift(@Body() dto: AssignShiftDto, @Req() req: AuthenticatedRequest) {
+    return this.attendanceService.assignShift(dto, this.scopedUser(req));
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
@@ -240,17 +218,9 @@ export class AttendanceController {
   updateShift(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateShiftDto,
-    @Req()
-    req: {
-      user: {
-        userId: number;
-        role: Role;
-        employeeId?: number | null;
-        organizationId: number;
-      };
-    },
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.attendanceService.updateShift(id, dto, req.user);
+    return this.attendanceService.updateShift(id, dto, this.scopedUser(req));
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
@@ -262,17 +232,9 @@ export class AttendanceController {
   @Delete('shifts/:id')
   deleteShift(
     @Param('id', ParseIntPipe) id: number,
-    @Req()
-    req: {
-      user: {
-        userId: number;
-        role: Role;
-        employeeId?: number | null;
-        organizationId: number;
-      };
-    },
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.attendanceService.deleteShift(id, req.user);
+    return this.attendanceService.deleteShift(id, this.scopedUser(req));
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)

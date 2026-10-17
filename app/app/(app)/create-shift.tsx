@@ -14,7 +14,7 @@ import { createShift } from "@/src/api/attendance";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { Dropdown } from "@/src/components/Dropdown";
 
-const types = ["FIXED", "FLEXIBLE", "ROTATIONAL"] as const;
+const types = ["FIXED", "FLEXIBLE"] as const;
 export default function CreateShift() {
   const router = useRouter();
   const client = useQueryClient();

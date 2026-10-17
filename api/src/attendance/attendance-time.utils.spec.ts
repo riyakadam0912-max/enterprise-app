@@ -85,4 +85,16 @@ describe('attendance time utilities', () => {
     expect(attendanceStatusForWorkedHours(2.5, 5)).toBe('HALF_DAY');
     expect(attendanceStatusForWorkedHours(2.49, 5)).toBe('ABSENT');
   });
+
+  it('rejects invalid organization timezones instead of silently using UTC', () => {
+    expect(() =>
+      dateKeyInTimezone(new Date('2026-10-17T12:00:00.000Z'), 'Not/AZone'),
+    ).toThrow(/Invalid organization timezone/);
+  });
+
+  it('rejects impossible attendance calendar dates', () => {
+    expect(() => attendanceDateFromKey('2026-02-30')).toThrow(
+      'Invalid attendance date: 2026-02-30',
+    );
+  });
 });

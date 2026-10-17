@@ -290,9 +290,9 @@ model UserRole {
 }
 
 model Employee {
-  id                    Int                 @id @default(autoincrement())
-  createdAt             DateTime            @default(now())
-  updatedAt             DateTime            @updatedAt
+  id                    Int                       @id @default(autoincrement())
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
   department            String?
   designation           String?
   email                 String?
@@ -314,51 +314,67 @@ model Employee {
   pan                   String?
   shiftId               Int?
   attendances           Attendance[]
-  dealAssignments       Deal[]              @relation("DealAssignee")
-  organization          Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  businessUnit          BusinessUnit?       @relation("EmployeeBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
-  shift                 Shift?              @relation(fields: [shiftId], references: [id])
+  dealAssignments       Deal[]                    @relation("DealAssignee")
+  organization          Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  businessUnit          BusinessUnit?             @relation("EmployeeBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
+  shift                 Shift?                    @relation(fields: [shiftId], references: [id])
+  shiftAssignments      EmployeeShiftAssignment[]
   expenseClaims         Expense[]
   form16s               Form16[]
   goals                 Goal[]
-  leadAssignments       Lead[]              @relation("LeadAssignee")
+  leadAssignments       Lead[]                    @relation("LeadAssignee")
   leaveRequests         LeaveRequest[]
   payrollEntries        PayrollEntry[]
   payslips              Payslip[]
   performanceReviews    PerformanceReview[]
   projectMemberships    ProjectMember[]
   salaryStructures      SalaryStructure[]
-  taskAssignments       Task[]              @relation("TaskAssignee")
+  taskAssignments       Task[]                    @relation("TaskAssignee")
   taxDeclarations       TaxDeclaration[]
-  user                  User?               @relation("UserEmployee")
-  assignedProjects      Project[]           @relation("ProjectAssignedEmployees")
+  user                  User?                     @relation("UserEmployee")
+  assignedProjects      Project[]                 @relation("ProjectAssignedEmployees")
 
   @@index([organizationId])
   @@index([businessUnitId])
 }
 
 model Shift {
-  id                 Int          @id @default(autoincrement())
+  id                 Int                       @id @default(autoincrement())
   name               String
   type               ShiftType
   startTime          String?
   endTime            String?
-  requiredHours      Float        @default(8)
-  minPresentHours    Float        @default(5)
-  gracePeriodMinutes Int          @default(15)
+  requiredHours      Float                     @default(8)
+  minPresentHours    Float                     @default(5)
+  gracePeriodMinutes Int                       @default(15)
   rotationPattern    String?
-  weeklyHolidayDay   Int          @default(0)
-  workingDays        Int[]        @default([1, 2, 3, 4, 5])
-  isActive           Boolean      @default(true)
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
+  weeklyHolidayDay   Int                       @default(0)
+  workingDays        Int[]                     @default([1, 2, 3, 4, 5])
+  isActive           Boolean                   @default(true)
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
   deletedAt          DateTime?
   organizationId     Int
   attendances        Attendance[]
   employees          Employee[]
-  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignments        EmployeeShiftAssignment[]
+  organization       Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+}
+
+model EmployeeShiftAssignment {
+  id            Int       @id @default(autoincrement())
+  employeeId    Int
+  shiftId       Int
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  createdAt     DateTime  @default(now())
+  employee      Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  shift         Shift     @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, effectiveFrom, effectiveTo])
+  @@index([shiftId])
 }
 
 model Attendance {

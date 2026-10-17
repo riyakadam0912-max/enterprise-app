@@ -13,13 +13,38 @@ function createPrismaMock() {
   const prisma: any = {
     employee: {
       findUnique: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn(),
+      update: jest.fn(),
+    },
+    employeeShiftAssignment: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      create: jest.fn(),
+      update: jest.fn(),
+    },
+    shift: {
       findMany: jest.fn(),
       findFirst: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
     },
     attendance: {
       findUnique: jest.fn(),
       findFirst: jest.fn(),
       findMany: jest.fn(),
+      upsert: jest.fn(async (args: any) => {
+        const existing = await prisma.attendance.findUnique({
+          where: args.where,
+          include: args.include,
+        });
+        if (existing) return existing;
+        const created = await prisma.attendance.create({
+          data: args.create,
+          include: args.include,
+        });
+        return created ?? { id: -1, ...args.create };
+      }),
       create: jest.fn(),
       update: jest.fn(),
     },
@@ -111,6 +136,7 @@ describe('AttendanceService', () => {
       getOrganizationIds: jest.fn().mockResolvedValue([1]),
       getDescendantOrganizationIds: jest.fn(async (id: number) => [id]),
       getOrganizationFamilyRootId: jest.fn(async (id: number) => id),
+      getRelatedOrganizationIds: jest.fn(async (id: number) => [id]),
       getOrganizationFamilyRootMap: jest.fn(
         async (ids: number[]) => new Map(ids.map((id) => [id, id])),
       ),
@@ -131,6 +157,140 @@ describe('AttendanceService', () => {
   afterEach(() => {
     jest.useRealTimers();
     jest.clearAllMocks();
+  });
+
+  it('lists shifts created across the current organization family', async () => {
+    mockOrganizationScopeService.getRelatedOrganizationIds.mockResolvedValue([
+      1, 2, 3,
+    ]);
+    prisma.shift.findMany.mockResolvedValue([
+      {
+        id: 12,
+        name: 'Parent shift',
+        organizationId: 1,
+        organization: { name: 'Parent' },
+      },
+      {
+        id: 13,
+        name: 'Sibling shift',
+        organizationId: 2,
+        organization: { name: 'Sibling' },
+      },
+    ]);
+
+    const result = await service.listShifts({
+      ...mockUser,
+      organizationId: 3,
+    });
+
+    expect(prisma.shift.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          isActive: true,
+          deletedAt: null,
+          organizationId: { in: [1, 2, 3] },
+        },
+      }),
+    );
+    expect(result).toEqual([
+      expect.objectContaining({
+        id: 12,
+        organizationName: 'Parent',
+        canManage: false,
+      }),
+      expect.objectContaining({
+        id: 13,
+        organizationName: 'Sibling',
+        canManage: false,
+      }),
+    ]);
+  });
+
+  it('allows a super admin to assign a family shift to an employee in the selected organization', async () => {
+    const superAdmin = {
+      ...mockUser,
+      role: Role.SUPER_ADMIN,
+      organizationId: 2,
+    };
+    mockBusinessUnitsService.buildEmployeeBUWhere.mockReturnValue({
+      organizationId: 2,
+      deletedAt: null,
+    });
+    mockOrganizationScopeService.getRelatedOrganizationIds.mockResolvedValue([
+      1, 2,
+    ]);
+    mockOrganizationScopeService.getOrganizationFamilyRootId.mockResolvedValue(
+      1,
+    );
+    prisma.shift.findFirst.mockResolvedValue({
+      id: 12,
+      type: 'FIXED',
+      requiredHours: 8,
+      organizationId: 1,
+      isActive: true,
+    });
+    prisma.employee.findFirst.mockResolvedValue({
+      id: 25,
+      organizationId: 2,
+    });
+    prisma.employee.update.mockResolvedValue({
+      id: 25,
+      shiftId: 12,
+    });
+
+    const result = await service.assignShift(
+      { employeeId: 25, shiftId: 12 },
+      superAdmin,
+    );
+
+    expect(prisma.employee.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 25, organizationId: 2 },
+        data: { shiftId: 12 },
+      }),
+    );
+    expect(prisma.employeeShiftAssignment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        employeeId: 25,
+        shiftId: 12,
+        effectiveFrom: expect.any(Date),
+      }),
+    });
+    expect(result).toEqual({ id: 25, shiftId: 12 });
+  });
+
+  it('rejects assigning a shift from a different organization family', async () => {
+    const superAdmin = {
+      ...mockUser,
+      role: Role.SUPER_ADMIN,
+      organizationId: 2,
+    };
+    mockBusinessUnitsService.buildEmployeeBUWhere.mockReturnValue({
+      organizationId: 2,
+      deletedAt: null,
+    });
+    mockOrganizationScopeService.getRelatedOrganizationIds.mockResolvedValue([
+      1, 2,
+    ]);
+    mockOrganizationScopeService.getOrganizationFamilyRootId
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(9);
+    prisma.shift.findFirst.mockResolvedValue({
+      id: 12,
+      organizationId: 1,
+      isActive: true,
+    });
+    prisma.employee.findFirst.mockResolvedValue({
+      id: 25,
+      organizationId: 2,
+    });
+
+    await expect(
+      service.assignShift({ employeeId: 25, shiftId: 12 }, superAdmin),
+    ).rejects.toThrow(
+      'The shift and employee must belong to the same organization family',
+    );
+    expect(prisma.employee.update).not.toHaveBeenCalled();
   });
 
   it('summarizes task and attendance time using the organization-local day', async () => {
@@ -538,6 +698,7 @@ describe('AttendanceService', () => {
   });
 
   it('allows an employee to check in once per day', async () => {
+    jest.setSystemTime(new Date('2026-03-13T09:00:00.000Z'));
     const mockEmployee = {
       id: 7,
       name: 'Ava',
@@ -592,7 +753,63 @@ describe('AttendanceService', () => {
     ).toBe(0);
   });
 
+  it('rejects client-supplied attendance dates for employee actions', () => {
+    expect(() =>
+      (service as any).resolveAttendanceActionTime(
+        '2026-10-17',
+        '2026-10-17T09:00:00.000Z',
+        { ...mockUser, role: Role.EMPLOYEE },
+        'UTC',
+      ),
+    ).toThrow(BadRequestException);
+  });
+
+  it('rejects future admin attendance timestamps', () => {
+    const future = new Date(Date.now() + 60_000).toISOString();
+    expect(() =>
+      (service as any).resolveAttendanceActionTime(
+        undefined,
+        future,
+        mockUser,
+        'UTC',
+      ),
+    ).toThrow(BadRequestException);
+  });
+
+  it('uses effective-dated shift assignment rather than the current shift for historical days', () => {
+    const fixedShift = { id: 1, type: 'FIXED' };
+    const flexibleShift = { id: 2, type: 'FLEXIBLE' };
+    const assignments = [
+      {
+        effectiveFrom: new Date('2026-10-01T00:00:00.000Z'),
+        effectiveTo: new Date('2026-10-10T00:00:00.000Z'),
+        shift: fixedShift,
+      },
+      {
+        effectiveFrom: new Date('2026-10-10T00:00:00.000Z'),
+        effectiveTo: null,
+        shift: flexibleShift,
+      },
+    ];
+
+    expect(
+      (service as any).employeeShiftForDay(
+        assignments,
+        flexibleShift,
+        new Date('2026-10-05T00:00:00.000Z'),
+      ),
+    ).toEqual(fixedShift);
+    expect(
+      (service as any).employeeShiftForDay(
+        assignments,
+        flexibleShift,
+        new Date('2026-10-17T00:00:00.000Z'),
+      ),
+    ).toEqual(flexibleShift);
+  });
+
   it('allows Sunday catch-up check-in while work hours remain outstanding', async () => {
+    jest.setSystemTime(new Date('2026-03-15T09:00:00.000Z'));
     const employee = {
       id: 7,
       organizationId: 1,
@@ -637,6 +854,7 @@ describe('AttendanceService', () => {
   });
 
   it('rejects Sunday catch-up check-in when weekly and monthly targets are complete', async () => {
+    jest.setSystemTime(new Date('2026-03-15T09:00:00.000Z'));
     const employee = {
       id: 7,
       organizationId: 1,
@@ -681,6 +899,7 @@ describe('AttendanceService', () => {
   });
 
   it('records late minutes using the organization timezone and includes them in the late count', async () => {
+    jest.setSystemTime(new Date('2026-03-13T03:46:00.000Z'));
     const employee = {
       id: 7,
       name: 'Ava',
@@ -763,6 +982,7 @@ describe('AttendanceService', () => {
   });
 
   it('updates working hours and status on check-out', async () => {
+    jest.setSystemTime(new Date('2026-03-13T14:00:00.000Z'));
     const mockEmployee = {
       id: 7,
       name: 'Ava',
@@ -871,6 +1091,7 @@ describe('AttendanceService', () => {
   });
 
   it('does not write checkout when the timer cannot be finalized', async () => {
+    jest.setSystemTime(new Date('2026-03-13T14:00:00.000Z'));
     const mockEmployee = {
       id: 7,
       organizationId: 1,
@@ -1652,6 +1873,37 @@ describe('AttendanceService', () => {
 
     expect(result.totalExpectedHours).toBe(24);
     expect(result.totalWorkedHours).toBe(8.5);
+  });
+
+  it('uses flexible task-time day equivalents in monthly summaries', async () => {
+    jest.setSystemTime(new Date('2026-10-17T12:00:00.000Z'));
+    prisma.employee.findMany.mockResolvedValue([
+      {
+        id: 19,
+        hireDate: null,
+        organizationId: 1,
+        shift: { id: 3, type: 'FLEXIBLE', requiredHours: 8 },
+        shiftAssignments: [],
+        organization: { timezone: 'UTC' },
+      },
+    ]);
+    prisma.attendance.findMany.mockResolvedValue([]);
+    prisma.taskTimerInterval.findMany.mockResolvedValue([
+      {
+        startedAt: new Date('2026-10-17T04:00:00.000Z'),
+        endedAt: new Date('2026-10-17T12:00:00.000Z'),
+      },
+    ]);
+
+    const result = await service.getSummary(
+      { month: '2026-10' },
+      mockUser as any,
+    );
+
+    expect(result.presentDays).toBe(1);
+    expect(result.totalWorkingDays).toBe(1);
+    expect(result.totalWorkedHours).toBe(8);
+    expect(result.totalExpectedHours).toBe(8);
   });
 
   it("blocks employees from requesting another employee's monthly report", async () => {
@@ -2486,11 +2738,31 @@ describe('AttendanceService', () => {
 
     await service.runDailyAutomation();
 
-    expect(prisma.attendance.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        status: AttendanceStatus.WEEKLY_OFF,
+    expect(prisma.attendance.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          status: AttendanceStatus.WEEKLY_OFF,
+        }),
       }),
-    });
+    );
+  });
+
+  it('does not generate absent attendance rows for flexible employees', async () => {
+    jest.setSystemTime(new Date('2026-03-02T12:00:00.000Z'));
+    prisma.employee.findMany.mockResolvedValue([
+      {
+        id: 4,
+        organizationId: 1,
+        shift: { id: 2, type: 'FLEXIBLE', requiredHours: 8 },
+        shiftAssignments: [],
+        organization: { timezone: 'UTC' },
+      },
+    ]);
+
+    await service.runDailyAutomation();
+
+    expect(prisma.attendance.upsert).not.toHaveBeenCalled();
+    expect(prisma.attendance.create).not.toHaveBeenCalled();
   });
 
   it('does not create automated attendance before the hire date', async () => {

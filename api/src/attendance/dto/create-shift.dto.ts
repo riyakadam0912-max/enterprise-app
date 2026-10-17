@@ -13,7 +13,7 @@ import {
   Min,
 } from 'class-validator';
 
-const SHIFT_TYPES = ['FIXED', 'FLEXIBLE', 'ROTATIONAL'] as const;
+const SHIFT_TYPES = ['FIXED', 'FLEXIBLE'] as const;
 
 export class CreateShiftDto {
   @IsString()
@@ -66,8 +66,4 @@ export class CreateShiftDto {
   @Min(0, { each: true })
   @Max(6, { each: true })
   workingDays?: number[];
-
-  @IsOptional()
-  @IsString()
-  rotationPattern?: string;
 }

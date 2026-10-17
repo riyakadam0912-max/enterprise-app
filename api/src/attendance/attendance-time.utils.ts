@@ -28,8 +28,10 @@ function safeTimezone(timezone?: string | null) {
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: value });
     return value;
-  } catch {
-    return 'UTC';
+  } catch (error) {
+    throw new RangeError(
+      `Invalid organization timezone "${value}": ${String(error)}`,
+    );
   }
 }
 
@@ -43,9 +45,13 @@ export function dateKeyInTimezone(date: Date, timezone?: string | null) {
 export function attendanceDateFromKey(dateKey: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
   if (!match) throw new Error(`Invalid attendance date: ${dateKey}`);
-  return new Date(
+  const date = new Date(
     Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
   );
+  if (date.toISOString().slice(0, 10) !== dateKey) {
+    throw new Error(`Invalid attendance date: ${dateKey}`);
+  }
+  return date;
 }
 
 function localShiftStart(dateKey: string, time: string, timezone: string) {

@@ -52,6 +52,7 @@ export interface AttendanceRecord {
   checkoutSource?: 'USER' | 'ADMIN_EDIT' | 'AUTO' | null;
   checkoutActorName?: string | null;
   workingHours: number | null;
+  creditedWorkSeconds?: number;
   breaks?: { startedAt: string; endedAt: string | null }[];
   breakHours?: number;
   onBreak?: boolean;
@@ -86,6 +87,7 @@ export interface EmployeeAttendanceDay {
   checkIn: string | null;
   checkOut: string | null;
   workingHours: number | null;
+  creditedWorkSeconds?: number;
   breaks?: { startedAt: string; endedAt: string | null }[];
   onBreak?: boolean;
   shortfallHours?: number;
@@ -176,7 +178,7 @@ export interface WorkHourBalances {
 
 export interface ShiftPayload {
   name: string;
-  type: 'FIXED' | 'FLEXIBLE' | 'ROTATIONAL';
+  type: 'FIXED' | 'FLEXIBLE';
   startTime?: string;
   endTime?: string;
   requiredHours?: number;
@@ -184,12 +186,15 @@ export interface ShiftPayload {
   gracePeriodMinutes?: number;
   weeklyHolidayDay?: number;
   workingDays?: number[];
-  rotationPattern?: string;
 }
 
-export interface ShiftRecord extends ShiftPayload {
+export interface ShiftRecord extends Omit<ShiftPayload, 'type'> {
+  type: ShiftPayload['type'] | 'ROTATIONAL';
   id: number;
   isActive?: boolean;
+  organizationId: number;
+  organizationName?: string;
+  canManage?: boolean;
 }
 
 export interface TeamWeeklyWorkHours {

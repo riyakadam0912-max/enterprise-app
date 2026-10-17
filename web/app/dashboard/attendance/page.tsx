@@ -755,7 +755,7 @@ export default function AttendancePage() {
   const [showCreateShift, setShowCreateShift] = useState(false);
   const [newShift, setNewShift] = useState({
     name: '',
-    type: 'FIXED' as 'FIXED' | 'FLEXIBLE' | 'ROTATIONAL',
+    type: 'FIXED' as 'FIXED' | 'FLEXIBLE',
     startTime: '09:00',
     endTime: '18:00',
     requiredHours: '8',
@@ -1030,7 +1030,9 @@ export default function AttendancePage() {
       setShiftSuccess(null);
       await updateShift(editingShift.id, {
         name: editingShift.name,
-        type: editingShift.type,
+        ...(editingShift.type !== 'ROTATIONAL'
+          ? { type: editingShift.type }
+          : {}),
         startTime: editingShift.startTime,
         endTime: editingShift.endTime,
         requiredHours: editingShift.requiredHours,
@@ -1327,7 +1329,7 @@ export default function AttendancePage() {
             </div>
             <select value={assignShiftId} onChange={(e) => setAssignShiftId(e.target.value)} aria-label="Select shift" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
               <option value="">Select shift</option>
-              {shifts.map((shift) => <option key={shift.id} value={shift.id}>{shift.name}</option>)}
+              {shifts.map((shift) => <option key={shift.id} value={shift.id}>{shift.name} · {shift.organizationName}</option>)}
             </select>
             <button onClick={handleAssignShift} disabled={!assignEmployeeId || !assignShiftId} className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-white disabled:opacity-50"><ArrowRight aria-hidden="true" className="h-4 w-4" />Assign</button>
           </div>
@@ -1350,13 +1352,15 @@ export default function AttendancePage() {
                     <tr key={shift.id} className="hover:bg-slate-50">
                       <td className="px-3 py-2.5">
                         <div className="font-medium text-slate-900">{shift.name}</div>
-                        <span className="text-xs text-slate-500">{shift.type} · {shift.requiredHours ?? '—'} hrs</span>
+                        <span className="text-xs text-slate-500">{shift.type} · {shift.requiredHours ?? '—'} hrs · {shift.canManage ? 'This organization' : `Shared from ${shift.organizationName}`}</span>
                       </td>
                       <td className="px-3 py-2.5 text-slate-600">{shift.startTime && shift.endTime ? `${formatShiftTime(shift.startTime)}–${formatShiftTime(shift.endTime)}` : 'Flexible'}</td>
                       <td className="px-3 py-2.5 text-xs text-slate-600">{formatWorkingDays(workingDaysForShift(shift))}</td>
                       <td className="px-3 py-2.5"><div className="flex justify-end gap-1">
-                        <button type="button" onClick={() => setEditingShift(shift)} aria-label={`Edit ${shift.name}`} title="Edit shift" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"><Pencil aria-hidden="true" className="h-4 w-4" /></button>
-                        <button type="button" onClick={() => handleDeleteShift(shift.id)} aria-label={`Delete ${shift.name}`} title="Delete shift" className="rounded-lg p-2 text-rose-500 hover:bg-rose-50 hover:text-rose-700"><Trash2 aria-hidden="true" className="h-4 w-4" /></button>
+                        {shift.canManage ? <>
+                          <button type="button" onClick={() => setEditingShift(shift)} aria-label={`Edit ${shift.name}`} title="Edit shift" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"><Pencil aria-hidden="true" className="h-4 w-4" /></button>
+                          <button type="button" onClick={() => handleDeleteShift(shift.id)} aria-label={`Delete ${shift.name}`} title="Delete shift" className="rounded-lg p-2 text-rose-500 hover:bg-rose-50 hover:text-rose-700"><Trash2 aria-hidden="true" className="h-4 w-4" /></button>
+                        </> : <span className="px-2 py-2 text-xs text-slate-400">Shared</span>}
                       </div></td>
                     </tr>
                   ))}
@@ -1500,7 +1504,7 @@ export default function AttendancePage() {
             </div>
             <div className="grid gap-3 p-5 sm:grid-cols-2">
               <input value={newShift.name} onChange={(e) => setNewShift((prev) => ({ ...prev, name: e.target.value }))} placeholder="Shift name" className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm sm:col-span-2" />
-              <select value={newShift.type} onChange={(e) => setNewShift((prev) => ({ ...prev, type: e.target.value as 'FIXED' | 'FLEXIBLE' | 'ROTATIONAL' }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm"><option value="FIXED">Fixed</option><option value="FLEXIBLE">Flexible</option><option value="ROTATIONAL">Rotational</option></select>
+              <select value={newShift.type} onChange={(e) => setNewShift((prev) => ({ ...prev, type: e.target.value as 'FIXED' | 'FLEXIBLE' }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm"><option value="FIXED">Fixed</option><option value="FLEXIBLE">Flexible</option></select>
               <input type="number" value={newShift.requiredHours} onChange={(e) => setNewShift((prev) => ({ ...prev, requiredHours: e.target.value }))} placeholder="Required hours" className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
               <input type="time" value={newShift.startTime} onChange={(e) => setNewShift((prev) => ({ ...prev, startTime: e.target.value }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
               <input type="time" value={newShift.endTime} onChange={(e) => setNewShift((prev) => ({ ...prev, endTime: e.target.value }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
@@ -1584,12 +1588,12 @@ export default function AttendancePage() {
                   <label className="mb-2 block text-sm font-medium text-slate-700">Type</label>
                   <select
                     value={editingShift.type}
-                    onChange={(event) => setEditingShift((current) => current ? { ...current, type: event.target.value as 'FIXED' | 'FLEXIBLE' | 'ROTATIONAL' } : current)}
+                    onChange={(event) => setEditingShift((current) => current ? { ...current, type: event.target.value as 'FIXED' | 'FLEXIBLE' } : current)}
                     className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-orange-400 focus:outline-none focus:ring-4 focus:ring-orange-100"
                   >
                     <option value="FIXED">Fixed</option>
                     <option value="FLEXIBLE">Flexible</option>
-                    <option value="ROTATIONAL">Rotational</option>
+                    {editingShift.type === 'ROTATIONAL' && <option value="ROTATIONAL" disabled>Rotational (legacy; convert to fixed or flexible)</option>}
                   </select>
                 </div>
 
@@ -1853,7 +1857,12 @@ export default function AttendancePage() {
                       </p>
                     )}
                   </td>
-                  <td className="px-5 py-4 text-slate-700">{row.workingHours != null ? formatHoursDuration(row.workingHours) : '—'}</td>
+                  <td className="px-5 py-4 text-slate-700">
+                    <div>{row.workingHours != null ? formatHoursDuration(row.workingHours) : '—'}</div>
+                    {row.creditedWorkSeconds !== undefined && (
+                      <p className="mt-1 text-xs text-teal-700">Flexible credited time</p>
+                    )}
+                  </td>
                   <td className="px-5 py-4 text-slate-700">
                     <details className="min-w-24">
                       <summary className="cursor-pointer text-xs font-medium">{formatHoursDuration(row.breakHours ?? 0)} · timeline</summary>
