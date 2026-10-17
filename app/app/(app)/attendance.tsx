@@ -27,6 +27,7 @@ const formatBreakInterval = (startedAt: string, endedAt: string | null) => {
 };
 
 function WorkHourProgress({ label, balance }: { label: string; balance: WorkHourBalances['week'] }) {
+	const isFlexible = balance.flexible === true;
 	const radius = 27;
 	const circumference = 2 * Math.PI * radius;
 	const dashOffset = circumference * (1 - balance.progressPercent / 100);
@@ -58,23 +59,34 @@ function WorkHourProgress({ label, balance }: { label: string; balance: WorkHour
 			</View>
 			<View style={{ flex: 1 }}>
 				<Text style={{ color: tokens.colors.ink, fontWeight: '700' }}>{label}</Text>
-				<Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 4 }}>of {formatHoursDuration(balance.requiredHours)} scheduled</Text>
-				<Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 3 }}>{balance.remainingHours > 0 ? `${formatHoursDuration(balance.remainingHours)} remaining` : 'Hours target complete'}</Text>
+				{isFlexible ? <>
+					<Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 4 }}>{balance.workingDayEquivalents?.toFixed(2) ?? '0.00'} working days earned from task time</Text>
+					<Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 3 }}>{balance.activeDays ?? 0} active dates · {formatHoursDuration(balance.remainingHours)} to next day</Text>
+				</> : <>
+					<Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 4 }}>of {formatHoursDuration(balance.requiredHours)} scheduled</Text>
+					<Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 3 }}>{balance.remainingHours > 0 ? `${formatHoursDuration(balance.remainingHours)} remaining` : 'Hours target complete'}</Text>
+				</>}
 				<Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 3 }}>Breaks: {formatHoursDuration(balance.breakHours)}</Text>
-				{balance.fullPeriodRequiredHours !== undefined ? <Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 3 }}>Full month: {formatHoursDuration(balance.fullPeriodRequiredHours)}</Text> : null}
+				{!isFlexible && balance.fullPeriodRequiredHours !== undefined ? <Text style={{ color: tokens.colors.muted, fontSize: 12, marginTop: 3 }}>Full month: {formatHoursDuration(balance.fullPeriodRequiredHours)}</Text> : null}
 			</View>
 		</View>
 	);
 }
 
 function DailyTaskWorkProgress({ summary }: { summary: DailyTaskWorkSummary }) {
-	const target = summary.scheduledSeconds;
+	const isFlexible = summary.shiftType === 'FLEXIBLE';
+	const target = isFlexible
+		? (summary.workdayHours ?? 8) * 3600
+		: summary.scheduledSeconds;
 	const otherSeconds = Math.max(0, summary.attendanceWorkedSeconds - summary.taskTrackedSeconds);
 	const radius = 38;
 	const circumference = 2 * Math.PI * radius;
 	const taskLength = target > 0 ? Math.min(circumference, circumference * summary.taskTrackedSeconds / target) : 0;
 	const otherLength = target > 0 ? Math.min(circumference - taskLength, circumference * otherSeconds / target) : 0;
-	const remainingSeconds = Math.max(0, target - summary.attendanceWorkedSeconds);
+	const flexibleProgressSeconds = target > 0 ? summary.taskTrackedSeconds % target : 0;
+	const remainingSeconds = isFlexible
+		? target - flexibleProgressSeconds
+		: Math.max(0, target - summary.attendanceWorkedSeconds);
 	const overTargetSeconds = Math.max(0, summary.attendanceWorkedSeconds - target);
 
 	return (
@@ -89,7 +101,9 @@ function DailyTaskWorkProgress({ summary }: { summary: DailyTaskWorkSummary }) {
 			<View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 18 }}>
 				<View
 					accessibilityRole="image"
-					accessibilityLabel={`Task tracked ${formatHoursDuration(summary.taskTrackedSeconds / 3600)} of ${formatHoursDuration(target / 3600)} scheduled`}
+					accessibilityLabel={isFlexible
+						? `${formatHoursDuration(summary.taskTrackedSeconds / 3600)} task hours; 8 hours equals one working day`
+						: `Task tracked ${formatHoursDuration(summary.taskTrackedSeconds / 3600)} of ${formatHoursDuration(target / 3600)} scheduled`}
 					style={{ width: 94, height: 94, alignItems: 'center', justifyContent: 'center' }}
 				>
 					<Svg width={94} height={94} viewBox="0 0 94 94" style={{ position: 'absolute' }}>
@@ -101,20 +115,27 @@ function DailyTaskWorkProgress({ summary }: { summary: DailyTaskWorkSummary }) {
 					<Text style={{ color: tokens.colors.muted, fontSize: 8, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.8 }}>Task-tracked</Text>
 				</View>
 				<View style={{ flex: 1, gap: 10 }}>
+					{isFlexible ? <Text style={{ color: tokens.colors.muted, fontSize: 12 }}>{summary.workingDayEquivalent?.toFixed(2) ?? '0.00'} working days earned today</Text> : null}
 					<View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
 						<View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}><View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#0f766e' }} /><Text style={{ color: tokens.colors.muted, fontSize: 12 }}>Task-tracked</Text></View>
 						<Text style={{ color: tokens.colors.ink, fontSize: 12, fontWeight: '700' }}>{formatHoursDuration(summary.taskTrackedSeconds / 3600)}</Text>
 					</View>
-					<View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+					{!isFlexible ? <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
 						<View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}><View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#99f6e4' }} /><Text style={{ color: tokens.colors.muted, fontSize: 12 }}>Other attended</Text></View>
 						<Text style={{ color: tokens.colors.ink, fontSize: 12, fontWeight: '700' }}>{formatHoursDuration(otherSeconds / 3600)}</Text>
-					</View>
+					</View> : null}
 					<View style={{ borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 8 }}>
 						<Text style={{ color: tokens.colors.muted, fontSize: 11 }}>
-							{target > 0 && overTargetSeconds > 0 ? `Over target · ${formatHoursDuration(overTargetSeconds / 3600)}` : `${formatHoursDuration(remainingSeconds / 3600)} shift target remaining`}
+							{isFlexible
+								? `${formatHoursDuration(remainingSeconds / 3600)} to next working day`
+								: target > 0 && overTargetSeconds > 0
+									? `Over target · ${formatHoursDuration(overTargetSeconds / 3600)}`
+									: `${formatHoursDuration(remainingSeconds / 3600)} shift target remaining`}
 						</Text>
 						<Text style={{ color: tokens.colors.muted, fontSize: 10, marginTop: 4 }}>
-							{formatHoursDuration(summary.attendanceWorkedSeconds / 3600)} attended of {formatHoursDuration(target / 3600)} scheduled
+							{isFlexible
+								? `${formatHoursDuration(summary.taskTrackedSeconds / 3600)} task time · 8 hours = 1 working day`
+								: `${formatHoursDuration(summary.attendanceWorkedSeconds / 3600)} attended of ${formatHoursDuration(target / 3600)} scheduled`}
 						</Text>
 						{summary.activeTimer ? <Text numberOfLines={1} style={{ color: '#047857', fontSize: 10, marginTop: 4 }}>Tracking: {summary.activeTimer.taskName}</Text> : null}
 					</View>
@@ -145,9 +166,10 @@ export default function Attendance() {
 	const hasCheckedIn = Boolean(today.data?.checkIn);
 	const hasCheckedOut = Boolean(today.data?.checkOut);
 	const hasActiveShift = Boolean(today.data?.shift);
+	const isFlexible = today.data?.shift?.type === 'FLEXIBLE';
 	const canCheckIn = hasActiveShift && !hasCheckedIn && !hasCheckedOut && status !== 'LEAVE' && !mutation.isPending;
 	const canCheckOut = hasCheckedIn && !hasCheckedOut && !mutation.isPending;
-	const canBreak = hasCheckedIn && !hasCheckedOut && !mutation.isPending;
+	const canBreak = (isFlexible || (hasCheckedIn && !hasCheckedOut)) && !mutation.isPending;
 
 	return <ScrollView contentContainerStyle={styles.page}>
 		<View style={styles.header}><View style={styles.headerCopy}><Text style={styles.title}>Attendance</Text><Text style={styles.subtitle}>Your attendance status and recent records.</Text></View>{canManageAttendance ? <View style={styles.tools}><Pressable accessibilityRole="button" accessibilityState={{ expanded: toolsOpen }} onPress={() => setToolsOpen((open) => !open)} style={styles.toolsTrigger}><Text style={styles.toolsTriggerText}>Attendance tools</Text><Text style={styles.chevron}>{toolsOpen ? '▲' : '▼'}</Text></Pressable>{toolsOpen ? <View style={styles.toolsMenu}><Link href="/attendance/report" asChild><Pressable onPress={() => setToolsOpen(false)} style={styles.menuItem}><Text style={styles.menuText}>Monthly report</Text></Pressable></Link><Link href="/create-shift" asChild><Pressable onPress={() => setToolsOpen(false)} style={styles.menuItem}><Text style={styles.menuText}>Create shift</Text></Pressable></Link><Link href="/assign-shift" asChild><Pressable onPress={() => setToolsOpen(false)} style={styles.menuItem}><Text style={styles.menuText}>Assign shift</Text></Pressable></Link></View> : null}</View> : null}</View>
@@ -162,12 +184,13 @@ export default function Attendance() {
 			{today.data?.breaks?.map((interval) => <Text key={interval.startedAt} style={{ color: '#92400e', marginTop: 4, fontSize: 12 }}>{formatBreakInterval(interval.startedAt, interval.endedAt)}</Text>)}
 			<Text style={{ color: hasActiveShift ? '#64748b' : '#be123c', marginTop: 6 }}>Shift: {today.data?.shift ? `${today.data.shift.name} (${today.data.shift.startTime || '--'} - ${today.data.shift.endTime || '--'})` : 'No active shift assigned. Check-in is unavailable.'}</Text>
 			<View style={styles.attendanceActions}>
-				<AppButton label="Check in" variant="primary" loading={mutation.isPending} disabled={!canCheckIn} onPress={() => mutation.mutate('in')} style={styles.attendanceButton} />
+				{isFlexible ? <AppButton label={today.data?.onBreak ? 'End break' : 'Start break'} variant="primary" disabled={!canBreak} loading={mutation.isPending} onPress={() => mutation.mutate(today.data?.onBreak ? 'break-stop' : 'break-start')} style={styles.attendanceButton} /> : null}
+				<AppButton label="Check in" variant={isFlexible ? 'secondary' : 'primary'} loading={mutation.isPending} disabled={!canCheckIn} onPress={() => mutation.mutate('in')} style={styles.attendanceButton} />
 				<AppButton label="Check out" variant="secondary" disabled={!canCheckOut} onPress={() => mutation.mutate('out')} style={styles.attendanceButton} />
 			</View>
-			<View style={styles.attendanceActions}>
+			{!isFlexible ? <View style={styles.attendanceActions}>
 				<AppButton label={today.data?.onBreak ? 'End break' : 'Start break'} variant="secondary" disabled={!canBreak} loading={mutation.isPending} onPress={() => mutation.mutate(today.data?.onBreak ? 'break-stop' : 'break-start')} style={styles.attendanceButton} />
-			</View>
+			</View> : null}
 		</View>
 		{taskWork.isLoading ? <StatePanel kind="loading" message="Loading today’s task time..." /> : null}
 		{taskWork.isError ? <StatePanel kind="error" message={apiError(taskWork.error)} onRetry={() => void taskWork.refetch()} /> : null}

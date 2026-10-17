@@ -372,7 +372,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     if (onLeave) return AttendanceStatus.LEAVE;
 
     // Check if today is the weekly holiday
-    if (this.isWeeklyHoliday(day, shift)) return AttendanceStatus.WEEKLY_OFF;
+    if (shift?.type !== 'FLEXIBLE' && this.isWeeklyHoliday(day, shift)) {
+      return AttendanceStatus.WEEKLY_OFF;
+    }
 
     const minPresentHours = shift?.minPresentHours ?? 5;
     const halfDayThreshold = Math.max(1, minPresentHours / 2);
@@ -390,6 +392,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     if (!shift) {
       return AttendanceStatus.NOT_SCHEDULED;
     }
+    if (shift.type === 'FLEXIBLE') return AttendanceStatus.NOT_SCHEDULED;
 
     const today = this.startOfDay(new Date());
     const targetDay = this.startOfDay(day);
@@ -748,15 +751,17 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       ? AttendanceStatus.LEAVE
       : holidayName && !attendance?.checkIn
         ? AttendanceStatus.HOLIDAY
-        : (attendance?.status ??
-          this.calculateStatus({
-            day,
-            checkIn: null,
-            checkOut: null,
-            workingHours: null,
-            onLeave,
-            shift,
-          }));
+        : shift?.type === 'FLEXIBLE' && !attendance?.checkIn
+          ? AttendanceStatus.NOT_SCHEDULED
+          : (attendance?.status ??
+            this.calculateStatus({
+              day,
+              checkIn: null,
+              checkOut: null,
+              workingHours: null,
+              onLeave,
+              shift,
+            }));
     const shortfallHours =
       (attendance as { shortfallHours?: number })?.shortfallHours ??
       this.calculateShortfallHours(attendance?.workingHours ?? null, shift);
@@ -1502,12 +1507,14 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           data: { endedAt: checkOutTime },
         });
       }
-      await this.tasksService.stopActiveTimerForEmployee(
-        employeeId,
-        employee.organizationId ?? user.organizationId,
-        checkOutTime,
-        tx,
-      );
+      if (shift?.type !== 'FLEXIBLE') {
+        await this.tasksService.stopActiveTimerForEmployee(
+          employeeId,
+          employee.organizationId ?? user.organizationId,
+          checkOutTime,
+          tx,
+        );
+      }
       return tx.attendance.update({
         where: { id: record.id },
         data: {
@@ -1529,11 +1536,51 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
   async startBreak(user: AttendanceUser) {
     const employeeId = await this.resolveScopedEmployeeId(user);
-    const record = await this.prisma.attendance.findFirst({
-      where: { employeeId, checkIn: { not: null }, checkOut: null },
+    const employee = await this.ensureEmployee(employeeId, user);
+    let record = await this.prisma.attendance.findFirst({
+      where: {
+        employeeId,
+        checkIn: { not: null },
+        checkOut: null,
+      },
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
       include: { breaks: true },
     });
+    if (employee.shift?.type === 'FLEXIBLE') {
+      const existingBreak = await this.prisma.attendance.findFirst({
+        where: { employeeId, breaks: { some: { endedAt: null } } },
+        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+        include: { breaks: true },
+      });
+      if (existingBreak) {
+        throw new ConflictException('A break is already in progress');
+      }
+
+      const organization = await this.prisma.organization.findUnique({
+        where: { id: employee.organizationId ?? user.organizationId },
+        select: { timezone: true },
+      });
+      const timezone = organization?.timezone ?? 'UTC';
+      const dateKey = dateKeyInTimezone(new Date(), timezone);
+      const day = attendanceDateFromKey(dateKey);
+      record = await this.prisma.attendance.findUnique({
+        where: { employeeId_date: { employeeId, date: day } },
+        include: { breaks: true },
+      });
+      if (!record) {
+        record = await this.prisma.attendance.create({
+          data: {
+            employeeId,
+            organizationId: employee.organizationId,
+            shiftId: employee.shift.id,
+            date: day,
+            requiredHours: employee.shift.requiredHours,
+            status: AttendanceStatus.NOT_STARTED,
+          },
+          include: { breaks: true },
+        });
+      }
+    }
     if (!record)
       throw new BadRequestException('Check in before starting a break');
     if (record.checkIn && new Date(record.checkIn).getTime() > Date.now()) {
@@ -1559,13 +1606,21 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
   async stopBreak(user: AttendanceUser) {
     const employeeId = await this.resolveScopedEmployeeId(user);
+    const employee = await this.ensureEmployee(employeeId, user);
     const record = await this.prisma.attendance.findFirst({
-      where: { employeeId, checkIn: { not: null }, checkOut: null },
+      where:
+        employee.shift?.type === 'FLEXIBLE'
+          ? { employeeId, breaks: { some: { endedAt: null } } }
+          : { employeeId, checkIn: { not: null }, checkOut: null },
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
       include: { breaks: true },
     });
     if (!record)
-      throw new BadRequestException('No active check-in record found');
+      throw new BadRequestException(
+        employee.shift?.type === 'FLEXIBLE'
+          ? 'No break is in progress'
+          : 'No active check-in record found',
+      );
     const openBreak = record.breaks.find(
       (interval) => interval.endedAt === null,
     );
@@ -1866,7 +1921,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     );
 
     let attendanceWorkedSeconds = 0;
-    if (attendance?.checkIn) {
+    if (employee.shift?.type === 'FLEXIBLE') {
+      attendanceWorkedSeconds = taskTrackedSeconds;
+    } else if (attendance?.checkIn) {
       const workStart = Math.max(
         rangeStart.getTime(),
         attendance.checkIn.getTime(),
@@ -1904,6 +1961,15 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             startedAt: activeTimer.startedAt.toISOString(),
           }
         : null,
+      ...(employee.shift?.type === 'FLEXIBLE'
+        ? {
+            shiftType: 'FLEXIBLE',
+            workdayHours: 8,
+            workingDayEquivalent: Number(
+              (taskTrackedSeconds / 3600 / 8).toFixed(2),
+            ),
+          }
+        : {}),
     };
   }
 
@@ -2165,6 +2231,105 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       where: { employeeId, date: { gte: queryStart, lte: today } },
       include: { shift: true, breaks: true },
     });
+    if (employee.shift?.type === 'FLEXIBLE') {
+      const intervals = await this.getFlexibleTaskIntervals(
+        employeeId,
+        employee.organizationId,
+        this.localDateStart(this.dateKey(queryStart), timezone),
+        now,
+      );
+      const workdayHours = 8;
+      const breakMillisecondsForPeriod = (periodStart: Date, periodEnd: Date) =>
+        attendanceRows.reduce(
+          (total, row) =>
+            total +
+            (row.breaks ?? []).reduce((rowTotal, interval) => {
+              const start = Math.max(
+                periodStart.getTime(),
+                interval.startedAt.getTime(),
+              );
+              const end = Math.min(
+                periodEnd.getTime(),
+                interval.endedAt?.getTime() ?? now.getTime(),
+                now.getTime(),
+              );
+              return rowTotal + Math.max(0, end - start);
+            }, 0),
+          0,
+        );
+      const countActiveDates = (periodStart: Date, periodEnd: Date): number => {
+        const dates = new Set<string>();
+        for (const interval of intervals) {
+          let cursor = new Date(
+            Math.max(periodStart.getTime(), interval.startedAt.getTime()),
+          );
+          const end = Math.min(periodEnd.getTime(), interval.endedAt.getTime());
+          while (cursor.getTime() < end) {
+            const dateKey = dateKeyInTimezone(cursor, timezone);
+            dates.add(dateKey);
+            const nextMidnight = localMidnightAfterDateInTimezone(
+              dateKey,
+              timezone,
+            );
+            if (!nextMidnight || nextMidnight.getTime() <= cursor.getTime()) {
+              break;
+            }
+            cursor = nextMidnight;
+          }
+        }
+        return dates.size;
+      };
+      const flexiblePeriod = (start: Date, end: Date) => {
+        const periodStart = this.localDateStart(this.dateKey(start), timezone);
+        const periodEnd =
+          localMidnightAfterDateInTimezone(this.dateKey(end), timezone) ?? now;
+        const measuredEnd = new Date(
+          Math.min(now.getTime(), periodEnd.getTime()),
+        );
+        const completedSeconds = sumIntervalSeconds(
+          intervals,
+          periodStart,
+          measuredEnd,
+        );
+        const exactCompletedHours = completedSeconds / 3600;
+        const completedHours = Number(exactCompletedHours.toFixed(2));
+        const remainderHours = exactCompletedHours % workdayHours;
+        const remainingHours = Number(
+          (workdayHours - remainderHours).toFixed(2),
+        );
+        return {
+          startDate: start.toISOString(),
+          endDate: end.toISOString(),
+          requiredHours: 0,
+          completedHours,
+          breakHours: Number(
+            (
+              breakMillisecondsForPeriod(periodStart, measuredEnd) / 36e5
+            ).toFixed(2),
+          ),
+          remainingHours,
+          progressPercent: Number(
+            (remainderHours === 0 && completedHours > 0
+              ? 100
+              : (remainderHours / workdayHours) * 100
+            ).toFixed(1),
+          ),
+          scheduledDays: 0,
+          flexible: true,
+          workdayHours,
+          activeDays: countActiveDates(periodStart, measuredEnd),
+          workingDayEquivalents: Number(
+            (exactCompletedHours / workdayHours).toFixed(2),
+          ),
+        };
+      };
+
+      return {
+        week: flexiblePeriod(weekStart, weekEnd),
+        month: flexiblePeriod(monthStart, today),
+      };
+    }
+
     const leaves: LeaveRequestLite[] = await this.prisma.leaveRequest.findMany({
       where: {
         employeeId,
@@ -2290,6 +2455,52 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         fullPeriodScheduledDays: fullMonth.scheduledDays,
       },
     };
+  }
+
+  private localDateStart(dateKey: string, timezone: string) {
+    const start = localMidnightAtDateInTimezone(dateKey, timezone);
+    if (!start) {
+      throw new BadRequestException(
+        'Unable to calculate the work period in organization timezone',
+      );
+    }
+    return start;
+  }
+
+  private async getFlexibleTaskIntervals(
+    employeeId: number,
+    organizationId: number,
+    rangeStart: Date,
+    rangeEnd: Date,
+  ) {
+    const timerScope = {
+      organizationId,
+      user: { employeeId },
+    };
+    const [intervals, activeTimers] = await Promise.all([
+      this.prisma.taskTimerInterval.findMany({
+        where: {
+          timerSession: timerScope,
+          startedAt: { lt: rangeEnd },
+          endedAt: { gt: rangeStart },
+        },
+        select: { startedAt: true, endedAt: true },
+      }),
+      this.prisma.taskTimerSession.findMany({
+        where: {
+          ...timerScope,
+          status: 'RUNNING',
+          startedAt: { not: null, lt: rangeEnd },
+        },
+        select: { startedAt: true },
+      }),
+    ]);
+    const activeIntervals = activeTimers.flatMap((timer) =>
+      timer.startedAt && timer.startedAt < rangeEnd
+        ? [{ startedAt: timer.startedAt, endedAt: rangeEnd }]
+        : [],
+    );
+    return [...intervals, ...activeIntervals];
   }
 
   async getMyWorkHourBalances(user: AttendanceUser) {
@@ -2459,6 +2670,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             employeeName: employee.name,
             department: employee.department ?? null,
             taskTrackedHours,
+            isFlexible: employee.shift?.type === 'FLEXIBLE',
             week: balances.week,
           };
         }),
@@ -2693,7 +2905,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         department: true,
         designation: true,
         position: true,
-        organization: { select: { id: true, name: true } },
+        shift: { select: { type: true, requiredHours: true } },
+        organization: { select: { id: true, name: true, timezone: true } },
         user: { select: { role: true } },
       },
       orderBy: { name: 'asc' },
@@ -2825,6 +3038,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         totalExpectedHours: number;
         shortfallHours: number;
         overtimeHours: number;
+        isFlexible: boolean;
+        workingDayEquivalents: number;
       }
     >();
 
@@ -2857,6 +3072,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         totalExpectedHours: 0,
         shortfallHours: 0,
         overtimeHours: 0,
+        isFlexible: employee.shift?.type === 'FLEXIBLE',
+        workingDayEquivalents: 0,
       });
     }
 
@@ -2870,6 +3087,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       ) {
         continue;
       }
+      if (employee.shift?.type === 'FLEXIBLE') continue;
 
       const rowDateKey = `${row.employeeId}:${this.startOfDay(row.date).toISOString().slice(0, 10)}`;
       const corporateHolidayKey = `${employee.organization.id}:${row.date.toISOString().slice(0, 10)}`;
@@ -2956,6 +3174,59 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    const flexibleEmployees = employees.filter(
+      (employee) => employee.shift?.type === 'FLEXIBLE',
+    );
+    const reportMonthStartKey = `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`;
+    const nextMonth = new Date(Date.UTC(targetYear, targetMonth, 1));
+    const nextMonthKey = this.dateKey(nextMonth);
+    const now = new Date();
+    await Promise.all(
+      flexibleEmployees.map(async (employee) => {
+        if (query.status && query.status !== AttendanceStatus.PRESENT) {
+          return;
+        }
+        if (
+          employee.hireDate &&
+          this.dateKey(employee.hireDate) > this.dateKey(monthEnd)
+        ) {
+          return;
+        }
+        const timezone = employee.organization.timezone ?? 'UTC';
+        const rangeStart = localMidnightAtDateInTimezone(
+          reportMonthStartKey,
+          timezone,
+        );
+        const rangeEnd = localMidnightAtDateInTimezone(nextMonthKey, timezone);
+        if (!rangeStart || !rangeEnd) {
+          throw new BadRequestException(
+            'Unable to calculate flexible monthly work time in organization timezone',
+          );
+        }
+        const measuredEnd = new Date(
+          Math.min(now.getTime(), rangeEnd.getTime()),
+        );
+        if (measuredEnd <= rangeStart) return;
+        const intervals = await this.getFlexibleTaskIntervals(
+          employee.id,
+          employee.organization.id,
+          rangeStart,
+          measuredEnd,
+        );
+        const taskHours =
+          sumIntervalSeconds(intervals, rangeStart, measuredEnd) / 3600;
+        const dayEquivalents = Number((taskHours / 8).toFixed(2));
+        const entry = grouped.get(employee.id);
+        if (!entry) return;
+        entry.workingDayEquivalents = dayEquivalents;
+        entry.workingDays = dayEquivalents;
+        entry.presentCount = dayEquivalents;
+        entry.totalWorkedHours = Number(taskHours.toFixed(2));
+        entry.totalExpectedHours = Number((dayEquivalents * 8).toFixed(2));
+        entry.shortfallHours = 0;
+      }),
+    );
+
     const rows = Array.from(grouped.values()).map((entry) => ({
       ...entry,
       overtimeHours: Number(entry.overtimeHours.toFixed(2)),
@@ -2963,7 +3234,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       totalWorkedHours: Number(entry.totalWorkedHours.toFixed(2)),
       totalExpectedHours: Number(entry.totalExpectedHours.toFixed(2)),
       attendancePercent:
-        entry.workingDays > 0
+        !entry.isFlexible && entry.workingDays > 0
           ? Number(((entry.presentCount / entry.workingDays) * 100).toFixed(2))
           : 0,
     }));
@@ -3350,6 +3621,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         },
         include: { shift: true, breaks: true },
       });
+
+      if (employee.shift.type === 'FLEXIBLE') {
+        continue;
+      }
 
       if (!existing) {
         await this.prisma.attendance.create({

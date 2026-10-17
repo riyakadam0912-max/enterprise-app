@@ -41,6 +41,8 @@ interface MonthlyAttendanceReportRow {
   holidayCount: number;
   weeklyOffCount: number;
   workingDays: number;
+  isFlexible?: boolean;
+  workingDayEquivalents?: number;
   attendancePercent: number;
   overtimeHours?: number;
   shortfallHours?: number;
@@ -177,14 +179,18 @@ function EmptyState({ title, description }: { title: string; description: string
 
 function WorkHourProgress({ label, balance }: { label: string; balance: WorkHourBalances['week'] | undefined }) {
   if (!balance) return null;
+  const isFlexible = balance.flexible === true;
   const monthlyTarget = balance.fullPeriodRequiredHours;
   const targetHours = monthlyTarget ?? balance.requiredHours;
-  const progressPercent =
+  const progressPercent = isFlexible
+    ? balance.progressPercent
+    :
     targetHours > 0
       ? Math.min(100, Math.max(0, (balance.completedHours / targetHours) * 100))
       : 100;
   const remainingHours = Math.max(0, targetHours - balance.completedHours);
   const isFullMonthTarget = monthlyTarget !== undefined;
+  const flexibleRemaining = balance.remainingHours;
 
   return (
     <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white/90 px-4 py-3">
@@ -192,7 +198,11 @@ function WorkHourProgress({ label, balance }: { label: string; balance: WorkHour
         className="relative grid h-18 w-18 shrink-0 place-items-center rounded-full"
         style={{ background: `conic-gradient(#10b981 ${progressPercent}%, #e2e8f0 ${progressPercent}% 100%)` }}
         role="progressbar"
-        aria-label={`${label} hours completed against ${targetHours.toFixed(2)} hour target`}
+        aria-label={
+          isFlexible
+            ? `${formatHoursDuration(balance.completedHours)} task hours, ${balance.workingDayEquivalents?.toFixed(2) ?? '0.00'} working days earned`
+            : `${label} hours completed against ${targetHours.toFixed(2)} hour target`
+        }
         aria-valuenow={progressPercent}
         aria-valuemin={0}
         aria-valuemax={100}
@@ -203,16 +213,29 @@ function WorkHourProgress({ label, balance }: { label: string; balance: WorkHour
       </div>
       <div className="min-w-0">
         <p className="text-sm font-semibold text-slate-800">{label}</p>
+        {isFlexible ? (
+          <>
+            <p className="mt-1 text-xs font-medium text-slate-600">
+              {balance.workingDayEquivalents?.toFixed(2) ?? '0.00'} working days earned from task time
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {balance.activeDays ?? 0} active dates · {formatHoursDuration(flexibleRemaining)} to next day
+            </p>
+          </>
+        ) : (
         <p className="mt-1 text-xs font-medium text-slate-600">
           of {formatHoursDuration(targetHours)} {isFullMonthTarget ? 'full-month target' : 'scheduled'}
         </p>
+        )}
+        {!isFlexible && (
         <p className="mt-1 text-xs text-slate-500">
           {remainingHours > 0
             ? `${formatHoursDuration(remainingHours)} remaining`
             : 'Hours target complete'}
         </p>
+        )}
         <p className="mt-1 text-xs text-slate-500">Breaks: {formatHoursDuration(balance.breakHours)}</p>
-        {isFullMonthTarget && (
+        {!isFlexible && isFullMonthTarget && (
           <p className="mt-1 text-xs text-slate-500">
             {formatHoursDuration(balance.requiredHours)} scheduled through today
           </p>
@@ -270,23 +293,32 @@ function DailyTaskWorkCard({ enabled }: { enabled: boolean }) {
   }
   if (!summary) return null;
 
-  const target = summary.scheduledSeconds;
+  const isFlexible = summary.shiftType === 'FLEXIBLE';
+  const target = isFlexible
+    ? (summary.workdayHours ?? 8) * 3600
+    : summary.scheduledSeconds;
   const taskSeconds = summary.taskTrackedSeconds;
-  const otherSeconds = Math.max(0, summary.attendanceWorkedSeconds - taskSeconds);
+  const otherSeconds = isFlexible
+    ? 0
+    : Math.max(0, summary.attendanceWorkedSeconds - taskSeconds);
   const circumference = 2 * Math.PI * 40;
   const taskLength = target > 0 ? Math.min(circumference, circumference * taskSeconds / target) : 0;
   const otherLength = target > 0
     ? Math.min(circumference - taskLength, circumference * otherSeconds / target)
     : 0;
   const taskPercent = target > 0 ? Math.min(100, Math.round(taskSeconds / target * 100)) : 0;
-  const targetRemaining = Math.max(0, target - summary.attendanceWorkedSeconds);
+  const targetRemaining = isFlexible
+    ? target - (taskSeconds % target)
+    : Math.max(0, target - summary.attendanceWorkedSeconds);
 
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Today’s work</p>
-          <h3 className="mt-1 text-lg font-semibold text-slate-900">Task time &amp; attendance</h3>
+          <h3 className="mt-1 text-lg font-semibold text-slate-900">
+            {isFlexible ? 'Flexible work progress' : 'Task time & attendance'}
+          </h3>
         </div>
         {summary.activeTimer && (
           <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
@@ -298,7 +330,9 @@ function DailyTaskWorkCard({ enabled }: { enabled: boolean }) {
       <div className="mt-5 flex flex-col items-center gap-5 sm:flex-row">
         <div
           role="img"
-          aria-label={`Task tracked ${formatHoursDuration(taskSeconds / 3600)} of ${formatHoursDuration(target / 3600)} scheduled`}
+          aria-label={isFlexible
+            ? `${formatHoursDuration(taskSeconds / 3600)} task hours; 8 hours equals one working day`
+            : `Task tracked ${formatHoursDuration(taskSeconds / 3600)} of ${formatHoursDuration(target / 3600)} scheduled`}
           className="relative grid h-32 w-32 shrink-0 place-items-center"
         >
           <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full -rotate-90">
@@ -326,14 +360,16 @@ function DailyTaskWorkCard({ enabled }: { enabled: boolean }) {
             <span className="inline-flex items-center gap-2 text-slate-600"><span className="h-2 w-2 rounded-full bg-teal-700" />Task-tracked</span>
             <span className="font-semibold tabular-nums text-slate-900">{formatHoursDuration(taskSeconds / 3600)}</span>
           </div>
-          <div className="flex items-center justify-between gap-3 text-sm">
+          {!isFlexible && <div className="flex items-center justify-between gap-3 text-sm">
             <span className="inline-flex items-center gap-2 text-slate-600"><span className="h-2 w-2 rounded-full bg-teal-200" />Other attended work</span>
             <span className="font-semibold tabular-nums text-slate-900">{formatHoursDuration(otherSeconds / 3600)}</span>
-          </div>
+          </div>}
           <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-sm">
-            <span className="text-slate-500">{targetRemaining > 0 ? 'Shift target remaining' : summary.attendanceWorkedSeconds > target && target > 0 ? 'Over target' : 'Shift target complete'}</span>
+            <span className="text-slate-500">{isFlexible ? 'Progress to one working day' : targetRemaining > 0 ? 'Shift target remaining' : summary.attendanceWorkedSeconds > target && target > 0 ? 'Over target' : 'Shift target complete'}</span>
             <span className="font-medium tabular-nums text-slate-700">
-              {target > 0 && summary.attendanceWorkedSeconds > target
+              {isFlexible
+                ? `${summary.workingDayEquivalent?.toFixed(2) ?? '0.00'} day equivalent`
+                : target > 0 && summary.attendanceWorkedSeconds > target
                 ? formatHoursDuration((summary.attendanceWorkedSeconds - target) / 3600)
                 : formatHoursDuration(targetRemaining / 3600)}
             </span>
@@ -342,7 +378,9 @@ function DailyTaskWorkCard({ enabled }: { enabled: boolean }) {
             <p className="truncate text-xs text-slate-500">Tracking: {summary.activeTimer.taskName}</p>
           )}
           <p className="text-xs text-slate-400">
-            {formatHoursDuration(summary.attendanceWorkedSeconds / 3600)} attended of {formatHoursDuration(target / 3600)} scheduled
+            {isFlexible
+              ? `${formatHoursDuration(taskSeconds / 3600)} task time · check-in/out does not determine earned hours`
+              : `${formatHoursDuration(summary.attendanceWorkedSeconds / 3600)} attended of ${formatHoursDuration(target / 3600)} scheduled`}
           </p>
           {error && <p className="text-xs text-rose-600">Could not refresh live time: {error}</p>}
           <span className="sr-only">Task time is {taskPercent}% of the scheduled shift.</span>
@@ -369,6 +407,28 @@ function EmployeeAttendancePanel(props: {
   const { name, employeeId, accountLinked, helperError, row, checkInLoading, checkOutLoading, breakActionLoading, workBalances, onCheckIn, onCheckOut, onBreakAction } = props;
   const hasCheckedIn = Boolean(row?.checkIn);
   const hasCheckedOut = Boolean(row?.checkOut);
+  const isFlexible = row?.shiftDetails?.type === 'FLEXIBLE';
+  const breakAction = (
+    <button
+      onClick={onBreakAction}
+      disabled={
+        !accountLinked ||
+        (!isFlexible && (!hasCheckedIn || hasCheckedOut)) ||
+        breakActionLoading
+      }
+      className={`rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm disabled:cursor-not-allowed disabled:opacity-50 ${
+        isFlexible
+          ? 'bg-teal-700 text-white hover:bg-teal-800'
+          : 'border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100'
+      }`}
+    >
+      {breakActionLoading
+        ? 'Updating…'
+        : row?.onBreak
+          ? 'End Break'
+          : 'Start Break'}
+    </button>
+  );
 
   return (
     <div className="rounded-3xl border border-slate-200 bg-linear-to-br from-orange-50 via-white to-amber-50 p-5 shadow-sm">
@@ -377,11 +437,14 @@ function EmployeeAttendancePanel(props: {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-600">Self Attendance</p>
           <h2 className="mt-2 text-2xl font-semibold text-slate-900">Mark your attendance, {name}</h2>
           <p className="mt-2 text-sm text-slate-600">
-            Use these actions to record your own workday. Your check-in and check-out are saved immediately.
+            {isFlexible
+              ? 'Track focused work with task timers. Breaks pause task tracking; check-in and check-out are optional markers.'
+              : 'Use these actions to record your own workday. Your check-in and check-out are saved immediately.'}
           </p>
         </div>
 
         <div className="grid min-w-[18rem] gap-3 sm:grid-cols-3 lg:w-xl">
+            {isFlexible && breakAction}
             <button
               onClick={onCheckIn}
               disabled={!accountLinked || hasCheckedIn || checkInLoading}
@@ -396,13 +459,7 @@ function EmployeeAttendancePanel(props: {
             >
               {checkOutLoading ? 'Checking Out…' : hasCheckedOut ? 'Already Checked Out' : 'Mark Check Out'}
             </button>
-            <button
-              onClick={onBreakAction}
-              disabled={!accountLinked || !hasCheckedIn || hasCheckedOut || breakActionLoading}
-              className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 shadow-sm hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {breakActionLoading ? 'Updating…' : row?.onBreak ? 'End Break' : 'Start Break'}
-            </button>
+            {!isFlexible && breakAction}
           </div>
       </div>
 
@@ -1194,7 +1251,7 @@ export default function AttendancePage() {
                     <th className="px-4 py-3">Half Days</th>
                     <th className="px-4 py-3">Leaves</th>
                     <th className="px-4 py-3">Holidays</th>
-                    <th className="px-4 py-3">Working Days</th>
+                    <th className="px-4 py-3">Working Days / Equivalents</th>
                     <th className="px-4 py-3">Attendance %</th>
                   </tr>
                 </thead>
@@ -1211,20 +1268,20 @@ export default function AttendancePage() {
                       <td className="px-4 py-3 text-slate-600">{row.employeeId}</td>
                       <td className="px-4 py-3 text-slate-600">{row.department ?? '—'}</td>
                       <td className="px-4 py-3 text-slate-600">{row.role}</td>
-                      <td className="px-4 py-3 text-slate-600">{row.presentCount}</td>
+                      <td className="px-4 py-3 text-slate-600">{row.isFlexible ? `${row.workingDayEquivalents?.toFixed(2) ?? '0.00'} equiv.` : row.presentCount}</td>
                       <td className="px-4 py-3 text-slate-600">{row.absentCount}</td>
                       <td className="px-4 py-3 text-slate-600">{row.lateCount}</td>
                       <td className="px-4 py-3 text-slate-600">{row.halfDayCount}</td>
                       <td className="px-4 py-3 text-slate-600">{row.leaveCount}</td>
                       <td className="px-4 py-3 text-slate-600">{row.holidayCount}</td>
-                      <td className="px-4 py-3 text-slate-600">{row.workingDays}</td>
+                      <td className="px-4 py-3 text-slate-600">{row.isFlexible ? `${row.workingDayEquivalents?.toFixed(2) ?? '0.00'} (8h)` : row.workingDays}</td>
                       <td className="px-4 py-3 text-slate-600">
-                        <div className="flex min-w-28 items-center gap-2">
+                        {row.isFlexible ? <span>—</span> : <div className="flex min-w-28 items-center gap-2">
                           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
                             <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(100, Math.max(0, row.attendancePercent))}%` }} />
                           </div>
                           <span className="w-12 text-right font-medium text-slate-700">{row.attendancePercent}%</span>
-                        </div>
+                        </div>}
                       </td>
                     </tr>
                   )) : (
@@ -1701,7 +1758,7 @@ export default function AttendancePage() {
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-label="Team weekly work hours">
           <div className="border-b border-slate-200 px-5 py-3">
             <h2 className="text-sm font-semibold text-slate-900">Team work hours this week</h2>
-            <p className="mt-1 text-xs text-slate-500">Worked shows task-timer hours; attendance, breaks, and remaining hours use check-in/out records.</p>
+            <p className="mt-1 text-xs text-slate-500">Flexible attendance is earned from task time: 8 hours equals one working day. Fixed-shift attendance remains based on check-in/out.</p>
           </div>
           <div className="max-h-80 overflow-auto">
             <table className="min-w-full text-sm">
@@ -1722,11 +1779,11 @@ export default function AttendancePage() {
                       {employee.employeeName}
                       <span className="ml-2 text-xs text-slate-400">{employee.department ?? ''}</span>
                     </td>
-                    <td className="px-4 py-2 text-slate-600">{formatHoursDuration(employee.week.requiredHours)} · {employee.week.scheduledDays} days</td>
+                    <td className="px-4 py-2 text-slate-600">{employee.isFlexible ? 'Flexible · 8h = 1 day' : `${formatHoursDuration(employee.week.requiredHours)} · ${employee.week.scheduledDays} days`}</td>
                     <td className="px-4 py-2 font-medium text-slate-800">{formatHoursDuration(employee.taskTrackedHours)}</td>
-                    <td className="px-4 py-2 text-slate-600">{formatHoursDuration(employee.week.completedHours)}</td>
+                    <td className="px-4 py-2 text-slate-600">{employee.isFlexible ? `${employee.week.workingDayEquivalents?.toFixed(2) ?? '0.00'} days earned` : formatHoursDuration(employee.week.completedHours)}</td>
                     <td className="px-4 py-2 text-slate-600">{formatHoursDuration(employee.week.breakHours)}</td>
-                    <td className="px-4 py-2 text-slate-600">{formatHoursDuration(employee.week.remainingHours)}</td>
+                    <td className="px-4 py-2 text-slate-600">{employee.isFlexible ? `${formatHoursDuration(employee.week.remainingHours)} to next day` : formatHoursDuration(employee.week.remainingHours)}</td>
                   </tr>
                 ))}
                 {teamWeeklyHours?.employees.length === 0 && (

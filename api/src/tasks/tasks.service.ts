@@ -800,6 +800,31 @@ export class TasksService {
         'Link your account to an employee to track work time',
       );
     }
+    const employee = await this.db.employee.findFirst({
+      where: {
+        id: user.employeeId,
+        organizationId,
+        deletedAt: null,
+      },
+      select: { shift: { select: { type: true } } },
+    });
+    if (employee?.shift?.type === 'FLEXIBLE') {
+      const activeBreak = await this.db.attendance.findFirst({
+        where: {
+          employeeId: user.employeeId,
+          organizationId,
+          breaks: { some: { endedAt: null } },
+        },
+        select: { id: true },
+      });
+      if (activeBreak) {
+        throw new BadRequestException(
+          'End your break before starting or resuming a task timer',
+        );
+      }
+      return;
+    }
+
     const attendance = await this.db.attendance.findFirst({
       where: {
         employeeId: user.employeeId,

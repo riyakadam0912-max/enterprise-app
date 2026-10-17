@@ -1091,4 +1091,49 @@ describe('TasksService', () => {
       expect(mockWorkflowEngine.rejectWorkflow).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('assertUserIsWorking', () => {
+    it('allows flexible task tracking without check-in when not on break', async () => {
+      getPrismaDelegate(mockPrisma, 'employee').findFirst.mockResolvedValueOnce(
+        {
+          shift: { type: 'FLEXIBLE' },
+        },
+      );
+      getPrismaDelegate(
+        mockPrisma,
+        'attendance',
+      ).findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        (service as any).assertUserIsWorking(mockEmployeeUser),
+      ).resolves.toBeUndefined();
+      expect(
+        getPrismaDelegate(mockPrisma, 'attendance').findFirst,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            breaks: { some: { endedAt: null } },
+          }),
+        }),
+      );
+    });
+
+    it('blocks flexible task tracking while a break is open', async () => {
+      getPrismaDelegate(mockPrisma, 'employee').findFirst.mockResolvedValueOnce(
+        {
+          shift: { type: 'FLEXIBLE' },
+        },
+      );
+      getPrismaDelegate(
+        mockPrisma,
+        'attendance',
+      ).findFirst.mockResolvedValueOnce({ id: 10 });
+
+      await expect(
+        (service as any).assertUserIsWorking(mockEmployeeUser),
+      ).rejects.toThrow(
+        'End your break before starting or resuming a task timer',
+      );
+    });
+  });
 });

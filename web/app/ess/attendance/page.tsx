@@ -75,6 +75,24 @@ export default function ESSAttendancePage() {
   };
 
   const isCheckedIn = today?.status === 'CHECKED_IN';
+  const isFlexible = today?.shift?.type === 'FLEXIBLE';
+  const breakAction = (
+    <button
+      onClick={handleBreak}
+      disabled={
+        (!isFlexible && (!isCheckedIn || today?.status === 'CHECKED_OUT')) ||
+        breakLoading
+      }
+      className={`flex-1 py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-2 disabled:bg-gray-300 ${
+        isFlexible
+          ? 'bg-teal-700 text-white hover:bg-teal-800'
+          : 'bg-amber-500 text-white hover:bg-amber-600'
+      }`}
+    >
+      <Clock className="w-5 h-5" />
+      {breakLoading ? 'Updating...' : today?.onBreak ? 'End Break' : 'Start Break'}
+    </button>
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -209,10 +227,11 @@ export default function ESSAttendancePage() {
 
             {/* Action Buttons */}
             <div className="flex gap-3">
+              {isFlexible && breakAction}
               <button
                 onClick={handleCheckIn}
                 disabled={isCheckedIn || checkInLoading}
-                className="flex-1 bg-green-600 text-white py-3 px-4 rounded-lg font-medium disabled:bg-gray-300 hover:bg-green-700 flex items-center justify-center gap-2"
+                className={`flex-1 py-3 px-4 rounded-lg font-medium disabled:bg-gray-300 flex items-center justify-center gap-2 ${isFlexible ? 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50' : 'bg-green-600 text-white hover:bg-green-700'}`}
               >
                 <Clock className="w-5 h-5" />
                 {checkInLoading ? 'Checking In...' : 'Check In'}
@@ -220,19 +239,12 @@ export default function ESSAttendancePage() {
               <button
                 onClick={handleCheckOut}
                 disabled={!isCheckedIn || checkOutLoading}
-                className="flex-1 bg-red-600 text-white py-3 px-4 rounded-lg font-medium disabled:bg-gray-300 hover:bg-red-700 flex items-center justify-center gap-2"
+                className={`flex-1 py-3 px-4 rounded-lg font-medium disabled:bg-gray-300 flex items-center justify-center gap-2 ${isFlexible ? 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50' : 'bg-red-600 text-white hover:bg-red-700'}`}
               >
                 <Clock className="w-5 h-5" />
                 {checkOutLoading ? 'Checking Out...' : 'Check Out'}
               </button>
-              <button
-                onClick={handleBreak}
-                disabled={!isCheckedIn || today?.status === 'CHECKED_OUT' || breakLoading}
-                className="flex-1 bg-amber-500 text-white py-3 px-4 rounded-lg font-medium disabled:bg-gray-300 hover:bg-amber-600 flex items-center justify-center gap-2"
-              >
-                <Clock className="w-5 h-5" />
-                {breakLoading ? 'Updating...' : today?.onBreak ? 'End Break' : 'Start Break'}
-              </button>
+              {!isFlexible && breakAction}
             </div>
           </div>
         )}
@@ -242,6 +254,7 @@ export default function ESSAttendancePage() {
             const balance = balances?.[period];
             if (!balance) return null;
             const label = period === 'week' ? 'This week' : 'Month to date';
+            const isFlexible = balance.flexible === true;
             return (
               <div key={period} className="flex items-center gap-4 rounded-lg border border-gray-200 bg-white p-5">
                 <div
@@ -259,10 +272,19 @@ export default function ESSAttendancePage() {
                 </div>
                 <div className="min-w-0">
                   <h2 className="font-semibold text-gray-900">{label}</h2>
-                  <p className="mt-1 text-sm text-gray-600">of {formatHoursDuration(balance.requiredHours)} scheduled</p>
-                  <p className="mt-1 text-sm text-gray-600">{balance.remainingHours > 0 ? `${formatHoursDuration(balance.remainingHours)} remaining` : 'Hours target complete'}</p>
+                  {isFlexible ? (
+                    <>
+                      <p className="mt-1 text-sm text-gray-600">{balance.workingDayEquivalents?.toFixed(2) ?? '0.00'} working days earned from task time</p>
+                      <p className="mt-1 text-sm text-gray-600">{balance.activeDays ?? 0} active dates · {formatHoursDuration(balance.remainingHours)} to next day</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="mt-1 text-sm text-gray-600">of {formatHoursDuration(balance.requiredHours)} scheduled</p>
+                      <p className="mt-1 text-sm text-gray-600">{balance.remainingHours > 0 ? `${formatHoursDuration(balance.remainingHours)} remaining` : 'Hours target complete'}</p>
+                    </>
+                  )}
                   <p className="mt-1 text-sm text-gray-600">Breaks: {formatHoursDuration(balance.breakHours)}</p>
-                                  {balance.fullPeriodRequiredHours !== undefined && <p className="mt-1 text-sm text-gray-600">Full month: {formatHoursDuration(balance.fullPeriodRequiredHours)}</p>}
+                  {!isFlexible && balance.fullPeriodRequiredHours !== undefined && <p className="mt-1 text-sm text-gray-600">Full month: {formatHoursDuration(balance.fullPeriodRequiredHours)}</p>}
                 </div>
               </div>
             );

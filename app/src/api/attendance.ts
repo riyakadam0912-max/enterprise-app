@@ -19,7 +19,7 @@ export async function checkIn() { return unwrap((await api.post('/attendance/che
 export async function checkOut() { return unwrap((await api.post('/attendance/check-out')).data); }
 	export async function startAttendanceBreak() { return unwrap((await api.post('/attendance/break/start')).data); }
 	export async function stopAttendanceBreak() { return unwrap((await api.post('/attendance/break/stop')).data); }
-	export type WorkHourPeriodBalance = { startDate: string; endDate: string; requiredHours: number; completedHours: number; breakHours: number; remainingHours: number; progressPercent: number; scheduledDays: number; fullPeriodRequiredHours?: number; fullPeriodScheduledDays?: number };
+	export type WorkHourPeriodBalance = { startDate: string; endDate: string; requiredHours: number; completedHours: number; breakHours: number; remainingHours: number; progressPercent: number; scheduledDays: number; fullPeriodRequiredHours?: number; fullPeriodScheduledDays?: number; flexible?: boolean; workdayHours?: number; activeDays?: number; workingDayEquivalents?: number };
 	export type WorkHourBalances = { week: WorkHourPeriodBalance; month: WorkHourPeriodBalance };
 	export async function attendanceWorkHourBalances(): Promise<WorkHourBalances> {
 		return unwrap<WorkHourBalances>((await api.get('/attendance/work-hours')).data);
@@ -36,6 +36,9 @@ export type DailyTaskWorkSummary = {
 	taskTrackedSeconds: number;
 	attendanceWorkedSeconds: number;
 	scheduledSeconds: number;
+	shiftType?: string;
+	workdayHours?: number;
+	workingDayEquivalent?: number;
 	activeTimer: { taskName: string; startedAt: string } | null;
 };
 

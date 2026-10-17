@@ -41,4 +41,23 @@ describe('sumIntervalSeconds', () => {
       ),
     ).toBe(2);
   });
+
+  it('does not double-count overlapping task intervals', () => {
+    expect(
+      sumIntervalSeconds(
+        [
+          {
+            startedAt: new Date('2026-10-16T09:00:00.000Z'),
+            endedAt: new Date('2026-10-16T11:00:00.000Z'),
+          },
+          {
+            startedAt: new Date('2026-10-16T10:00:00.000Z'),
+            endedAt: new Date('2026-10-16T12:00:00.000Z'),
+          },
+        ],
+        dayStart,
+        dayEnd,
+      ),
+    ).toBe(10_800);
+  });
 });

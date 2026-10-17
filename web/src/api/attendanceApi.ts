@@ -128,6 +128,9 @@ export interface DailyTaskWorkSummary {
   taskTrackedSeconds: number;
   attendanceWorkedSeconds: number;
   scheduledSeconds: number;
+  shiftType?: string;
+  workdayHours?: number;
+  workingDayEquivalent?: number;
   activeTimer: {
     taskName: string;
     startedAt: string;
@@ -158,6 +161,10 @@ export interface WorkHourPeriodBalance {
   scheduledDays: number;
   fullPeriodRequiredHours?: number;
   fullPeriodScheduledDays?: number;
+  flexible?: boolean;
+  workdayHours?: number;
+  activeDays?: number;
+  workingDayEquivalents?: number;
 }
 
 export interface WorkHourBalances {
@@ -189,6 +196,7 @@ export interface TeamWeeklyWorkHours {
     employeeName: string;
     department: string | null;
     taskTrackedHours: number;
+    isFlexible?: boolean;
     week: WorkHourPeriodBalance;
   }>;
 }

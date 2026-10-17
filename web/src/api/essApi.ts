@@ -34,6 +34,7 @@ export interface AttendanceStatus {
     startTime: string;
     endTime: string;
     requiredHours: number;
+    type?: string;
   } | null;
 }
 
@@ -202,6 +203,7 @@ const normalizeShift = (shift: unknown): AttendanceStatus['shift'] => {
     startTime: getString(shift.startTime) ?? '',
     endTime: getString(shift.endTime) ?? '',
     requiredHours: getNumber(shift.requiredHours) ?? 0,
+    type: getString(shift.type) ?? undefined,
   };
 };
 
