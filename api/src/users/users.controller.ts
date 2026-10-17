@@ -68,7 +68,7 @@ export class UsersController {
     return this.usersService.findAll(req.user);
   }
 
-  @Roles(Role.ADMIN, Role.HR, Role.MANAGER)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER)
   @RequirePermissions(Permission.EMPLOYEE_READ)
   @ApiOperation({ summary: 'GET assignable' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })

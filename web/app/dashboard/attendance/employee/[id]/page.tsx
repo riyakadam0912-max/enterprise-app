@@ -176,6 +176,7 @@ export default function EmployeeAttendancePage() {
                           <p>{new Date(day.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })} - {day.checkOut ? new Date(day.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : 'In progress'}</p>
                         )}
                         {day.workingHours != null && <p>{formatHoursDuration(day.workingHours)}</p>}
+                        {day.isShootDay && <p className="font-medium text-orange-700">Shoot day · attendance credited</p>}
                         {day.creditedWorkSeconds !== undefined && (
                           <p className="text-[10px] text-teal-700">Flexible credited time</p>
                         )}

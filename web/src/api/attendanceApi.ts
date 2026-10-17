@@ -60,6 +60,7 @@ export interface AttendanceRecord {
   lateMinutes: number;
   overtimeHours: number;
   status: AttendanceStatus;
+  isShootDay?: boolean;
   holidayName?: string | null;
   shiftDetails: ShiftDetails | null;
 }
@@ -83,6 +84,7 @@ export interface EmployeeAttendanceDay {
   date: string;
   day: number;
   status: AttendanceStatus;
+  isShootDay?: boolean;
   holidayName?: string | null;
   checkIn: string | null;
   checkOut: string | null;
@@ -122,6 +124,7 @@ export interface MyAttendanceResponse {
   breaks?: { startedAt: string; endedAt: string | null }[];
   onBreak?: boolean;
   status: AttendanceStatus;
+  isShootDay?: boolean;
   shiftDetails: ShiftDetails | null;
 }
 

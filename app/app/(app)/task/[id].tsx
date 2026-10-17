@@ -34,7 +34,11 @@ export default function TaskDetail() {
   const { session } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const taskId = Number(id);
-  const allowed = can(session, "task.read") || ["EMPLOYEE", "MANAGER", "HR", "ADMIN", "SUPER_ADMIN"].includes(session?.role ?? "");
+  const allowed =
+    can(session, "task.read") ||
+    ["EMPLOYEE", "MANAGER", "HR", "ADMIN", "SUPER_ADMIN"].includes(
+      session?.role ?? "",
+    );
   const query = useQuery({
     queryKey: ["task", taskId],
     queryFn: () => task(taskId),
@@ -43,9 +47,15 @@ export default function TaskDetail() {
   const data = query.data as TaskData | undefined;
   const role = session?.role ?? "EMPLOYEE";
   const attendance = useQuery({
-    queryKey: ["attendance-today", session?.organizationId, session?.employeeId],
+    queryKey: [
+      "attendance-today",
+      session?.organizationId,
+      session?.employeeId,
+    ],
     queryFn: attendanceToday,
-    enabled: ["EMPLOYEE", "MANAGER", "HR", "ADMIN", "SUPER_ADMIN"].includes(role),
+    enabled: ["EMPLOYEE", "MANAGER", "HR", "ADMIN", "SUPER_ADMIN"].includes(
+      role,
+    ),
   });
   const [tab, setTab] = useState<Tab>("overview");
   const [link, setLink] = useState("");
@@ -61,26 +71,42 @@ export default function TaskDetail() {
   const assigned =
     data?.assignedToUserId === session?.user.id ||
     (session?.employeeId != null && data?.assignedToId === session.employeeId);
+  const assignedToShoot = Boolean(
+    data?.assignedToUserId === session?.user.id ||
+    data?.shootCrew?.some(
+      (member: { userId: number }) => member.userId === session?.user.id,
+    ),
+  );
+  const canCompleteShoot =
+    data?.taskType === "SHOOT" &&
+    ["ADMIN", "SUPER_ADMIN"].includes(role) &&
+    assignedToShoot &&
+    status !== "COMPLETED";
   const employeeCanSubmit =
     role === "EMPLOYEE" &&
     assigned &&
     ["IN_PROGRESS", "REJECTED"].includes(status);
   const reviewer =
-    ["ADMIN", "MANAGER", "SUPER_ADMIN"].includes(role) && status === "SUBMITTED";
+    ["ADMIN", "MANAGER", "SUPER_ADMIN"].includes(role) &&
+    status === "SUBMITTED";
   const mutation = useMutation({
-    mutationFn: (kind: "start" | "submit" | "approve" | "reject") =>
+    mutationFn: (
+      kind: "start" | "submit" | "approve" | "reject" | "complete",
+    ) =>
       kind === "start"
         ? updateTaskStatus(taskId, "IN_PROGRESS")
-        : kind === "submit"
-          ? submitTaskWork(taskId, {
-              submissionLink: link.trim(),
-              note: note.trim(),
-            })
-          : reviewTask(
-              taskId,
-              kind === "approve" ? "APPROVED" : "REJECTED",
-              remarks.trim(),
-            ),
+        : kind === "complete"
+          ? updateTaskStatus(taskId, "COMPLETED")
+          : kind === "submit"
+            ? submitTaskWork(taskId, {
+                submissionLink: link.trim(),
+                note: note.trim(),
+              })
+            : reviewTask(
+                taskId,
+                kind === "approve" ? "APPROVED" : "REJECTED",
+                remarks.trim(),
+              ),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["task", taskId] });
       void client.invalidateQueries({ queryKey: ["tasks"] });
@@ -125,9 +151,11 @@ export default function TaskDetail() {
     );
   const actions = reviewer
     ? ["approve", "reject"]
-    : role === "EMPLOYEE" && assigned && status === "PENDING"
-      ? ["start"]
-      : [];
+    : canCompleteShoot
+      ? ["complete"]
+      : role === "EMPLOYEE" && assigned && status === "PENDING"
+        ? ["start"]
+        : [];
   return (
     <ScrollView contentContainerStyle={styles.page}>
       <Pressable onPress={() => router.back()}>
@@ -154,12 +182,18 @@ export default function TaskDetail() {
       </View>
       {tab === "overview" && (
         <>
-          {["EMPLOYEE", "MANAGER", "HR", "ADMIN", "SUPER_ADMIN"].includes(role) && (
+          {["EMPLOYEE", "MANAGER", "HR", "ADMIN", "SUPER_ADMIN"].includes(
+            role,
+          ) && (
             <TaskTimerControl
               taskId={taskId}
               sessions={data.timerSessions ?? []}
               userId={session?.user.id ?? 0}
-              attendanceReady={Boolean(attendance.data?.checkIn && !attendance.data.checkOut && !attendance.data.onBreak)}
+              attendanceReady={Boolean(
+                attendance.data?.checkIn &&
+                !attendance.data.checkOut &&
+                !attendance.data.onBreak,
+              )}
               attendanceLoading={attendance.isLoading}
               onUpdated={() => {
                 void client.invalidateQueries({ queryKey: ["task", taskId] });
@@ -175,7 +209,9 @@ export default function TaskDetail() {
             setRemarks={setRemarks}
             busy={mutation.isPending}
             act={(kind) =>
-              mutation.mutate(kind as "start" | "approve" | "reject")
+              mutation.mutate(
+                kind as "start" | "approve" | "reject" | "complete",
+              )
             }
           />
         </>
@@ -241,7 +277,9 @@ function TaskTimerControl({
     onError: (error) => Alert.alert("Unable to update timer", apiError(error)),
   });
   const ownSession = sessions.find(
-    (session) => session.userId === userId && (session.status === "RUNNING" || session.status === "PAUSED"),
+    (session) =>
+      session.userId === userId &&
+      (session.status === "RUNNING" || session.status === "PAUSED"),
   );
 
   useEffect(() => {
@@ -251,38 +289,66 @@ function TaskTimerControl({
   }, [ownSession?.status, ownSession?.startedAt]);
 
   const elapsed = ownSession
-    ? ownSession.totalSeconds + (ownSession.status === "RUNNING" && ownSession.startedAt
-      ? Math.max(0, Math.floor((now - new Date(ownSession.startedAt).getTime()) / 1000))
-      : 0)
+    ? ownSession.totalSeconds +
+      (ownSession.status === "RUNNING" && ownSession.startedAt
+        ? Math.max(
+            0,
+            Math.floor((now - new Date(ownSession.startedAt).getTime()) / 1000),
+          )
+        : 0)
     : 0;
-  const action = ownSession?.status === "RUNNING"
-    ? "pause"
-    : ownSession?.status === "PAUSED"
-      ? "resume"
-      : "start";
+  const action =
+    ownSession?.status === "RUNNING"
+      ? "pause"
+      : ownSession?.status === "PAUSED"
+        ? "resume"
+        : "start";
   const enabled = action === "pause" || attendanceReady;
 
   return (
     <View style={styles.timerCard}>
       <View style={{ flex: 1 }}>
         <Text style={styles.cardTitle}>Task timer</Text>
-        <Text style={styles.timerValue}>{ownSession ? formatTimerDuration(elapsed) : "Not running"}</Text>
-        {ownSession?.status === "PAUSED" ? <Text style={styles.muted}>Paused</Text> : null}
-        {!attendanceReady && !ownSession && !attendanceLoading ? <Text style={styles.muted}>Check in and end any break to start tracking.</Text> : null}
+        <Text style={styles.timerValue}>
+          {ownSession ? formatTimerDuration(elapsed) : "Not running"}
+        </Text>
+        {ownSession?.status === "PAUSED" ? (
+          <Text style={styles.muted}>Paused</Text>
+        ) : null}
+        {!attendanceReady && !ownSession && !attendanceLoading ? (
+          <Text style={styles.muted}>
+            Check in and end any break to start tracking.
+          </Text>
+        ) : null}
       </View>
       <View style={{ gap: 8 }}>
         <Pressable
           disabled={!enabled || attendanceLoading || timerMutation.isPending}
           onPress={() => timerMutation.mutate(action)}
-          style={[styles.timerButton, (!enabled || attendanceLoading || timerMutation.isPending) && styles.disabled]}
+          style={[
+            styles.timerButton,
+            (!enabled || attendanceLoading || timerMutation.isPending) &&
+              styles.disabled,
+          ]}
         >
-          <Text style={styles.actionText}>{timerMutation.isPending ? "..." : action === "start" ? "Start" : action === "pause" ? "Pause" : "Resume"}</Text>
+          <Text style={styles.actionText}>
+            {timerMutation.isPending
+              ? "..."
+              : action === "start"
+                ? "Start"
+                : action === "pause"
+                  ? "Pause"
+                  : "Resume"}
+          </Text>
         </Pressable>
         {ownSession ? (
           <Pressable
             disabled={timerMutation.isPending}
             onPress={() => timerMutation.mutate("stop")}
-            style={[styles.timerStopButton, timerMutation.isPending && styles.disabled]}
+            style={[
+              styles.timerStopButton,
+              timerMutation.isPending && styles.disabled,
+            ]}
           >
             <Text style={styles.timerStopText}>Stop and log</Text>
           </Pressable>
@@ -347,26 +413,72 @@ function Overview({
           <Stat label="Priority" value={String(data.priority ?? "Not set")} />
           <Stat
             label="Due"
-            value={data.dueDate ? new Date(String(data.dueDate)).toLocaleString() : "Not set"}
+            value={
+              data.dueDate
+                ? new Date(String(data.dueDate)).toLocaleString()
+                : "Not set"
+            }
           />
         </View>
       </View>
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Assignment</Text>
         <UserIdentity
-          userId={Number(
-            data.assignedToUser?.id ??
-            data.assignedToUserId ??
-            data.assignee?.id ??
-            0,
-          ) || undefined}
-          name={String(data.assignee ?? data.assignedToUser?.name ?? "Unassigned")}
+          userId={
+            Number(
+              data.assignedToUser?.id ??
+                data.assignedToUserId ??
+                data.assignee?.id ??
+                0,
+            ) || undefined
+          }
+          name={String(
+            data.assignee ?? data.assignedToUser?.name ?? "Unassigned",
+          )}
           subtitle={String(data.assignedToUser?.role ?? "Assigned worker")}
           size="md"
         />
         <Text style={styles.detail}>
           Created by: {String(data.assignedByUser?.name ?? "Not set")}
         </Text>
+        {data.taskType === "SHOOT" ? (
+          <View style={styles.shootCard}>
+            <Text style={styles.cardTitle}>Shoot details</Text>
+            <Text style={styles.detail}>
+              Client · {String(data.shootClientName ?? "Not set")}
+            </Text>
+            <Text style={styles.detail}>
+              Location · {String(data.shootLocation ?? "Not set")}
+            </Text>
+            <Text style={styles.detail}>
+              Date ·{" "}
+              {data.shootDate
+                ? new Date(
+                    `${String(data.shootDate).slice(0, 10)}T12:00:00`,
+                  ).toLocaleDateString()
+                : "Not set"}
+            </Text>
+            <Text style={styles.detail}>
+              Reporting · {String(data.shootReportingTime ?? "Not set")}
+            </Text>
+            <Text style={styles.detail}>
+              Estimated ·{" "}
+              {data.shootEstimatedHours == null
+                ? "Not set"
+                : `${data.shootEstimatedHours} hours`}
+            </Text>
+            <Text style={styles.detail}>
+              Crew ·{" "}
+              {(data.shootCrew ?? [])
+                .map((member: { user: { name: string } }) => member.user.name)
+                .join(", ") || "No crew assigned"}
+            </Text>
+            <Text style={styles.shootNote}>
+              Crew attendance is credited for the shoot date without clock-in or
+              clock-out.
+            </Text>
+          </View>
+        ) : null}
         {actions.length > 0 && (
           <>
             <Text style={styles.sectionTitle}>Next action</Text>
@@ -394,7 +506,9 @@ function Overview({
                   <Text style={styles.actionText}>
                     {item === "start"
                       ? "Start task"
-                      : item[0].toUpperCase() + item.slice(1)}
+                      : item === "complete"
+                        ? "Mark shoot complete"
+                        : item[0].toUpperCase() + item.slice(1)}
                   </Text>
                 </Pressable>
               ))}
@@ -638,7 +752,11 @@ const styles = {
   } as const,
   heroTitle: { color: "#fff", fontSize: 20, fontWeight: "800" } as const,
   heroText: { color: "#cbd5e1", lineHeight: 21, marginTop: 8 } as const,
-  linkText: { color: "#2563eb", marginTop: 6, textDecorationLine: "underline" } as const,
+  linkText: {
+    color: "#2563eb",
+    marginTop: 6,
+    textDecorationLine: "underline",
+  } as const,
   stats: { flexDirection: "row", gap: 8, marginTop: 18 } as const,
   stat: {
     flex: 1,
@@ -670,11 +788,43 @@ const styles = {
     alignItems: "center",
     gap: 12,
   } as const,
-  timerValue: { color: "#172033", fontSize: 24, fontWeight: "800", marginTop: 6 } as const,
-  timerButton: { backgroundColor: "#ea580c", borderRadius: 9, paddingHorizontal: 14, paddingVertical: 10, alignItems: "center" } as const,
-  timerStopButton: { borderColor: "#cbd5e1", borderWidth: 1, borderRadius: 9, paddingHorizontal: 10, paddingVertical: 8, alignItems: "center" } as const,
+  timerValue: {
+    color: "#172033",
+    fontSize: 24,
+    fontWeight: "800",
+    marginTop: 6,
+  } as const,
+  timerButton: {
+    backgroundColor: "#ea580c",
+    borderRadius: 9,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    alignItems: "center",
+  } as const,
+  timerStopButton: {
+    borderColor: "#cbd5e1",
+    borderWidth: 1,
+    borderRadius: 9,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    alignItems: "center",
+  } as const,
   timerStopText: { color: "#475569", fontWeight: "700", fontSize: 11 } as const,
   cardTitle: { color: "#172033", fontSize: 16, fontWeight: "800" } as const,
+  shootCard: {
+    borderWidth: 1,
+    borderColor: "#ffedd5",
+    borderRadius: 12,
+    backgroundColor: "#fffaf5",
+    padding: 13,
+    marginTop: 12,
+  } as const,
+  shootNote: {
+    color: "#64748b",
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 9,
+  } as const,
   label: {
     color: "#64748b",
     fontSize: 11,

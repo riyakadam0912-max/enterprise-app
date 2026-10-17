@@ -1283,7 +1283,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     }
   }
 
-  async function onTaskStatusChange(taskId: number, status: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED') {
+  async function onTaskStatusChange(taskId: number, status: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'COMPLETED') {
     setBusy(true);
     try {
       await updateTaskStatus(taskId, status);

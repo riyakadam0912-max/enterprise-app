@@ -6,6 +6,10 @@ import {
   IsInt,
   IsIn,
   IsUrl,
+  IsArray,
+  ArrayUnique,
+  IsPositive,
+  Matches,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -15,10 +19,45 @@ export const TASK_STATUSES = [
   'SUBMITTED',
   'APPROVED',
   'REJECTED',
+  'COMPLETED',
 ] as const;
 export const TASK_PRIORITIES = ['LOW', 'MEDIUM', 'HIGH'] as const;
+export const TASK_TYPES = ['GENERAL', 'SHOOT'] as const;
 
 export class CreateTaskDto {
+  @IsOptional()
+  @IsString()
+  @IsIn(TASK_TYPES)
+  taskType?: (typeof TASK_TYPES)[number];
+
+  @IsOptional()
+  @IsString()
+  shootClientName?: string;
+
+  @IsOptional()
+  @IsString()
+  shootLocation?: string;
+
+  @IsOptional()
+  @IsDateString()
+  shootDate?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+  shootReportingTime?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  shootEstimatedHours?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsInt({ each: true })
+  shootCrewUserIds?: number[];
+
   @IsOptional()
   @IsString()
   @ApiPropertyOptional({ example: 'sample-title' })

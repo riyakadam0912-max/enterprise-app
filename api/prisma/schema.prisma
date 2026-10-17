@@ -44,6 +44,7 @@ model User {
   sentTaskMessages             TaskMessage[]          @relation("TaskMessageSender")
   createdTasks                 Task[]                 @relation("TaskAssignedBy")
   assignedTasks                Task[]                 @relation("TaskAssignedTo")
+  shootTaskAssignments         TaskCrewAssignment[]
   reviewedTasks                Task[]                 @relation("TaskReviewedBy")
   createdTimesheets            Timesheet[]            @relation("TimesheetCreatedBy")
   reviewedTimesheets           Timesheet[]            @relation("TimesheetReviewedBy")
@@ -396,6 +397,7 @@ model Attendance {
   overtimeHours   Float                     @default(0)
   shortfallHours  Float                     @default(0)
   remarks         String?
+  isShootDay      Boolean                   @default(false)
   requiredHours   Float?
   organizationId  Int
   employee        Employee                  @relation(fields: [employeeId], references: [id])
@@ -637,10 +639,16 @@ model Deal {
 }
 
 model Task {
-  id                      Int                @id @default(autoincrement())
-  status                  String             @default("PENDING")
-  createdAt               DateTime           @default(now())
-  updatedAt               DateTime           @updatedAt
+  id                      Int                  @id @default(autoincrement())
+  taskType                String               @default("GENERAL")
+  shootClientName         String?
+  shootLocation           String?
+  shootDate               DateTime?            @db.Date
+  shootReportingTime      String?
+  shootEstimatedHours     Float?
+  status                  String               @default("PENDING")
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
   actualHours             Float?
   assignee                String?
   dueDate                 DateTime?
@@ -667,22 +675,36 @@ model Task {
   submissionNotes         String?
   organizationId          Int
   businessUnitId          Int?
-  legacyTimerTotalSeconds Int                @default(0)
-  assignedByUser          User?              @relation("TaskAssignedBy", fields: [assignedByUserId], references: [id])
-  assignedEmployee        Employee?          @relation("TaskAssignee", fields: [assignedToId], references: [id])
-  assignedToUser          User?              @relation("TaskAssignedTo", fields: [assignedToUserId], references: [id])
-  businessUnit            BusinessUnit?      @relation("TaskBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
-  deal                    Deal?              @relation(fields: [dealId], references: [id])
-  lead                    Lead?              @relation(fields: [leadId], references: [id])
-  organization            Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  projectRef              Project?           @relation("ProjectTasks", fields: [projectId], references: [id])
-  reviewedByUser          User?              @relation("TaskReviewedBy", fields: [reviewedBy], references: [id])
+  legacyTimerTotalSeconds Int                  @default(0)
+  assignedByUser          User?                @relation("TaskAssignedBy", fields: [assignedByUserId], references: [id])
+  assignedEmployee        Employee?            @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  assignedToUser          User?                @relation("TaskAssignedTo", fields: [assignedToUserId], references: [id])
+  businessUnit            BusinessUnit?        @relation("TaskBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
+  deal                    Deal?                @relation(fields: [dealId], references: [id])
+  lead                    Lead?                @relation(fields: [leadId], references: [id])
+  organization            Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectRef              Project?             @relation("ProjectTasks", fields: [projectId], references: [id])
+  reviewedByUser          User?                @relation("TaskReviewedBy", fields: [reviewedBy], references: [id])
   timerSessions           TaskTimerSession[]
-  timesheets              Timesheet[]        @relation("TaskTimesheets")
+  shootCrew               TaskCrewAssignment[]
+  timesheets              Timesheet[]          @relation("TaskTimesheets")
   messages                TaskMessage[]
 
   @@index([organizationId])
   @@index([businessUnitId])
+  @@index([taskType, shootDate])
+}
+
+model TaskCrewAssignment {
+  id        Int      @id @default(autoincrement())
+  taskId    Int
+  userId    Int
+  createdAt DateTime @default(now())
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+  @@index([userId, taskId])
 }
 
 model TaskTimerSession {

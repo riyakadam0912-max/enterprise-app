@@ -29,7 +29,15 @@ const TASK_STATUSES = [
   'SUBMITTED',
   'APPROVED',
   'REJECTED',
+  'COMPLETED',
 ] as const;
+const SHOOT_ASSIGNABLE_ROLES = [
+  Role.EMPLOYEE,
+  Role.MANAGER,
+  Role.HR,
+  Role.ADMIN,
+  Role.SUPER_ADMIN,
+];
 @Injectable()
 export class TasksService {
   constructor(
@@ -85,7 +93,7 @@ export class TasksService {
     // Backward compatibility with legacy status values.
     if (normalized === 'NOT STARTED') return 'PENDING';
     if (normalized === 'IN PROGRESS') return 'IN_PROGRESS';
-    if (normalized === 'COMPLETED') return 'APPROVED';
+    if (normalized === 'COMPLETED') return 'COMPLETED';
 
     return 'PENDING';
   }
@@ -114,6 +122,7 @@ export class TasksService {
         OR: [
           { assignedToUserId: user.userId },
           { assignedByUserId: user.userId },
+          { shootCrew: { some: { userId: user.userId } } },
           { projectRef: { managerId: user.userId } },
           { projectRef: { coManagers: { some: { id: user.userId } } } },
         ],
@@ -123,6 +132,7 @@ export class TasksService {
         OR: [
           { assignedToUserId: user.userId },
           { assignedByUserId: user.userId },
+          { shootCrew: { some: { userId: user.userId } } },
           ...(user.employeeId ? [{ assignedToId: user.employeeId }] : []),
           ...(user.employeeId
             ? [
@@ -224,9 +234,219 @@ export class TasksService {
     }
   }
 
+  private async resolveShootCrew(
+    userIds: number[],
+    allowedOrganizationIds: number[],
+    actor: AuthUser,
+  ) {
+    if (!userIds.length) return [];
+    if (
+      actor.role !== Role.ADMIN &&
+      actor.role !== Role.HR &&
+      actor.role !== Role.SUPER_ADMIN &&
+      actor.role !== Role.MANAGER
+    ) {
+      throw new ForbiddenException('You cannot assign a shoot crew');
+    }
+
+    const users = await this.db.user.findMany({
+      where: {
+        id: { in: userIds },
+        organizationId: { in: allowedOrganizationIds },
+        isActive: true,
+        role: { in: SHOOT_ASSIGNABLE_ROLES },
+      },
+      select: {
+        id: true,
+        role: true,
+        managerId: true,
+        employeeId: true,
+        organizationId: true,
+      },
+    });
+    if (users.length !== userIds.length) {
+      throw new ForbiddenException(
+        'Every shoot crew member must be active and within your organization scope',
+      );
+    }
+    if (
+      actor.role === Role.MANAGER &&
+      users.some(
+        (member) =>
+          member.role !== Role.EMPLOYEE || member.managerId !== actor.userId,
+      )
+    ) {
+      throw new ForbiddenException(
+        'Managers can assign shoots only to their employees',
+      );
+    }
+    return users;
+  }
+
+  private shootDay(shootDate: Date) {
+    return new Date(
+      Date.UTC(
+        shootDate.getUTCFullYear(),
+        shootDate.getUTCMonth(),
+        shootDate.getUTCDate(),
+      ),
+    );
+  }
+
+  private dateKeyInTimezone(date: Date, timeZone: string) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date);
+    const values = Object.fromEntries(
+      parts
+        .filter((part) => part.type !== 'literal')
+        .map((part) => [part.type, part.value]),
+    );
+    return `${values.year}-${values.month}-${values.day}`;
+  }
+
+  private async syncShootAttendance(employeeIds: number[], shootDate: Date) {
+    const date = this.shootDay(shootDate);
+    for (const employeeId of new Set(employeeIds)) {
+      const employee = await this.db.employee.findUnique({
+        where: { id: employeeId },
+        select: {
+          organizationId: true,
+          shiftId: true,
+          organization: { select: { timezone: true } },
+        },
+      });
+      if (!employee) continue;
+      const dueDateKey = date.toISOString().slice(0, 10);
+      const shootDateIsDue =
+        dueDateKey <=
+        this.dateKeyInTimezone(
+          new Date(),
+          employee.organization?.timezone ?? 'UTC',
+        );
+      const assignedToAnotherShoot = await this.db.taskCrewAssignment.findFirst(
+        {
+          where: {
+            user: { employeeId },
+            task: {
+              taskType: 'SHOOT',
+              shootDate: date,
+              deletedAt: null,
+            },
+          },
+          select: { id: true },
+        },
+      );
+      let attendance = await this.db.attendance.findUnique({
+        where: { employeeId_date: { employeeId, date } },
+      });
+      if (assignedToAnotherShoot) {
+        if (!attendance) {
+          attendance = await this.db.attendance.upsert({
+            where: { employeeId_date: { employeeId, date } },
+            create: {
+              employeeId,
+              organizationId: employee.organizationId,
+              shiftId: employee.shiftId,
+              date,
+              status: shootDateIsDue ? 'PRESENT' : 'UPCOMING',
+              isShootDay: true,
+              remarks: 'Shoot day credit',
+            },
+            update: {},
+          });
+        }
+        if (
+          attendance.status !== 'LEAVE' &&
+          attendance.status !== 'HOLIDAY' &&
+          attendance.status !== 'WEEKLY_OFF'
+        ) {
+          const shouldCountAsPresent =
+            shootDateIsDue &&
+            ['ABSENT', 'UPCOMING', 'NOT_STARTED', 'NOT_SCHEDULED'].includes(
+              attendance.status,
+            );
+          const shouldScheduleAsUpcoming =
+            !shootDateIsDue &&
+            ['ABSENT', 'NOT_STARTED', 'NOT_SCHEDULED'].includes(
+              attendance.status,
+            );
+          if (
+            shouldCountAsPresent ||
+            shouldScheduleAsUpcoming ||
+            !attendance.isShootDay
+          ) {
+            await this.db.attendance.update({
+              where: { id: attendance.id },
+              data: {
+                status: shouldCountAsPresent
+                  ? 'PRESENT'
+                  : shouldScheduleAsUpcoming
+                    ? 'UPCOMING'
+                    : attendance.status,
+                isShootDay: true,
+                remarks: attendance.remarks ?? 'Shoot day credit',
+              },
+            });
+          }
+        }
+      } else if (attendance?.isShootDay) {
+        const hasPunches = attendance.checkIn || attendance.checkOut;
+        await this.db.attendance.update({
+          where: { id: attendance.id },
+          data: {
+            isShootDay: false,
+            ...(!hasPunches &&
+              attendance.status === 'PRESENT' && {
+                status: 'ABSENT',
+                remarks: null,
+              }),
+          },
+        });
+      }
+    }
+  }
+
+  private assertShootCompletionAllowed(
+    task: {
+      taskType: string;
+      assignedToUserId: number | null;
+      shootCrew?: { userId: number }[];
+    },
+    status: string,
+    user: AuthUser,
+  ) {
+    if (status !== 'COMPLETED') return;
+    if (task.taskType !== 'SHOOT') {
+      throw new BadRequestException(
+        'Only shoot tasks can be completed this way',
+      );
+    }
+    if (user.role !== Role.ADMIN && user.role !== Role.SUPER_ADMIN) {
+      throw new ForbiddenException(
+        'Only an assigned admin or super admin can complete a shoot',
+      );
+    }
+    if (
+      task.assignedToUserId !== user.userId &&
+      !task.shootCrew?.some((member) => member.userId === user.userId)
+    ) {
+      throw new ForbiddenException(
+        'Only an assigned admin or super admin can complete a shoot',
+      );
+    }
+  }
+
   async create(dto: CreateTaskDto, user: AuthUser) {
     const organizationId = this.validateOrganization(user);
-    if (dto.status === 'APPROVED' || dto.status === 'REJECTED') {
+    if (
+      dto.status === 'APPROVED' ||
+      dto.status === 'REJECTED' ||
+      dto.status === 'COMPLETED'
+    ) {
       throw new ForbiddenException(
         'Tasks cannot be created in a reviewed status',
       );
@@ -315,13 +535,35 @@ export class TasksService {
       );
     }
 
-    const actorOrganizationIds = isHierarchyAdmin
-      ? await this.organizationScopeService?.getOrganizationIds(user)
-      : [organizationId];
-    const assignableOrganizationIds =
-      project && actorOrganizationIds?.includes(project.organizationId)
-        ? actorOrganizationIds
-        : [organizationId];
+    const assignableOrganizationIds = projectOrganizationIds;
+    const taskType = dto.taskType ?? 'GENERAL';
+    if (
+      taskType === 'SHOOT' &&
+      (!dto.shootClientName?.trim() ||
+        !dto.shootLocation?.trim() ||
+        !dto.shootDate ||
+        !dto.shootReportingTime?.trim() ||
+        dto.shootEstimatedHours == null ||
+        dto.shootEstimatedHours <= 0 ||
+        !dto.shootCrewUserIds?.length)
+    ) {
+      throw new BadRequestException(
+        'Shoot tasks require client, location, date, reporting time, estimated duration, and at least one crew member',
+      );
+    }
+    if (taskType === 'GENERAL' && dto.shootCrewUserIds?.length) {
+      throw new BadRequestException(
+        'Crew members can only be assigned to shoot tasks',
+      );
+    }
+    const shootCrew =
+      taskType === 'SHOOT'
+        ? await this.resolveShootCrew(
+            dto.shootCrewUserIds ?? [],
+            assignableOrganizationIds,
+            user,
+          )
+        : [];
     const assignee =
       dto.assignedToUserId || dto.employeeId
         ? await this.resolveAssignee(
@@ -390,10 +632,21 @@ export class TasksService {
       );
     }
 
-    return this.db.task.create({
+    const createdTask = await this.db.task.create({
       data: {
         organizationId: project?.organizationId ?? organizationId,
         businessUnitId: taskBusinessUnitId,
+        taskType,
+        ...(taskType === 'SHOOT' && {
+          shootClientName: dto.shootClientName?.trim(),
+          shootLocation: dto.shootLocation?.trim(),
+          shootDate: this.shootDay(new Date(dto.shootDate!)),
+          shootReportingTime: dto.shootReportingTime?.trim(),
+          shootEstimatedHours: dto.shootEstimatedHours,
+          shootCrew: {
+            create: shootCrew.map(({ id }) => ({ userId: id })),
+          },
+        }),
         taskName: resolvedTaskName,
         project: dto.project ?? project?.projectName,
         projectId: project?.id,
@@ -415,7 +668,25 @@ export class TasksService {
         leadId: dto.leadId,
         dealId: dto.dealId,
       },
+      include: {
+        shootCrew: {
+          include: {
+            user: {
+              select: { id: true, name: true, email: true, role: true },
+            },
+          },
+        },
+      },
     });
+    if (taskType === 'SHOOT' && dto.shootDate) {
+      await this.syncShootAttendance(
+        shootCrew.flatMap((member) =>
+          member.employeeId == null ? [] : [member.employeeId],
+        ),
+        new Date(dto.shootDate),
+      );
+    }
+    return createdTask;
   }
 
   private async assertTaskMessageAccess(taskId: number, user: AuthUser) {
@@ -959,8 +1230,54 @@ export class TasksService {
     const taskScope = await this.getScopedWhere(user);
     const existingTask = await this.db.task.findFirst({
       where: { id, ...taskScope },
+      include: {
+        shootCrew: { include: { user: { select: { employeeId: true } } } },
+      },
     });
     if (!existingTask) throw new NotFoundException(`Task #${id} not found`);
+    const existingShootCrew = existingTask.shootCrew ?? [];
+    const nextTaskType = dto.taskType ?? existingTask.taskType ?? 'GENERAL';
+    const nextShootDate =
+      dto.shootDate !== undefined
+        ? dto.shootDate
+          ? this.shootDay(new Date(dto.shootDate))
+          : null
+        : existingTask.shootDate;
+    const nextShootCrewIds =
+      dto.shootCrewUserIds ??
+      existingShootCrew.map((assignment) => assignment.userId);
+    const nextShootEstimatedHours =
+      dto.shootEstimatedHours ?? existingTask.shootEstimatedHours;
+    if (
+      nextTaskType === 'SHOOT' &&
+      (!(dto.shootClientName ?? existingTask.shootClientName)?.trim() ||
+        !(dto.shootLocation ?? existingTask.shootLocation)?.trim() ||
+        !nextShootDate ||
+        !(dto.shootReportingTime ?? existingTask.shootReportingTime)?.trim() ||
+        nextShootEstimatedHours == null ||
+        nextShootEstimatedHours <= 0 ||
+        !nextShootCrewIds.length)
+    ) {
+      throw new BadRequestException(
+        'Shoot tasks require client, location, date, reporting time, estimated duration, and at least one crew member',
+      );
+    }
+    const actorOrganizationIds =
+      user.role === Role.ADMIN ||
+      user.role === Role.HR ||
+      user.role === Role.SUPER_ADMIN
+        ? ((await this.organizationScopeService?.getRelatedOrganizationIds(
+            user.homeOrganizationId ?? organizationId,
+          )) ?? [organizationId])
+        : [organizationId];
+    const newShootCrew =
+      nextTaskType === 'SHOOT' && dto.shootCrewUserIds !== undefined
+        ? await this.resolveShootCrew(
+            dto.shootCrewUserIds,
+            actorOrganizationIds,
+            user,
+          )
+        : null;
 
     let assigneeData: {
       assignedToUserId?: number;
@@ -970,7 +1287,7 @@ export class TasksService {
     } = {};
     if (dto.assignedToUserId || dto.employeeId) {
       const assignee = await this.resolveAssignee(
-        organizationId,
+        actorOrganizationIds,
         dto.employeeId ?? null,
         dto.assignedToUserId ?? null,
       );
@@ -984,8 +1301,16 @@ export class TasksService {
         );
       }
       if (assignee.employeeId) {
+        const employeeWhere =
+          actorOrganizationIds.length > 1
+            ? {
+                id: assignee.employeeId,
+                organizationId: { in: actorOrganizationIds },
+                deletedAt: null,
+              }
+            : { id: assignee.employeeId, ...employeeBUWhere };
         const validEmp = await this.db.employee.findFirst({
-          where: { id: assignee.employeeId, ...employeeBUWhere },
+          where: employeeWhere,
           select: { id: true },
         });
         if (!validEmp) {
@@ -1056,14 +1381,17 @@ export class TasksService {
     }
 
     if (dto.status !== undefined) {
-      this.ensureTransitionAllowed(
-        existingTask.status,
-        this.normalizeTaskStatus(dto.status),
-        user.role,
-      );
+      this.assertShootCompletionAllowed(existingTask, dto.status, user);
+      if (this.normalizeTaskStatus(dto.status) !== 'COMPLETED') {
+        this.ensureTransitionAllowed(
+          existingTask.status,
+          this.normalizeTaskStatus(dto.status),
+          user.role,
+        );
+      }
     }
 
-    return this.db.task.update({
+    const updated = await this.db.task.update({
       where: { id, organizationId: existingTask.organizationId },
       data: {
         ...((dto.taskName !== undefined || dto.title !== undefined) && {
@@ -1074,6 +1402,31 @@ export class TasksService {
         ...(dto.assignee !== undefined && { assignee: dto.assignee }),
         ...(dto.driveLink !== undefined && { driveLink: dto.driveLink }),
         ...assigneeData,
+        taskType: nextTaskType,
+        ...(nextTaskType === 'SHOOT'
+          ? {
+              shootClientName:
+                dto.shootClientName ?? existingTask.shootClientName,
+              shootLocation: dto.shootLocation ?? existingTask.shootLocation,
+              shootDate: nextShootDate,
+              shootReportingTime:
+                dto.shootReportingTime ?? existingTask.shootReportingTime,
+              shootEstimatedHours: nextShootEstimatedHours,
+              ...(newShootCrew && {
+                shootCrew: {
+                  deleteMany: {},
+                  create: newShootCrew.map(({ id }) => ({ userId: id })),
+                },
+              }),
+            }
+          : {
+              shootClientName: null,
+              shootLocation: null,
+              shootDate: null,
+              shootReportingTime: null,
+              shootEstimatedHours: null,
+              shootCrew: { deleteMany: {} },
+            }),
         ...(dto.priority !== undefined && { priority: dto.priority }),
         ...(dto.status !== undefined && {
           status: this.normalizeTaskStatus(dto.status),
@@ -1108,8 +1461,32 @@ export class TasksService {
         assignedToUser: { select: { id: true, name: true, email: true } },
         assignedByUser: { select: { id: true, name: true, email: true } },
         reviewedByUser: { select: { id: true, name: true, email: true } },
+        shootCrew: {
+          include: {
+            user: {
+              select: { id: true, name: true, email: true, role: true },
+            },
+          },
+        },
       },
     });
+    const affectedShootEmployeeIds = [
+      ...existingShootCrew.map((assignment) => assignment.user.employeeId),
+      ...(newShootCrew ?? []).map((member) => member.employeeId),
+    ].filter((employeeId): employeeId is number => employeeId != null);
+    const affectedShootDates = new Set<string>();
+    if (existingTask.shootDate) {
+      affectedShootDates.add(
+        this.shootDay(existingTask.shootDate).toISOString(),
+      );
+    }
+    if (nextShootDate) {
+      affectedShootDates.add(nextShootDate.toISOString());
+    }
+    for (const date of affectedShootDates) {
+      await this.syncShootAttendance(affectedShootEmployeeIds, new Date(date));
+    }
+    return updated;
   }
 
   async remove(id: number, user: AuthUser) {
@@ -1123,12 +1500,26 @@ export class TasksService {
     const taskScope = await this.getScopedWhere(user);
     const existing = await this.db.task.findFirst({
       where: { id, ...taskScope },
+      include: {
+        shootCrew: { include: { user: { select: { employeeId: true } } } },
+      },
     });
     if (!existing) throw new NotFoundException(`Task #${id} not found`);
-    return this.db.task.update({
+    const removed = await this.db.task.update({
       where: { id },
       data: { deletedAt: new Date() },
     });
+    if (existing.taskType === 'SHOOT' && existing.shootDate) {
+      await this.syncShootAttendance(
+        (existing.shootCrew ?? []).flatMap((assignment) =>
+          assignment.user.employeeId == null
+            ? []
+            : [assignment.user.employeeId],
+        ),
+        existing.shootDate,
+      );
+    }
+    return removed;
   }
 
   async importRecords(
@@ -1301,6 +1692,8 @@ export class TasksService {
         assignedToUserId: true,
         assignedToId: true,
         projectId: true,
+        taskType: true,
+        shootCrew: { select: { userId: true } },
       },
     });
     if (!task) {
@@ -1327,7 +1720,10 @@ export class TasksService {
     }
 
     const normalizedStatus = this.normalizeTaskStatus(status);
-    this.ensureTransitionAllowed(task.status, normalizedStatus, user.role);
+    this.assertShootCompletionAllowed(task, normalizedStatus, user);
+    if (normalizedStatus !== 'COMPLETED') {
+      this.ensureTransitionAllowed(task.status, normalizedStatus, user.role);
+    }
 
     return this.db.task.update({
       where: { id, organizationId: task.organizationId },
@@ -1341,6 +1737,13 @@ export class TasksService {
         assignedToUser: { select: { id: true, name: true, email: true } },
         assignedByUser: { select: { id: true, name: true, email: true } },
         reviewedByUser: { select: { id: true, name: true, email: true } },
+        shootCrew: {
+          include: {
+            user: {
+              select: { id: true, name: true, email: true, role: true },
+            },
+          },
+        },
       },
     });
   }
@@ -1397,6 +1800,13 @@ export class TasksService {
         assignedToUser: { select: { id: true, name: true, email: true } },
         assignedByUser: { select: { id: true, name: true, email: true } },
         reviewedByUser: { select: { id: true, name: true, email: true } },
+        shootCrew: {
+          include: {
+            user: {
+              select: { id: true, name: true, email: true, role: true },
+            },
+          },
+        },
       },
     })) as Prisma.TaskGetPayload<{
       include: {
@@ -1488,6 +1898,13 @@ export class TasksService {
         assignedToUser: { select: { id: true, name: true, email: true } },
         assignedByUser: { select: { id: true, name: true, email: true } },
         reviewedByUser: { select: { id: true, name: true, email: true } },
+        shootCrew: {
+          include: {
+            user: {
+              select: { id: true, name: true, email: true, role: true },
+            },
+          },
+        },
       },
     })) as Prisma.TaskGetPayload<{
       include: {

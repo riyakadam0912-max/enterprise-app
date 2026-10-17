@@ -146,7 +146,7 @@ describe('TasksService', () => {
       ).rejects.toThrow(ForbiddenException);
     });
 
-    it.each(['APPROVED', 'REJECTED'])(
+    it.each(['APPROVED', 'REJECTED', 'COMPLETED'])(
       'does not allow creating a task in %s status',
       async (status) => {
         await expect(
@@ -449,6 +449,109 @@ describe('TasksService', () => {
       expect(taskDelegate.create).toHaveBeenCalledTimes(1);
     });
 
+    it('requires complete shoot details before creating a shoot task', async () => {
+      await expect(
+        service.create(
+          { taskName: 'Studio shoot', taskType: 'SHOOT' } as CreateTaskDto,
+          mockAdminUser,
+        ),
+      ).rejects.toThrow('Shoot tasks require client, location, date');
+      expect(
+        getPrismaDelegate(mockPrisma, 'task').create,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('schedules existing attendance as upcoming for a future shoot', async () => {
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      const attendanceDelegate = getPrismaDelegate(mockPrisma, 'attendance');
+      employeeDelegate.findUnique.mockResolvedValueOnce({
+        organizationId: 1,
+        shiftId: 4,
+        organization: { timezone: 'UTC' },
+      });
+      getPrismaDelegate(mockPrisma, 'taskCrewAssignment')
+        .findFirst.mockResolvedValueOnce({ id: 91 });
+      attendanceDelegate.findUnique.mockResolvedValueOnce({
+        id: 32,
+        status: 'ABSENT',
+        isShootDay: false,
+        checkIn: null,
+        checkOut: null,
+      });
+
+      await (service as any).syncShootAttendance(
+        [117],
+        new Date('2099-01-15T12:00:00.000Z'),
+      );
+
+      expect(attendanceDelegate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 32 },
+          data: expect.objectContaining({
+            status: 'UPCOMING',
+            isShootDay: true,
+          }),
+        }),
+      );
+    });
+
+    it('creates shoots with a validated multi-role crew', async () => {
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      userDelegate.findMany.mockResolvedValueOnce([
+        {
+          id: 17,
+          role: Role.EMPLOYEE,
+          managerId: null,
+          employeeId: 117,
+          organizationId: 1,
+        },
+        {
+          id: 18,
+          role: Role.ADMIN,
+          managerId: null,
+          employeeId: null,
+          organizationId: 1,
+        },
+      ]);
+      userDelegate.findUniqueOrThrow.mockResolvedValueOnce({
+        id: mockAdminUser.userId,
+        name: mockAdminUser.name,
+        employeeId: null,
+      });
+      taskDelegate.create.mockResolvedValueOnce({
+        id: 24,
+        taskName: 'Studio shoot',
+        taskType: 'SHOOT',
+      });
+
+      await service.create(
+        {
+          taskName: 'Studio shoot',
+          taskType: 'SHOOT',
+          shootClientName: 'Northstar',
+          shootLocation: 'Studio A',
+          shootDate: '2026-11-03',
+          shootReportingTime: '09:30',
+          shootEstimatedHours: 8,
+          shootCrewUserIds: [17, 18],
+        } as CreateTaskDto,
+        mockAdminUser,
+      );
+
+      expect(taskDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            taskType: 'SHOOT',
+            shootClientName: 'Northstar',
+            shootCrew: {
+              create: [{ userId: 17 }, { userId: 18 }],
+            },
+          }),
+        }),
+      );
+    });
+
     it('allows a parent admin to assign a project task to a child employee', async () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
       const userDelegate = getPrismaDelegate(mockPrisma, 'user');
@@ -528,6 +631,11 @@ describe('TasksService', () => {
             OR: [
               { assignedToUserId: mockManagerUser.userId },
               { assignedByUserId: mockManagerUser.userId },
+              {
+                shootCrew: {
+                  some: { userId: mockManagerUser.userId },
+                },
+              },
               { projectRef: { managerId: mockManagerUser.userId } },
               {
                 projectRef: {
@@ -738,6 +846,54 @@ describe('TasksService', () => {
       const updateData = taskDelegate.update.mock.calls[0][0].data;
       expect(updateData.assignedToUserId).toBe(3);
       expect(updateData).not.toHaveProperty('assignedByUserId');
+    });
+  });
+
+  describe('shoot completion', () => {
+    it('allows an assigned admin to complete a shoot', async () => {
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      taskDelegate.findFirst.mockResolvedValueOnce({
+        id: 18,
+        organizationId: 1,
+        status: 'PENDING',
+        taskType: 'SHOOT',
+        assignedToUserId: mockAdminUser.userId,
+        assignedToId: null,
+        projectId: null,
+        shootCrew: [],
+      });
+      taskDelegate.update.mockResolvedValueOnce({
+        id: 18,
+        status: 'COMPLETED',
+      });
+
+      await expect(
+        service.updateStatus(18, 'COMPLETED', mockAdminUser),
+      ).resolves.toEqual({ id: 18, status: 'COMPLETED' });
+      expect(taskDelegate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { status: 'COMPLETED' },
+        }),
+      );
+    });
+
+    it('does not allow an unassigned admin to complete a shoot', async () => {
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      taskDelegate.findFirst.mockResolvedValueOnce({
+        id: 19,
+        organizationId: 1,
+        status: 'PENDING',
+        taskType: 'SHOOT',
+        assignedToUserId: 55,
+        assignedToId: null,
+        projectId: null,
+        shootCrew: [],
+      });
+
+      await expect(
+        service.updateStatus(19, 'COMPLETED', mockAdminUser),
+      ).rejects.toThrow(ForbiddenException);
+      expect(taskDelegate.update).not.toHaveBeenCalled();
     });
   });
 

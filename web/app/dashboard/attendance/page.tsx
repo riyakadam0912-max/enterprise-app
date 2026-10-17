@@ -1897,7 +1897,12 @@ export default function AttendancePage() {
                     )}
                   </td>
                   <td className="px-5 py-4 text-slate-700">{row.overtimeHours > 0 ? `+${formatHoursDuration(row.overtimeHours)}` : '—'}</td>
-                  <td className="px-5 py-4"><StatusBadge status={row.status} /></td>
+                  <td className="px-5 py-4">
+                    <StatusBadge status={row.status} />
+                    {row.isShootDay && (
+                      <p className="mt-1 text-xs font-medium text-orange-700">Shoot day</p>
+                    )}
+                  </td>
                   {canViewAdminAttendance && (
                     <td className="px-5 py-4 text-right">
                       {row.id ? (

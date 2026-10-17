@@ -23,7 +23,7 @@ const DashboardCharts = dynamic(() => import('./dashboard/DashboardCharts'), {
 });
 
 type DashboardRole = 'SUPER_ADMIN' | 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
-type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'COMPLETED';
 
 type Session = {
   role: DashboardRole;
@@ -38,6 +38,7 @@ function normalizeTaskStatus(value?: string | null): TaskStatus {
     case 'SUBMITTED':
     case 'APPROVED':
     case 'REJECTED':
+    case 'COMPLETED':
       return value.toUpperCase() as TaskStatus;
     case 'PENDING':
     default:

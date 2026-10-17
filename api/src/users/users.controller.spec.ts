@@ -70,6 +70,11 @@ describe('UsersController', () => {
       UsersController,
     ]);
 
-    expect(roles).toEqual([Role.ADMIN, Role.HR, Role.MANAGER]);
+    expect(roles).toEqual([
+      Role.SUPER_ADMIN,
+      Role.ADMIN,
+      Role.HR,
+      Role.MANAGER,
+    ]);
   });
 });

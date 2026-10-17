@@ -58,6 +58,9 @@ function createPrismaMock() {
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
     },
+    taskCrewAssignment: {
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
     taskTimerInterval: { findMany: jest.fn().mockResolvedValue([]) },
     holiday: {
       findMany: jest.fn().mockResolvedValue([]),
@@ -2742,6 +2745,110 @@ describe('AttendanceService', () => {
       expect.objectContaining({
         create: expect.objectContaining({
           status: AttendanceStatus.WEEKLY_OFF,
+        }),
+      }),
+    );
+  });
+
+  it('credits an assigned shoot day instead of creating an absence', async () => {
+    jest.setSystemTime(new Date('2026-03-03T12:00:00.000Z'));
+    const shift = {
+      id: 2,
+      name: 'Day',
+      type: 'FIXED',
+      startTime: '09:00',
+      endTime: '17:00',
+      requiredHours: 8,
+      minPresentHours: 5,
+      gracePeriodMinutes: 15,
+      weeklyHolidayDay: 0,
+      workingDays: [1, 2, 3, 4, 5],
+    };
+    prisma.employee.findMany.mockResolvedValue([
+      {
+        id: 4,
+        organizationId: 1,
+        shift,
+        shiftAssignments: [],
+        organization: { timezone: 'UTC' },
+      },
+    ]);
+    prisma.taskCrewAssignment.findFirst.mockResolvedValue({ id: 92 });
+    prisma.attendance.findUnique.mockResolvedValue(null);
+    prisma.attendance.create.mockImplementation(async ({ data }: any) => ({
+      id: 302,
+      ...data,
+    }));
+
+    await service.runDailyAutomation();
+
+    expect(prisma.attendance.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          status: AttendanceStatus.PRESENT,
+          isShootDay: true,
+        }),
+      }),
+    );
+    expect(prisma.attendance.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: AttendanceStatus.PRESENT,
+          isShootDay: true,
+        }),
+      }),
+    );
+  });
+
+  it('converts scheduled shoot attendance to present when the shoot date is due', async () => {
+    jest.setSystemTime(new Date('2026-03-03T12:00:00.000Z'));
+    const shift = {
+      id: 2,
+      name: 'Day',
+      type: 'FIXED',
+      startTime: '09:00',
+      endTime: '17:00',
+      requiredHours: 8,
+      minPresentHours: 5,
+      gracePeriodMinutes: 15,
+      weeklyHolidayDay: 0,
+      workingDays: [1, 2, 3, 4, 5],
+    };
+    const scheduledAttendance = {
+      id: 303,
+      employeeId: 4,
+      date: new Date('2026-03-02T00:00:00.000Z'),
+      status: AttendanceStatus.UPCOMING,
+      isShootDay: true,
+      checkIn: null,
+      checkOut: null,
+      shift,
+      breaks: [],
+    };
+    prisma.employee.findMany.mockResolvedValue([
+      {
+        id: 4,
+        organizationId: 1,
+        shift,
+        shiftAssignments: [],
+        organization: { timezone: 'UTC' },
+      },
+    ]);
+    prisma.taskCrewAssignment.findFirst.mockResolvedValue({ id: 92 });
+    prisma.attendance.findUnique.mockResolvedValue(scheduledAttendance);
+    prisma.attendance.update.mockResolvedValue({
+      ...scheduledAttendance,
+      status: AttendanceStatus.PRESENT,
+    });
+
+    await service.runDailyAutomation();
+
+    expect(prisma.attendance.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 303 },
+        data: expect.objectContaining({
+          status: AttendanceStatus.PRESENT,
+          isShootDay: true,
         }),
       }),
     );

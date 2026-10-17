@@ -730,7 +730,7 @@ describe('UsersService', () => {
   });
 
   describe('findAssignable', () => {
-    it('should return all active non-admin users for ADMIN role', async () => {
+    it('should return all active organization users for ADMIN role', async () => {
       // Arrange
       const userDelegate = getPrismaDelegate(mockPrisma, 'user');
       const adminUser = createMockAuthUser(Role.ADMIN);
@@ -746,14 +746,26 @@ describe('UsersService', () => {
 
       // Assert
       expect(userDelegate.findMany).toHaveBeenCalledWith({
-        where: { isActive: true, role: { not: Role.ADMIN }, organizationId: 1 },
+        where: {
+          isActive: true,
+          role: {
+            in: [
+              Role.EMPLOYEE,
+              Role.MANAGER,
+              Role.HR,
+              Role.ADMIN,
+              Role.SUPER_ADMIN,
+            ],
+          },
+          organizationId: 1,
+        },
         select: expect.any(Object),
         orderBy: { name: 'asc' },
       });
       expect(result).toEqual(expectedUsers);
     });
 
-    it('should return all active non-admin users for HR role', async () => {
+    it('should return all active organization users for HR role', async () => {
       // Arrange
       const userDelegate = getPrismaDelegate(mockPrisma, 'user');
       const hrUser = createMockAuthUser(Role.HR);

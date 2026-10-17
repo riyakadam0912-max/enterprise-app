@@ -6,7 +6,7 @@ import { TaskDetailHeader, TaskDetailMetadata } from '@/components/tasks/TaskDet
 import { Check, ExternalLink, MessageCircle, Play, Send, X } from 'lucide-react';
 
 type DashboardRole = AuthRole;
-type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'COMPLETED';
 type TaskChatMessage = {
   id: string;
   senderId: number;
@@ -39,6 +39,13 @@ type TaskLike = {
   reviewComment?: string | null;
   reviewedAt?: string | null;
   reviewedByUser?: { id: number; name: string; email: string } | null;
+  taskType?: 'GENERAL' | 'SHOOT';
+  shootClientName?: string | null;
+  shootLocation?: string | null;
+  shootDate?: string | null;
+  shootReportingTime?: string | null;
+  shootEstimatedHours?: number | null;
+  shootCrew?: Array<{ userId: number; user: { id: number; name: string; role: string } }>;
 };
 
 type TaskDetailPanelProps = {
@@ -62,7 +69,7 @@ type TaskDetailPanelProps = {
   }) => Promise<void> | void;
   onLoadMessages?: (taskId: number) => Promise<TaskChatMessage[]>;
   onSendMessage?: (taskId: number, content: string) => Promise<TaskChatMessage>;
-  onUpdateStatus?: (taskId: number, status: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED') => Promise<void> | void;
+  onUpdateStatus?: (taskId: number, status: TaskStatus) => Promise<void> | void;
   busy?: boolean;
 };
 
@@ -81,6 +88,7 @@ function normalizeTaskStatus(value?: string | null): TaskStatus {
     case 'SUBMITTED':
     case 'APPROVED':
     case 'REJECTED':
+    case 'COMPLETED':
       return value.toUpperCase() as TaskStatus;
     case 'PENDING':
     default:
@@ -144,7 +152,7 @@ type TaskDetailPanelBodyProps = {
   }) => Promise<void> | void;
   onLoadMessages?: (taskId: number) => Promise<TaskChatMessage[]>;
   onSendMessage?: (taskId: number, content: string) => Promise<TaskChatMessage>;
-  onUpdateStatus?: (taskId: number, status: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED') => Promise<void> | void;
+  onUpdateStatus?: (taskId: number, status: TaskStatus) => Promise<void> | void;
   busy?: boolean;
 };
 
@@ -192,7 +200,16 @@ function TaskDetailPanelBody({
   const canReview = isManagerOrAdmin && taskStatus === 'SUBMITTED';
   const canEdit =
     Boolean(onEditTask) && (isManagerOrAdmin || role === 'SUPER_ADMIN');
-  const canChangeStatus = isManagerOrAdmin && taskStatus !== 'SUBMITTED';
+  const isAssignedShootAdmin = Boolean(
+    task.taskType === 'SHOOT' &&
+      (role === 'ADMIN' || role === 'SUPER_ADMIN') &&
+      (task.assignedToUserId === currentUserId ||
+        task.shootCrew?.some((assignment) => assignment.userId === currentUserId)),
+  );
+  const canChangeStatus =
+    (isManagerOrAdmin || isAssignedShootAdmin) &&
+    taskStatus !== 'SUBMITTED' &&
+    taskStatus !== 'COMPLETED';
   const showSubmissionSection = canEmployeeAct && (taskStatus === 'IN_PROGRESS' || taskStatus === 'REJECTED');
   const showStartButton = canEmployeeAct && taskStatus === 'PENDING';
   const showAwaitingReview = taskStatus === 'SUBMITTED';
@@ -345,6 +362,43 @@ function TaskDetailPanelBody({
             createdAt={task.createdAt}
             overdue={isPastDue}
           />
+
+          {task.taskType === 'SHOOT' && (
+            <section className="space-y-3 rounded-xl border border-orange-100 bg-orange-50/40 p-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-orange-700">Shoot</p>
+                <h3 className="mt-1 text-sm font-semibold text-slate-900">{task.shootClientName}</h3>
+              </div>
+              <div className="grid gap-3 text-sm sm:grid-cols-2">
+                <div>
+                  <p className="text-xs text-slate-500">Location</p>
+                  <p className="font-medium text-slate-800">{task.shootLocation}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Date &amp; reporting</p>
+                  <p className="font-medium text-slate-800">
+                    {task.shootDate
+                      ? new Date(`${task.shootDate.slice(0, 10)}T12:00:00`).toLocaleDateString()
+                      : 'Not set'}
+                    {task.shootReportingTime ? ` · ${task.shootReportingTime}` : ''}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Estimated duration</p>
+                  <p className="font-medium text-slate-800">
+                    {task.shootEstimatedHours == null ? 'Not set' : `${task.shootEstimatedHours} hours`}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Crew</p>
+                  <p className="font-medium text-slate-800">
+                    {task.shootCrew?.map((assignment) => assignment.user.name).join(', ') || 'No crew assigned'}
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-slate-500">Crew attendance is credited for the shoot date; no clock-in or clock-out is required.</p>
+            </section>
+          )}
 
           <div className="space-y-2 border-t border-slate-200 pt-4">
             <h3 className="text-sm font-semibold text-slate-900">Instructions</h3>
@@ -582,6 +636,7 @@ function TaskDetailPanelBody({
                     <option value="SUBMITTED">SUBMITTED</option>
                     <option value="APPROVED">APPROVED</option>
                     <option value="REJECTED">REJECTED</option>
+                    {isAssignedShootAdmin && <option value="COMPLETED">COMPLETED</option>}
                   </select>
                   <button
                     type="button"

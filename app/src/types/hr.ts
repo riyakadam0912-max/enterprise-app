@@ -1,4 +1,4 @@
-export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'HALF_DAY' | 'LEAVE';
+export type AttendanceStatus = "PRESENT" | "ABSENT" | "HALF_DAY" | "LEAVE";
 
 export type AttendanceSummary = {
   present: number;
@@ -27,6 +27,7 @@ export type ShiftSummary = {
 export type AttendanceToday = {
   date: string;
   status: AttendanceStatus;
+  isShootDay?: boolean;
   checkIn: string | null;
   checkOut: string | null;
   workingHours?: number | null;
@@ -43,8 +44,15 @@ export type AttendanceRecord = {
   date: string;
   id?: number | null;
   employeeId?: number;
-  employee?: { id: number; name: string; department?: string | null; designation?: string | null; organization?: { id: number; name: string } };
+  employee?: {
+    id: number;
+    name: string;
+    department?: string | null;
+    designation?: string | null;
+    organization?: { id: number; name: string };
+  };
   status: string;
+  isShootDay?: boolean;
   checkIn: string | null;
   checkOut: string | null;
   workingHours: number | null;
@@ -71,7 +79,7 @@ export type LeaveRecord = {
   endDate: string;
   reason: string;
   status: string;
-  duration?: 'FULL_DAY' | 'HALF_DAY';
+  duration?: "FULL_DAY" | "HALF_DAY";
   days: number;
   appliedOn: string;
 };

@@ -4,6 +4,7 @@ import {
   Injectable,
   ForbiddenException,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { randomInt } from 'crypto';
@@ -16,6 +17,7 @@ import { AuthUser } from '../common/types/auth';
 import { hashPassword } from './utils/hash-password';
 import { MailService } from '../mail/mail.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { OrganizationScopeService } from '../organizations/organization-scope.service';
 
 @Injectable()
 export class UsersService {
@@ -23,6 +25,8 @@ export class UsersService {
     private readonly prisma: PrismaService,
     private readonly mailService: MailService,
     private readonly auditLogsService: AuditLogsService,
+    @Optional()
+    private readonly organizationScopeService?: OrganizationScopeService,
   ) {}
 
   private isPlatformAdmin(user: AuthUser): boolean {
@@ -784,16 +788,39 @@ export class UsersService {
   }
 
   async findAssignable(user: AuthUser) {
-    const organizationFilter = this.buildOrganizationFilter(user);
+    const canAssignAcrossFamily =
+      user.role === Role.ADMIN ||
+      user.role === Role.HR ||
+      user.role === Role.SUPER_ADMIN;
+    const familyRootId = user.homeOrganizationId ?? user.organizationId;
+    const organizationIds =
+      canAssignAcrossFamily && familyRootId != null
+        ? await this.organizationScopeService?.getRelatedOrganizationIds(
+            familyRootId,
+          )
+        : undefined;
+    const organizationFilter =
+      organizationIds && organizationIds.length > 0
+        ? { organizationId: { in: organizationIds } }
+        : this.buildOrganizationFilter(user);
     if (
       user.role === Role.ADMIN ||
       user.role === Role.HR ||
+      user.role === Role.SUPER_ADMIN ||
       this.isPlatformAdmin(user)
     ) {
       return this.prisma.user.findMany({
         where: {
           isActive: true,
-          role: { not: Role.ADMIN },
+          role: {
+            in: [
+              Role.EMPLOYEE,
+              Role.MANAGER,
+              Role.HR,
+              Role.ADMIN,
+              Role.SUPER_ADMIN,
+            ],
+          },
           ...organizationFilter,
         },
         select: {

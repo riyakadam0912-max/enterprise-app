@@ -6,6 +6,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export interface Task {
   id: number;
+  taskType: 'GENERAL' | 'SHOOT';
+  shootClientName?: string | null;
+  shootLocation?: string | null;
+  shootDate?: string | null;
+  shootReportingTime?: string | null;
+  shootEstimatedHours?: number | null;
+  shootCrew?: Array<{
+    userId: number;
+    user: { id: number; name: string; email: string; role: string };
+  }>;
   organization?: { id: number; name: string };
   title?: string;
   taskName: string;
@@ -74,6 +84,13 @@ export interface TaskTimerSession {
 }
 
 export interface TaskPayload {
+  taskType?: 'GENERAL' | 'SHOOT';
+  shootClientName?: string | null;
+  shootLocation?: string | null;
+  shootDate?: string | null;
+  shootReportingTime?: string | null;
+  shootEstimatedHours?: number | null;
+  shootCrewUserIds?: number[];
   title?: string;
   taskName: string;
   description?: string | null;
@@ -141,7 +158,7 @@ export async function updateTask(id: number, data: Partial<TaskPayload>): Promis
 
 export async function updateTaskStatus(
   id: number,
-  status: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED',
+  status: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'COMPLETED',
 ): Promise<Task> {
   return request<Task>(`/tasks/${id}/status`, {
     method: 'PATCH',

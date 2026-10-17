@@ -91,6 +91,7 @@ type DailyAttendanceRow = {
   lateMinutes: number;
   overtimeHours: number;
   status: AttendanceStatus;
+  isShootDay: boolean;
   holidayName?: string | null;
   shiftDetails: {
     id: number | null;
@@ -784,6 +785,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           overtimeHours: number;
           shortfallHours: number;
           status: AttendanceStatus;
+          isShootDay?: boolean;
           shift?: ShiftLite | null;
           isAutoClosed?: boolean;
           checkoutSource?: AttendanceCheckoutSource | null;
@@ -873,6 +875,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       lateMinutes: attendance?.lateMinutes ?? 0,
       overtimeHours: attendance?.overtimeHours ?? 0,
       status: computedStatus,
+      isShootDay: attendance?.isShootDay ?? false,
       holidayName:
         computedStatus === AttendanceStatus.HOLIDAY ? holidayName : null,
       shiftDetails: shift
@@ -2124,6 +2127,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         lateMinutes: 0,
         overtimeHours: 0,
         status: AttendanceStatus.NOT_SCHEDULED,
+        isShootDay: false,
         shiftDetails: null,
       };
     }
@@ -2138,6 +2142,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       lateMinutes: row.lateMinutes,
       overtimeHours: row.overtimeHours,
       status: row.status,
+      isShootDay: row.isShootDay,
       shiftDetails: row.shiftDetails,
     };
   }
@@ -2372,6 +2377,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       expectedHours?: number;
       lateMinutes: number;
       overtimeHours: number;
+      isShootDay: boolean;
       shiftDetails: (ShiftLite & { minPresentHours: number }) | null;
     }> = [];
 
@@ -2500,6 +2506,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         date: this.startOfDay(day).toISOString(),
         day: dayNumber,
         status,
+        isShootDay: attendance?.isShootDay ?? false,
         holidayName:
           status === AttendanceStatus.HOLIDAY ? (holidayName ?? null) : null,
         checkIn: attendance?.checkIn?.toISOString() ?? null,
@@ -2550,6 +2557,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         expectedHours: d.expectedHours,
         lateMinutes: d.lateMinutes,
         overtimeHours: d.overtimeHours,
+        isShootDay: d.isShootDay,
         status: d.status,
         shiftDetails: d.shiftDetails,
       })),
@@ -4306,6 +4314,23 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       );
 
       const leave = await this.findApprovedLeaveForDay(employee.id, target);
+      const shootAssignment = await this.prisma.taskCrewAssignment.findFirst({
+        where: {
+          user: { employeeId: employee.id },
+          task: {
+            taskType: 'SHOOT',
+            shootDate: target,
+            deletedAt: null,
+          },
+        },
+        select: { id: true },
+      });
+      const shootCreditEligible = Boolean(
+        shootAssignment &&
+        !leave &&
+        !isCorporateHoliday &&
+        !this.isWeeklyHoliday(target, shift),
+      );
 
       if (shift.type === 'FLEXIBLE') continue;
 
@@ -4327,9 +4352,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
               ? AttendanceStatus.HOLIDAY
               : this.isWeeklyHoliday(target, shift)
                 ? AttendanceStatus.WEEKLY_OFF
-                : AttendanceStatus.ABSENT,
+                : shootCreditEligible
+                  ? AttendanceStatus.PRESENT
+                  : AttendanceStatus.ABSENT,
           requiredHours: shift.requiredHours,
           isPaidLeave: leave ? Boolean(leave.isPaid ?? true) : null,
+          isShootDay: shootCreditEligible,
         },
         update: {},
         include: { shift: true, breaks: true },
@@ -4337,6 +4365,25 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
       if (existing.status === AttendanceStatus.LEAVE || leave) {
         continue;
+      }
+
+      if (
+        shootCreditEligible &&
+        (existing.status === AttendanceStatus.ABSENT ||
+          existing.status === AttendanceStatus.UPCOMING ||
+          existing.status === AttendanceStatus.NOT_STARTED ||
+          existing.status === AttendanceStatus.NOT_SCHEDULED) &&
+        !existing.checkIn &&
+        !existing.checkOut
+      ) {
+        await this.prisma.attendance.update({
+          where: { id: existing.id },
+          data: {
+            status: AttendanceStatus.PRESENT,
+            isShootDay: true,
+            remarks: existing.remarks ?? 'Shoot day credit',
+          },
+        });
       }
 
       if (isCorporateHoliday && !existing.checkIn) {
