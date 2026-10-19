@@ -287,20 +287,33 @@ function DailyTaskWorkCard({ enabled }: { enabled: boolean }) {
   }, [enabled, refreshCount]);
 
   if (!enabled) return null;
-  if (loading && !summary) {
-    return <div className="rounded-3xl border border-slate-200 bg-white p-5 text-sm text-slate-500">Loading today’s task time…</div>;
-  }
-  if (error && !summary) {
+  if (!summary) {
     return (
-      <div className="rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
-        <p>{error}</p>
-        <button type="button" onClick={() => { setLoading(true); setRefreshCount((count) => count + 1); }} className="mt-2 font-semibold underline underline-offset-2">
-          Try again
-        </button>
-      </div>
+      <section className="flex min-h-64 flex-col rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Today’s work</p>
+        <h3 className="mt-1 text-lg font-semibold text-slate-900">Task time progress</h3>
+        <div className="flex flex-1 flex-col items-center justify-center text-center">
+          {loading ? (
+            <>
+              <span className="h-10 w-10 animate-spin rounded-full border-2 border-slate-200 border-t-teal-700" aria-hidden="true" />
+              <p className="mt-3 text-sm text-slate-500">Loading today’s task time…</p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-slate-600">{error ?? 'Today’s task time is not available.'}</p>
+              <button
+                type="button"
+                onClick={() => { setLoading(true); setRefreshCount((count) => count + 1); }}
+                className="mt-3 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Try again
+              </button>
+            </>
+          )}
+        </div>
+      </section>
     );
   }
-  if (!summary) return null;
 
   const isFlexible = summary.shiftType === 'FLEXIBLE';
   const target = isFlexible
@@ -315,7 +328,7 @@ function DailyTaskWorkCard({ enabled }: { enabled: boolean }) {
   const targetRemaining = target > 0 ? target - cycleSeconds : 0;
 
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="flex h-full flex-col rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Today’s work</p>
@@ -328,7 +341,7 @@ function DailyTaskWorkCard({ enabled }: { enabled: boolean }) {
           </span>
         )}
       </div>
-      <div className="mt-5 flex flex-col items-center gap-5 sm:flex-row">
+      <div className="mt-5 grid flex-1 content-center gap-5 sm:grid-cols-[8rem_minmax(0,1fr)] sm:items-center">
         <div
           role="img"
           aria-label={`${formatHoursDuration(taskSeconds / 3600)} total task time; ${formatHoursDuration(cycleSeconds / 3600)} of ${formatHoursDuration(target / 3600)} in the current workday cycle`}
@@ -367,7 +380,7 @@ function DailyTaskWorkCard({ enabled }: { enabled: boolean }) {
           )}
           <p className="text-xs text-slate-400">
             {isFlexible
-              ? `8 hours = 1 working day`
+              ? `${formatHoursDuration(target / 3600)} = 1 working day`
               : `${formatHoursDuration(summary.attendanceWorkedSeconds / 3600)} attended of ${formatHoursDuration(target / 3600)} scheduled`}
           </p>
           {error && <p className="text-xs text-rose-600">Could not refresh live time: {error}</p>}
@@ -387,12 +400,11 @@ function EmployeeAttendancePanel(props: {
   checkInLoading: boolean;
   checkOutLoading: boolean;
   breakActionLoading: boolean;
-  workBalances: WorkHourBalances | null;
   onCheckIn: () => void;
   onCheckOut: () => void;
   onBreakAction: () => void;
 }) {
-  const { name, employeeId, accountLinked, helperError, row, checkInLoading, checkOutLoading, breakActionLoading, workBalances, onCheckIn, onCheckOut, onBreakAction } = props;
+  const { name, employeeId, accountLinked, helperError, row, checkInLoading, checkOutLoading, breakActionLoading, onCheckIn, onCheckOut, onBreakAction } = props;
   const hasCheckedIn = Boolean(row?.checkIn);
   const hasCheckedOut = Boolean(row?.checkOut);
   const isFlexible = row?.shiftDetails?.type === 'FLEXIBLE';
@@ -501,13 +513,6 @@ function EmployeeAttendancePanel(props: {
             <p className="text-xs font-medium text-slate-400">{isFlexible ? 'Check-out · optional' : 'Check-out'}</p>
             <p className="mt-1 text-sm font-semibold text-slate-800">{formatTime(row?.checkOut ?? null)}</p>
           </div>
-        </div>
-      )}
-
-      {accountLinked && (
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <WorkHourProgress label="This week" balance={workBalances?.week} />
-          <WorkHourProgress label="Month to date" balance={workBalances?.month} />
         </div>
       )}
 
@@ -1220,7 +1225,7 @@ export default function AttendancePage() {
       </div>
 
       {(!canViewAdminAttendance || session.role === 'HR') && (
-        <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        <div className="grid items-stretch gap-4 xl:grid-cols-[0.9fr_1.1fr]">
           <EmployeeAttendancePanel
             name={session.name}
             employeeId={resolvedEmployeeId}
@@ -1230,13 +1235,19 @@ export default function AttendancePage() {
             checkInLoading={checkInMutation.loading}
             checkOutLoading={checkOutMutation.loading}
             breakActionLoading={breakActionLoading}
-            workBalances={workBalances}
             onCheckIn={() => handleEmployeeAction('in')}
             onCheckOut={() => handleEmployeeAction('out')}
             onBreakAction={() => handleEmployeeAction('break')}
           />
           {accountLinked && <DailyTaskWorkCard enabled={accountLinked} />}
         </div>
+      )}
+
+      {accountLinked && (!canViewAdminAttendance || session.role === 'HR') && workBalances && (
+        <section className="grid gap-3 xl:grid-cols-2" aria-label="Work hour progress">
+          <WorkHourProgress label="This week" balance={workBalances.week} />
+          <WorkHourProgress label="Month to date" balance={workBalances.month} />
+        </section>
       )}
 
       {(!canViewAdminAttendance || session.role === 'HR') && (checkInMutation.error || checkOutMutation.error) && (
