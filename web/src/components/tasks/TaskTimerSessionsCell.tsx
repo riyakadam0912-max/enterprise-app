@@ -7,6 +7,8 @@ import { getTask, updateTaskTimer, type Task, type TaskTimerSession } from '@/ap
 
 type TimerAction = 'start' | 'pause' | 'resume' | 'stop';
 
+export const TASK_TIMER_STATE_CHANGED_EVENT = 'task-timer-state-changed';
+
 function formatDuration(totalSeconds: number) {
   const seconds = Math.max(0, Math.floor(totalSeconds));
   const hours = Math.floor(seconds / 3600);
@@ -78,6 +80,7 @@ export function TaskTimerSessionsCell({
       const updated = await updateTaskTimer(taskId, action);
       setTimerSessions(updated.timerSessions ?? []);
       setNow(Date.now());
+      window.dispatchEvent(new Event(TASK_TIMER_STATE_CHANGED_EVENT));
     } catch (reason) {
       if (isConflictError(reason)) {
         try {

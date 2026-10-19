@@ -114,7 +114,7 @@ describe('AttendanceService', () => {
   let mockBusinessUnitsService: any;
   let mockOrganizationScopeService: any;
   let mockTasksService: {
-    pauseActiveTimerForUser: jest.Mock;
+    stopAllOpenTimersForUser: jest.Mock;
     stopActiveTimerForEmployee: jest.Mock;
   };
 
@@ -145,7 +145,7 @@ describe('AttendanceService', () => {
       ),
     };
     mockTasksService = {
-      pauseActiveTimerForUser: jest.fn().mockResolvedValue(null),
+      stopAllOpenTimersForUser: jest.fn().mockResolvedValue([]),
       stopActiveTimerForEmployee: jest.fn().mockResolvedValue(null),
     };
     service = new AttendanceService(
@@ -1179,7 +1179,7 @@ describe('AttendanceService', () => {
     expect(prisma.attendanceBreak.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ attendanceId: 10 }),
     });
-    expect(mockTasksService.pauseActiveTimerForUser).toHaveBeenCalledWith(
+    expect(mockTasksService.stopAllOpenTimersForUser).toHaveBeenCalledWith(
       mockUser,
       expect.any(Date),
       prisma,
@@ -1225,10 +1225,10 @@ describe('AttendanceService', () => {
     expect(result.onBreak).toBe(true);
   });
 
-  it('does not create a break when pausing the task timer fails', async () => {
+  it('does not create a break when stopping the task timer fails', async () => {
     prisma.employee.findFirst.mockResolvedValue({ id: 7 });
     prisma.attendance.findFirst.mockResolvedValue({ id: 10, breaks: [] });
-    mockTasksService.pauseActiveTimerForUser.mockRejectedValueOnce(
+    mockTasksService.stopAllOpenTimersForUser.mockRejectedValueOnce(
       new Error('timer write failed'),
     );
 

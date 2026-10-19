@@ -441,7 +441,7 @@ function EmployeeAttendancePanel(props: {
           <h2 className="mt-2 text-2xl font-semibold text-slate-900">Mark your attendance, {name}</h2>
           <p className="mt-2 text-sm text-slate-600">
             {isFlexible
-              ? 'Track focused work with task timers. Breaks pause task tracking; check-in and check-out are optional markers.'
+              ? 'Track focused work with task timers. Starting a break stops the active timer; starting a timer ends any active break. Check-in and check-out are optional markers.'
               : 'Use these actions to record your own workday. Your check-in and check-out are saved immediately.'}
           </p>
         </div>

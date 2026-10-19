@@ -1826,7 +1826,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     }
     const startedAt = new Date();
     const created = await this.prisma.$transaction(async (tx) => {
-      await this.tasksService.pauseActiveTimerForUser(
+      await this.tasksService.stopAllOpenTimersForUser(
         user as AuthUser,
         startedAt,
         tx,

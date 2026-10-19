@@ -2,9 +2,13 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
+import { DASHBOARD_CACHE_KEY } from '../common/utils/cache-keys';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Prisma } from '@prisma/client';
 import { CreateTaskDto } from './dto/create-task.dto';
@@ -45,6 +49,7 @@ export class TasksService {
     private readonly workflowEngine: WorkflowEngineService,
     private readonly notificationsService: NotificationsService,
     private readonly businessUnitsService: BusinessUnitsService,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     @Optional()
     private readonly organizationScopeService?: OrganizationScopeService,
   ) {}
@@ -826,27 +831,26 @@ export class TasksService {
           'You already have an active timer for this task',
         );
       }
-      await this.assertUserIsWorking(user);
-      const otherRunningTimer = await this.db.taskTimerSession.findFirst({
-        where: { organizationId, userId, status: 'RUNNING' },
-        include: { task: { select: { taskName: true } } },
-      });
-      if (otherRunningTimer) {
-        throw new ConflictException(
-          `Your timer is already running for task: ${otherRunningTimer.task.taskName}`,
-        );
-      }
       try {
-        await this.db.taskTimerSession.create({
-          data: {
-            taskId,
-            userId,
-            organizationId,
-            status: 'RUNNING',
-            durationSeconds: 0,
-            remainingSeconds: 0,
-            startedAt: now,
-          },
+        await this.db.$transaction(async (tx) => {
+          await this.closeActiveBreaksForUser(user, now, tx);
+          await this.assertUserIsWorking(user, tx);
+          await this.stopAllOpenTimersForUser(
+            user,
+            now,
+            tx,
+          );
+          await tx.taskTimerSession.create({
+            data: {
+              taskId,
+              userId,
+              organizationId,
+              status: 'RUNNING',
+              durationSeconds: 0,
+              remainingSeconds: 0,
+              startedAt: now,
+            },
+          });
         });
       } catch (error) {
         if (this.isTimerUniquenessConflict(error)) {
@@ -854,6 +858,7 @@ export class TasksService {
         }
         throw error;
       }
+      await this.cacheManager.del(DASHBOARD_CACHE_KEY);
       return this.findTaskWithTimerSessions(taskId, organizationId);
     }
 
@@ -1016,6 +1021,39 @@ export class TasksService {
     return this.stopActiveTimerForUserId(user.userId, user.organizationId, now);
   }
 
+  async stopAllOpenTimersForUser(
+    user: Pick<AuthUser, 'userId' | 'organizationId'>,
+    now = new Date(),
+    transaction?: Prisma.TransactionClient,
+  ) {
+    if (user.organizationId == null) {
+      throw new ForbiddenException('User has no associated organization');
+    }
+    const db = transaction ?? this.db;
+    const sessions = await db.taskTimerSession.findMany({
+      where: {
+        userId: user.userId,
+        organizationId: user.organizationId,
+        status: { in: ['RUNNING', 'PAUSED'] },
+      },
+      include: { task: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    for (const session of sessions) {
+      await this.finishTaskTimerSession(
+        session,
+        session.task,
+        user.userId,
+        now,
+        undefined,
+        transaction,
+      );
+    }
+
+    return sessions.map((session) => session.id);
+  }
+
   async stopActiveTimerForEmployee(
     employeeId: number,
     organizationId: number,
@@ -1064,14 +1102,18 @@ export class TasksService {
     return session.id;
   }
 
-  private async assertUserIsWorking(user: AuthUser) {
+  private async assertUserIsWorking(
+    user: AuthUser,
+    transaction?: Prisma.TransactionClient,
+  ) {
     const organizationId = this.validateOrganization(user);
+    const db = transaction ?? this.db;
     if (user.employeeId == null) {
       throw new ForbiddenException(
         'Link your account to an employee to track work time',
       );
     }
-    const employee = await this.db.employee.findFirst({
+    const employee = await db.employee.findFirst({
       where: {
         id: user.employeeId,
         organizationId,
@@ -1080,7 +1122,7 @@ export class TasksService {
       select: { shift: { select: { type: true } } },
     });
     if (employee?.shift?.type === 'FLEXIBLE') {
-      const activeBreak = await this.db.attendance.findFirst({
+      const activeBreak = await db.attendance.findFirst({
         where: {
           employeeId: user.employeeId,
           organizationId,
@@ -1096,7 +1138,7 @@ export class TasksService {
       return;
     }
 
-    const attendance = await this.db.attendance.findFirst({
+    const attendance = await db.attendance.findFirst({
       where: {
         employeeId: user.employeeId,
         organizationId,
@@ -1111,6 +1153,41 @@ export class TasksService {
         'Check in and end any break before starting a task timer',
       );
     }
+  }
+
+  private async closeActiveBreaksForUser(
+    user: AuthUser,
+    now: Date,
+    transaction: Prisma.TransactionClient,
+  ) {
+    const organizationId = this.validateOrganization(user);
+    if (user.employeeId == null) {
+      throw new ForbiddenException(
+        'Link your account to an employee to track work time',
+      );
+    }
+    const openAttendance = await transaction.attendance.findMany({
+      where: {
+        employeeId: user.employeeId,
+        organizationId,
+        breaks: { some: { endedAt: null } },
+      },
+      select: {
+        breaks: {
+          where: { endedAt: null },
+          select: { id: true },
+        },
+      },
+    });
+    const openBreakIds = openAttendance.flatMap((attendance) =>
+      attendance.breaks.map((interval) => interval.id),
+    );
+    if (openBreakIds.length === 0) return;
+
+    await transaction.attendanceBreak.updateMany({
+      where: { id: { in: openBreakIds }, endedAt: null },
+      data: { endedAt: now },
+    });
   }
 
   private async finishTaskTimerSession(

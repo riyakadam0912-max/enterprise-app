@@ -20,7 +20,10 @@ import { cn } from '@/lib/cn';
 import { useAuthSession, type AuthRole } from '@/stores/auth-store';
 import { useAuth } from '@/providers/AuthProvider';
 import { SuccessFeedback } from '@/components/feedback/SuccessFeedback';
-import { TaskTimerSessionsCell } from '@/components/tasks/TaskTimerSessionsCell';
+import {
+  TaskTimerSessionsCell,
+  TASK_TIMER_STATE_CHANGED_EVENT,
+} from '@/components/tasks/TaskTimerSessionsCell';
 import CreateTaskDrawer from '@/components/tasks/CreateTaskDrawer';
 import { TaskDetailHeader, TaskDetailMetadata } from '@/components/tasks/TaskDetailPresentation';
 import { dateTimeLocalToIso, toDateTimeLocalValue } from '@/utils/dateUtils';
@@ -793,9 +796,11 @@ export default function AllTasksPage() {
       if (document.visibilityState === 'visible') void loadTasks(true);
     };
     window.addEventListener('focus', refreshWhenVisible);
+    window.addEventListener(TASK_TIMER_STATE_CHANGED_EVENT, refreshWhenVisible);
     document.addEventListener('visibilitychange', refreshWhenVisible);
     return () => {
       window.removeEventListener('focus', refreshWhenVisible);
+      window.removeEventListener(TASK_TIMER_STATE_CHANGED_EVENT, refreshWhenVisible);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
   }, [loadTasks]);

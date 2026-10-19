@@ -31,7 +31,10 @@ import { createTask, getTaskMessages, reviewTask, sendTaskMessage, submitTaskWor
 import { apiClient } from '@/api/apiClient';
 import { createTimesheet, getTimesheetsReport } from '@/api/timesheetsApi';
 import { TaskDetailPanel } from '@/components/tasks/TaskDetailPanel';
-import { TaskTimerSessionsCell } from '@/components/tasks/TaskTimerSessionsCell';
+import {
+  TaskTimerSessionsCell,
+  TASK_TIMER_STATE_CHANGED_EVENT,
+} from '@/components/tasks/TaskTimerSessionsCell';
 import { SuccessFeedback } from '@/components/feedback/SuccessFeedback';
 import { canAccessUsers } from '@/utils/auth/permissions';
 import { useStableNow } from '@/hooks/useStableNow';
@@ -471,7 +474,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
   }
 
   useEffect(() => {
-    if (!dedicated || !selectedProjectId) return undefined;
+    if (!selectedProjectId) return undefined;
     let cancelled = false;
 
     const refreshProjectTasks = async () => {
@@ -492,13 +495,15 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     };
 
     window.addEventListener('focus', refreshWhenVisible);
+    window.addEventListener(TASK_TIMER_STATE_CHANGED_EVENT, refreshProjectTasks);
     document.addEventListener('visibilitychange', refreshWhenVisible);
     return () => {
       cancelled = true;
       window.removeEventListener('focus', refreshWhenVisible);
+      window.removeEventListener(TASK_TIMER_STATE_CHANGED_EVENT, refreshProjectTasks);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
-  }, [dedicated, selectedProjectId]);
+  }, [selectedProjectId]);
 
   useEffect(() => {
     let cancelled = false;

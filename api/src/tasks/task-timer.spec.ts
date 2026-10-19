@@ -32,6 +32,7 @@ describe('TasksService per-user task timer sessions', () => {
   };
 
   let service: TasksService;
+  const cacheManager = { del: jest.fn().mockResolvedValue(undefined) };
   let prisma: {
     task: { findFirst: jest.Mock; findFirstOrThrow: jest.Mock };
     taskTimerSession: {
@@ -44,18 +45,37 @@ describe('TasksService per-user task timer sessions', () => {
     $transaction: jest.Mock;
   };
   let tx: {
-    taskTimerSession: { updateMany: jest.Mock };
+    taskTimerSession: {
+      updateMany: jest.Mock;
+      findMany: jest.Mock;
+      create: jest.Mock;
+    };
     taskTimerInterval: { create: jest.Mock };
     timesheet: { create: jest.Mock };
+    attendance: { findMany: jest.Mock; findFirst: jest.Mock };
+    attendanceBreak: { updateMany: jest.Mock };
+    employee: { findFirst: jest.Mock };
   };
 
   beforeEach(() => {
     tx = {
       taskTimerSession: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({ id: 101 }),
       },
       taskTimerInterval: { create: jest.fn().mockResolvedValue({ id: 51 }) },
       timesheet: { create: jest.fn().mockResolvedValue({ id: 77 }) },
+      attendance: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue({ id: 201 }),
+      },
+      attendanceBreak: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      employee: {
+        findFirst: jest.fn().mockResolvedValue({ shift: { type: 'FIXED' } }),
+      },
     };
     prisma = {
       task: {
@@ -84,6 +104,7 @@ describe('TasksService per-user task timer sessions', () => {
       {} as never,
       {} as never,
       {} as never,
+      cacheManager as never,
     );
   });
 
@@ -94,8 +115,8 @@ describe('TasksService per-user task timer sessions', () => {
     await service.updateTimer(8, { action: 'start' }, firstWorker);
     await service.updateTimer(8, { action: 'start' }, secondWorker);
 
-    expect(prisma.taskTimerSession.create).toHaveBeenCalledTimes(2);
-    expect(prisma.taskTimerSession.create).toHaveBeenNthCalledWith(1, {
+    expect(tx.taskTimerSession.create).toHaveBeenCalledTimes(2);
+    expect(tx.taskTimerSession.create).toHaveBeenNthCalledWith(1, {
       data: expect.objectContaining({
         taskId: 8,
         userId: 11,
@@ -103,7 +124,7 @@ describe('TasksService per-user task timer sessions', () => {
         status: 'RUNNING',
       }),
     });
-    expect(prisma.taskTimerSession.create).toHaveBeenNthCalledWith(2, {
+    expect(tx.taskTimerSession.create).toHaveBeenNthCalledWith(2, {
       data: expect.objectContaining({
         taskId: 8,
         userId: 12,
@@ -128,7 +149,52 @@ describe('TasksService per-user task timer sessions', () => {
         makeUser(11, Role.EMPLOYEE, 101),
       ),
     ).rejects.toThrow(ForbiddenException);
-    expect(prisma.taskTimerSession.create).not.toHaveBeenCalled();
+    expect(tx.taskTimerSession.create).not.toHaveBeenCalled();
+  });
+
+  it('stops open timers and closes an active break before starting a new timer', async () => {
+    const startedAt = new Date(Date.now() - 30_000);
+    const worker = makeUser(11, Role.EMPLOYEE, 101);
+    tx.taskTimerSession.findMany.mockResolvedValueOnce([
+      {
+        id: 101,
+        taskId: 9,
+        userId: 11,
+        organizationId,
+        status: 'RUNNING',
+        durationSeconds: 0,
+        remainingSeconds: 0,
+        startedAt,
+        totalSeconds: 0,
+        createdAt: startedAt,
+        task: { ...task, id: 9 },
+      },
+    ]);
+    tx.attendance.findMany.mockResolvedValueOnce([
+      { breaks: [{ id: 12 }] },
+    ]);
+
+    await service.updateTimer(8, { action: 'start' }, worker);
+
+    expect(tx.attendanceBreak.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: [12] }, endedAt: null },
+      data: { endedAt: expect.any(Date) },
+    });
+    expect(tx.taskTimerSession.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 101, status: 'RUNNING', startedAt },
+        data: expect.objectContaining({ status: 'STOPPED' }),
+      }),
+    );
+    expect(tx.timesheet.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ timerSessionId: 101 }),
+    });
+    expect(tx.taskTimerSession.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        taskId: 8,
+        status: 'RUNNING',
+      }),
+    });
   });
 
   it('allows a timer to start without a task estimate', async () => {
@@ -139,7 +205,7 @@ describe('TasksService per-user task timer sessions', () => {
 
     await service.updateTimer(8, { action: 'start' }, admin);
 
-    expect(prisma.taskTimerSession.create).toHaveBeenCalledWith({
+    expect(tx.taskTimerSession.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         taskId: 8,
         userId: admin.userId,
@@ -151,7 +217,7 @@ describe('TasksService per-user task timer sessions', () => {
   });
 
   it('requires the user to be checked in and off break before starting', async () => {
-    prisma.attendance.findFirst.mockResolvedValueOnce(null);
+    tx.attendance.findFirst.mockResolvedValueOnce(null);
 
     await expect(
       service.updateTimer(
@@ -160,14 +226,14 @@ describe('TasksService per-user task timer sessions', () => {
         makeUser(11, Role.EMPLOYEE, 101),
       ),
     ).rejects.toThrow('Check in and end any break');
-    expect(prisma.taskTimerSession.create).not.toHaveBeenCalled();
+    expect(tx.taskTimerSession.create).not.toHaveBeenCalled();
   });
 
   it('allows a flexible employee to start a timer when no break is active', async () => {
-    prisma.employee.findFirst.mockResolvedValue({
+    tx.employee.findFirst.mockResolvedValue({
       shift: { type: 'FLEXIBLE' },
     });
-    prisma.attendance.findFirst.mockResolvedValueOnce(null);
+    tx.attendance.findFirst.mockResolvedValueOnce(null);
 
     await service.updateTimer(
       8,
@@ -175,14 +241,14 @@ describe('TasksService per-user task timer sessions', () => {
       makeUser(11, Role.EMPLOYEE, 101),
     );
 
-    expect(prisma.attendance.findFirst).toHaveBeenCalledWith(
+    expect(tx.attendance.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           breaks: { some: { endedAt: null } },
         }),
       }),
     );
-    expect(prisma.taskTimerSession.create).toHaveBeenCalledTimes(1);
+    expect(tx.taskTimerSession.create).toHaveBeenCalledTimes(1);
   });
 
   it('links a stopped session to exactly one attributed pending timesheet', async () => {
@@ -270,9 +336,9 @@ describe('TasksService per-user task timer sessions', () => {
     });
   });
 
-  it('persists the run segment when attendance pauses the active timer', async () => {
+  it('finalizes the active timer when attendance starts a break', async () => {
     const startedAt = new Date(Date.now() - 30_000);
-    prisma.taskTimerSession.findFirst.mockResolvedValueOnce({
+    tx.taskTimerSession.findMany.mockResolvedValueOnce([{
       id: 101,
       taskId: 8,
       userId: 11,
@@ -283,9 +349,14 @@ describe('TasksService per-user task timer sessions', () => {
       startedAt,
       totalSeconds: 0,
       createdAt: startedAt,
-    });
+      task,
+    }]);
 
-    await service.pauseActiveTimerForUser(makeUser(11, Role.EMPLOYEE, 101));
+    await service.stopAllOpenTimersForUser(
+      makeUser(11, Role.EMPLOYEE, 101),
+      new Date(),
+      tx as never,
+    );
 
     expect(tx.taskTimerInterval.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -293,6 +364,9 @@ describe('TasksService per-user task timer sessions', () => {
         startedAt,
         endedAt: expect.any(Date),
       }),
+    });
+    expect(tx.timesheet.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ timerSessionId: 101 }),
     });
   });
 
