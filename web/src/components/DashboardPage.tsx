@@ -482,13 +482,8 @@ function EmployeeDashboard({ session }: { session: Session }) {
     if (!session.employeeId) return;
     setActionBusy(mode);
     try {
-      const payload = {
-        employeeId: session.employeeId,
-        date: new Date().toISOString().slice(0, 10),
-        timestamp: new Date().toISOString(),
-      };
-      if (mode === 'check-in') await checkIn(payload);
-      else await checkOut(payload);
+      if (mode === 'check-in') await checkIn({});
+      else await checkOut({});
       await loadDashboard();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to update attendance right now.');
