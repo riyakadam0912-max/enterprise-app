@@ -21,7 +21,10 @@ export class AttendanceTaskHoursService {
 
     await transaction.$queryRaw<Array<{ locked: number }>>`
       WITH lock_result AS MATERIALIZED (
-        SELECT pg_advisory_xact_lock(${employeeId}, ${dayNumber})
+        SELECT pg_advisory_xact_lock(
+          ${employeeId}::integer,
+          ${dayNumber}::integer
+        )
       )
       SELECT 1 AS locked
       FROM lock_result

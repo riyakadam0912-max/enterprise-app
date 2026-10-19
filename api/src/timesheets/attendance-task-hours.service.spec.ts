@@ -34,7 +34,9 @@ describe('AttendanceTaskHoursService', () => {
     const [lockQuery, lockEmployeeId, lockDayNumber] =
       transaction.$queryRaw.mock.calls[0];
     expect(lockQuery.join(' ')).toContain('WITH lock_result AS MATERIALIZED');
-    expect(lockQuery.join(' ')).toMatch(/pg_advisory_xact_lock\(\s*,\s*\)/);
+    expect(lockQuery.join(' ')).toMatch(
+      /pg_advisory_xact_lock\(\s*::integer,\s*::integer\s*\)/,
+    );
     expect(lockQuery.join(' ')).toContain('SELECT 1 AS locked');
     expect(lockEmployeeId).toBe(101);
     expect(lockDayNumber).toBe(
