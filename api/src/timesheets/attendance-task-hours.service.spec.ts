@@ -3,7 +3,7 @@ import { AttendanceTaskHoursService } from './attendance-task-hours.service';
 
 describe('AttendanceTaskHoursService', () => {
   const transaction = {
-    $queryRaw: jest.fn().mockResolvedValue([]),
+    $executeRaw: jest.fn().mockResolvedValue(0),
     employee: { findFirst: jest.fn() },
     timesheet: { aggregate: jest.fn() },
     attendance: { upsert: jest.fn() },
@@ -31,7 +31,7 @@ describe('AttendanceTaskHoursService', () => {
       transaction as never,
     );
 
-    expect(transaction.$queryRaw).toHaveBeenCalled();
+    expect(transaction.$executeRaw).toHaveBeenCalled();
     expect(transaction.timesheet.aggregate).toHaveBeenCalledWith({
       where: {
         employeeId: 101,

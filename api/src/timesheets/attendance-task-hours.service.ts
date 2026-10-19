@@ -19,7 +19,7 @@ export class AttendanceTaskHoursService {
     const nextDate = new Date(date.getTime() + 86_400_000);
     const dayNumber = Math.floor(date.getTime() / 86_400_000);
 
-    await transaction.$queryRaw`
+    await transaction.$executeRaw`
       SELECT pg_advisory_xact_lock(${employeeId}, ${dayNumber})
     `;
 
