@@ -1197,10 +1197,11 @@ export default function AttendancePage() {
         <StatCard label="Half Day" value={today.data?.summary.halfDay ?? 0} tone="bg-amber-100 text-amber-700" icon="◐" />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
         <StatCard label="Late Count" value={today.data?.summary.lateCount ?? 0} tone="bg-yellow-100 text-yellow-700" icon="!" />
         <StatCard label="Overtime" value={formatHoursDuration(today.data?.summary.overtimeHours ?? 0)} tone="bg-indigo-100 text-indigo-700" icon="+" />
         <StatCard label="Total Worked" value={formatHoursDuration(today.data?.summary.totalWorkedHours ?? 0)} tone="bg-teal-100 text-teal-700" icon="⌚" />
+        <StatCard label="Task Hours" value={formatHoursDuration(today.data?.summary.totalTaskHours ?? 0)} tone="bg-slate-100 text-slate-700" icon="◷" />
         <StatCard label="Shortfall" value={formatHoursDuration(today.data?.summary.shortfallHours ?? 0)} tone="bg-rose-100 text-rose-700" icon="−" />
       </div>
 
@@ -1861,6 +1862,11 @@ export default function AttendancePage() {
                     <div>{row.workingHours != null ? formatHoursDuration(row.workingHours) : '—'}</div>
                     {row.creditedWorkSeconds !== undefined && (
                       <p className="mt-1 text-xs text-teal-700">Flexible credited time</p>
+                    )}
+                    {(row.taskHours ?? 0) > 0 && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Task hours · {formatHoursDuration(row.taskHours ?? 0)}
+                      </p>
                     )}
                   </td>
                   <td className="px-5 py-4 text-slate-700">

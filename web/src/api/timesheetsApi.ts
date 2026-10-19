@@ -45,6 +45,7 @@ export interface TimesheetFilters {
 }
 
 export interface CreateTimesheetPayload {
+  employeeId?: number;
   task: string;
   project?: string | null;
   projectId?: number | null;
@@ -91,6 +92,14 @@ export async function reviewTimesheet(
   return apiClient<TimesheetRow>(`/timesheets/${id}/review`, {
     method: "POST",
     body: JSON.stringify({ decision, reason }),
+  });
+}
+
+export async function deleteTimesheet(
+  id: number,
+): Promise<{ id: number; deleted: boolean }> {
+  return apiClient<{ id: number; deleted: boolean }>(`/timesheets/${id}`, {
+    method: "DELETE",
   });
 }
 

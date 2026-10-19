@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   getTimesheet,
   getTimesheetsReport,
+  deleteTimesheet,
   reviewTimesheet,
   submitTimesheet,
   TimesheetRow,
@@ -174,6 +175,24 @@ export default function TimesheetsPage() {
           : "Unable to update this timesheet.";
       setActionError(message);
       reportError(error, "Timesheet review action failed");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const removeEntry = async (id: number) => {
+    if (!window.confirm("Delete this draft timesheet?")) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      await deleteTimesheet(id);
+      await reloadTimesheets();
+      closeDetails();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to delete this entry.";
+      setActionError(message);
+      reportError(error, "Timesheet deletion failed");
     } finally {
       setActionLoading(false);
     }
@@ -494,12 +513,12 @@ export default function TimesheetsPage() {
                     {selectedEntry.task}
                   </h2>
                   <p className="mt-2 text-sm text-slate-500">
-                    {selectedEntry.createdByUser?.name ??
-                      selectedEntry.employee?.name ??
-                      "Work log"}{" "}
-                    ·{" "}
+                    {selectedEntry.employee?.name ?? "Employee unavailable"} ·{" "}
                     {selectedEntry.project ?? "No project"} ·{" "}
                     {formatDate(selectedEntry.date)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Entered by {selectedEntry.createdByUser?.name ?? "Unknown"}
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -604,6 +623,14 @@ export default function TimesheetsPage() {
                     >
                       Edit
                     </Link>
+                    <button
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={() => void removeEntry(selectedEntry.id)}
+                      className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                    >
+                      Delete
+                    </button>
                     <button
                       type="button"
                       disabled={actionLoading}

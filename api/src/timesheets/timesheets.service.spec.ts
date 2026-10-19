@@ -11,6 +11,7 @@ import { AuthUser } from '../common/types/auth';
 import { CreateTimesheetDto } from './dto/create-timesheet.dto';
 import { QueryTimesheetDto } from './dto/query-timesheet.dto';
 import { OrganizationScopeService } from '../organizations/organization-scope.service';
+import { AttendanceTaskHoursService } from './attendance-task-hours.service';
 
 // Helper to create valid mock AuthUser
 function createMockAuthUser(
@@ -44,6 +45,7 @@ function getPrismaDelegate(
 describe('TimesheetsService', () => {
   let service: TimesheetsService;
   let mockPrisma: ReturnType<typeof createMockPrismaService>;
+  let mockAttendanceTaskHours: { recomputeTimesheetHours: jest.Mock };
 
   const mockAdminUser = createMockAuthUser(Role.ADMIN, { userId: 1 });
   const _mockManagerUser = createMockAuthUser(Role.MANAGER, { userId: 2 });
@@ -55,11 +57,25 @@ describe('TimesheetsService', () => {
   beforeEach(async () => {
     // Create fresh mocks for each test!
     mockPrisma = createMockPrismaService();
+    mockPrisma.$transaction.mockImplementation(
+      (operation: (transaction: typeof mockPrisma) => unknown) =>
+        operation(mockPrisma),
+    );
+    getPrismaDelegate(mockPrisma, 'employee').findFirst.mockResolvedValue({
+      id: 101,
+    });
+    mockAttendanceTaskHours = {
+      recomputeTimesheetHours: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TimesheetsService,
         { provide: PrismaService, useValue: mockPrisma },
+        {
+          provide: AttendanceTaskHoursService,
+          useValue: mockAttendanceTaskHours,
+        },
         {
           provide: OrganizationScopeService,
           useValue: { getOrganizationIds: jest.fn().mockResolvedValue([1]) },
@@ -230,7 +246,7 @@ describe('TimesheetsService', () => {
       );
     });
 
-    it('restricts employee reports to timesheets they created', async () => {
+    it('includes employee-attributed entries in an employee report', async () => {
       const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
       timesheetDelegate.findMany.mockResolvedValueOnce([]);
       timesheetDelegate.count.mockResolvedValueOnce(0);
@@ -240,7 +256,10 @@ describe('TimesheetsService', () => {
       expect(timesheetDelegate.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            createdByUserId: _mockEmployeeUser.userId,
+            OR: [
+              { createdByUserId: _mockEmployeeUser.userId },
+              { employeeId: _mockEmployeeUser.employeeId },
+            ],
           }),
         }),
       );
@@ -288,7 +307,7 @@ describe('TimesheetsService', () => {
       );
     });
 
-    it('returns creator identity as employee details in the report', async () => {
+    it('returns the attributed employee separately from the creator', async () => {
       const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
       timesheetDelegate.findMany.mockResolvedValueOnce([
         {
@@ -299,6 +318,8 @@ describe('TimesheetsService', () => {
           status: 'PENDING',
           createdByUserId: 9,
           createdByUser: { id: 9, name: 'Ava Worker' },
+          employeeId: 101,
+          employee: { id: 101, name: 'Sam Employee' },
         },
       ]);
       timesheetDelegate.count.mockResolvedValueOnce(1);
@@ -310,8 +331,10 @@ describe('TimesheetsService', () => {
 
       expect(result.data[0]).toEqual(
         expect.objectContaining({
-          employeeId: 9,
-          employee: { id: 9, name: 'Ava Worker' },
+          employeeId: 101,
+          employee: { id: 101, name: 'Sam Employee' },
+          createdByUserId: 9,
+          createdByUser: { id: 9, name: 'Ava Worker' },
         }),
       );
     });
@@ -325,6 +348,7 @@ describe('TimesheetsService', () => {
             task: 'Test Task',
             date: '2026-01-01',
             hours: 8,
+            employeeId: 101,
           } as CreateTimesheetDto,
           createMockAuthUser(Role.ADMIN, { organizationId: null }),
         ),
@@ -343,6 +367,7 @@ describe('TimesheetsService', () => {
           task: 'Test Task',
           date: '2026-01-01',
           hours: 8,
+          employeeId: 101,
         } as CreateTimesheetDto,
         mockAdminUser,
       );
@@ -357,6 +382,9 @@ describe('TimesheetsService', () => {
           }),
         }),
       );
+      expect(
+        mockAttendanceTaskHours.recomputeTimesheetHours,
+      ).toHaveBeenCalledWith(101, 1, new Date('2026-01-01'), mockPrisma);
     });
 
     it('rejects a project from another organization', async () => {
@@ -413,14 +441,45 @@ describe('TimesheetsService', () => {
       expect(timesheetDelegate.updateMany).not.toHaveBeenCalled();
     });
 
+    it('moves credited hours when a pending entry changes dates', async () => {
+      const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
+      const draft = {
+        id: 5,
+        organizationId: 1,
+        createdByUserId: _mockEmployeeUser.userId,
+        employeeId: 101,
+        status: 'PENDING',
+        date: new Date('2026-01-01'),
+        hours: 2,
+      };
+      timesheetDelegate.findFirst
+        .mockResolvedValueOnce(draft)
+        .mockResolvedValueOnce({
+          ...draft,
+          date: new Date('2026-01-02'),
+        });
+      timesheetDelegate.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      await service.update(5, { date: '2026-01-02' }, _mockEmployeeUser);
+
+      expect(
+        mockAttendanceTaskHours.recomputeTimesheetHours,
+      ).toHaveBeenNthCalledWith(1, 101, 1, new Date('2026-01-01'), mockPrisma);
+      expect(
+        mockAttendanceTaskHours.recomputeTimesheetHours,
+      ).toHaveBeenNthCalledWith(2, 101, 1, new Date('2026-01-02'), mockPrisma);
+    });
+
     it('updates only a draft and returns the refreshed entry', async () => {
       const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
       const draft = {
         id: 5,
         organizationId: 1,
         createdByUserId: _mockEmployeeUser.userId,
+        employeeId: 101,
         status: 'PENDING',
         date: new Date('2026-01-01'),
+        hours: 2,
       };
       timesheetDelegate.findFirst
         .mockResolvedValueOnce(draft)
@@ -430,6 +489,9 @@ describe('TimesheetsService', () => {
       const result = await service.update(5, { hours: 3 }, _mockEmployeeUser);
 
       expect(result.hours).toBe(3);
+      expect(
+        mockAttendanceTaskHours.recomputeTimesheetHours,
+      ).toHaveBeenCalledWith(101, 1, new Date('2026-01-01'), mockPrisma);
       expect(timesheetDelegate.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
@@ -449,6 +511,7 @@ describe('TimesheetsService', () => {
         id: 5,
         organizationId: 1,
         createdByUserId: _mockEmployeeUser.userId,
+        employeeId: 101,
         status: 'REJECTED',
         date: new Date('2026-01-01'),
       };
@@ -471,6 +534,9 @@ describe('TimesheetsService', () => {
       expect(
         timesheetDelegate.updateMany.mock.calls[0][0].data,
       ).not.toHaveProperty('rejectionReason');
+      expect(
+        mockAttendanceTaskHours.recomputeTimesheetHours,
+      ).toHaveBeenCalledWith(101, 1, new Date('2026-01-01'), mockPrisma);
     });
 
     it('allows only the owner to submit an entry', async () => {
@@ -511,6 +577,7 @@ describe('TimesheetsService', () => {
         id: 5,
         organizationId: 1,
         createdByUserId: _mockEmployeeUser.userId,
+        employeeId: 101,
         status: 'SUBMITTED',
         date: new Date('2026-01-01'),
       });
@@ -579,13 +646,40 @@ describe('TimesheetsService', () => {
         }),
       );
     });
+
+    it('removes rejected submitted hours from attendance task hours', async () => {
+      const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
+      const submitted = {
+        id: 5,
+        organizationId: 1,
+        createdByUserId: _mockEmployeeUser.userId,
+        employeeId: 101,
+        status: 'SUBMITTED',
+        date: new Date('2026-01-01'),
+        hours: 2.5,
+      };
+      timesheetDelegate.findFirst
+        .mockResolvedValueOnce(submitted)
+        .mockResolvedValueOnce({ ...submitted, status: 'REJECTED' });
+      timesheetDelegate.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      await service.review(
+        5,
+        { decision: 'REJECTED', reason: 'Incorrect hours' },
+        createMockAuthUser(Role.MANAGER, { userId: 2 }),
+      );
+
+      expect(
+        mockAttendanceTaskHours.recomputeTimesheetHours,
+      ).toHaveBeenCalledWith(101, 1, new Date('2026-01-01'), mockPrisma);
+    });
   });
 
   describe('importRecords', () => {
     it('should import valid records and skip invalid ones', async () => {
       const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
       const records = [
-        { task: 'Valid Task', date: '2026-01-01', hours: 8 },
+        { task: 'Valid Task', date: '2026-01-01', hours: 8, employeeId: 101 },
         { invalid: 'no task' },
       ];
       timesheetDelegate.create.mockResolvedValueOnce({ id: 1 });
@@ -601,6 +695,9 @@ describe('TimesheetsService', () => {
           }),
         }),
       );
+      expect(
+        mockAttendanceTaskHours.recomputeTimesheetHours,
+      ).toHaveBeenCalledWith(101, 1, new Date('2026-01-01'), mockPrisma);
     });
 
     it('should throw error if no task', async () => {
@@ -632,12 +729,41 @@ describe('TimesheetsService', () => {
 
     it('should handle errors when create fails', async () => {
       const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
-      const records = [{ task: 'Valid Task', date: '2026-01-01', hours: 8 }];
+      const records = [
+        { task: 'Valid Task', date: '2026-01-01', hours: 8, employeeId: 101 },
+      ];
       timesheetDelegate.create.mockRejectedValueOnce(new Error('Invalid data'));
 
       const result = await service.importRecords(records, mockAdminUser);
       expect(result.imported).toEqual(0);
       expect(result.errors[0]).toContain('Invalid data');
+    });
+
+    describe('remove', () => {
+      it('removes credited hours when a pending entry is deleted', async () => {
+        const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
+        timesheetDelegate.findFirst.mockResolvedValueOnce({
+          id: 5,
+          organizationId: 1,
+          createdByUserId: _mockEmployeeUser.userId,
+          employeeId: 101,
+          status: 'PENDING',
+          date: new Date('2026-01-01'),
+          hours: 2,
+        });
+        timesheetDelegate.updateMany.mockResolvedValueOnce({ count: 1 });
+
+        await service.remove(5, _mockEmployeeUser);
+
+        expect(timesheetDelegate.updateMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: { deletedAt: expect.any(Date) },
+          }),
+        );
+        expect(
+          mockAttendanceTaskHours.recomputeTimesheetHours,
+        ).toHaveBeenCalledWith(101, 1, new Date('2026-01-01'), mockPrisma);
+      });
     });
   });
 });

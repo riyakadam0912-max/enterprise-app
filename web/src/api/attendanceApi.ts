@@ -17,6 +17,7 @@ export interface AttendanceSummary {
   overtimeHours?: number;
   shortfallHours?: number;
   totalWorkedHours?: number;
+  totalTaskHours?: number;
   totalExpectedHours?: number;
   totalWorkingDays?: number;
 }
@@ -52,6 +53,7 @@ export interface AttendanceRecord {
   checkoutSource?: 'USER' | 'ADMIN_EDIT' | 'AUTO' | null;
   checkoutActorName?: string | null;
   workingHours: number | null;
+  taskHours?: number;
   creditedWorkSeconds?: number;
   breaks?: { startedAt: string; endedAt: string | null }[];
   breakHours?: number;
@@ -89,6 +91,7 @@ export interface EmployeeAttendanceDay {
   checkIn: string | null;
   checkOut: string | null;
   workingHours: number | null;
+  taskHours?: number;
   creditedWorkSeconds?: number;
   breaks?: { startedAt: string; endedAt: string | null }[];
   onBreak?: boolean;
@@ -121,6 +124,7 @@ export interface MyAttendanceResponse {
   overtimeHours: number;
   shortfallHours?: number;
   workingHours?: number | null;
+  taskHours?: number;
   breaks?: { startedAt: string; endedAt: string | null }[];
   onBreak?: boolean;
   status: AttendanceStatus;
@@ -153,6 +157,7 @@ export interface AttendanceMonthlySummary {
   overtimeHours: number;
   shortfallHours?: number;
   totalWorkedHours?: number;
+  totalTaskHours?: number;
   totalExpectedHours?: number;
   totalWorkingDays: number;
 }

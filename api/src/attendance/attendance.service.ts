@@ -82,6 +82,7 @@ type DailyAttendanceRow = {
   checkoutSource: AttendanceCheckoutSource | null;
   checkoutActorName: string | null;
   workingHours: number | null;
+  taskHours?: number;
   creditedWorkSeconds?: number;
   breaks: { startedAt: string; endedAt: string | null }[];
   breakHours: number;
@@ -339,6 +340,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         acc.overtimeHours += row.overtimeHours ?? 0;
         acc.shortfallHours += row.shortfallHours ?? 0;
         acc.totalWorkedHours += row.workingHours ?? 0;
+        acc.totalTaskHours += row.taskHours ?? 0;
         const requiredHours = row.shiftDetails?.requiredHours ?? 8;
         if (
           row.status === AttendanceStatus.PRESENT ||
@@ -362,6 +364,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         overtimeHours: 0,
         shortfallHours: 0,
         totalWorkedHours: 0,
+        totalTaskHours: 0,
         totalExpectedHours: 0,
       },
     );
@@ -379,6 +382,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       overtimeHours: Number(summary.overtimeHours.toFixed(2)),
       shortfallHours: Number(summary.shortfallHours.toFixed(2)),
       totalWorkedHours: Number(summary.totalWorkedHours.toFixed(2)),
+      totalTaskHours: Number(summary.totalTaskHours.toFixed(2)),
       totalExpectedHours: Number(summary.totalExpectedHours.toFixed(2)),
     };
   }
@@ -780,6 +784,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           checkIn: Date | null;
           checkOut: Date | null;
           workingHours: number | null;
+          taskHours?: number;
           breaks?: { startedAt: Date; endedAt: Date | null }[];
           lateMinutes: number;
           overtimeHours: number;
@@ -852,6 +857,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
                   attendance.breaks ?? [],
                 )
               : null)),
+      taskHours: attendance?.taskHours ?? 0,
       ...(creditedWorkSeconds !== undefined ? { creditedWorkSeconds } : {}),
       breaks: (attendance?.breaks ?? []).map((interval) => ({
         startedAt: interval.startedAt.toISOString(),
@@ -2178,6 +2184,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         checkIn: null,
         checkOut: null,
         workingHours: null,
+        taskHours: 0,
         breaks: [],
         onBreak: false,
         lateMinutes: 0,
@@ -2193,6 +2200,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       checkIn: row.checkIn,
       checkOut: row.checkOut,
       workingHours: row.workingHours,
+      taskHours: row.taskHours ?? 0,
       breaks: row.breaks,
       onBreak: row.onBreak,
       lateMinutes: row.lateMinutes,
@@ -2427,6 +2435,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       checkIn: string | null;
       checkOut: string | null;
       workingHours: number | null;
+      taskHours: number;
       creditedWorkSeconds?: number;
       breaks: { startedAt: string; endedAt: string | null }[];
       shortfallHours: number;
@@ -2571,6 +2580,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           creditedWorkSeconds !== undefined
             ? Number((creditedWorkSeconds / 3600).toFixed(2))
             : (attendance?.workingHours ?? null),
+        taskHours: attendance?.taskHours ?? 0,
         ...(creditedWorkSeconds !== undefined ? { creditedWorkSeconds } : {}),
         breaks: (attendance?.breaks ?? []).map((interval) => ({
           startedAt: interval.startedAt.toISOString(),
@@ -2600,6 +2610,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         checkoutSource: null,
         checkoutActorName: null,
         workingHours: d.workingHours,
+        taskHours: d.taskHours,
         breaks: d.breaks,
         breakHours: d.breaks.reduce((total, interval) => {
           const start = new Date(interval.startedAt).getTime();

@@ -7,6 +7,7 @@ import {
   Param,
   ParseIntPipe,
   Patch,
+  Delete,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -97,6 +98,16 @@ export class TimesheetsController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.timesheetsService.update(id, dto, req.user);
+  }
+
+  @ApiOperation({ summary: 'DELETE :id' })
+  @ApiResponse({ status: 200, description: 'Timesheet deleted successfully.' })
+  @Delete(':id')
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.timesheetsService.remove(id, req.user);
   }
 
   @ApiOperation({ summary: 'POST import' })

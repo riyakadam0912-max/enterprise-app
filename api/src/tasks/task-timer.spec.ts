@@ -2,6 +2,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { TasksService } from './tasks.service';
 import { Role } from '../common/enums/role.enum';
 import type { AuthUser } from '../common/types/auth';
+import { AttendanceTaskHoursService } from '../timesheets/attendance-task-hours.service';
 
 describe('TasksService per-user task timer sessions', () => {
   const organizationId = 12;
@@ -33,6 +34,9 @@ describe('TasksService per-user task timer sessions', () => {
 
   let service: TasksService;
   const cacheManager = { del: jest.fn().mockResolvedValue(undefined) };
+  const attendanceTaskHours = {
+    recomputeTimesheetHours: jest.fn().mockResolvedValue(undefined),
+  };
   let prisma: {
     task: { findFirst: jest.Mock; findFirstOrThrow: jest.Mock };
     taskTimerSession: {
@@ -55,6 +59,7 @@ describe('TasksService per-user task timer sessions', () => {
     attendance: { findMany: jest.Mock; findFirst: jest.Mock };
     attendanceBreak: { updateMany: jest.Mock };
     employee: { findFirst: jest.Mock };
+    user: { findFirst: jest.Mock };
   };
 
   beforeEach(() => {
@@ -76,6 +81,7 @@ describe('TasksService per-user task timer sessions', () => {
       employee: {
         findFirst: jest.fn().mockResolvedValue({ shift: { type: 'FIXED' } }),
       },
+      user: { findFirst: jest.fn().mockResolvedValue({ employeeId: 101 }) },
     };
     prisma = {
       task: {
@@ -105,6 +111,7 @@ describe('TasksService per-user task timer sessions', () => {
       {} as never,
       {} as never,
       cacheManager as never,
+      attendanceTaskHours as unknown as AttendanceTaskHoursService,
     );
   });
 
@@ -170,9 +177,7 @@ describe('TasksService per-user task timer sessions', () => {
         task: { ...task, id: 9 },
       },
     ]);
-    tx.attendance.findMany.mockResolvedValueOnce([
-      { breaks: [{ id: 12 }] },
-    ]);
+    tx.attendance.findMany.mockResolvedValueOnce([{ breaks: [{ id: 12 }] }]);
 
     await service.updateTimer(8, { action: 'start' }, worker);
 
@@ -195,6 +200,12 @@ describe('TasksService per-user task timer sessions', () => {
         status: 'RUNNING',
       }),
     });
+    expect(attendanceTaskHours.recomputeTimesheetHours).toHaveBeenCalledWith(
+      101,
+      organizationId,
+      expect.any(Date),
+      tx,
+    );
   });
 
   it('allows a timer to start without a task estimate', async () => {
@@ -292,6 +303,7 @@ describe('TasksService per-user task timer sessions', () => {
         taskId: 8,
         projectId: 42,
         timerSessionId: 101,
+        employeeId: 101,
         status: 'PENDING',
         createdByUserId: 11,
         hours: expect.any(Number),
@@ -304,6 +316,12 @@ describe('TasksService per-user task timer sessions', () => {
         endedAt: expect.any(Date),
       }),
     });
+    expect(attendanceTaskHours.recomputeTimesheetHours).toHaveBeenCalledWith(
+      101,
+      organizationId,
+      expect.any(Date),
+      tx,
+    );
   });
 
   it('persists the completed run segment when a timer is paused', async () => {
@@ -338,19 +356,21 @@ describe('TasksService per-user task timer sessions', () => {
 
   it('finalizes the active timer when attendance starts a break', async () => {
     const startedAt = new Date(Date.now() - 30_000);
-    tx.taskTimerSession.findMany.mockResolvedValueOnce([{
-      id: 101,
-      taskId: 8,
-      userId: 11,
-      organizationId,
-      status: 'RUNNING',
-      durationSeconds: 0,
-      remainingSeconds: 0,
-      startedAt,
-      totalSeconds: 0,
-      createdAt: startedAt,
-      task,
-    }]);
+    tx.taskTimerSession.findMany.mockResolvedValueOnce([
+      {
+        id: 101,
+        taskId: 8,
+        userId: 11,
+        organizationId,
+        status: 'RUNNING',
+        durationSeconds: 0,
+        remainingSeconds: 0,
+        startedAt,
+        totalSeconds: 0,
+        createdAt: startedAt,
+        task,
+      },
+    ]);
 
     await service.stopAllOpenTimersForUser(
       makeUser(11, Role.EMPLOYEE, 101),

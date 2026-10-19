@@ -99,9 +99,10 @@ export default function EmployeeAttendancePage() {
             <SummaryMini label="Half Days" value={data?.summary.halfDay ?? 0} />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <SummaryMini label="Late Count" value={data?.summary.lateCount ?? 0} />
             <SummaryMini label="Overtime" value={formatHoursDuration(data?.summary.overtimeHours ?? 0)} />
+            <SummaryMini label="Task Hours" value={formatHoursDuration(data?.summary.totalTaskHours ?? 0)} />
             <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
               <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Assigned Shift</p>
               <p className="mt-2 text-sm font-semibold text-slate-900">
@@ -176,6 +177,11 @@ export default function EmployeeAttendancePage() {
                           <p>{new Date(day.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })} - {day.checkOut ? new Date(day.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : 'In progress'}</p>
                         )}
                         {day.workingHours != null && <p>{formatHoursDuration(day.workingHours)}</p>}
+                        {(day.taskHours ?? 0) > 0 && (
+                          <p className="text-xs text-slate-500">
+                            Task hours · {formatHoursDuration(day.taskHours ?? 0)}
+                          </p>
+                        )}
                         {day.isShootDay && <p className="font-medium text-orange-700">Shoot day · attendance credited</p>}
                         {day.creditedWorkSeconds !== undefined && (
                           <p className="text-[10px] text-teal-700">Flexible credited time</p>

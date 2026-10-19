@@ -25,6 +25,7 @@ import { CreateTaskMessageDto } from './dto/create-task-message.dto';
 import { UpdateTaskTimerDto } from './dto/update-task-timer.dto';
 import { Optional } from '@nestjs/common';
 import { OrganizationScopeService } from '../organizations/organization-scope.service';
+import { AttendanceTaskHoursService } from '../timesheets/attendance-task-hours.service';
 
 const PRIORITIES = ['High', 'Low', 'Medium', 'Critical'] as const;
 const TASK_STATUSES = [
@@ -50,6 +51,7 @@ export class TasksService {
     private readonly notificationsService: NotificationsService,
     private readonly businessUnitsService: BusinessUnitsService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+    private readonly attendanceTaskHours: AttendanceTaskHoursService,
     @Optional()
     private readonly organizationScopeService?: OrganizationScopeService,
   ) {}
@@ -835,11 +837,7 @@ export class TasksService {
         await this.db.$transaction(async (tx) => {
           await this.closeActiveBreaksForUser(user, now, tx);
           await this.assertUserIsWorking(user, tx);
-          await this.stopAllOpenTimersForUser(
-            user,
-            now,
-            tx,
-          );
+          await this.stopAllOpenTimersForUser(user, now, tx);
           await tx.taskTimerSession.create({
             data: {
               taskId,
@@ -1228,6 +1226,15 @@ export class TasksService {
         : 0;
     const totalSeconds = session.totalSeconds + elapsedSeconds;
     const finish = async (tx: Prisma.TransactionClient) => {
+      const timesheetOwner = await tx.user.findFirst({
+        where: { id: userId, organizationId: task.organizationId },
+        select: { employeeId: true },
+      });
+      if (timesheetOwner?.employeeId == null) {
+        throw new BadRequestException(
+          'Link your account to an employee before recording task time',
+        );
+      }
       const updated = await tx.taskTimerSession.updateMany({
         where: {
           id: session.id,
@@ -1269,12 +1276,19 @@ export class TasksService {
           timerSessionId: session.id,
           date: session.createdAt,
           hours: Math.max(1, totalSeconds) / 3600,
+          employeeId: timesheetOwner.employeeId,
           status: 'PENDING',
           source: 'TASK_TIMER',
           notes: notes?.trim() || 'Tracked with task timer',
           createdByUserId: userId,
         },
       });
+      await this.attendanceTaskHours.recomputeTimesheetHours(
+        timesheetOwner.employeeId,
+        task.organizationId,
+        session.createdAt,
+        tx,
+      );
     };
     if (transaction) return finish(transaction);
     return this.db.$transaction(finish);

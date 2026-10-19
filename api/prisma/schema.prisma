@@ -320,6 +320,7 @@ model Employee {
   businessUnit          BusinessUnit?             @relation("EmployeeBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
   shift                 Shift?                    @relation(fields: [shiftId], references: [id])
   shiftAssignments      EmployeeShiftAssignment[]
+  timesheets            Timesheet[]
   expenseClaims         Expense[]
   form16s               Form16[]
   goals                 Goal[]
@@ -385,6 +386,7 @@ model Attendance {
   checkIn         DateTime?
   checkOut        DateTime?
   workingHours    Float?
+  taskHours       Float                     @default(0)
   status          AttendanceStatus
   createdAt       DateTime                  @default(now())
   shiftId         Int?
@@ -593,9 +595,11 @@ model Timesheet {
   deletedAt        DateTime?
   organizationId   Int
   createdByUserId  Int?
+  employeeId       Int?
   timerSessionId   Int?              @unique
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdByUser    User?             @relation("TimesheetCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  employee         Employee?         @relation(fields: [employeeId], references: [id], onDelete: SetNull)
   reviewedByUser   User?             @relation("TimesheetReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
   timerSession     TaskTimerSession? @relation(fields: [timerSessionId], references: [id], onDelete: SetNull)
   projectRef       Project?          @relation("ProjectTimesheets", fields: [projectId], references: [id], onDelete: SetNull)
@@ -605,6 +609,7 @@ model Timesheet {
   @@index([projectId])
   @@index([taskId])
   @@index([createdByUserId])
+  @@index([employeeId])
   @@index([reviewedByUserId])
   @@index([organizationId, status, submittedAt])
 }

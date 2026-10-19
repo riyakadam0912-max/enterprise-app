@@ -7,6 +7,7 @@ import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { CompletionNotificationInterceptor } from '../common/interceptors/completion-notification.interceptor';
 import { WorkflowModule } from '../workflows/workflow.module';
 import { BusinessUnitsModule } from '../business-units/business-units.module';
+import { TimesheetsModule } from '../timesheets/timesheets.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { BusinessUnitsModule } from '../business-units/business-units.module';
     AuditLogsModule,
     WorkflowModule,
     BusinessUnitsModule,
+    TimesheetsModule,
   ],
   controllers: [TasksController],
   providers: [TasksService, CompletionNotificationInterceptor],

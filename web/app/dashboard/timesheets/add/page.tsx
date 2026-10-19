@@ -4,6 +4,8 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiClient } from "@/api/apiClient";
 import { reportError, getErrorMessage } from "@/lib/error-handling";
+import { useAuthSession } from "@/stores/auth-store";
+import { useEmployees } from "@/hooks/useEmployees";
 
 const EMPTY_FORM = {
   task: "",
@@ -15,7 +17,19 @@ const EMPTY_FORM = {
 
 export default function AddTimesheetPage() {
   const router = useRouter();
+  const session = useAuthSession();
+  const isOrganizationAdministrator = [
+    "ADMIN",
+    "HR",
+    "SUPER_ADMIN",
+  ].includes(session.role);
+  const {
+    employees,
+    loading: employeesLoading,
+    error: employeesError,
+  } = useEmployees(isOrganizationAdministrator);
   const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [employeeId, setEmployeeId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,6 +43,9 @@ export default function AddTimesheetPage() {
     try {
       const payload = {
         task: form.task.trim(),
+        ...(isOrganizationAdministrator && {
+          employeeId: Number(employeeId),
+        }),
         date: form.date,
         hours: Number.parseFloat(form.hours),
         project: form.project.trim() || undefined,
@@ -51,6 +68,7 @@ export default function AddTimesheetPage() {
 
   const handleReset = () => {
     setForm({ ...EMPTY_FORM });
+    setEmployeeId("");
     setError(null);
   };
 
@@ -82,6 +100,36 @@ export default function AddTimesheetPage() {
             Only you can edit it until you submit it for review.
           </p>
         </div>
+
+        {isOrganizationAdministrator && (
+          <label className="block space-y-2 text-sm font-medium text-slate-700">
+            Employee
+            <select
+              value={employeeId}
+              onChange={(event) => setEmployeeId(event.target.value)}
+              required
+              disabled={employeesLoading || Boolean(employeesError)}
+              className={fieldClass}
+            >
+              <option value="">
+                {employeesLoading
+                  ? "Loading employees…"
+                  : "Select an employee"}
+              </option>
+              {employees.map((employee) => (
+                <option key={employee.id} value={employee.id}>
+                  {employee.name}
+                  {employee.department ? ` · ${employee.department}` : ""}
+                </option>
+              ))}
+            </select>
+            {employeesError && (
+              <span role="alert" className="block text-xs text-rose-600">
+                Unable to load employees: {employeesError}
+              </span>
+            )}
+          </label>
+        )}
 
         <label className="block space-y-2 text-sm font-medium text-slate-700">
           Task

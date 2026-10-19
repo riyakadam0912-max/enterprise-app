@@ -13,12 +13,14 @@ import { ReviewTimesheetDto } from './dto/review-timesheet.dto';
 import type { AuthUser } from '../common/types/auth';
 import { Role } from '../common/enums/role.enum';
 import { OrganizationScopeService } from '../organizations/organization-scope.service';
+import { AttendanceTaskHoursService } from './attendance-task-hours.service';
 
 @Injectable()
 export class TimesheetsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly organizationScopeService: OrganizationScopeService,
+    private readonly attendanceTaskHours: AttendanceTaskHoursService,
   ) {}
 
   private async getReadableOrganizationIds(user: AuthUser): Promise<number[]> {
@@ -39,7 +41,14 @@ export class TimesheetsService {
 
   private getTimesheetOwnerFilter(user: AuthUser): Prisma.TimesheetWhereInput {
     const userId = user.userId ?? user.id;
-    if (user.role === Role.EMPLOYEE) return { createdByUserId: userId };
+    if (user.role === Role.EMPLOYEE) {
+      return {
+        OR: [
+          { createdByUserId: userId },
+          ...(user.employeeId == null ? [] : [{ employeeId: user.employeeId }]),
+        ],
+      };
+    }
     if (user.role === Role.MANAGER) {
       return {
         OR: [
@@ -119,6 +128,44 @@ export class TimesheetsService {
     return organizationId;
   }
 
+  private async resolveAttendanceEmployeeId(
+    user: AuthUser,
+    organizationId: number,
+    requestedEmployeeId: number | undefined,
+    transaction: Prisma.TransactionClient,
+  ) {
+    const isOrganizationAdministrator = new Set<Role>([
+      Role.ADMIN,
+      Role.HR,
+      Role.SUPER_ADMIN,
+    ]).has(user.role);
+    const employeeId = requestedEmployeeId ?? user.employeeId ?? undefined;
+    if (employeeId == null) {
+      throw new BadRequestException(
+        'Link your account to an employee before creating a timesheet',
+      );
+    }
+    if (
+      requestedEmployeeId != null &&
+      requestedEmployeeId !== user.employeeId &&
+      !isOrganizationAdministrator
+    ) {
+      throw new ForbiddenException(
+        'Only organization administrators can create timesheets for another employee',
+      );
+    }
+    const employee = await transaction.employee.findFirst({
+      where: { id: employeeId, organizationId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!employee) {
+      throw new BadRequestException(
+        'The selected employee is not active in this organization',
+      );
+    }
+    return employee.id;
+  }
+
   async getReport(query: QueryTimesheetDto, user: AuthUser) {
     const {
       page = 1,
@@ -179,6 +226,11 @@ export class TimesheetsService {
                 name: { contains: search, mode: 'insensitive' },
               },
             },
+            {
+              employee: {
+                name: { contains: search, mode: 'insensitive' },
+              },
+            },
           ],
         },
       ];
@@ -192,6 +244,7 @@ export class TimesheetsService {
         orderBy: { date: 'desc' },
         include: {
           createdByUser: { select: { id: true, name: true } },
+          employee: { select: { id: true, name: true } },
           reviewedByUser: { select: { id: true, name: true } },
           organization: { select: { id: true, name: true } },
         },
@@ -216,10 +269,10 @@ export class TimesheetsService {
         rejectionReason: t.rejectionReason,
         project: t.project ?? null,
         notes: t.notes ?? null,
-        employee: t.createdByUser
-          ? { id: t.createdByUser.id, name: t.createdByUser.name }
+        employee: t.employee
+          ? { id: t.employee.id, name: t.employee.name }
           : null,
-        employeeId: t.createdByUserId ?? null,
+        employeeId: t.employeeId ?? null,
         createdByUserId: t.createdByUserId ?? null,
         createdByUser: t.createdByUser ?? null,
         organization: t.organization,
@@ -237,21 +290,39 @@ export class TimesheetsService {
       dto.taskId,
       organizationId,
     );
-    return this.prisma.timesheet.create({
-      data: {
+    const userId = user.userId ?? user.id;
+    const date = new Date(dto.date);
+    return this.prisma.$transaction(async (tx) => {
+      const employeeId = await this.resolveAttendanceEmployeeId(
+        user,
         organizationId,
-        createdByUserId: user.userId ?? user.id,
-        task: dto.task,
-        project: dto.project,
-        projectId: dto.projectId,
-        taskId: dto.taskId,
-        date: new Date(dto.date),
-        hours: dto.hours,
-        status: 'PENDING',
-        source: 'MANUAL',
-        submittedAt: null,
-        notes: dto.notes,
-      },
+        dto.employeeId,
+        tx,
+      );
+      const timesheet = await tx.timesheet.create({
+        data: {
+          organizationId,
+          createdByUserId: userId,
+          employeeId,
+          task: dto.task,
+          project: dto.project,
+          projectId: dto.projectId,
+          taskId: dto.taskId,
+          date,
+          hours: dto.hours,
+          status: 'PENDING',
+          source: 'MANUAL',
+          submittedAt: null,
+          notes: dto.notes,
+        },
+      });
+      await this.attendanceTaskHours.recomputeTimesheetHours(
+        employeeId,
+        organizationId,
+        date,
+        tx,
+      );
+      return timesheet;
     });
   }
 
@@ -269,6 +340,7 @@ export class TimesheetsService {
       },
       include: {
         createdByUser: { select: { id: true, name: true } },
+        employee: { select: { id: true, name: true } },
         organization: { select: { id: true, name: true } },
         reviewedByUser: { select: { id: true, name: true } },
       },
@@ -302,27 +374,49 @@ export class TimesheetsService {
       dto.taskId === undefined ? existing.taskId : dto.taskId,
       existing.organizationId,
     );
-    const updated = await this.prisma.timesheet.updateMany({
-      where: {
-        id,
-        organizationId: existing.organizationId,
-        createdByUserId: existing.createdByUserId,
-        deletedAt: null,
-        status: existing.status,
-      },
-      data: {
-        ...(dto.task !== undefined && { task: dto.task }),
-        ...(dto.project !== undefined && { project: dto.project }),
-        ...(dto.projectId !== undefined && { projectId: dto.projectId }),
-        ...(dto.taskId !== undefined && { taskId: dto.taskId }),
-        ...(dto.date !== undefined && { date: new Date(dto.date) }),
-        ...(dto.hours !== undefined && { hours: dto.hours }),
-        ...(dto.notes !== undefined && { notes: dto.notes }),
-      },
+    const updatedDate =
+      dto.date !== undefined ? new Date(dto.date) : new Date(existing.date);
+    await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.timesheet.updateMany({
+        where: {
+          id,
+          organizationId: existing.organizationId,
+          createdByUserId: existing.createdByUserId,
+          deletedAt: null,
+          status: existing.status,
+        },
+        data: {
+          ...(dto.task !== undefined && { task: dto.task }),
+          ...(dto.project !== undefined && { project: dto.project }),
+          ...(dto.projectId !== undefined && { projectId: dto.projectId }),
+          ...(dto.taskId !== undefined && { taskId: dto.taskId }),
+          ...(dto.date !== undefined && { date: updatedDate }),
+          ...(dto.hours !== undefined && { hours: dto.hours }),
+          ...(dto.notes !== undefined && { notes: dto.notes }),
+        },
+      });
+      if (updated.count !== 1) {
+        throw new ConflictException(
+          'Timesheet changed; refresh and edit again',
+        );
+      }
+      if (existing.employeeId != null) {
+        await this.attendanceTaskHours.recomputeTimesheetHours(
+          existing.employeeId,
+          existing.organizationId,
+          new Date(existing.date),
+          tx,
+        );
+        if (existing.date !== updatedDate.toISOString().slice(0, 10)) {
+          await this.attendanceTaskHours.recomputeTimesheetHours(
+            existing.employeeId,
+            existing.organizationId,
+            updatedDate,
+            tx,
+          );
+        }
+      }
     });
-    if (updated.count !== 1) {
-      throw new ConflictException('Timesheet changed; refresh and edit again');
-    }
     return this.findOne(id, user);
   }
 
@@ -337,25 +431,84 @@ export class TimesheetsService {
         'Only draft or rejected timesheets can be submitted',
       );
     }
-    const updated = await this.prisma.timesheet.updateMany({
-      where: {
-        id,
-        organizationId: existing.organizationId,
-        createdByUserId: userId,
-        deletedAt: null,
-        status: existing.status,
-      },
-      data: {
-        status: 'SUBMITTED',
-        submittedAt: new Date(),
-      },
+    await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.timesheet.updateMany({
+        where: {
+          id,
+          organizationId: existing.organizationId,
+          createdByUserId: userId,
+          deletedAt: null,
+          status: existing.status,
+        },
+        data: {
+          status: 'SUBMITTED',
+          submittedAt: new Date(),
+        },
+      });
+      if (updated.count !== 1) {
+        throw new ConflictException(
+          'Timesheet changed; refresh and submit again',
+        );
+      }
+      if (existing.employeeId != null) {
+        await this.attendanceTaskHours.recomputeTimesheetHours(
+          existing.employeeId,
+          existing.organizationId,
+          new Date(existing.date),
+          tx,
+        );
+      }
     });
-    if (updated.count !== 1) {
-      throw new ConflictException(
-        'Timesheet changed; refresh and submit again',
+    return this.findOne(id, user);
+  }
+
+  async remove(id: number, user: AuthUser) {
+    const existing = await this.findOne(id, user);
+    const userId = user.userId ?? user.id;
+    const isOwner = existing.createdByUserId === userId;
+    const canAdminister = new Set<Role>([
+      Role.ADMIN,
+      Role.HR,
+      Role.SUPER_ADMIN,
+    ]).has(user.role);
+    if (!isOwner && !canAdminister) {
+      throw new ForbiddenException(
+        'Only the timesheet owner or an organization administrator can delete this entry',
       );
     }
-    return this.findOne(id, user);
+    if (existing.status !== 'PENDING' && existing.status !== 'REJECTED') {
+      throw new ForbiddenException(
+        'Only draft or rejected timesheets can be deleted',
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const deletedAt = new Date();
+      const deleted = await tx.timesheet.updateMany({
+        where: {
+          id,
+          organizationId: existing.organizationId,
+          createdByUserId: existing.createdByUserId,
+          deletedAt: null,
+          status: existing.status,
+        },
+        data: { deletedAt },
+      });
+      if (deleted.count !== 1) {
+        throw new ConflictException(
+          'Timesheet changed; refresh and delete again',
+        );
+      }
+      if (existing.employeeId != null) {
+        await this.attendanceTaskHours.recomputeTimesheetHours(
+          existing.employeeId,
+          existing.organizationId,
+          new Date(existing.date),
+          tx,
+        );
+      }
+    });
+    return { id, deleted: true };
   }
 
   async review(id: number, dto: ReviewTimesheetDto, user: AuthUser) {
@@ -381,25 +534,35 @@ export class TimesheetsService {
       throw new BadRequestException('A reason is required when rejecting');
     }
 
-    const updated = await this.prisma.timesheet.updateMany({
-      where: {
-        id,
-        organizationId: existing.organizationId,
-        deletedAt: null,
-        status: 'SUBMITTED',
-      },
-      data: {
-        status: dto.decision,
-        reviewedAt: new Date(),
-        reviewedByUserId: user.userId ?? user.id,
-        rejectionReason: dto.decision === 'REJECTED' ? reason : null,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.timesheet.updateMany({
+        where: {
+          id,
+          organizationId: existing.organizationId,
+          deletedAt: null,
+          status: 'SUBMITTED',
+        },
+        data: {
+          status: dto.decision,
+          reviewedAt: new Date(),
+          reviewedByUserId: user.userId ?? user.id,
+          rejectionReason: dto.decision === 'REJECTED' ? reason : null,
+        },
+      });
+      if (updated.count !== 1) {
+        throw new ConflictException(
+          'Timesheet changed; refresh and review again',
+        );
+      }
+      if (dto.decision === 'REJECTED' && existing.employeeId != null) {
+        await this.attendanceTaskHours.recomputeTimesheetHours(
+          existing.employeeId,
+          existing.organizationId,
+          new Date(existing.date),
+          tx,
+        );
+      }
     });
-    if (updated.count !== 1) {
-      throw new ConflictException(
-        'Timesheet changed; refresh and review again',
-      );
-    }
     return this.findOne(id, user);
   }
 
@@ -420,6 +583,12 @@ export class TimesheetsService {
       const date = typeof r.date === 'string' ? r.date : '';
       const hours = typeof r.hours === 'number' ? r.hours : Number(r.hours);
       const notes = typeof r.notes === 'string' ? r.notes : undefined;
+      const requestedEmployeeId =
+        typeof r.employeeId === 'number'
+          ? r.employeeId
+          : typeof r.employeeId === 'string' && r.employeeId.trim()
+            ? Number(r.employeeId)
+            : undefined;
 
       if (!task) {
         errors.push(`Row ${i + 1}: 'task' is required`);
@@ -434,20 +603,37 @@ export class TimesheetsService {
         continue;
       }
       try {
-        await this.prisma.timesheet.create({
-          data: {
+        const userId = user.userId ?? user.id;
+        const timesheetDate = new Date(date);
+        await this.prisma.$transaction(async (tx) => {
+          const employeeId = await this.resolveAttendanceEmployeeId(
+            user,
             organizationId,
-            task,
-            project,
-            projectId: Number.isFinite(projectId) ? projectId : undefined,
-            taskId: Number.isFinite(taskId) ? taskId : undefined,
-            date: new Date(date),
-            hours,
-            status: 'PENDING',
-            source: 'IMPORT',
-            notes,
-            createdByUserId: user.userId ?? user.id,
-          },
+            requestedEmployeeId,
+            tx,
+          );
+          await tx.timesheet.create({
+            data: {
+              organizationId,
+              task,
+              employeeId,
+              project,
+              projectId: Number.isFinite(projectId) ? projectId : undefined,
+              taskId: Number.isFinite(taskId) ? taskId : undefined,
+              date: timesheetDate,
+              hours,
+              status: 'PENDING',
+              source: 'IMPORT',
+              notes,
+              createdByUserId: userId,
+            },
+          });
+          await this.attendanceTaskHours.recomputeTimesheetHours(
+            employeeId,
+            organizationId,
+            timesheetDate,
+            tx,
+          );
         });
         imported++;
       } catch (error: unknown) {
