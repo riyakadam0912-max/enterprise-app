@@ -135,6 +135,8 @@ export interface MyAttendanceResponse {
 export interface DailyTaskWorkSummary {
   date: string;
   taskTrackedSeconds: number;
+  taskTimesheetSeconds: number;
+  taskWorkSeconds: number;
   attendanceWorkedSeconds: number;
   scheduledSeconds: number;
   shiftType?: string;
@@ -167,9 +169,9 @@ export interface WorkHourPeriodBalance {
   endDate: string;
   requiredHours: number;
   completedHours: number;
-  taskTrackedHours?: number;
-  taskTrackedActiveDays?: number;
-  taskTrackedWorkingDayEquivalents?: number;
+  taskWorkHours?: number;
+  taskWorkActiveDays?: number;
+  taskWorkWorkingDayEquivalents?: number;
   breakHours: number;
   remainingHours: number;
   progressPercent: number;

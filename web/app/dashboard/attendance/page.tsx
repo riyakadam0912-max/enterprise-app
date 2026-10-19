@@ -180,20 +180,20 @@ function EmptyState({ title, description }: { title: string; description: string
 function WorkHourProgress({ label, balance }: { label: string; balance: WorkHourBalances['week'] | undefined }) {
   if (!balance) return null;
   const isFlexible = balance.flexible === true;
-  const taskTrackedHours = balance.taskTrackedHours ?? 0;
+  const taskWorkHours = balance.taskWorkHours ?? 0;
   const monthlyTarget = balance.fullPeriodRequiredHours;
   const targetHours = monthlyTarget ?? balance.requiredHours;
   const flexibleWorkdayHours = balance.workdayHours ?? 8;
-  const flexibleRemainderHours = taskTrackedHours % flexibleWorkdayHours;
+  const flexibleRemainderHours = taskWorkHours % flexibleWorkdayHours;
   const progressPercent = isFlexible
-    ? taskTrackedHours > 0 && flexibleRemainderHours === 0
+    ? taskWorkHours > 0 && flexibleRemainderHours === 0
       ? 100
       : (flexibleRemainderHours / flexibleWorkdayHours) * 100
     :
     targetHours > 0
-      ? Math.min(100, Math.max(0, (taskTrackedHours / targetHours) * 100))
+      ? Math.min(100, Math.max(0, (taskWorkHours / targetHours) * 100))
       : 100;
-  const remainingHours = Math.max(0, targetHours - taskTrackedHours);
+  const remainingHours = Math.max(0, targetHours - taskWorkHours);
   const isFullMonthTarget = monthlyTarget !== undefined;
   const flexibleRemaining = flexibleWorkdayHours - flexibleRemainderHours;
 
@@ -205,15 +205,15 @@ function WorkHourProgress({ label, balance }: { label: string; balance: WorkHour
         role="progressbar"
         aria-label={
           isFlexible
-            ? `${formatHoursDuration(taskTrackedHours)} task-tracked hours, ${(balance.taskTrackedWorkingDayEquivalents ?? taskTrackedHours / flexibleWorkdayHours).toFixed(2)} working days earned`
-            : `${label} task-tracked hours against ${targetHours.toFixed(2)} hour target`
+            ? `${formatHoursDuration(taskWorkHours)} task hours, ${(balance.taskWorkWorkingDayEquivalents ?? taskWorkHours / flexibleWorkdayHours).toFixed(2)} working days earned`
+            : `${label} task hours against ${targetHours.toFixed(2)} hour target`
         }
         aria-valuenow={progressPercent}
         aria-valuemin={0}
         aria-valuemax={100}
       >
         <div className="grid h-13 w-13 place-items-center rounded-full bg-white text-sm font-bold text-slate-900">
-          {formatHoursDuration(taskTrackedHours)}
+          {formatHoursDuration(taskWorkHours)}
         </div>
       </div>
       <div className="min-w-0">
@@ -221,10 +221,10 @@ function WorkHourProgress({ label, balance }: { label: string; balance: WorkHour
         {isFlexible ? (
           <>
             <p className="mt-1 text-xs font-medium text-slate-600">
-              {(balance.taskTrackedWorkingDayEquivalents ?? taskTrackedHours / flexibleWorkdayHours).toFixed(2)} working days earned from task time
+              {(balance.taskWorkWorkingDayEquivalents ?? taskWorkHours / flexibleWorkdayHours).toFixed(2)} working days earned from task time
             </p>
             <p className="mt-1 text-xs text-slate-500">
-              {balance.taskTrackedActiveDays ?? 0} active dates · {formatHoursDuration(flexibleRemaining)} to next day
+              {balance.taskWorkActiveDays ?? 0} active dates · {formatHoursDuration(flexibleRemaining)} to next day
             </p>
           </>
         ) : (
@@ -301,14 +301,14 @@ function DailyTaskWorkCard({ enabled }: { enabled: boolean }) {
   const isFlexible = summary.shiftType === 'FLEXIBLE';
   const target = isFlexible
     ? (summary.workdayHours ?? 8) * 3600
-    : summary.scheduledSeconds;
-  const taskSeconds = summary.taskTrackedSeconds;
+    : summary.scheduledSeconds || 8 * 3600;
+  const taskSeconds = summary.taskWorkSeconds;
+  const cycleSeconds = target > 0 ? taskSeconds % target : taskSeconds;
+  const completedWorkdays = target > 0 ? Math.floor(taskSeconds / target) : 0;
   const circumference = 2 * Math.PI * 40;
-  const taskLength = target > 0 ? Math.min(circumference, circumference * taskSeconds / target) : 0;
-  const taskPercent = target > 0 ? Math.min(100, Math.round(taskSeconds / target * 100)) : 0;
-  const targetRemaining = isFlexible
-    ? target - (taskSeconds % target)
-    : Math.max(0, target - taskSeconds);
+  const taskLength = target > 0 ? circumference * cycleSeconds / target : 0;
+  const taskPercent = target > 0 ? Math.min(100, Math.round(cycleSeconds / target * 100)) : 0;
+  const targetRemaining = target > 0 ? target - cycleSeconds : 0;
 
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -327,7 +327,7 @@ function DailyTaskWorkCard({ enabled }: { enabled: boolean }) {
       <div className="mt-5 flex flex-col items-center gap-5 sm:flex-row">
         <div
           role="img"
-          aria-label={`Task tracked ${formatHoursDuration(taskSeconds / 3600)} of ${formatHoursDuration(target / 3600)} ${isFlexible ? 'hours to one working day' : 'scheduled hours'}`}
+          aria-label={`${formatHoursDuration(taskSeconds / 3600)} total task time; ${formatHoursDuration(cycleSeconds / 3600)} of ${formatHoursDuration(target / 3600)} in the current workday cycle`}
           className="relative grid h-32 w-32 shrink-0 place-items-center"
         >
           <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full -rotate-90">
@@ -339,23 +339,23 @@ function DailyTaskWorkCard({ enabled }: { enabled: boolean }) {
             />
           </svg>
           <div className="text-center">
-            <p className="text-lg font-semibold leading-tight text-slate-900">{formatHoursDuration(taskSeconds / 3600)}</p>
-            <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">task-tracked</p>
+            <p className="text-lg font-semibold leading-tight text-slate-900">{formatHoursDuration(cycleSeconds / 3600)}</p>
+            <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">this cycle</p>
           </div>
         </div>
         <div className="min-w-0 flex-1 space-y-3">
           <div className="flex items-center justify-between gap-3 text-sm">
-            <span className="inline-flex items-center gap-2 text-slate-600"><span className="h-2 w-2 rounded-full bg-teal-700" />Task-tracked</span>
+            <span className="inline-flex items-center gap-2 text-slate-600"><span className="h-2 w-2 rounded-full bg-teal-700" />Total task time</span>
             <span className="font-semibold tabular-nums text-slate-900">{formatHoursDuration(taskSeconds / 3600)}</span>
           </div>
           <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-sm">
-            <span className="text-slate-500">{isFlexible ? 'Progress to one working day' : targetRemaining > 0 ? 'Task target remaining' : taskSeconds > target && target > 0 ? 'Over target' : 'Task target complete'}</span>
+            <span className="text-slate-500">
+              {completedWorkdays} full workday{completedWorkdays === 1 ? '' : 's'} completed
+            </span>
             <span className="font-medium tabular-nums text-slate-700">
-              {isFlexible
-                ? `${(taskSeconds / 3600 / 8).toFixed(2)} day equivalent`
-                : target > 0 && taskSeconds > target
-                ? formatHoursDuration((taskSeconds - target) / 3600)
-                : formatHoursDuration(targetRemaining / 3600)}
+              {target > 0
+                ? `${formatHoursDuration(targetRemaining / 3600)} to next workday`
+                : 'No workday target'}
             </span>
           </div>
           {summary.activeTimer && (
@@ -367,7 +367,7 @@ function DailyTaskWorkCard({ enabled }: { enabled: boolean }) {
               : `${formatHoursDuration(summary.attendanceWorkedSeconds / 3600)} attended of ${formatHoursDuration(target / 3600)} scheduled`}
           </p>
           {error && <p className="text-xs text-rose-600">Could not refresh live time: {error}</p>}
-          <span className="sr-only">Task time is {taskPercent}% of the scheduled shift.</span>
+          <span className="sr-only">Current workday cycle is {taskPercent}% complete.</span>
         </div>
       </div>
     </section>

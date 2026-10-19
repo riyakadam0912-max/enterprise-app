@@ -61,6 +61,9 @@ function createPrismaMock() {
     taskCrewAssignment: {
       findFirst: jest.fn().mockResolvedValue(null),
     },
+    timesheet: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     taskTimerInterval: { findMany: jest.fn().mockResolvedValue([]) },
     holiday: {
       findMany: jest.fn().mockResolvedValue([]),
@@ -319,6 +322,10 @@ describe('AttendanceService', () => {
       startedAt: new Date('2026-10-16T04:00:00.000Z'),
       task: { taskName: 'Prepare campaign assets' },
     });
+    prisma.timesheet.findMany.mockResolvedValueOnce([
+      { hours: 1.5 },
+      { hours: 0.5 },
+    ]);
     prisma.attendance.findUnique.mockResolvedValueOnce({
       checkIn: new Date('2026-10-16T00:00:00.000Z'),
       checkOut: null,
@@ -337,6 +344,8 @@ describe('AttendanceService', () => {
     expect(result).toEqual({
       date: '2026-10-16',
       taskTrackedSeconds: 10_800,
+      taskTimesheetSeconds: 7_200,
+      taskWorkSeconds: 18_000,
       attendanceWorkedSeconds: 16_200,
       scheduledSeconds: 28_800,
       activeTimer: {
@@ -349,6 +358,17 @@ describe('AttendanceService', () => {
         where: expect.objectContaining({
           startedAt: { lt: new Date('2026-10-16T05:00:00.000Z') },
           endedAt: { gt: new Date('2026-10-15T18:30:00.000Z') },
+        }),
+      }),
+    );
+    expect(prisma.timesheet.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          employeeId: 7,
+          organizationId: 1,
+          status: { not: 'REJECTED' },
+          source: { not: 'TASK_TIMER' },
+          deletedAt: null,
         }),
       }),
     );
@@ -2310,7 +2330,7 @@ describe('AttendanceService', () => {
       expect.objectContaining({
         requiredHours: 48,
         completedHours: 8.5,
-        taskTrackedHours: 0,
+        taskWorkHours: 0,
         breakHours: 0.5,
         remainingHours: 39.5,
       }),
@@ -2319,7 +2339,7 @@ describe('AttendanceService', () => {
       expect.objectContaining({
         requiredHours: 8,
         completedHours: 2.5,
-        taskTrackedHours: 0,
+        taskWorkHours: 0,
         breakHours: 0.5,
         remainingHours: 5.5,
       }),
@@ -2368,13 +2388,78 @@ describe('AttendanceService', () => {
     expect(balances.week).toEqual(
       expect.objectContaining({
         completedHours: 8,
-        taskTrackedHours: 2,
+        taskWorkHours: 2,
       }),
     );
     expect(balances.month).toEqual(
       expect.objectContaining({
         completedHours: 8,
-        taskTrackedHours: 2,
+        taskWorkHours: 2,
+      }),
+    );
+  });
+
+  it('adds manual task timesheets to timer time in period ring balances', async () => {
+    const now = new Date('2026-10-20T12:00:00.000Z');
+    const shift = {
+      id: 2,
+      name: 'Day',
+      type: 'FIXED',
+      startTime: '09:00',
+      endTime: '17:00',
+      requiredHours: 8,
+      minPresentHours: 5,
+      gracePeriodMinutes: 15,
+      weeklyHolidayDay: 0,
+      workingDays: [1, 2, 3, 4, 5],
+    };
+    jest.setSystemTime(now);
+    prisma.attendance.findMany.mockResolvedValue([]);
+    prisma.holiday.findMany.mockResolvedValue([]);
+    prisma.leaveRequest.findMany.mockResolvedValue([]);
+    prisma.taskTimerInterval.findMany.mockResolvedValue([
+      {
+        startedAt: new Date('2026-10-19T09:00:00.000Z'),
+        endedAt: new Date('2026-10-19T11:00:00.000Z'),
+      },
+      {
+        startedAt: new Date('2026-10-20T09:00:00.000Z'),
+        endedAt: new Date('2026-10-20T10:00:00.000Z'),
+      },
+    ]);
+    prisma.timesheet.findMany.mockResolvedValue([
+      { date: new Date('2026-10-19T00:00:00.000Z'), hours: 1.5 },
+      { date: new Date('2026-10-20T00:00:00.000Z'), hours: 0.5 },
+    ]);
+
+    const balances = await (service as any).getWorkHourBalancesForEmployee(
+      7,
+      { id: 7, organizationId: 1, hireDate: null, shift },
+      now,
+      'UTC',
+    );
+
+    expect(balances.week).toEqual(
+      expect.objectContaining({
+        taskWorkHours: 5,
+        taskWorkActiveDays: 2,
+      }),
+    );
+    expect(balances.month).toEqual(
+      expect.objectContaining({
+        taskWorkHours: 5,
+        taskWorkActiveDays: 2,
+      }),
+    );
+    expect(prisma.timesheet.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          employeeId: 7,
+          organizationId: 1,
+          status: { not: 'REJECTED' },
+          source: { not: 'TASK_TIMER' },
+          deletedAt: null,
+        }),
       }),
     );
   });
@@ -2422,18 +2507,18 @@ describe('AttendanceService', () => {
         completedHours: 3,
         activeDays: 1,
         workingDayEquivalents: 0.38,
-        taskTrackedHours: 3,
-        taskTrackedActiveDays: 1,
-        taskTrackedWorkingDayEquivalents: 0.38,
+        taskWorkHours: 3,
+        taskWorkActiveDays: 1,
+        taskWorkWorkingDayEquivalents: 0.38,
       }),
     );
     expect(balances.month).toEqual(
       expect.objectContaining({
         completedHours: 8,
         workingDayEquivalents: 1,
-        taskTrackedHours: 8,
-        taskTrackedActiveDays: 3,
-        taskTrackedWorkingDayEquivalents: 1,
+        taskWorkHours: 8,
+        taskWorkActiveDays: 3,
+        taskWorkWorkingDayEquivalents: 1,
       }),
     );
   });
@@ -2491,9 +2576,9 @@ describe('AttendanceService', () => {
         completedHours: 8,
         activeDays: 3,
         workingDayEquivalents: 1,
-        taskTrackedHours: 0,
-        taskTrackedActiveDays: 0,
-        taskTrackedWorkingDayEquivalents: 0,
+        taskWorkHours: 0,
+        taskWorkActiveDays: 0,
+        taskWorkWorkingDayEquivalents: 0,
       }),
     );
     expect(balances.month).toEqual(
@@ -2501,9 +2586,9 @@ describe('AttendanceService', () => {
         completedHours: 8,
         activeDays: 3,
         workingDayEquivalents: 1,
-        taskTrackedHours: 0,
-        taskTrackedActiveDays: 0,
-        taskTrackedWorkingDayEquivalents: 0,
+        taskWorkHours: 0,
+        taskWorkActiveDays: 0,
+        taskWorkWorkingDayEquivalents: 0,
       }),
     );
   });

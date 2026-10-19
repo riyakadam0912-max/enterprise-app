@@ -2231,32 +2231,47 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     }
     const measuredEnd = new Date(Math.min(now.getTime(), rangeEnd.getTime()));
 
-    const [intervals, activeTimer, attendance] = await Promise.all([
-      this.prisma.taskTimerInterval.findMany({
-        where: {
-          timerSession: { userId: user.userId, organizationId },
-          startedAt: { lt: measuredEnd },
-          endedAt: { gt: rangeStart },
-        },
-        select: { startedAt: true, endedAt: true },
-      }),
-      this.prisma.taskTimerSession.findFirst({
-        where: { userId: user.userId, organizationId, status: 'RUNNING' },
-        select: {
-          startedAt: true,
-          task: { select: { taskName: true } },
-        },
-      }),
-      this.prisma.attendance.findUnique({
-        where: {
-          employeeId_date: {
-            employeeId,
-            date: attendanceDateFromKey(dateKey),
+    const timesheetDate = attendanceDateFromKey(dateKey);
+    const nextTimesheetDate = new Date(timesheetDate);
+    nextTimesheetDate.setUTCDate(nextTimesheetDate.getUTCDate() + 1);
+    const [intervals, activeTimer, attendance, taskTimesheets] =
+      await Promise.all([
+        this.prisma.taskTimerInterval.findMany({
+          where: {
+            timerSession: { userId: user.userId, organizationId },
+            startedAt: { lt: measuredEnd },
+            endedAt: { gt: rangeStart },
           },
-        },
-        include: { breaks: true, shift: true },
-      }),
-    ]);
+          select: { startedAt: true, endedAt: true },
+        }),
+        this.prisma.taskTimerSession.findFirst({
+          where: { userId: user.userId, organizationId, status: 'RUNNING' },
+          select: {
+            startedAt: true,
+            task: { select: { taskName: true } },
+          },
+        }),
+        this.prisma.attendance.findUnique({
+          where: {
+            employeeId_date: {
+              employeeId,
+              date: attendanceDateFromKey(dateKey),
+            },
+          },
+          include: { breaks: true, shift: true },
+        }),
+        this.prisma.timesheet.findMany({
+          where: {
+            employeeId,
+            organizationId,
+            date: { gte: timesheetDate, lt: nextTimesheetDate },
+            status: { not: 'REJECTED' },
+            source: { not: 'TASK_TIMER' },
+            deletedAt: null,
+          },
+          select: { hours: true },
+        }),
+      ]);
 
     const taskIntervals = [...intervals];
     if (activeTimer?.startedAt && measuredEnd > activeTimer.startedAt) {
@@ -2270,6 +2285,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       rangeStart,
       measuredEnd,
     );
+    const taskTimesheetSeconds = taskTimesheets.reduce(
+      (total, timesheet) =>
+        total + Math.max(0, Math.round(timesheet.hours * 3600)),
+      0,
+    );
+    const taskWorkSeconds = taskTrackedSeconds + taskTimesheetSeconds;
 
     let attendanceWorkedSeconds = 0;
     let creditedWorkSeconds = 0;
@@ -2316,6 +2337,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     return {
       date: dateKey,
       taskTrackedSeconds,
+      taskTimesheetSeconds,
+      taskWorkSeconds,
       attendanceWorkedSeconds,
       scheduledSeconds: Math.max(0, Math.round(scheduledHours * 3600)),
       activeTimer: activeTimer?.startedAt
@@ -2676,6 +2699,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       taskTimeCutoverKey,
       ...(hireDateKey ? [hireDateKey] : []),
     ].reduce((latest, key) => (key > latest ? key : latest));
+    const taskTimesheetRangeStartKey = [
+      queryStartKey,
+      ...(hireDateKey ? [hireDateKey] : []),
+    ].reduce((latest, key) => (key > latest ? key : latest));
     const taskIntervals =
       taskRangeStartKey <= todayKey
         ? await this.getFlexibleTaskIntervals(
@@ -2684,6 +2711,25 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             this.localDateStart(taskRangeStartKey, timezone),
             now,
           )
+        : [];
+    const taskTimesheetRangeStart = attendanceDateFromKey(
+      taskTimesheetRangeStartKey,
+    );
+    const taskTimesheetRangeEnd = attendanceDateFromKey(todayKey);
+    taskTimesheetRangeEnd.setUTCDate(taskTimesheetRangeEnd.getUTCDate() + 1);
+    const taskTimesheets =
+      taskTimesheetRangeStartKey <= todayKey
+        ? await this.prisma.timesheet.findMany({
+            where: {
+              employeeId,
+              organizationId: employee.organizationId,
+              date: { gte: taskTimesheetRangeStart, lt: taskTimesheetRangeEnd },
+              status: { not: 'REJECTED' },
+              source: { not: 'TASK_TIMER' },
+              deletedAt: null,
+            },
+            select: { date: true, hours: true },
+          })
         : [];
     if (employee.shift?.type === 'FLEXIBLE') {
       const flexibleAttendanceRows = attendanceRows.filter(
@@ -2714,7 +2760,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         const endKey = end.toISOString().slice(0, 10);
         const eligibleStartKey = [
           startKey,
-          taskTimeCutoverKey,
           ...(hireDateKey ? [hireDateKey] : []),
         ].reduce((latest, key) => (key > latest ? key : latest));
         const taskPeriodStart = this.localDateStart(eligibleStartKey, timezone);
@@ -2734,8 +2779,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         );
         const taskWork =
           taskPeriodStart < measuredEnd
-            ? this.sumTaskTrackedWork(
+            ? this.sumTaskWork(
                 taskIntervals,
+                taskTimesheets,
                 taskPeriodStart,
                 measuredEnd,
                 timezone,
@@ -2744,7 +2790,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         const completedSeconds = creditedWork.seconds;
         const exactCompletedHours = completedSeconds / 3600;
         const completedHours = Number(exactCompletedHours.toFixed(2));
-        const exactTaskTrackedHours = taskWork.seconds / 3600;
+        const exactTaskWorkHours = taskWork.seconds / 3600;
         const remainderHours = exactCompletedHours % workdayHours;
         const remainingHours = Number(
           (workdayHours - remainderHours).toFixed(2),
@@ -2773,10 +2819,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           workingDayEquivalents: Number(
             (exactCompletedHours / workdayHours).toFixed(2),
           ),
-          taskTrackedHours: Number(exactTaskTrackedHours.toFixed(2)),
-          taskTrackedActiveDays: taskWork.activeDays,
-          taskTrackedWorkingDayEquivalents: Number(
-            (exactTaskTrackedHours / workdayHours).toFixed(2),
+          taskWorkHours: Number(exactTaskWorkHours.toFixed(2)),
+          taskWorkActiveDays: taskWork.activeDays,
+          taskWorkWorkingDayEquivalents: Number(
+            (exactTaskWorkHours / workdayHours).toFixed(2),
           ),
         };
       };
@@ -2821,7 +2867,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       const periodStartKey = periodStart.toISOString().slice(0, 10);
       const eligibleStartKey = [
         periodStartKey,
-        taskTimeCutoverKey,
         ...(hireDateKey ? [hireDateKey] : []),
       ].reduce((latest, key) => (key > latest ? key : latest));
       const measuredStart = this.localDateStart(eligibleStartKey, timezone);
@@ -2831,11 +2876,17 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       const measuredEnd = new Date(
         Math.min(now.getTime(), periodEnd.getTime()),
       );
-      const completedSeconds =
+      const taskWork =
         measuredStart < measuredEnd
-          ? sumIntervalSeconds(taskIntervals, measuredStart, measuredEnd)
-          : 0;
-      const taskTrackedHours = completedSeconds / 3600;
+          ? this.sumTaskWork(
+              taskIntervals,
+              taskTimesheets,
+              measuredStart,
+              measuredEnd,
+              timezone,
+            )
+          : { seconds: 0, activeDays: 0 };
+      const taskWorkHours = taskWork.seconds / 3600;
       let completedHours = 0;
       for (
         const day = new Date(periodStart);
@@ -2907,7 +2958,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         endDate: scheduledThrough.toISOString(),
         requiredHours,
         completedHours,
-        taskTrackedHours: Number(taskTrackedHours.toFixed(2)),
+        taskWorkHours: Number(taskWorkHours.toFixed(2)),
+        taskWorkActiveDays: taskWork.activeDays,
         breakHours,
         scheduledDays,
         remainingHours,
@@ -2979,8 +3031,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     return [...intervals, ...activeIntervals];
   }
 
-  private sumTaskTrackedWork(
+  private sumTaskWork(
     intervals: Array<{ startedAt: Date; endedAt: Date }>,
+    timesheets: Array<{ date: Date; hours: number }>,
     rangeStart: Date,
     rangeEnd: Date,
     timezone: string,
@@ -3004,11 +3057,14 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       const measuredEnd = new Date(
         Math.min(rangeEnd.getTime(), dayEnd.getTime()),
       );
-      const daySeconds = sumIntervalSeconds(
-        intervals,
-        measuredStart,
-        measuredEnd,
-      );
+      let dateTimesheetSeconds = 0;
+      for (const timesheet of timesheets) {
+        if (timesheet.date.toISOString().slice(0, 10) !== dateKey) continue;
+        dateTimesheetSeconds += Math.max(0, Math.round(timesheet.hours * 3600));
+      }
+      const daySeconds =
+        sumIntervalSeconds(intervals, measuredStart, measuredEnd) +
+        dateTimesheetSeconds;
       seconds += daySeconds;
       if (daySeconds > 0) activeDays += 1;
       cursor = dayEnd;
