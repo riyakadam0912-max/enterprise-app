@@ -167,6 +167,9 @@ export interface WorkHourPeriodBalance {
   endDate: string;
   requiredHours: number;
   completedHours: number;
+  taskTrackedHours?: number;
+  taskTrackedActiveDays?: number;
+  taskTrackedWorkingDayEquivalents?: number;
   breakHours: number;
   remainingHours: number;
   progressPercent: number;

@@ -2310,6 +2310,7 @@ describe('AttendanceService', () => {
       expect.objectContaining({
         requiredHours: 48,
         completedHours: 8.5,
+        taskTrackedHours: 0,
         breakHours: 0.5,
         remainingHours: 39.5,
       }),
@@ -2318,8 +2319,62 @@ describe('AttendanceService', () => {
       expect.objectContaining({
         requiredHours: 8,
         completedHours: 2.5,
+        taskTrackedHours: 0,
         breakHours: 0.5,
         remainingHours: 5.5,
+      }),
+    );
+  });
+
+  it('uses only task timer intervals in fixed-shift progress balances', async () => {
+    const now = new Date('2026-10-19T12:00:00.000Z');
+    const shift = {
+      id: 2,
+      name: 'Day',
+      type: 'FIXED',
+      startTime: '09:00',
+      endTime: '17:00',
+      requiredHours: 8,
+      minPresentHours: 5,
+      gracePeriodMinutes: 15,
+      weeklyHolidayDay: 0,
+    };
+    prisma.attendance.findMany.mockResolvedValue([
+      {
+        date: new Date('2026-10-19T00:00:00.000Z'),
+        checkIn: new Date('2026-10-19T08:00:00.000Z'),
+        checkOut: new Date('2026-10-19T16:00:00.000Z'),
+        workingHours: 8,
+        shift,
+        breaks: [],
+      },
+    ]);
+    prisma.taskTimerInterval.findMany.mockResolvedValue([
+      {
+        startedAt: new Date('2026-10-19T09:00:00.000Z'),
+        endedAt: new Date('2026-10-19T11:00:00.000Z'),
+      },
+    ]);
+    prisma.holiday.findMany.mockResolvedValue([]);
+    prisma.leaveRequest.findMany.mockResolvedValue([]);
+
+    const balances = await (service as any).getWorkHourBalancesForEmployee(
+      7,
+      { id: 7, organizationId: 1, hireDate: null, shift },
+      now,
+      'UTC',
+    );
+
+    expect(balances.week).toEqual(
+      expect.objectContaining({
+        completedHours: 8,
+        taskTrackedHours: 2,
+      }),
+    );
+    expect(balances.month).toEqual(
+      expect.objectContaining({
+        completedHours: 8,
+        taskTrackedHours: 2,
       }),
     );
   });
@@ -2367,17 +2422,23 @@ describe('AttendanceService', () => {
         completedHours: 3,
         activeDays: 1,
         workingDayEquivalents: 0.38,
+        taskTrackedHours: 3,
+        taskTrackedActiveDays: 1,
+        taskTrackedWorkingDayEquivalents: 0.38,
       }),
     );
     expect(balances.month).toEqual(
       expect.objectContaining({
         completedHours: 8,
         workingDayEquivalents: 1,
+        taskTrackedHours: 8,
+        taskTrackedActiveDays: 3,
+        taskTrackedWorkingDayEquivalents: 1,
       }),
     );
   });
 
-  it('credits legacy flexible attendance from check-in/out across multiple dates', async () => {
+  it('keeps legacy flexible attendance out of task-tracked ring values', async () => {
     const now = new Date('2026-10-16T12:00:00.000Z');
     const shift = {
       id: 4,
@@ -2430,6 +2491,9 @@ describe('AttendanceService', () => {
         completedHours: 8,
         activeDays: 3,
         workingDayEquivalents: 1,
+        taskTrackedHours: 0,
+        taskTrackedActiveDays: 0,
+        taskTrackedWorkingDayEquivalents: 0,
       }),
     );
     expect(balances.month).toEqual(
@@ -2437,6 +2501,9 @@ describe('AttendanceService', () => {
         completedHours: 8,
         activeDays: 3,
         workingDayEquivalents: 1,
+        taskTrackedHours: 0,
+        taskTrackedActiveDays: 0,
+        taskTrackedWorkingDayEquivalents: 0,
       }),
     );
   });

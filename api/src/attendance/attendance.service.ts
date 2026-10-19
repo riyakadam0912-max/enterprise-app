@@ -2668,20 +2668,27 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       where: { employeeId, date: { gte: queryStart, lte: today } },
       include: { shift: true, breaks: true },
     });
+    const taskTimeCutoverKey = this.flexibleTaskTimeCutoverDate();
+    const queryStartKey = queryStart.toISOString().slice(0, 10);
+    const hireDateKey = employee.hireDate?.toISOString().slice(0, 10);
+    const taskRangeStartKey = [
+      queryStartKey,
+      taskTimeCutoverKey,
+      ...(hireDateKey ? [hireDateKey] : []),
+    ].reduce((latest, key) => (key > latest ? key : latest));
+    const taskIntervals =
+      taskRangeStartKey <= todayKey
+        ? await this.getFlexibleTaskIntervals(
+            employeeId,
+            employee.organizationId,
+            this.localDateStart(taskRangeStartKey, timezone),
+            now,
+          )
+        : [];
     if (employee.shift?.type === 'FLEXIBLE') {
-      const queryStartKey = queryStart.toISOString().slice(0, 10);
-      const hireDateKey =
-        employee.hireDate?.toISOString().slice(0, 10) ?? queryStartKey;
-      const flexibleRangeStartKey =
-        hireDateKey > queryStartKey ? hireDateKey : queryStartKey;
       const flexibleAttendanceRows = attendanceRows.filter(
-        (row) => row.date.toISOString().slice(0, 10) >= flexibleRangeStartKey,
-      );
-      const intervals = await this.getFlexibleTaskIntervals(
-        employeeId,
-        employee.organizationId,
-        this.localDateStart(flexibleRangeStartKey, timezone),
-        now,
+        (row) =>
+          row.date.toISOString().slice(0, 10) >= (hireDateKey ?? queryStartKey),
       );
       const workdayHours = 8;
       const breakMillisecondsForPeriod = (periodStart: Date, periodEnd: Date) =>
@@ -2705,6 +2712,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       const flexiblePeriod = (start: Date, end: Date) => {
         const startKey = start.toISOString().slice(0, 10);
         const endKey = end.toISOString().slice(0, 10);
+        const eligibleStartKey = [
+          startKey,
+          taskTimeCutoverKey,
+          ...(hireDateKey ? [hireDateKey] : []),
+        ].reduce((latest, key) => (key > latest ? key : latest));
+        const taskPeriodStart = this.localDateStart(eligibleStartKey, timezone);
         const periodStart = this.localDateStart(startKey, timezone);
         const periodEnd =
           localMidnightAfterDateInTimezone(endKey, timezone) ?? now;
@@ -2713,15 +2726,25 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         );
         const creditedWork = this.sumFlexibleCreditedWorkSeconds(
           flexibleAttendanceRows,
-          intervals,
+          taskIntervals,
           periodStart,
           measuredEnd,
           timezone,
           now,
         );
+        const taskWork =
+          taskPeriodStart < measuredEnd
+            ? this.sumTaskTrackedWork(
+                taskIntervals,
+                taskPeriodStart,
+                measuredEnd,
+                timezone,
+              )
+            : { seconds: 0, activeDays: 0 };
         const completedSeconds = creditedWork.seconds;
         const exactCompletedHours = completedSeconds / 3600;
         const completedHours = Number(exactCompletedHours.toFixed(2));
+        const exactTaskTrackedHours = taskWork.seconds / 3600;
         const remainderHours = exactCompletedHours % workdayHours;
         const remainingHours = Number(
           (workdayHours - remainderHours).toFixed(2),
@@ -2749,6 +2772,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           activeDays: creditedWork.activeDays,
           workingDayEquivalents: Number(
             (exactCompletedHours / workdayHours).toFixed(2),
+          ),
+          taskTrackedHours: Number(exactTaskTrackedHours.toFixed(2)),
+          taskTrackedActiveDays: taskWork.activeDays,
+          taskTrackedWorkingDayEquivalents: Number(
+            (exactTaskTrackedHours / workdayHours).toFixed(2),
           ),
         };
       };
@@ -2788,9 +2816,27 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     const aggregatePeriod = (periodStart: Date, scheduledThrough: Date) => {
       let requiredHours = 0;
-      let completedHours = 0;
       let breakHours = 0;
       let scheduledDays = 0;
+      const periodStartKey = periodStart.toISOString().slice(0, 10);
+      const eligibleStartKey = [
+        periodStartKey,
+        taskTimeCutoverKey,
+        ...(hireDateKey ? [hireDateKey] : []),
+      ].reduce((latest, key) => (key > latest ? key : latest));
+      const measuredStart = this.localDateStart(eligibleStartKey, timezone);
+      const periodEndKey = scheduledThrough.toISOString().slice(0, 10);
+      const periodEnd =
+        localMidnightAfterDateInTimezone(periodEndKey, timezone) ?? now;
+      const measuredEnd = new Date(
+        Math.min(now.getTime(), periodEnd.getTime()),
+      );
+      const completedSeconds =
+        measuredStart < measuredEnd
+          ? sumIntervalSeconds(taskIntervals, measuredStart, measuredEnd)
+          : 0;
+      const taskTrackedHours = completedSeconds / 3600;
+      let completedHours = 0;
       for (
         const day = new Date(periodStart);
         day <= scheduledThrough;
@@ -2861,6 +2907,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         endDate: scheduledThrough.toISOString(),
         requiredHours,
         completedHours,
+        taskTrackedHours: Number(taskTrackedHours.toFixed(2)),
         breakHours,
         scheduledDays,
         remainingHours,
@@ -2930,6 +2977,44 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         : [],
     );
     return [...intervals, ...activeIntervals];
+  }
+
+  private sumTaskTrackedWork(
+    intervals: Array<{ startedAt: Date; endedAt: Date }>,
+    rangeStart: Date,
+    rangeEnd: Date,
+    timezone: string,
+  ) {
+    let seconds = 0;
+    let activeDays = 0;
+    let cursor = new Date(rangeStart);
+
+    while (cursor < rangeEnd) {
+      const dateKey = dateKeyInTimezone(cursor, timezone);
+      const dayStart = localMidnightAtDateInTimezone(dateKey, timezone);
+      const dayEnd = localMidnightAfterDateInTimezone(dateKey, timezone);
+      if (!dayStart || !dayEnd || dayEnd <= cursor) {
+        throw new BadRequestException(
+          'Unable to calculate task work time in organization timezone',
+        );
+      }
+      const measuredStart = new Date(
+        Math.max(rangeStart.getTime(), dayStart.getTime()),
+      );
+      const measuredEnd = new Date(
+        Math.min(rangeEnd.getTime(), dayEnd.getTime()),
+      );
+      const daySeconds = sumIntervalSeconds(
+        intervals,
+        measuredStart,
+        measuredEnd,
+      );
+      seconds += daySeconds;
+      if (daySeconds > 0) activeDays += 1;
+      cursor = dayEnd;
+    }
+
+    return { seconds, activeDays };
   }
 
   private sumFlexibleCreditedWorkSeconds(
