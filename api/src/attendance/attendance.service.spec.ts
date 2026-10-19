@@ -1914,6 +1914,7 @@ describe('AttendanceService', () => {
         checkIn: new Date('2026-03-02T09:00:00.000Z'),
         checkOut: new Date('2026-03-02T16:00:00.000Z'),
         workingHours: 6,
+        taskHours: 1.5,
         breaks: [],
         shift,
         employee,
@@ -1952,7 +1953,8 @@ describe('AttendanceService', () => {
     );
 
     expect(result.totalExpectedHours).toBe(24);
-    expect(result.totalWorkedHours).toBe(8.5);
+    expect(result.totalTaskHours).toBe(1.5);
+    expect(result.totalWorkedHours).toBe(10);
   });
 
   it('uses flexible task-time day equivalents in monthly summaries', async () => {
@@ -2164,6 +2166,7 @@ describe('AttendanceService', () => {
         checkIn: new Date('2026-03-10T08:00:00.000Z'),
         checkOut: new Date('2026-03-10T10:00:00.000Z'),
         workingHours: 2,
+        taskHours: 1.25,
         breaks: [],
         status: AttendanceStatus.PRESENT,
       },
@@ -2203,7 +2206,7 @@ describe('AttendanceService', () => {
         workingDayEquivalents: 1,
         workingDays: 1,
         presentCount: 1,
-        totalWorkedHours: 8,
+        totalWorkedHours: 9.25,
       }),
     );
   });

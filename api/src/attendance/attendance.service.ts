@@ -339,7 +339,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         if (row.lateMinutes > 0) acc.lateCount += 1;
         acc.overtimeHours += row.overtimeHours ?? 0;
         acc.shortfallHours += row.shortfallHours ?? 0;
-        acc.totalWorkedHours += row.workingHours ?? 0;
+        acc.totalWorkedHours += (row.workingHours ?? 0) + (row.taskHours ?? 0);
         acc.totalTaskHours += row.taskHours ?? 0;
         const requiredHours = row.shiftDetails?.requiredHours ?? 8;
         if (
@@ -3428,6 +3428,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const periodAttendanceRows = fixedAttendanceRows.filter(
       (row) => row.date <= summaryCutoff,
     );
+    const totalTaskHours = Number(
+      eligibleAttendanceRows
+        .filter((row) => row.date <= summaryCutoff)
+        .reduce((sum, row) => sum + (row.taskHours ?? 0), 0)
+        .toFixed(2),
+    );
     const totalWorkedHours = Number(
       (
         periodAttendanceRows.reduce((sum: number, row) => {
@@ -3441,7 +3447,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
               row.breaks,
             )
           );
-        }, 0) + flexibleWorkedHours
+        }, 0) +
+        flexibleWorkedHours +
+        totalTaskHours
       ).toFixed(2),
     );
     const totalExpectedHours = Number(
@@ -3482,6 +3490,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       overtimeHours,
       shortfallHours,
       totalWorkedHours,
+      totalTaskHours,
       totalExpectedHours,
       totalWorkingDays,
     };
@@ -3753,7 +3762,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           employee.shift,
           row.date,
         );
-      if (rowShift?.type === 'FLEXIBLE') continue;
+      if (rowShift?.type === 'FLEXIBLE') {
+        entry.totalWorkedHours += row.taskHours ?? 0;
+        continue;
+      }
 
       const rowDateKey = `${row.employeeId}:${this.startOfDay(row.date).toISOString().slice(0, 10)}`;
       const corporateHolidayKey = `${employee.organization.id}:${row.date.toISOString().slice(0, 10)}`;
@@ -3770,6 +3782,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             : true;
 
       if (!matchesStatus) continue;
+
+      entry.totalWorkedHours += row.taskHours ?? 0;
 
       if (effectiveStatus === AttendanceStatus.WEEKLY_OFF) {
         entry.weeklyOffCount += 1;
