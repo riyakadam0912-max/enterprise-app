@@ -252,6 +252,24 @@ export class AttendanceController {
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'GET my attendance history' })
+  @Get('me/history')
+  getMyAttendanceHistory(
+    @Query() query: QueryAttendanceDto,
+    @Req()
+    req: {
+      user: {
+        userId: number;
+        role: Role;
+        employeeId?: number | null;
+        organizationId: number;
+      };
+    },
+  ) {
+    return this.attendanceService.getMyAttendanceHistory(query, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'GET me' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })

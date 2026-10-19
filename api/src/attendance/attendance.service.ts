@@ -12,6 +12,7 @@ import {
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { AttendanceCheckoutSource, AttendanceStatus } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { Role } from '../common/enums/role.enum';
 import { DASHBOARD_CACHE_KEY } from '../common/utils/cache-keys';
 import { PrismaService } from '../prisma/prisma.service';
@@ -2120,6 +2121,123 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   async findMine(query: QueryAttendanceDto, user: AttendanceUser) {
     const employeeId = await this.resolveCurrentEmployeeId(user);
     return this.findAll({ ...query, employeeId }, user);
+  }
+
+  async getMyAttendanceHistory(
+    query: QueryAttendanceDto,
+    user: AttendanceUser,
+  ) {
+    const employeeId = await this.resolveCurrentEmployeeId(user);
+    const organizationId = await this.resolveOrganizationId(user);
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { timezone: true },
+    });
+    const timezone = organization?.timezone ?? 'UTC';
+    const todayKey = dateKeyInTimezone(new Date(), timezone);
+    const today = attendanceDateFromKey(todayKey);
+    const rangeStart = query.all
+      ? null
+      : query.fromDate
+        ? attendanceDateFromKey(query.fromDate.slice(0, 10))
+        : attendanceDateFromKey(todayKey);
+    if (!query.all && !query.fromDate && rangeStart) {
+      rangeStart.setUTCDate(rangeStart.getUTCDate() - 29);
+    }
+    const where: Prisma.AttendanceWhereInput = {
+      employeeId,
+      organizationId,
+      deletedAt: null,
+      ...(!query.all && rangeStart
+        ? { date: { gte: rangeStart, lte: today } }
+        : {}),
+      ...(query.status && query.status !== 'LATE'
+        ? { status: query.status }
+        : {}),
+      ...(query.status === 'LATE' ? { lateMinutes: { gt: 0 } } : {}),
+    };
+    const page = query.page ?? 1;
+    const limit = Math.max(1, Math.min(query.limit ?? 10, 100));
+    const [rows, total] = await Promise.all([
+      this.prisma.attendance.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { date: 'desc' },
+        include: {
+          employee: {
+            select: {
+              id: true,
+              name: true,
+              department: true,
+              designation: true,
+            },
+          },
+          shift: true,
+          breaks: true,
+        },
+      }),
+      this.prisma.attendance.count({ where }),
+    ]);
+
+    const data = rows.map((row) => {
+      const shift = row.shift;
+      const breaks = row.breaks.map((interval) => ({
+        startedAt: interval.startedAt.toISOString(),
+        endedAt: interval.endedAt?.toISOString() ?? null,
+      }));
+      return {
+        id: row.id,
+        employeeId,
+        employee: row.employee,
+        date: row.date.toISOString(),
+        checkIn: row.checkIn?.toISOString() ?? null,
+        checkOut: row.checkOut?.toISOString() ?? null,
+        checkoutSource: row.checkoutSource,
+        checkoutActorName: null,
+        workingHours: row.workingHours,
+        taskHours: row.taskHours ?? 0,
+        breaks,
+        breakHours: row.breaks.reduce((totalBreakHours, interval) => {
+          const end =
+            interval.endedAt?.getTime() ?? interval.startedAt.getTime();
+          return (
+            totalBreakHours +
+            Math.max(0, end - interval.startedAt.getTime()) / 3_600_000
+          );
+        }, 0),
+        onBreak: row.breaks.some((interval) => interval.endedAt == null),
+        shortfallHours: row.shortfallHours,
+        expectedHours: row.requiredHours ?? undefined,
+        lateMinutes: row.lateMinutes,
+        overtimeHours: row.overtimeHours,
+        status: row.status,
+        isShootDay: row.isShootDay,
+        shiftDetails: shift
+          ? {
+              id: shift.id,
+              name: shift.name,
+              type: shift.type,
+              startTime: shift.startTime,
+              endTime: shift.endTime,
+              requiredHours: shift.requiredHours,
+              minPresentHours: shift.minPresentHours,
+              gracePeriodMinutes: shift.gracePeriodMinutes,
+              weeklyHolidayDay: shift.weeklyHolidayDay,
+              workingDays: shift.workingDays,
+            }
+          : null,
+      };
+    });
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      date: today.toISOString(),
+      summary: this.buildSummary(data),
+    };
   }
 
   async getToday(user: AttendanceUser, date?: string) {

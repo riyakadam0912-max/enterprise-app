@@ -33,6 +33,7 @@ function createPrismaMock() {
       findUnique: jest.fn(),
       findFirst: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn(),
       upsert: jest.fn(async (args: any) => {
         const existing = await prisma.attendance.findUnique({
           where: args.where,
@@ -370,6 +371,125 @@ describe('AttendanceService', () => {
           source: { not: 'TASK_TIMER' },
           deletedAt: null,
         }),
+      }),
+    );
+  });
+
+  it('returns paginated recent attendance history for the linked employee', async () => {
+    jest.setSystemTime(new Date('2026-10-19T12:00:00.000Z'));
+    prisma.employee.findFirst.mockResolvedValueOnce({ id: 7 });
+    prisma.organization.findUnique.mockResolvedValueOnce({ timezone: 'UTC' });
+    prisma.attendance.findMany.mockResolvedValueOnce([
+      {
+        id: 42,
+        employeeId: 7,
+        employee: {
+          id: 7,
+          name: 'Ava',
+          department: 'Ops',
+          designation: 'Coordinator',
+        },
+        date: new Date('2026-10-18T00:00:00.000Z'),
+        checkIn: new Date('2026-10-18T09:00:00.000Z'),
+        checkOut: new Date('2026-10-18T17:00:00.000Z'),
+        checkoutSource: 'USER',
+        workingHours: 7.5,
+        taskHours: 1,
+        lateMinutes: 0,
+        overtimeHours: 0,
+        shortfallHours: 0,
+        requiredHours: 8,
+        status: AttendanceStatus.PRESENT,
+        isShootDay: false,
+        shift: {
+          id: 3,
+          name: 'Day',
+          type: 'FIXED',
+          startTime: '09:00',
+          endTime: '17:00',
+          requiredHours: 8,
+          minPresentHours: 5,
+          gracePeriodMinutes: 15,
+          weeklyHolidayDay: 0,
+          workingDays: [1, 2, 3, 4, 5],
+        },
+        breaks: [
+          {
+            startedAt: new Date('2026-10-18T12:00:00.000Z'),
+            endedAt: new Date('2026-10-18T12:30:00.000Z'),
+          },
+        ],
+      },
+    ]);
+    prisma.attendance.count.mockResolvedValueOnce(13);
+
+    const result = await service.getMyAttendanceHistory(
+      { fromDate: '2026-09-20', page: 2, limit: 10 },
+      mockUser,
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        total: 13,
+        page: 2,
+        limit: 10,
+        data: [
+          expect.objectContaining({
+            id: 42,
+            employeeId: 7,
+            taskHours: 1,
+            breakHours: 0.5,
+            shiftDetails: expect.objectContaining({ type: 'FIXED' }),
+          }),
+        ],
+      }),
+    );
+    expect(prisma.attendance.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          employeeId: 7,
+          organizationId: 1,
+          deletedAt: null,
+          date: {
+            gte: new Date('2026-09-20T00:00:00.000Z'),
+            lte: new Date('2026-10-19T00:00:00.000Z'),
+          },
+        }),
+        skip: 10,
+        take: 10,
+        orderBy: { date: 'desc' },
+      }),
+    );
+  });
+
+  it('defaults attendance history to 30 days and supports all history', async () => {
+    jest.setSystemTime(new Date('2026-10-19T12:00:00.000Z'));
+    prisma.employee.findFirst.mockResolvedValue({ id: 7 });
+    prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
+    prisma.attendance.findMany.mockResolvedValue([]);
+    prisma.attendance.count.mockResolvedValue(0);
+
+    await service.getMyAttendanceHistory({ page: 1, limit: 10 }, mockUser);
+    await service.getMyAttendanceHistory(
+      { page: 1, limit: 10, all: true },
+      mockUser,
+    );
+
+    expect(prisma.attendance.findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          date: {
+            gte: new Date('2026-09-20T00:00:00.000Z'),
+            lte: new Date('2026-10-19T00:00:00.000Z'),
+          },
+        }),
+      }),
+    );
+    expect(prisma.attendance.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.not.objectContaining({ date: expect.anything() }),
       }),
     );
   });

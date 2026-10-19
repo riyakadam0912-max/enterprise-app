@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArrowRight, CalendarDays, CalendarRange, Clock3, Pencil, Plus, Trash2, UsersRound, X } from 'lucide-react';
-import { assignShift, AttendanceRecord, AttendanceStatus, createHoliday, createShift, DailyTaskWorkSummary, deleteHoliday, deleteShift, getHolidays, getMonthlyAttendanceReport, getMyTaskWorkSummary, getShifts, getTeamWeeklyWorkHours, getWorkHourBalances, HolidayRecord, ShiftRecord, startAttendanceBreak, stopAttendanceBreak, TeamWeeklyWorkHours, updateHoliday, updateShift, WorkHourBalances } from '@/api/attendanceApi';
+import { assignShift, AttendanceRecord, AttendanceStatus, createHoliday, createShift, DailyTaskWorkSummary, deleteHoliday, deleteShift, getHolidays, getMonthlyAttendanceReport, getMyAttendanceHistory, getMyTaskWorkSummary, getShifts, getTeamWeeklyWorkHours, getWorkHourBalances, HolidayRecord, ShiftRecord, startAttendanceBreak, stopAttendanceBreak, TeamWeeklyWorkHours, updateHoliday, updateShift, WorkHourBalances } from '@/api/attendanceApi';
 import { useAttendance, useCheckIn, useCheckOut, useTodayAttendance, useUpdateAttendance } from '@/hooks/useAttendance';
 import { useEmployees } from '@/hooks/useEmployees';
 import TableActions from '@/components/common/TableActions';
@@ -59,6 +59,10 @@ interface MonthlyAttendanceReportResponse {
 
 function todayString() {
   const date = new Date();
+  return todayStringForDate(date);
+}
+
+function todayStringForDate(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
@@ -415,36 +419,68 @@ function EmployeeAttendancePanel(props: {
   );
 
   return (
-    <div className="rounded-3xl border border-slate-200 bg-linear-to-br from-orange-50 via-white to-amber-50 p-5 shadow-sm">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+    <section className={`rounded-3xl border p-5 shadow-sm ${isFlexible ? 'border-teal-100 bg-linear-to-br from-teal-50/70 via-white to-white' : 'border-slate-200 bg-white'}`}>
+      <div className="flex flex-col gap-5">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-600">Self Attendance</p>
-          <h2 className="mt-2 text-2xl font-semibold text-slate-900">Mark your attendance, {name}</h2>
-          <p className="mt-2 text-sm text-slate-600">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Your day</p>
+            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${isFlexible ? 'bg-teal-100 text-teal-800' : 'bg-slate-100 text-slate-700'}`}>
+              {isFlexible ? 'Flexible shift' : 'Fixed shift'}
+            </span>
+            {row?.status && <StatusBadge status={row.status} />}
+          </div>
+          <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-900">Good day, {name}</h2>
+          <p className="mt-1 text-sm text-slate-500">
             {isFlexible
-              ? 'Track focused work with task timers. Starting a break stops the active timer; starting a timer ends any active break. Check-in and check-out are optional markers.'
-              : 'Use these actions to record your own workday. Your check-in and check-out are saved immediately.'}
+              ? 'Focus on task time. Attendance markers are optional.'
+              : 'Your attendance follows your scheduled shift.'}
           </p>
         </div>
 
-        <div className="grid min-w-[18rem] gap-3 sm:grid-cols-3 lg:w-xl">
-            {isFlexible && breakAction}
+        {!isFlexible ? (
+          <div className="grid gap-3 sm:grid-cols-3">
             <button
               onClick={onCheckIn}
               disabled={!accountLinked || hasCheckedIn || checkInLoading}
-              className="rounded-2xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {checkInLoading ? 'Checking In…' : hasCheckedIn ? 'Already Checked In' : 'Mark Check In'}
             </button>
+            {breakAction}
             <button
               onClick={onCheckOut}
               disabled={!accountLinked || !hasCheckedIn || hasCheckedOut || checkOutLoading}
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {checkOutLoading ? 'Checking Out…' : hasCheckedOut ? 'Already Checked Out' : 'Mark Check Out'}
             </button>
-            {!isFlexible && breakAction}
           </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            {breakAction}
+            <details className="relative">
+              <summary className="cursor-pointer list-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50">
+                Optional attendance markers
+              </summary>
+              <div className="absolute left-0 z-10 mt-2 grid w-56 gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+                <button
+                  onClick={onCheckIn}
+                  disabled={!accountLinked || hasCheckedIn || checkInLoading}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-left text-sm font-medium text-slate-700 disabled:opacity-40"
+                >
+                  {hasCheckedIn ? 'Checked in' : 'Mark check in'}
+                </button>
+                <button
+                  onClick={onCheckOut}
+                  disabled={!accountLinked || !hasCheckedIn || hasCheckedOut || checkOutLoading}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-left text-sm font-medium text-slate-700 disabled:opacity-40"
+                >
+                  {hasCheckedOut ? 'Checked out' : 'Mark check out'}
+                </button>
+              </div>
+            </details>
+          </div>
+        )}
       </div>
 
       {!accountLinked ? (
@@ -452,22 +488,18 @@ function EmployeeAttendancePanel(props: {
           Your login is not linked to an employee profile yet. An admin needs to assign this user to an employee before you can mark attendance.
         </div>
       ) : (
-        <div className="mt-5 grid gap-3 md:grid-cols-4">
-          <div className="rounded-2xl bg-white/80 px-4 py-3 border border-slate-200">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Today</p>
-            <p className="mt-2 text-lg font-semibold text-slate-900">{new Date().toLocaleDateString()}</p>
+        <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-3">
+          <div>
+            <p className="text-xs font-medium text-slate-400">Today</p>
+            <p className="mt-1 text-sm font-semibold text-slate-800">{new Date().toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}</p>
           </div>
-          <div className="rounded-2xl bg-white/80 px-4 py-3 border border-slate-200">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</p>
-            <p className="mt-2 text-lg font-semibold text-slate-900">{row?.status ? row.status.replace('_', ' ') : 'Not Marked'}</p>
+          <div>
+            <p className="text-xs font-medium text-slate-400">{isFlexible ? 'Check-in · optional' : 'Check-in'}</p>
+            <p className="mt-1 text-sm font-semibold text-slate-800">{formatTime(row?.checkIn ?? null)}</p>
           </div>
-          <div className="rounded-2xl bg-white/80 px-4 py-3 border border-slate-200">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Check In</p>
-            <p className="mt-2 text-lg font-semibold text-slate-900">{formatTime(row?.checkIn ?? null)}</p>
-          </div>
-          <div className="rounded-2xl bg-white/80 px-4 py-3 border border-slate-200">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Check Out</p>
-            <p className="mt-2 text-lg font-semibold text-slate-900">{formatTime(row?.checkOut ?? null)}</p>
+          <div>
+            <p className="text-xs font-medium text-slate-400">{isFlexible ? 'Check-out · optional' : 'Check-out'}</p>
+            <p className="mt-1 text-sm font-semibold text-slate-800">{formatTime(row?.checkOut ?? null)}</p>
           </div>
         </div>
       )}
@@ -513,7 +545,7 @@ function EmployeeAttendancePanel(props: {
           </Link>
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -710,12 +742,16 @@ export default function AttendancePage() {
     employeeId: authSession.employeeId ?? null,
     name: authSession.user?.name ?? 'User',
   };
-  const isAdmin = session.role !== 'EMPLOYEE';
   const canManageShifts = session.role === 'SUPER_ADMIN' || session.role === 'ADMIN' || session.role === 'HR';
   const initialPage = Number(searchParams.get('page')) || 1;
   const initialLimit = Number(searchParams.get('limit')) || 10;
   const [page, setPage] = useState(initialPage);
   const [limit] = useState(initialLimit);
+  const [historyRange, setHistoryRange] = useState<'30' | 'all'>('30');
+  const [historyData, setHistoryData] = useState<Awaited<ReturnType<typeof getMyAttendanceHistory>> | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [employeeId, setEmployeeId] = useState(searchParams.get('employeeId') || '');
   const [department, setDepartment] = useState(searchParams.get('department') || '');
   const [date, setDate] = useState(searchParams.get('date') || todayString());
@@ -768,6 +804,33 @@ export default function AttendancePage() {
   const [breakActionLoading, setBreakActionLoading] = useState(false);
   const [workBalances, setWorkBalances] = useState<WorkHourBalances | null>(null);
   const [teamWeeklyHours, setTeamWeeklyHours] = useState<TeamWeeklyWorkHours | null>(null);
+
+  useEffect(() => {
+    if (canViewAdminAttendance) return;
+    let cancelled = false;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    getMyAttendanceHistory({
+      page,
+      limit: 10,
+      all: historyRange === 'all',
+      status: status ? status as AttendanceStatus : undefined,
+    })
+      .then((result) => {
+        if (!cancelled) setHistoryData(result);
+      })
+      .catch((reason) => {
+        if (!cancelled) {
+          setHistoryError(reason instanceof Error ? reason.message : 'Unable to load attendance history.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewAdminAttendance, historyRange, historyRefreshKey, page, status]);
 
   useEffect(() => {
     async function loadShifts() {
@@ -837,6 +900,7 @@ export default function AttendancePage() {
       }
 
       await Promise.all([refetch(), today.refetch(), getWorkHourBalances().then(setWorkBalances)]);
+      setHistoryRefreshKey((current) => current + 1);
     } catch {
       if (mode === 'out') {
         await Promise.all([refetch(), today.refetch()]);
@@ -963,9 +1027,15 @@ export default function AttendancePage() {
     URL.revokeObjectURL(url);
   }
 
-  const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / (data?.limit ?? limit)));
-  const attendanceRows = data?.data ?? [];
-  const showEmptyState = !loading && ((attendanceRows.length === 0) || Boolean(error));
+  const attendanceResponse = canViewAdminAttendance ? data : historyData;
+  const attendanceRows = attendanceResponse?.data ?? [];
+  const tableLoading = canViewAdminAttendance ? loading : historyLoading;
+  const tableError = canViewAdminAttendance ? error : historyError;
+  const totalPages = Math.max(
+    1,
+    Math.ceil((attendanceResponse?.total ?? 0) / (attendanceResponse?.limit ?? limit)),
+  );
+  const showEmptyState = !tableLoading && (attendanceRows.length === 0 || Boolean(tableError));
 
   async function handleCreateShift() {
     try {
@@ -1131,12 +1201,16 @@ export default function AttendancePage() {
     <div className="p-6 space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">{isAdmin ? 'Employee Attendance' : 'My Attendance'}</h1>
-          <p className="text-sm text-slate-500 mt-1">Track daily presence and working hours.</p>
+          <h1 className="text-2xl font-semibold text-slate-900">{canViewAdminAttendance ? 'Employee Attendance' : 'My Attendance'}</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            {canViewAdminAttendance
+              ? 'Review daily attendance and team work hours.'
+              : 'A clear view of your day, task time, and attendance history.'}
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <TableActions moduleKey="attendance" rows={attendanceRows} onRefresh={refetch} />
+          {canViewAdminAttendance && <TableActions moduleKey="attendance" rows={attendanceRows} onRefresh={refetch} />}
           {canViewAdminAttendance ? (
             <button onClick={exportMonthlyReport} disabled={monthlyReport?.rows.length === 0} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
               Export CSV
@@ -1146,23 +1220,24 @@ export default function AttendancePage() {
       </div>
 
       {(!canViewAdminAttendance || session.role === 'HR') && (
-        <EmployeeAttendancePanel
-          name={session.name}
-          employeeId={resolvedEmployeeId}
-          accountLinked={accountLinked}
-          helperError={today.error === 'Your login is not linked to an employee profile yet.' ? null : today.error}
-          row={myTodayRow}
-          checkInLoading={checkInMutation.loading}
-          checkOutLoading={checkOutMutation.loading}
-          breakActionLoading={breakActionLoading}
-          workBalances={workBalances}
-          onCheckIn={() => handleEmployeeAction('in')}
-          onCheckOut={() => handleEmployeeAction('out')}
-          onBreakAction={() => handleEmployeeAction('break')}
-        />
+        <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+          <EmployeeAttendancePanel
+            name={session.name}
+            employeeId={resolvedEmployeeId}
+            accountLinked={accountLinked}
+            helperError={today.error === 'Your login is not linked to an employee profile yet.' ? null : today.error}
+            row={myTodayRow}
+            checkInLoading={checkInMutation.loading}
+            checkOutLoading={checkOutMutation.loading}
+            breakActionLoading={breakActionLoading}
+            workBalances={workBalances}
+            onCheckIn={() => handleEmployeeAction('in')}
+            onCheckOut={() => handleEmployeeAction('out')}
+            onBreakAction={() => handleEmployeeAction('break')}
+          />
+          {accountLinked && <DailyTaskWorkCard enabled={accountLinked} />}
+        </div>
       )}
-
-      {accountLinked && <DailyTaskWorkCard enabled={accountLinked} />}
 
       {(!canViewAdminAttendance || session.role === 'HR') && (checkInMutation.error || checkOutMutation.error) && (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -1170,6 +1245,7 @@ export default function AttendancePage() {
         </div>
       )}
 
+      {canViewAdminAttendance && <>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
         <StatCard label="Present Today" value={today.data?.summary.present ?? 0} tone="bg-emerald-100 text-emerald-700" icon="✓" />
         <StatCard label="Absent" value={today.data?.summary.absent ?? 0} tone="bg-red-100 text-red-700" icon="×" />
@@ -1185,6 +1261,7 @@ export default function AttendancePage() {
         <StatCard label="Task Hours" value={formatHoursDuration(today.data?.summary.totalTaskHours ?? 0)} tone="bg-slate-100 text-slate-700" icon="◷" />
         <StatCard label="Shortfall" value={formatHoursDuration(today.data?.summary.shortfallHours ?? 0)} tone="bg-rose-100 text-rose-700" icon="−" />
       </div>
+      </>}
 
       {canViewAdminAttendance && (
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">
@@ -1670,6 +1747,7 @@ export default function AttendancePage() {
         </div>
       )}
 
+      {canViewAdminAttendance ? (
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
         <div className={`grid grid-cols-1 gap-3 ${canViewAdminAttendance ? 'md:grid-cols-5' : 'md:grid-cols-3'}`}>
           {canViewAdminAttendance && (
@@ -1742,6 +1820,46 @@ export default function AttendancePage() {
           </div>
         </div>
       </div>
+      ) : (
+        <section className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-end sm:justify-between" aria-label="Attendance history filters">
+          <div>
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">History</label>
+            <select
+              value={historyRange}
+              onChange={(event) => {
+                setHistoryRange(event.target.value as '30' | 'all');
+                setPage(1);
+              }}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm sm:w-52"
+            >
+              <option value="30">Recent 30 days</option>
+              <option value="all">All attendance</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">Status</label>
+            <select
+              value={status}
+              onChange={(event) => {
+                setStatus(event.target.value);
+                setPage(1);
+              }}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm sm:w-52"
+            >
+              <option value="">All statuses</option>
+              <option value="PRESENT">Present</option>
+              <option value="ABSENT">Absent</option>
+              <option value="LEAVE">Leave</option>
+              <option value="HALF_DAY">Half Day</option>
+              <option value="HOLIDAY">Holiday</option>
+              <option value="WEEKLY_OFF">Weekly off</option>
+            </select>
+          </div>
+          <p className="text-sm text-slate-500">
+            {historyData?.total ?? 0} {historyData?.total === 1 ? 'day' : 'days'}
+          </p>
+        </section>
+      )}
 
       {canViewAdminAttendance && (
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-label="Team weekly work hours">
@@ -1785,35 +1903,71 @@ export default function AttendancePage() {
       )}
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="flex flex-col gap-1 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">
+              {canViewAdminAttendance ? 'Daily attendance records' : 'Attendance history'}
+            </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              {canViewAdminAttendance
+                ? 'Review the selected day across your team.'
+                : 'Recent days first. Attendance time and task time are shown separately.'}
+            </p>
+          </div>
+          {!canViewAdminAttendance && (
+            <span className="text-xs text-slate-400">
+              {attendanceResponse?.total ?? 0} records
+            </span>
+          )}
+        </div>
         <div className="max-h-128 overflow-auto">
           <table className="min-w-full text-sm">
             <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
               <tr>
                 {canViewAdminAttendance && <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Employee</th>}
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Date</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Check In</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Check Out</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Working Hours</th>
+                {canViewAdminAttendance ? (
+                  <>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Check In</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Check Out</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Working Hours</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Shift</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Attendance</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Task hours</th>
+                  </>
+                )}
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Breaks</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Shift</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Late</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Overtime</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
+                {canViewAdminAttendance && (
+                  <>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Shift</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Late</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Overtime</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
+                  </>
+                )}
                 {canViewAdminAttendance && <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {loading ? (
+              {tableLoading ? (
                 <tr>
-                  <td colSpan={canViewAdminAttendance ? 11 : 9} className="px-5 py-12 text-center text-slate-400">Loading attendance…</td>
+                  <td colSpan={canViewAdminAttendance ? 11 : 6} className="px-5 py-12 text-center text-slate-400">Loading attendance…</td>
+                </tr>
+              ) : tableError ? (
+                <tr>
+                  <td colSpan={canViewAdminAttendance ? 11 : 6} className="px-5 py-12 text-center text-sm text-rose-600">{tableError}</td>
                 </tr>
               ) : showEmptyState ? (
                 <tr>
-                  <td colSpan={canViewAdminAttendance ? 11 : 9} className="p-0">
+                  <td colSpan={canViewAdminAttendance ? 11 : 6} className="p-0">
                     <EmptyState title="No attendance records found" description="Try changing date or filters." />
                   </td>
                 </tr>
-              ) : data?.data.map((row) => (
+              ) : attendanceRows.map((row) => (
                 <tr key={`${row.employeeId}-${row.date}`} className="hover:bg-slate-50 transition-colors">
                   {canViewAdminAttendance && (
                     <td className="px-5 py-4">
@@ -1824,8 +1978,8 @@ export default function AttendancePage() {
                     </td>
                   )}
                   <td className="px-5 py-4 text-slate-600">{new Date(row.date).toLocaleDateString()}</td>
-                  <td className="px-5 py-4 text-slate-600">{formatTime(row.checkIn)}</td>
-                  <td className="px-5 py-4 text-slate-600">
+                  {canViewAdminAttendance && <td className="px-5 py-4 text-slate-600">{formatTime(row.checkIn)}</td>}
+                  {canViewAdminAttendance && <td className="px-5 py-4 text-slate-600">
                     <div>{formatTime(row.checkOut)}</div>
                     {row.checkOut && row.checkoutSource && (
                       <p className="mt-1 text-xs text-slate-400">
@@ -1838,8 +1992,8 @@ export default function AttendancePage() {
                               : null}
                       </p>
                     )}
-                  </td>
-                  <td className="px-5 py-4 text-slate-700">
+                  </td>}
+                  {canViewAdminAttendance ? <td className="px-5 py-4 text-slate-700">
                     <div>
                       {row.workingHours != null || (row.taskHours ?? 0) > 0
                         ? formatHoursDuration(
@@ -1860,7 +2014,20 @@ export default function AttendancePage() {
                         Task hours · {formatHoursDuration(row.taskHours ?? 0)}
                       </p>
                     )}
-                  </td>
+                  </td> : (
+                    <>
+                      <td className="px-5 py-4"><StatusBadge status={row.status} /></td>
+                      <td className="px-5 py-4 text-slate-700">{formatShiftRangeForDisplay(row)}</td>
+                      <td className="px-5 py-4 text-slate-600">
+                        <span>{formatTime(row.checkIn)}</span>
+                        <span className="mx-1.5 text-slate-300">→</span>
+                        <span>{formatTime(row.checkOut)}</span>
+                      </td>
+                      <td className="px-5 py-4 font-medium text-slate-800">
+                        {(row.taskHours ?? 0) > 0 ? formatHoursDuration(row.taskHours ?? 0) : '—'}
+                      </td>
+                    </>
+                  )}
                   <td className="px-5 py-4 text-slate-700">
                     <details className="min-w-24">
                       <summary className="cursor-pointer text-xs font-medium">{formatHoursDuration(row.breakHours ?? 0)} · timeline</summary>
@@ -1877,8 +2044,8 @@ export default function AttendancePage() {
                       </ul>
                     </details>
                   </td>
-                  <td className="px-5 py-4 text-slate-700">{formatShiftRangeForDisplay(row)}</td>
-                  <td className="px-5 py-4">
+                  {canViewAdminAttendance && <td className="px-5 py-4 text-slate-700">{formatShiftRangeForDisplay(row)}</td>}
+                  {canViewAdminAttendance && <td className="px-5 py-4">
                     {!row.checkIn ? (
                       <span className="text-slate-400">Not checked in</span>
                     ) : row.lateMinutes > 0 ? (
@@ -1893,14 +2060,14 @@ export default function AttendancePage() {
                     ) : (
                       <span className="text-slate-400">On time</span>
                     )}
-                  </td>
-                  <td className="px-5 py-4 text-slate-700">{row.overtimeHours > 0 ? `+${formatHoursDuration(row.overtimeHours)}` : '—'}</td>
-                  <td className="px-5 py-4">
+                  </td>}
+                  {canViewAdminAttendance && <td className="px-5 py-4 text-slate-700">{row.overtimeHours > 0 ? `+${formatHoursDuration(row.overtimeHours)}` : '—'}</td>}
+                  {canViewAdminAttendance && <td className="px-5 py-4">
                     <StatusBadge status={row.status} />
                     {row.isShootDay && (
                       <p className="mt-1 text-xs font-medium text-orange-700">Shoot day</p>
                     )}
-                  </td>
+                  </td>}
                   {canViewAdminAttendance && (
                     <td className="px-5 py-4 text-right">
                       {row.id ? (
@@ -1925,7 +2092,7 @@ export default function AttendancePage() {
         </div>
 
         <div className="px-5 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
-          <p className="text-sm text-slate-500">Page {data?.page ?? page} of {totalPages}</p>
+          <p className="text-sm text-slate-500">Page {attendanceResponse?.page ?? page} of {totalPages}</p>
           <div className="flex items-center gap-2">
             <button onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1} className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50">Previous</button>
             <button onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages} className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50">Next</button>

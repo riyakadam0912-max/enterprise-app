@@ -1,5 +1,6 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsDateString,
   IsIn,
   IsInt,
@@ -46,6 +47,17 @@ export class QueryAttendanceDto {
   @IsDateString()
   @ApiPropertyOptional({ example: '2026-04-14' })
   date?: string;
+
+  @IsOptional()
+  @IsDateString()
+  @ApiPropertyOptional({ example: '2026-04-14' })
+  fromDate?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  @ApiPropertyOptional({ example: true })
+  all?: boolean;
 
   @IsOptional()
   @Type(() => Number)

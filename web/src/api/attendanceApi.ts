@@ -331,6 +331,23 @@ export function getMyAttendance(filters: AttendanceFilters = {}): Promise<Attend
   );
 }
 
+export function getMyAttendanceHistory(
+  filters: Pick<AttendanceFilters, 'page' | 'limit' | 'status'> & {
+    fromDate?: string;
+    all?: boolean;
+  } = {},
+): Promise<AttendanceListResponse> {
+  return apiClient<AttendanceListResponse>(
+    `/attendance/me/history${buildQuery({
+      page: filters.page,
+      limit: filters.limit,
+      fromDate: filters.fromDate,
+      all: filters.all ? 'true' : undefined,
+      status: filters.status,
+    })}`,
+  );
+}
+
 export function getMyAttendanceSnapshot(): Promise<MyAttendanceResponse> {
   return apiClient<MyAttendanceResponse>('/attendance/my');
 }
