@@ -3,7 +3,7 @@ import { AttendanceTaskHoursService } from './attendance-task-hours.service';
 
 describe('AttendanceTaskHoursService', () => {
   const transaction = {
-    $executeRaw: jest.fn().mockResolvedValue(0),
+    $queryRaw: jest.fn().mockResolvedValue([{ locked: 1 }]),
     employee: { findFirst: jest.fn() },
     timesheet: { aggregate: jest.fn() },
     attendance: { upsert: jest.fn() },
@@ -31,7 +31,15 @@ describe('AttendanceTaskHoursService', () => {
       transaction as never,
     );
 
-    expect(transaction.$executeRaw).toHaveBeenCalled();
+    const [lockQuery, lockEmployeeId, lockDayNumber] =
+      transaction.$queryRaw.mock.calls[0];
+    expect(lockQuery.join(' ')).toContain('WITH lock_result AS MATERIALIZED');
+    expect(lockQuery.join(' ')).toMatch(/pg_advisory_xact_lock\(\s*,\s*\)/);
+    expect(lockQuery.join(' ')).toContain('SELECT 1 AS locked');
+    expect(lockEmployeeId).toBe(101);
+    expect(lockDayNumber).toBe(
+      Math.floor(new Date('2026-10-19T00:00:00.000Z').getTime() / 86_400_000),
+    );
     expect(transaction.timesheet.aggregate).toHaveBeenCalledWith({
       where: {
         employeeId: 101,

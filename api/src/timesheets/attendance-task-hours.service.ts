@@ -19,8 +19,12 @@ export class AttendanceTaskHoursService {
     const nextDate = new Date(date.getTime() + 86_400_000);
     const dayNumber = Math.floor(date.getTime() / 86_400_000);
 
-    await transaction.$executeRaw`
-      SELECT pg_advisory_xact_lock(${employeeId}, ${dayNumber})
+    await transaction.$queryRaw<Array<{ locked: number }>>`
+      WITH lock_result AS MATERIALIZED (
+        SELECT pg_advisory_xact_lock(${employeeId}, ${dayNumber})
+      )
+      SELECT 1 AS locked
+      FROM lock_result
     `;
 
     const employee = await transaction.employee.findFirst({
