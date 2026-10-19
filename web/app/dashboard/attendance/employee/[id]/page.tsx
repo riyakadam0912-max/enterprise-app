@@ -176,7 +176,18 @@ export default function EmployeeAttendancePage() {
                         {day.checkIn && (
                           <p>{new Date(day.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })} - {day.checkOut ? new Date(day.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : 'In progress'}</p>
                         )}
-                        {day.workingHours != null && <p>{formatHoursDuration(day.workingHours)}</p>}
+                        {(day.workingHours != null || (day.taskHours ?? 0) > 0) && (
+                          <p>
+                            {formatHoursDuration(
+                              (day.workingHours ?? 0) + (day.taskHours ?? 0),
+                            )}
+                          </p>
+                        )}
+                        {(day.taskHours ?? 0) > 0 && (
+                          <p className="text-xs text-slate-500">
+                            Attendance time · {formatHoursDuration(day.workingHours ?? 0)}
+                          </p>
+                        )}
                         {(day.taskHours ?? 0) > 0 && (
                           <p className="text-xs text-slate-500">
                             Task hours · {formatHoursDuration(day.taskHours ?? 0)}

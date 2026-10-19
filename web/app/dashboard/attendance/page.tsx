@@ -1859,7 +1859,18 @@ export default function AttendancePage() {
                     )}
                   </td>
                   <td className="px-5 py-4 text-slate-700">
-                    <div>{row.workingHours != null ? formatHoursDuration(row.workingHours) : '—'}</div>
+                    <div>
+                      {row.workingHours != null || (row.taskHours ?? 0) > 0
+                        ? formatHoursDuration(
+                            (row.workingHours ?? 0) + (row.taskHours ?? 0),
+                          )
+                        : '—'}
+                    </div>
+                    {row.taskHours != null && row.taskHours > 0 && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Attendance time · {formatHoursDuration(row.workingHours ?? 0)}
+                      </p>
+                    )}
                     {row.creditedWorkSeconds !== undefined && (
                       <p className="mt-1 text-xs text-teal-700">Flexible credited time</p>
                     )}
