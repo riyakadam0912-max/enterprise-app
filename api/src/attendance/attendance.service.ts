@@ -37,7 +37,15 @@ import {
   shiftEndInTimezone,
 } from './attendance-time.utils';
 import { calculateNetWorkingHours } from './attendance-work-time.utils';
-import { sumIntervalSeconds } from './task-work-time.utils';
+import {
+  getFlexibleTaskTimeCutoverDate,
+  sumIntervalSeconds,
+} from './task-work-time.utils';
+import {
+  isScheduledWorkday as isShiftScheduledWorkday,
+  resolveShiftForDate,
+} from './workday-schedule.utils';
+import type { WorkdayShift } from './workday-schedule.utils';
 import { TasksService } from '../tasks/tasks.service';
 import type { AuthUser } from '../common/types/auth';
 
@@ -116,7 +124,11 @@ type LeaveRequestLite = {
   employeeId?: number | null;
 };
 
-const DEFAULT_FLEXIBLE_TASK_TIME_CUTOVER_DATE = '2026-10-17';
+type ManualTaskTimesheet = {
+  employeeId: number;
+  date: Date;
+  hours: number;
+};
 
 @Injectable()
 export class AttendanceService implements OnModuleInit, OnModuleDestroy {
@@ -316,17 +328,30 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     currentShift: TShift | null,
     day: Date,
   ): TShift | null {
-    const assignedShift = this.shiftAssignmentForDay(assignments, day);
-    return assignedShift ?? (assignments?.length ? null : currentShift);
+    return resolveShiftForDate(
+      assignments as Array<{
+        effectiveFrom: Date;
+        effectiveTo: Date | null;
+        shift: TShift & {
+          requiredHours?: number;
+          weeklyHolidayDay?: number;
+          workingDays?: number[];
+        };
+      }> | undefined,
+      currentShift as
+        | (TShift & {
+            requiredHours?: number;
+            weeklyHolidayDay?: number;
+            workingDays?: number[];
+          })
+        | null,
+      null,
+      day,
+    );
   }
 
-  private isScheduledWorkday(day: Date, shift: ShiftLite) {
-    const workingDays =
-      shift.workingDays ??
-      [0, 1, 2, 3, 4, 5, 6].filter(
-        (weekday) => weekday !== shift.weeklyHolidayDay,
-      );
-    return workingDays.includes(day.getUTCDay());
+  private isScheduledWorkday(day: Date, shift: WorkdayShift) {
+    return isShiftScheduledWorkday(day, shift);
   }
 
   private buildSummary(rows: DailyAttendanceRow[]) {
@@ -738,7 +763,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           };
     const employee = await this.prisma.employee.findFirst({
       where: employeeScope,
-      include: { shift: true },
+      include: {
+        shift: true,
+        shiftAssignments: { include: { shift: true } },
+      },
     });
 
     if (!employee)
@@ -952,24 +980,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   }
 
   private flexibleTaskTimeCutoverDate() {
-    const value =
-      process.env.ATTENDANCE_FLEXIBLE_TASK_CUTOVER_DATE ??
-      DEFAULT_FLEXIBLE_TASK_TIME_CUTOVER_DATE;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      throw new Error(
-        'ATTENDANCE_FLEXIBLE_TASK_CUTOVER_DATE must use YYYY-MM-DD format',
-      );
-    }
-    const parsed = new Date(`${value}T00:00:00.000Z`);
-    if (
-      Number.isNaN(parsed.getTime()) ||
-      parsed.toISOString().slice(0, 10) !== value
-    ) {
-      throw new Error(
-        'ATTENDANCE_FLEXIBLE_TASK_CUTOVER_DATE must be a valid calendar date',
-      );
-    }
-    return value;
+    return getFlexibleTaskTimeCutoverDate();
   }
 
   private holidayCoversDay(
@@ -2786,6 +2797,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       organizationId: number;
       hireDate: Date | null;
       shift: ShiftLite | null;
+      shiftAssignments?: Array<{
+        effectiveFrom: Date;
+        effectiveTo: Date | null;
+        shift: ShiftLite;
+      }>;
     },
     now: Date,
     timezone: string,
@@ -2842,115 +2858,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
               employeeId,
               organizationId: employee.organizationId,
               date: { gte: taskTimesheetRangeStart, lt: taskTimesheetRangeEnd },
-              status: { not: 'REJECTED' },
               source: { not: 'TASK_TIMER' },
               deletedAt: null,
             },
             select: { date: true, hours: true },
           })
         : [];
-    if (employee.shift?.type === 'FLEXIBLE') {
-      const flexibleAttendanceRows = attendanceRows.filter(
-        (row) =>
-          row.date.toISOString().slice(0, 10) >= (hireDateKey ?? queryStartKey),
-      );
-      const workdayHours = 8;
-      const breakMillisecondsForPeriod = (periodStart: Date, periodEnd: Date) =>
-        flexibleAttendanceRows.reduce(
-          (total, row) =>
-            total +
-            (row.breaks ?? []).reduce((rowTotal, interval) => {
-              const start = Math.max(
-                periodStart.getTime(),
-                interval.startedAt.getTime(),
-              );
-              const end = Math.min(
-                periodEnd.getTime(),
-                interval.endedAt?.getTime() ?? now.getTime(),
-                now.getTime(),
-              );
-              return rowTotal + Math.max(0, end - start);
-            }, 0),
-          0,
-        );
-      const flexiblePeriod = (start: Date, end: Date) => {
-        const startKey = start.toISOString().slice(0, 10);
-        const endKey = end.toISOString().slice(0, 10);
-        const eligibleStartKey = [
-          startKey,
-          ...(hireDateKey ? [hireDateKey] : []),
-        ].reduce((latest, key) => (key > latest ? key : latest));
-        const taskPeriodStart = this.localDateStart(eligibleStartKey, timezone);
-        const periodStart = this.localDateStart(startKey, timezone);
-        const periodEnd =
-          localMidnightAfterDateInTimezone(endKey, timezone) ?? now;
-        const measuredEnd = new Date(
-          Math.min(now.getTime(), periodEnd.getTime()),
-        );
-        const creditedWork = this.sumFlexibleCreditedWorkSeconds(
-          flexibleAttendanceRows,
-          taskIntervals,
-          periodStart,
-          measuredEnd,
-          timezone,
-          now,
-        );
-        const taskWork =
-          taskPeriodStart < measuredEnd
-            ? this.sumTaskWork(
-                taskIntervals,
-                taskTimesheets,
-                taskPeriodStart,
-                measuredEnd,
-                timezone,
-              )
-            : { seconds: 0, activeDays: 0 };
-        const completedSeconds = creditedWork.seconds;
-        const exactCompletedHours = completedSeconds / 3600;
-        const completedHours = Number(exactCompletedHours.toFixed(2));
-        const exactTaskWorkHours = taskWork.seconds / 3600;
-        const remainderHours = exactCompletedHours % workdayHours;
-        const remainingHours = Number(
-          (workdayHours - remainderHours).toFixed(2),
-        );
-        return {
-          startDate: start.toISOString(),
-          endDate: end.toISOString(),
-          requiredHours: 0,
-          completedHours,
-          breakHours: Number(
-            (
-              breakMillisecondsForPeriod(periodStart, measuredEnd) / 36e5
-            ).toFixed(2),
-          ),
-          remainingHours,
-          progressPercent: Number(
-            (remainderHours === 0 && completedHours > 0
-              ? 100
-              : (remainderHours / workdayHours) * 100
-            ).toFixed(1),
-          ),
-          scheduledDays: 0,
-          flexible: true,
-          workdayHours,
-          activeDays: creditedWork.activeDays,
-          workingDayEquivalents: Number(
-            (exactCompletedHours / workdayHours).toFixed(2),
-          ),
-          taskWorkHours: Number(exactTaskWorkHours.toFixed(2)),
-          taskWorkActiveDays: taskWork.activeDays,
-          taskWorkWorkingDayEquivalents: Number(
-            (exactTaskWorkHours / workdayHours).toFixed(2),
-          ),
-        };
-      };
-
-      return {
-        week: flexiblePeriod(weekStart, weekEnd),
-        month: flexiblePeriod(monthStart, today),
-      };
-    }
-
     const leaves: LeaveRequestLite[] = await this.prisma.leaveRequest.findMany({
       where: {
         employeeId,
@@ -2982,6 +2895,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       let requiredHours = 0;
       let breakHours = 0;
       let scheduledDays = 0;
+      let completedHours = 0;
+      let flexibleCompletedHours = 0;
+      let flexibleTaskHours = 0;
+      let workingDayEquivalents = 0;
+      let activeDays = 0;
+      let hasFlexibleShift = false;
       const periodStartKey = periodStart.toISOString().slice(0, 10);
       const eligibleStartKey = [
         periodStartKey,
@@ -3005,7 +2924,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             )
           : { seconds: 0, activeDays: 0 };
       const taskWorkHours = taskWork.seconds / 3600;
-      let completedHours = 0;
       for (
         const day = new Date(periodStart);
         day <= scheduledThrough;
@@ -3013,17 +2931,13 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       ) {
         const dayKey = this.dateKey(day);
         const row = attendanceByDate.get(dayKey);
-        const shift = row?.shift ?? employee.shift;
+        const shift = resolveShiftForDate(
+          employee.shiftAssignments,
+          employee.shift,
+          row?.shift,
+          day,
+        );
         const isElapsedDay = day <= today;
-        if (isElapsedDay && row?.workingHours != null) {
-          completedHours += row.workingHours;
-        } else if (isElapsedDay && row?.checkIn) {
-          completedHours += calculateNetWorkingHours(
-            row.checkIn,
-            row.checkOut ?? now,
-            row.breaks,
-          );
-        }
         if (isElapsedDay && row?.breaks) {
           breakHours += row.breaks.reduce((total, interval) => {
             const startedAt = interval.startedAt.getTime();
@@ -3034,6 +2948,13 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             return total + Math.max(0, endedAt - startedAt) / 36e5;
           }, 0);
         }
+        const fullDayLeave = leaves.some(
+          (leave) =>
+            leave.duration !== 'HALF_DAY' && isCovered(leave, dayKey),
+        );
+        const halfDayLeave = leaves.some(
+          (leave) => leave.duration === 'HALF_DAY' && isCovered(leave, dayKey),
+        );
 
         if (
           !shift ||
@@ -3050,24 +2971,68 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
                 familyRootByOrganization,
               ) && isCovered(holiday, dayKey),
           ) ||
-          leaves.some(
-            (leave) =>
-              leave.duration !== 'HALF_DAY' && isCovered(leave, dayKey),
-          )
+          fullDayLeave
         ) {
           continue;
         }
-        const isHalfDayLeave = leaves.some(
-          (leave) => leave.duration === 'HALF_DAY' && isCovered(leave, dayKey),
-        );
-        requiredHours += isHalfDayLeave
-          ? 5
+        const availableDayFraction = halfDayLeave ? 0.5 : 1;
+        const flexible = shift.type === 'FLEXIBLE';
+        const dailyRequiredHours = flexible
+          ? 8
           : (row?.requiredHours ?? shift.requiredHours);
-        scheduledDays += 1;
+        hasFlexibleShift ||= flexible;
+        requiredHours += dailyRequiredHours * availableDayFraction;
+        scheduledDays += availableDayFraction;
+
+        if (!isElapsedDay) continue;
+        if (flexible) {
+          const dayStart = this.localDateStart(dayKey, timezone);
+          const dayEnd = localMidnightAfterDateInTimezone(dayKey, timezone);
+          if (!dayEnd) {
+            throw new BadRequestException(
+              'Unable to calculate flexible work time in organization timezone',
+            );
+          }
+          const dayWork = this.sumFlexibleCreditedWorkSeconds(
+            row ? [row] : [],
+            taskIntervals,
+            dayStart,
+            new Date(Math.min(dayEnd.getTime(), measuredEnd.getTime())),
+            timezone,
+            now,
+            taskTimesheets,
+          );
+          const dayWorkSeconds = dayWork.seconds;
+          const earnedHours = dayWorkSeconds / 3600;
+          completedHours += earnedHours;
+          flexibleCompletedHours += earnedHours;
+          flexibleTaskHours +=
+            Math.max(0, dayWorkSeconds - dayWork.legacySeconds) / 3600;
+          workingDayEquivalents += earnedHours / 8;
+          if (dayWorkSeconds > 0) activeDays += 1;
+        } else {
+          const workedHours =
+            row?.workingHours ??
+            (row?.checkIn
+              ? calculateNetWorkingHours(
+                  row.checkIn,
+                  row.checkOut ?? now,
+                  row.breaks ?? [],
+                )
+              : 0);
+          completedHours += workedHours;
+          if (workedHours > 0) activeDays += 1;
+          if (row?.status === AttendanceStatus.PRESENT) {
+            workingDayEquivalents += availableDayFraction;
+          } else if (row?.status === AttendanceStatus.HALF_DAY) {
+            workingDayEquivalents += Math.min(0.5, availableDayFraction);
+          }
+        }
       }
       requiredHours = Number(requiredHours.toFixed(2));
       completedHours = Number(completedHours.toFixed(2));
       breakHours = Number(breakHours.toFixed(2));
+      const exactTaskWorkHours = taskWork.seconds / 3600;
       const remainingHours = Number(
         Math.max(0, requiredHours - completedHours).toFixed(2),
       );
@@ -3076,11 +3041,20 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         endDate: scheduledThrough.toISOString(),
         requiredHours,
         completedHours,
-        taskWorkHours: Number(taskWorkHours.toFixed(2)),
+        taskWorkHours: Number(exactTaskWorkHours.toFixed(2)),
         taskWorkActiveDays: taskWork.activeDays,
         breakHours,
         scheduledDays,
         remainingHours,
+        flexible: hasFlexibleShift,
+        workdayHours: 8,
+        activeDays,
+        workingDayEquivalents: Number(workingDayEquivalents.toFixed(2)),
+        taskWorkWorkingDayEquivalents: Number(
+          ((hasFlexibleShift ? flexibleTaskHours : exactTaskWorkHours) / 8)
+            .toFixed(2),
+        ),
+        flexibleCompletedHours: Number(flexibleCompletedHours.toFixed(2)),
         progressPercent:
           requiredHours > 0
             ? Math.min(
@@ -3204,6 +3178,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     rangeEnd: Date,
     timezone: string,
     now: Date,
+    manualTimesheets: Array<{ date: Date; hours: number }> = [],
   ) {
     let seconds = 0;
     let legacySeconds = 0;
@@ -3275,6 +3250,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         legacySeconds += daySeconds;
       }
 
+      for (const timesheet of manualTimesheets) {
+        if (timesheet.date.toISOString().slice(0, 10) === dateKey) {
+          daySeconds += Math.max(0, Math.round(timesheet.hours * 3600));
+        }
+      }
       if (daySeconds > 0) activeDays += 1;
       seconds += daySeconds;
       cursor = dayEnd;
@@ -3309,7 +3289,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         deletedAt: null,
         ...(scopedIds ? { id: { in: scopedIds } } : {}),
       },
-      include: { shift: true },
+      include: {
+        shift: true,
+        shiftAssignments: { include: { shift: true } },
+      },
       orderBy: { name: 'asc' },
     });
 
@@ -3473,6 +3456,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       Date.UTC(targetMonth.getUTCFullYear(), targetMonth.getUTCMonth() + 1, 0),
     );
     monthEnd.setUTCHours(23, 59, 59, 999);
+    const nextMonthStart = new Date(
+      Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1),
+    );
 
     const scopedIds = await this.getScopedEmployeeFilter(
       user,
@@ -3487,7 +3473,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     } as const;
 
     const attendanceRows = await this.prisma.attendance.findMany({
-      where: whereWithEmployee,
+      where: { ...whereWithEmployee, deletedAt: null },
       include: {
         shift: true,
         breaks: true,
@@ -3513,7 +3499,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     );
 
     const organizationIds = [
-      ...new Set(attendanceRows.map((row) => row.employee.organizationId)),
+      ...new Set(summaryEmployees.map((employee) => employee.organizationId)),
     ];
     const monthStartHolidayDate = this.parseHolidayDate(
       this.dateKey(monthStart),
@@ -3525,9 +3511,69 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         monthStartHolidayDate,
         monthEndHolidayDate,
       );
+    const summaryEmployeeIds = summaryEmployees.map((employee) => employee.id);
+    const summaryLeavesPromise =
+      summaryEmployeeIds.length > 0
+        ? this.prisma.leaveRequest.findMany({
+            where: {
+              employeeId: { in: summaryEmployeeIds },
+              deletedAt: null,
+              status: 'APPROVED',
+              startDate: { lte: monthEnd },
+              endDate: { gte: monthStart },
+            },
+            select: {
+              employeeId: true,
+              startDate: true,
+              endDate: true,
+              duration: true,
+            },
+          })
+        : Promise.resolve([] as LeaveRequestLite[]);
+    const summaryTimesheetsPromise =
+      summaryEmployeeIds.length > 0
+        ? this.prisma.timesheet.findMany({
+            where: {
+              employeeId: { in: summaryEmployeeIds },
+              date: { gte: monthStart, lt: nextMonthStart },
+              source: { not: 'TASK_TIMER' },
+              deletedAt: null,
+            },
+            select: { employeeId: true, date: true, hours: true },
+          })
+        : Promise.resolve([] as ManualTaskTimesheet[]);
+    const [summaryLeaves, manualTimesheets] = await Promise.all([
+      summaryLeavesPromise,
+      summaryTimesheetsPromise,
+    ]);
+    const corporateHolidayKeys = new Set<string>();
+    for (const employee of summaryEmployees) {
+      for (const holiday of holidays) {
+        if (
+          !this.holidayAppliesToOrganization(
+            holiday,
+            employee.organizationId,
+            familyRootByOrganization,
+          )
+        ) {
+          continue;
+        }
+        for (
+          const day = new Date(
+            Math.max(holiday.startDate.getTime(), monthStart.getTime()),
+          );
+          day <= new Date(
+            Math.min(holiday.endDate.getTime(), monthEnd.getTime()),
+          );
+          day.setUTCDate(day.getUTCDate() + 1)
+        ) {
+          corporateHolidayKeys.add(
+            `${employee.organizationId}:${this.dateKey(day)}`,
+          );
+        }
+      }
+    }
     const statusForRow = (row: (typeof attendanceRows)[number]) =>
-      row.status !== AttendanceStatus.LEAVE &&
-      !row.checkIn &&
       holidays.some(
         (holiday) =>
           this.holidayAppliesToOrganization(
@@ -3545,19 +3591,16 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const effectiveShiftForRow = (
       row: (typeof eligibleAttendanceRows)[number],
     ) =>
-      row.shift ??
-      this.employeeShiftForDay(
+      resolveShiftForDate(
         summaryEmployeeById.get(row.employeeId)?.shiftAssignments,
         summaryEmployeeById.get(row.employeeId)?.shift ?? null,
+        row.shift,
         row.date,
       );
     const fixedAttendanceRows = eligibleAttendanceRows.filter(
       (row) => effectiveShiftForRow(row)?.type !== 'FLEXIBLE',
     );
     const summaryNow = new Date();
-    const nextMonthStart = new Date(
-      Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1),
-    );
     const nextMonthKey = this.dateKey(nextMonthStart);
     const flexibleEmployeeRows = await Promise.all(
       summaryEmployees
@@ -3599,7 +3642,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           const measuredEnd = new Date(
             Math.min(summaryNow.getTime(), rangeEnd.getTime()),
           );
-          if (measuredEnd <= rangeStart) return 0;
+          if (measuredEnd <= rangeStart) {
+            return { seconds: 0, attendanceCredit: 0 };
+          }
           const intervals = await this.getFlexibleTaskIntervals(
             employee.id,
             employee.organizationId,
@@ -3609,70 +3654,154 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           const attendanceForEmployee = eligibleAttendanceRows.filter(
             (row) => row.employeeId === employee.id,
           );
+          const employeeManualTimesheets = manualTimesheets.filter(
+            (timesheet) => timesheet.employeeId === employee.id,
+          );
           let seconds = 0;
+          let attendanceCredit = 0;
           for (
             const day = new Date(monthStart);
             day < nextMonthStart;
             day.setUTCDate(day.getUTCDate() + 1)
           ) {
-            if (!this.isAttendanceEligible(day, employee.hireDate)) continue;
+            if (
+              day > new Date(
+                Date.UTC(
+                  summaryNow.getUTCFullYear(),
+                  summaryNow.getUTCMonth(),
+                  summaryNow.getUTCDate(),
+                ),
+              ) ||
+              !this.isAttendanceEligible(day, employee.hireDate)
+            ) {
+              continue;
+            }
             const dayKey = this.dateKey(day);
             const attendance = attendanceForEmployee.find(
               (row) => this.dateKey(row.date) === dayKey,
             );
-            const shift =
-              attendance?.shift ??
-              this.employeeShiftForDay(
+            const shift = resolveShiftForDate(
                 employee.shiftAssignments,
                 employee.shift,
+                attendance?.shift,
                 day,
               );
             if (shift?.type !== 'FLEXIBLE') continue;
+            if (!this.isScheduledWorkday(day, shift)) continue;
+            const orgDayKey = `${employee.organizationId}:${dayKey}`;
+            if (corporateHolidayKeys.has(orgDayKey)) continue;
+            const leaveForDay = summaryLeaves.find(
+              (leave) =>
+                leave.employeeId === employee.id &&
+                leave.startDate.toISOString().slice(0, 10) <= dayKey &&
+                leave.endDate.toISOString().slice(0, 10) >= dayKey,
+            );
+            if (leaveForDay?.duration !== 'HALF_DAY' && leaveForDay) continue;
             const dayStart = this.localDateStart(dayKey, timezone);
             const dayEnd = localMidnightAfterDateInTimezone(dayKey, timezone);
             if (!dayEnd || dayStart >= measuredEnd) continue;
-            seconds += this.sumFlexibleCreditedWorkSeconds(
+            const daySeconds = this.sumFlexibleCreditedWorkSeconds(
               attendance ? [attendance] : [],
               intervals,
               dayStart,
               new Date(Math.min(dayEnd.getTime(), measuredEnd.getTime())),
               timezone,
               summaryNow,
+              employeeManualTimesheets,
             ).seconds;
+            seconds += daySeconds;
+            const leaveFraction = leaveForDay ? 0.5 : 0;
+            attendanceCredit += Math.min(
+              daySeconds / 3600 / 8,
+              1 - leaveFraction,
+            );
           }
-          return seconds;
+          return { seconds, attendanceCredit };
         }),
     );
     const flexibleWorkedHours =
-      flexibleEmployeeRows.reduce((total, seconds) => total + seconds, 0) /
+      flexibleEmployeeRows.reduce((total, row) => total + row.seconds, 0) /
       3600;
     const flexibleDayEquivalents = flexibleWorkedHours / 8;
-    const presentDays =
-      fixedAttendanceRows.filter(
-        (row) => statusForRow(row) === AttendanceStatus.PRESENT,
-      ).length + flexibleDayEquivalents;
-    const absentDays = fixedAttendanceRows.filter(
+    const fixedAttendanceCredit = fixedAttendanceRows.reduce((total, row) => {
+      const status = statusForRow(row);
+      if (
+        status === AttendanceStatus.LEAVE ||
+        status === AttendanceStatus.HOLIDAY ||
+        status === AttendanceStatus.WEEKLY_OFF
+      ) {
+        return total;
+      }
+      const employee = summaryEmployeeById.get(row.employeeId);
+      const shift = resolveShiftForDate(
+        employee?.shiftAssignments,
+        employee?.shift ?? null,
+        row.shift,
+        row.date,
+      );
+      if (!shift || !this.isScheduledWorkday(row.date, shift)) return total;
+      const dayKey = this.dateKey(row.date);
+      const leaveForDay = summaryLeaves.find(
+        (leave) =>
+          leave.employeeId === row.employeeId &&
+          leave.startDate.toISOString().slice(0, 10) <= dayKey &&
+          leave.endDate.toISOString().slice(0, 10) >= dayKey,
+      );
+      if (leaveForDay && leaveForDay.duration !== 'HALF_DAY') return total;
+      const maxCredit = leaveForDay ? 0.5 : 1;
+      if (status === AttendanceStatus.PRESENT) return total + maxCredit;
+      if (status === AttendanceStatus.HALF_DAY) {
+        return total + Math.min(0.5, maxCredit);
+      }
+      return total;
+    }, 0);
+    const flexibleAttendanceCredit = flexibleEmployeeRows.reduce(
+      (total, row) => total + row.attendanceCredit,
+      0,
+    );
+    const presentDays = Number(
+      (fixedAttendanceCredit + flexibleAttendanceCredit).toFixed(2),
+    );
+    const scheduledFixedRows = fixedAttendanceRows.filter((row) => {
+      const employee = summaryEmployeeById.get(row.employeeId);
+      const shift = resolveShiftForDate(
+        employee?.shiftAssignments,
+        employee?.shift ?? null,
+        row.shift,
+        row.date,
+      );
+      return shift != null && this.isScheduledWorkday(row.date, shift);
+    });
+    const ordinaryFixedRows = scheduledFixedRows.filter((row) => {
+      const status = statusForRow(row);
+      return (
+        status !== AttendanceStatus.LEAVE &&
+        status !== AttendanceStatus.HOLIDAY &&
+        status !== AttendanceStatus.WEEKLY_OFF
+      );
+    });
+    const absentDays = ordinaryFixedRows.filter(
       (row) => statusForRow(row) === AttendanceStatus.ABSENT,
     ).length;
-    const leaveDays = fixedAttendanceRows.filter(
+    const leaveDays = scheduledFixedRows.filter(
       (row) => statusForRow(row) === AttendanceStatus.LEAVE,
     ).length;
-    const holidayDays = fixedAttendanceRows.filter(
+    const holidayDays = scheduledFixedRows.filter(
       (row) => statusForRow(row) === AttendanceStatus.HOLIDAY,
     ).length;
-    const halfDays = fixedAttendanceRows.filter(
+    const halfDays = ordinaryFixedRows.filter(
       (row) => statusForRow(row) === AttendanceStatus.HALF_DAY,
     ).length;
-    const lateCount = fixedAttendanceRows.filter(
+    const lateCount = ordinaryFixedRows.filter(
       (row) => (row.lateMinutes ?? 0) > 0,
     ).length;
     const overtimeHours = Number(
-      fixedAttendanceRows
+      ordinaryFixedRows
         .reduce((sum: number, row) => sum + (row.overtimeHours ?? 0), 0)
         .toFixed(2),
     );
     const shortfallHours = Number(
-      fixedAttendanceRows
+      ordinaryFixedRows
         .reduce((sum: number, row) => {
           const sf = (row as { shortfallHours?: number }).shortfallHours;
           if (typeof sf === 'number') return sum + sf;
@@ -3684,7 +3813,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const summaryCutoff = this.endOfDay(
       new Date(Math.min(monthEnd.getTime(), summaryNow.getTime())),
     );
-    const periodAttendanceRows = fixedAttendanceRows.filter(
+    const periodAttendanceRows = ordinaryFixedRows.filter(
       (row) => row.date <= summaryCutoff,
     );
     const totalTaskHours = Number(
@@ -3711,33 +3840,59 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         totalTaskHours
       ).toFixed(2),
     );
-    const totalExpectedHours = Number(
-      (
-        periodAttendanceRows.reduce((sum: number, row) => {
-          const required = row.requiredHours ?? row.shift?.requiredHours ?? 8;
-          const status = statusForRow(row);
-          if (!row.shift && row.requiredHours == null) return sum;
-          if (
-            status === AttendanceStatus.WEEKLY_OFF ||
-            status === AttendanceStatus.HOLIDAY ||
-            status === AttendanceStatus.LEAVE ||
-            (row.shift && this.isWeeklyHoliday(row.date, row.shift))
-          ) {
-            return sum;
-          }
-          return (
-            sum +
-            (status === AttendanceStatus.HALF_DAY ? required / 2 : required)
-          );
-        }, 0) +
-        flexibleDayEquivalents * 8
-      ).toFixed(2),
+    let totalWorkingDays = 0;
+    let totalExpectedHours = 0;
+    const cutoffDate = new Date(
+      Math.min(
+        monthEnd.getTime(),
+        Date.UTC(
+          summaryNow.getUTCFullYear(),
+          summaryNow.getUTCMonth(),
+          summaryNow.getUTCDate(),
+        ),
+      ),
     );
-
-    const totalWorkingDays =
-      fixedAttendanceRows.filter((row) =>
-        this.isScheduledAttendanceStatus(statusForRow(row)),
-      ).length + flexibleDayEquivalents;
+    for (const employee of summaryEmployees) {
+      for (
+        const day = new Date(monthStart);
+        day <= cutoffDate;
+        day.setUTCDate(day.getUTCDate() + 1)
+      ) {
+        if (!this.isAttendanceEligible(day, employee.hireDate)) continue;
+        const dayKey = this.dateKey(day);
+        const attendance = eligibleAttendanceRows.find(
+          (row) =>
+            row.employeeId === employee.id &&
+            this.dateKey(row.date) === dayKey,
+        );
+        const shift = resolveShiftForDate(
+          employee.shiftAssignments,
+          employee.shift,
+          attendance?.shift,
+          day,
+        );
+        if (!shift || !this.isScheduledWorkday(day, shift)) continue;
+        if (
+          corporateHolidayKeys.has(`${employee.organizationId}:${dayKey}`)
+        ) {
+          continue;
+        }
+        const leaveForDay = summaryLeaves.find(
+          (leave) =>
+            leave.employeeId === employee.id &&
+            leave.startDate.toISOString().slice(0, 10) <= dayKey &&
+            leave.endDate.toISOString().slice(0, 10) >= dayKey,
+        );
+        if (leaveForDay && leaveForDay.duration !== 'HALF_DAY') continue;
+        const eligibleFraction = leaveForDay ? 0.5 : 1;
+        totalWorkingDays += eligibleFraction;
+        totalExpectedHours +=
+          (shift.type === 'FLEXIBLE'
+            ? 8
+            : (attendance?.requiredHours ?? shift.requiredHours)) *
+          eligibleFraction;
+      }
+    }
 
     return {
       presentDays,
@@ -3750,7 +3905,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       shortfallHours,
       totalWorkedHours,
       totalTaskHours,
-      totalExpectedHours,
+      totalExpectedHours: Number(totalExpectedHours.toFixed(2)),
       totalWorkingDays,
     };
   }
@@ -3810,13 +3965,27 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         department: true,
         designation: true,
         position: true,
-        shift: { select: { id: true, type: true, requiredHours: true } },
+        shift: {
+          select: {
+            id: true,
+            type: true,
+            requiredHours: true,
+            weeklyHolidayDay: true,
+            workingDays: true,
+          },
+        },
         shiftAssignments: {
           select: {
             effectiveFrom: true,
             effectiveTo: true,
             shift: {
-              select: { id: true, type: true, requiredHours: true },
+              select: {
+                id: true,
+                type: true,
+                requiredHours: true,
+                weeklyHolidayDay: true,
+                workingDays: true,
+              },
             },
           },
         },
@@ -3840,6 +4009,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       where: {
         employeeId: { in: employeeIds },
         date: { gte: monthStart, lte: monthEnd },
+        deletedAt: null,
       },
       include: { shift: true, breaks: true },
       orderBy: [{ employeeId: 'asc' }, { date: 'asc' }],
@@ -3849,10 +4019,18 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         employeeId: { in: employeeIds },
         deletedAt: null,
         status: 'APPROVED',
-        duration: 'FULL_DAY',
         startDate: { lte: monthEnd },
         endDate: { gte: monthStart },
       },
+    });
+    const manualTimesheets = await this.prisma.timesheet.findMany({
+      where: {
+        employeeId: { in: employeeIds },
+        date: { gte: monthStart, lt: new Date(Date.UTC(targetYear, targetMonth, 1)) },
+        source: { not: 'TASK_TIMER' },
+        deletedAt: null,
+      },
+      select: { employeeId: true, date: true, hours: true },
     });
     const holidayOrganizationIds = [
       ...new Set(employees.map((employee) => employee.organization.id)),
@@ -3904,8 +4082,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         (holiday) => `${holiday.organizationId}:${holiday.dateKey}`,
       ),
     );
-    const leaveDateKeys = new Set(
+    const fullLeaveDateKeys = new Set(
       leaveRows.flatMap((leave) => {
+        if (leave.duration === 'HALF_DAY') return [];
         const dates: string[] = [];
         const start = this.startOfDay(
           new Date(Math.max(leave.startDate.getTime(), monthStart.getTime())),
@@ -3923,13 +4102,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         return dates;
       }),
     );
-    const attendanceDateKeys = new Set(
-      attendanceRows.map(
-        (row) =>
-          `${row.employeeId}:${this.startOfDay(row.date).toISOString().slice(0, 10)}`,
-      ),
-    );
-
     const grouped = new Map<
       number,
       {
@@ -4004,6 +4176,24 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
+    const attendanceByEmployeeDate = new Map(
+      attendanceRows.map((row) => [
+        `${row.employeeId}:${this.dateKey(row.date)}`,
+        row,
+      ]),
+    );
+    const reportNow = new Date();
+    const cutoffDate = new Date(
+      Math.min(
+        monthEnd.getTime(),
+        Date.UTC(
+          reportNow.getUTCFullYear(),
+          reportNow.getUTCMonth(),
+          reportNow.getUTCDate(),
+        ),
+      ),
+    );
+
     for (const row of attendanceRows) {
       const entry = grouped.get(row.employeeId);
       if (!entry) continue;
@@ -4014,23 +4204,28 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       ) {
         continue;
       }
-      const rowShift =
-        row.shift ??
-        this.employeeShiftForDay(
-          employee.shiftAssignments,
-          employee.shift,
-          row.date,
-        );
+      const rowShift = resolveShiftForDate(
+        employee.shiftAssignments,
+        employee.shift,
+        row.shift,
+        row.date,
+      );
       if (rowShift?.type === 'FLEXIBLE') {
-        entry.totalWorkedHours += row.taskHours ?? 0;
         continue;
       }
 
-      const rowDateKey = `${row.employeeId}:${this.startOfDay(row.date).toISOString().slice(0, 10)}`;
-      const corporateHolidayKey = `${employee.organization.id}:${row.date.toISOString().slice(0, 10)}`;
-      const effectiveStatus = leaveDateKeys.has(rowDateKey)
+      const rowDateKey = this.dateKey(row.date);
+      const corporateHolidayKey = `${employee.organization.id}:${rowDateKey}`;
+      const leaveForDay = leaveRows.find(
+        (leave) =>
+          leave.employeeId === employee.id &&
+          leave.startDate.toISOString().slice(0, 10) <= rowDateKey &&
+          leave.endDate.toISOString().slice(0, 10) >= rowDateKey,
+      );
+      const effectiveStatus =
+        leaveForDay && leaveForDay.duration !== 'HALF_DAY'
         ? AttendanceStatus.LEAVE
-        : corporateHolidayKeys.has(corporateHolidayKey) && !row.checkIn
+        : corporateHolidayKeys.has(corporateHolidayKey)
           ? AttendanceStatus.HOLIDAY
           : row.status;
       const matchesStatus =
@@ -4042,22 +4237,27 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
       if (!matchesStatus) continue;
 
-      entry.totalWorkedHours += row.taskHours ?? 0;
-
-      if (effectiveStatus === AttendanceStatus.WEEKLY_OFF) {
+      if (
+        !rowShift ||
+        !this.isScheduledWorkday(row.date, rowShift) ||
+        effectiveStatus === AttendanceStatus.WEEKLY_OFF
+      ) {
         entry.weeklyOffCount += 1;
         continue;
       }
 
-      if (effectiveStatus === AttendanceStatus.HOLIDAY) continue;
-
-      if (this.isScheduledAttendanceStatus(effectiveStatus)) {
-        entry.workingDays += 1;
+      if (
+        effectiveStatus === AttendanceStatus.HOLIDAY ||
+        effectiveStatus === AttendanceStatus.LEAVE
+      ) {
+        continue;
       }
 
+      const availableDayFraction = leaveForDay ? 0.5 : 1;
       const requiredHours = row.requiredHours ?? rowShift?.requiredHours ?? 8;
       entry.overtimeHours += row.overtimeHours ?? 0;
-      entry.totalWorkedHours += row.workingHours ?? 0;
+      entry.totalWorkedHours +=
+        (row.taskHours ?? 0) + (row.workingHours ?? 0);
       const rowShortfall = (row as { shortfallHours?: number }).shortfallHours;
       if (typeof rowShortfall === 'number') {
         entry.shortfallHours += rowShortfall;
@@ -4068,21 +4268,14 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
-      if (
-        effectiveStatus === AttendanceStatus.PRESENT ||
-        effectiveStatus === AttendanceStatus.HALF_DAY
-      ) {
-        entry.totalExpectedHours +=
-          effectiveStatus === AttendanceStatus.HALF_DAY
-            ? requiredHours / 2
-            : requiredHours;
+      if (effectiveStatus === AttendanceStatus.PRESENT) {
+        entry.presentCount += availableDayFraction;
       }
-
-      if (effectiveStatus === AttendanceStatus.PRESENT) entry.presentCount += 1;
       if (effectiveStatus === AttendanceStatus.ABSENT) entry.absentCount += 1;
-      if (effectiveStatus === AttendanceStatus.HALF_DAY)
+      if (effectiveStatus === AttendanceStatus.HALF_DAY) {
         entry.halfDayCount += 1;
-      if (effectiveStatus === AttendanceStatus.LEAVE) entry.leaveCount += 1;
+        entry.presentCount += Math.min(0.5, availableDayFraction);
+      }
       if ((row.lateMinutes ?? 0) > 0) entry.lateCount += 1;
     }
 
@@ -4103,15 +4296,79 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         ),
       );
       const end = this.startOfDay(
-        new Date(Math.min(leave.endDate.getTime(), monthEnd.getTime())),
+        new Date(Math.min(leave.endDate.getTime(), cutoffDate.getTime())),
       );
       for (
         const date = new Date(start);
         date <= end;
         date.setUTCDate(date.getUTCDate() + 1)
       ) {
-        const key = `${leave.employeeId}:${date.toISOString().slice(0, 10)}`;
-        if (!attendanceDateKeys.has(key)) employee.leaveCount += 1;
+        const dateKey = this.dateKey(date);
+        const attendance = attendanceByEmployeeDate.get(
+          `${leave.employeeId}:${dateKey}`,
+        );
+        const shift = employeeRecord
+          ? resolveShiftForDate(
+              employeeRecord.shiftAssignments,
+              employeeRecord.shift,
+              attendance?.shift,
+              date,
+            )
+          : null;
+        if (
+          !shift ||
+          !this.isScheduledWorkday(date, shift) ||
+          corporateHolidayKeys.has(
+            `${employeeRecord?.organization.id}:${dateKey}`,
+          )
+        ) {
+          continue;
+        }
+        employee.leaveCount += leave.duration === 'HALF_DAY' ? 0.5 : 1;
+      }
+    }
+
+    for (const employeeRecord of employees) {
+      const entry = grouped.get(employeeRecord.id);
+      if (!entry) continue;
+      for (
+        const date = new Date(monthStart);
+        date <= cutoffDate;
+        date.setUTCDate(date.getUTCDate() + 1)
+      ) {
+        if (!this.isAttendanceEligible(date, employeeRecord.hireDate)) continue;
+        const dateKey = this.dateKey(date);
+        const attendance = attendanceByEmployeeDate.get(
+          `${employeeRecord.id}:${dateKey}`,
+        );
+        const shift = resolveShiftForDate(
+          employeeRecord.shiftAssignments,
+          employeeRecord.shift,
+          attendance?.shift,
+          date,
+        );
+        if (!shift || !this.isScheduledWorkday(date, shift)) continue;
+        if (
+          corporateHolidayKeys.has(
+            `${employeeRecord.organization.id}:${dateKey}`,
+          )
+        ) {
+          continue;
+        }
+        const leaveForDay = leaveRows.find(
+          (leave) =>
+            leave.employeeId === employeeRecord.id &&
+            leave.startDate.toISOString().slice(0, 10) <= dateKey &&
+            leave.endDate.toISOString().slice(0, 10) >= dateKey,
+        );
+        if (leaveForDay && leaveForDay.duration !== 'HALF_DAY') continue;
+        const eligibleFraction = leaveForDay ? 0.5 : 1;
+        entry.workingDays += eligibleFraction;
+        entry.totalExpectedHours +=
+          (shift.type === 'FLEXIBLE'
+            ? 8
+            : (attendance?.requiredHours ?? shift.requiredHours)) *
+          eligibleFraction;
       }
     }
 
@@ -4133,10 +4390,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         )
       );
     });
-    const reportMonthStartKey = `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`;
+    const reportMonthStartKey = this.dateKey(monthStart);
     const nextMonth = new Date(Date.UTC(targetYear, targetMonth, 1));
     const nextMonthKey = this.dateKey(nextMonth);
-    const now = new Date();
+    const now = reportNow;
     await Promise.all(
       flexibleEmployees.map(async (employee) => {
         if (query.status && query.status !== AttendanceStatus.PRESENT) {
@@ -4176,58 +4433,89 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         const attendanceForEmployee = attendanceRows.filter(
           (row) => row.employeeId === employee.id,
         );
-        let creditedSeconds = 0;
+        const employeeTimesheets = manualTimesheets.filter(
+          (timesheet) => timesheet.employeeId === employee.id,
+        );
         for (
           const day = new Date(Date.UTC(targetYear, targetMonth - 1, 1));
-          day <= monthEnd;
+          day <= cutoffDate;
           day.setUTCDate(day.getUTCDate() + 1)
         ) {
           if (!this.isAttendanceEligible(day, employee.hireDate)) continue;
-          const dayKey = day.toISOString().slice(0, 10);
-          const dayShift = this.employeeShiftForDay(
-            employee.shiftAssignments,
-            employee.shift,
-            day,
-          );
+          const dayKey = this.dateKey(day);
           const attendance = attendanceForEmployee.find(
             (row) => this.dateKey(row.date) === dayKey,
           );
-          const effectiveShift = attendance?.shift ?? dayShift;
+          const effectiveShift = resolveShiftForDate(
+            employee.shiftAssignments,
+            employee.shift,
+            attendance?.shift,
+            day,
+          );
           if (effectiveShift?.type !== 'FLEXIBLE') continue;
+          if (!this.isScheduledWorkday(day, effectiveShift)) continue;
+          if (
+            corporateHolidayKeys.has(
+              `${employee.organization.id}:${dayKey}`,
+            )
+          ) {
+            continue;
+          }
+          const leaveForDay = leaveRows.find(
+            (leave) =>
+              leave.employeeId === employee.id &&
+              leave.startDate.toISOString().slice(0, 10) <= dayKey &&
+              leave.endDate.toISOString().slice(0, 10) >= dayKey,
+          );
+          if (leaveForDay && leaveForDay.duration !== 'HALF_DAY') continue;
+          const eligibleFraction = leaveForDay ? 0.5 : 1;
           const dayStart = this.localDateStart(dayKey, timezone);
           const dayEnd = localMidnightAfterDateInTimezone(dayKey, timezone);
           if (!dayEnd || dayStart >= measuredEnd) continue;
-          creditedSeconds += this.sumFlexibleCreditedWorkSeconds(
+          const daySeconds = this.sumFlexibleCreditedWorkSeconds(
             attendance ? [attendance] : [],
             intervals,
             dayStart,
             new Date(Math.min(dayEnd.getTime(), measuredEnd.getTime())),
             timezone,
             now,
+            employeeTimesheets,
           ).seconds;
+          const dayHours = daySeconds / 3600;
+          const entry = grouped.get(employee.id);
+          if (!entry) continue;
+          entry.workingDayEquivalents += dayHours / 8;
+          entry.presentCount += Math.min(dayHours / 8, eligibleFraction);
+          const legacyTaskHours =
+            dayKey < this.flexibleTaskTimeCutoverDate()
+              ? (attendance?.taskHours ?? 0)
+              : 0;
+          entry.totalWorkedHours += dayHours + legacyTaskHours;
         }
-        const creditedWork = { seconds: creditedSeconds };
-        const creditedHours = creditedWork.seconds / 3600;
-        const dayEquivalents = Number((creditedHours / 8).toFixed(2));
         const entry = grouped.get(employee.id);
         if (!entry) return;
-        entry.workingDayEquivalents += dayEquivalents;
-        entry.workingDays += dayEquivalents;
-        entry.presentCount += dayEquivalents;
-        entry.totalWorkedHours += creditedHours;
-        entry.totalExpectedHours += dayEquivalents * 8;
+        entry.workingDayEquivalents = Number(
+          entry.workingDayEquivalents.toFixed(2),
+        );
       }),
     );
 
     const rows = Array.from(grouped.values()).map((entry) => ({
       ...entry,
+      presentCount: Number(entry.presentCount.toFixed(2)),
       overtimeHours: Number(entry.overtimeHours.toFixed(2)),
       shortfallHours: Number(entry.shortfallHours.toFixed(2)),
       totalWorkedHours: Number(entry.totalWorkedHours.toFixed(2)),
       totalExpectedHours: Number(entry.totalExpectedHours.toFixed(2)),
       attendancePercent:
-        !entry.isFlexible && entry.workingDays > 0
-          ? Number(((entry.presentCount / entry.workingDays) * 100).toFixed(2))
+        entry.workingDays > 0
+          ? Number(
+              (
+                (Math.min(entry.presentCount, entry.workingDays) /
+                  entry.workingDays) *
+                100
+              ).toFixed(2),
+            )
           : 0,
     }));
 

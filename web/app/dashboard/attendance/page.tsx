@@ -1326,7 +1326,7 @@ export default function AttendancePage() {
                     <th className="px-4 py-3">Half Days</th>
                     <th className="px-4 py-3">Leaves</th>
                     <th className="px-4 py-3">Holidays</th>
-                    <th className="px-4 py-3">Working Days / Equivalents</th>
+                    <th className="px-4 py-3">Eligible Workdays / Flexible Equivalents</th>
                     <th className="px-4 py-3">Attendance %</th>
                   </tr>
                 </thead>
@@ -1343,20 +1343,20 @@ export default function AttendancePage() {
                       <td className="px-4 py-3 text-slate-600">{row.employeeId}</td>
                       <td className="px-4 py-3 text-slate-600">{row.department ?? '—'}</td>
                       <td className="px-4 py-3 text-slate-600">{row.role}</td>
-                      <td className="px-4 py-3 text-slate-600">{row.isFlexible ? `${row.workingDayEquivalents?.toFixed(2) ?? '0.00'} equiv.` : row.presentCount}</td>
+                      <td className="px-4 py-3 text-slate-600">{row.presentCount.toFixed(2)}</td>
                       <td className="px-4 py-3 text-slate-600">{row.absentCount}</td>
                       <td className="px-4 py-3 text-slate-600">{row.lateCount}</td>
                       <td className="px-4 py-3 text-slate-600">{row.halfDayCount}</td>
                       <td className="px-4 py-3 text-slate-600">{row.leaveCount}</td>
                       <td className="px-4 py-3 text-slate-600">{row.holidayCount}</td>
-                      <td className="px-4 py-3 text-slate-600">{row.isFlexible ? `${row.workingDayEquivalents?.toFixed(2) ?? '0.00'} (8h)` : row.workingDays}</td>
+                      <td className="px-4 py-3 text-slate-600">{row.isFlexible ? `${row.workingDays.toFixed(2)} scheduled · ${row.workingDayEquivalents?.toFixed(2) ?? '0.00'} equiv. (8h)` : row.workingDays.toFixed(2)}</td>
                       <td className="px-4 py-3 text-slate-600">
-                        {row.isFlexible ? <span>—</span> : <div className="flex min-w-28 items-center gap-2">
+                        <div className="flex min-w-28 items-center gap-2">
                           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
                             <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(100, Math.max(0, row.attendancePercent))}%` }} />
                           </div>
                           <span className="w-12 text-right font-medium text-slate-700">{row.attendancePercent}%</span>
-                        </div>}
+                        </div>
                       </td>
                     </tr>
                   )) : (

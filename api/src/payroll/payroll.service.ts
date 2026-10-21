@@ -21,7 +21,7 @@ import { DASHBOARD_CACHE_KEY } from '../common/utils/cache-keys';
 import type { AuthUser } from '../common/types/auth';
 import { Role } from '../common/enums/role.enum';
 import { BusinessUnitsService } from '../business-units/business-units.service';
-import { countLeaveDaysInPeriod } from '../common/utils/leave-day-count';
+import { getPayrollAttendanceMetrics } from './payroll-attendance.utils';
 
 @Injectable()
 export class PayrollService {
@@ -59,153 +59,14 @@ export class PayrollService {
     month: number,
     year: number,
     organizationId: number,
-  ): Promise<{
-    presentDays: number;
-    absentDays: number;
-    paidLeaves: number;
-    unpaidLeaves: number;
-    totalWorkingDays: number;
-    lateCount: number;
-    overtimeHours: number;
-    totalWorkedHours: number;
-    totalExpectedHours: number;
-    totalShortfallHours: number;
-  }> {
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0, 23, 59, 59, 999);
-
-    const [attendanceRows, leaveRows, holidayRows] = await Promise.all([
-      this.prisma.attendance.findMany({
-        where: {
-          deletedAt: null,
-          employeeId,
-          organizationId,
-          date: {
-            gte: startDate,
-            lte: endDate,
-          },
-        },
-      }),
-      this.prisma.leaveRequest.findMany({
-        where: {
-          deletedAt: null,
-          employeeId,
-          organizationId,
-          status: 'APPROVED',
-          startDate: { lte: endDate },
-          endDate: { gte: startDate },
-        },
-      }),
-      this.prisma.holiday.findMany({
-        where: {
-          organizationId,
-          startDate: { lte: endDate },
-          endDate: { gte: startDate },
-        },
-        select: { startDate: true, endDate: true },
-      }),
-    ]);
-
-    const isCorporateHolidayAbsence = (row: (typeof attendanceRows)[number]) =>
-      !row.checkIn &&
-      holidayRows.some((holiday) => {
-        const day = new Date(row.date).toISOString().slice(0, 10);
-        return (
-          day >= holiday.startDate.toISOString().slice(0, 10) &&
-          day <= holiday.endDate.toISOString().slice(0, 10)
-        );
-      });
-
-    const presentDays = attendanceRows.filter(
-      (row) => row.status === 'PRESENT',
-    ).length;
-    const halfDays = attendanceRows.filter(
-      (row) => row.status === 'HALF_DAY',
-    ).length;
-    const absentDays = attendanceRows.filter(
-      (row) => row.status === 'ABSENT' && !isCorporateHolidayAbsence(row),
-    ).length;
-    const lateCount = attendanceRows.filter(
-      (row) => (row.lateMinutes || 0) > 0,
-    ).length;
-    const overtimeHours = Number(
-      attendanceRows
-        .reduce((sum: number, row) => sum + (row.overtimeHours || 0), 0)
-        .toFixed(2),
+  ) {
+    return getPayrollAttendanceMetrics(
+      this.prisma,
+      employeeId,
+      month,
+      year,
+      organizationId,
     );
-    const totalWorkedHours = Number(
-      attendanceRows
-        .reduce((sum: number, row) => sum + (row.workingHours || 0), 0)
-        .toFixed(2),
-    );
-    const totalExpectedHours = Number(
-      attendanceRows
-        .reduce((sum: number, row) => {
-          const required = row.requiredHours || 8;
-          const dateKey = row.date.toISOString().slice(0, 10);
-          const halfDayLeave = leaveRows.some(
-            (leave) =>
-              leave.duration === 'HALF_DAY' &&
-              leave.startDate.toISOString().slice(0, 10) <= dateKey &&
-              leave.endDate.toISOString().slice(0, 10) >= dateKey,
-          );
-          if (row.status === 'PRESENT')
-            return sum + (halfDayLeave ? 5 : required);
-          if (row.status === 'HALF_DAY') {
-            return sum + (halfDayLeave ? 5 : required / 2);
-          }
-          return sum;
-        }, 0)
-        .toFixed(2),
-    );
-    const totalShortfallHours = Number(
-      Math.max(0, totalExpectedHours - totalWorkedHours).toFixed(2),
-    );
-
-    const paidLeaves = leaveRows
-      .filter((row) => (row.isPaid ?? true) === true)
-      .reduce(
-        (sum, row) =>
-          sum +
-          countLeaveDaysInPeriod(
-            row.startDate,
-            row.endDate,
-            row.duration,
-            startDate,
-            endDate,
-          ),
-        0,
-      );
-
-    const unpaidLeaves = leaveRows
-      .filter((row) => (row.isPaid ?? true) === false)
-      .reduce(
-        (sum, row) =>
-          sum +
-          countLeaveDaysInPeriod(
-            row.startDate,
-            row.endDate,
-            row.duration,
-            startDate,
-            endDate,
-          ),
-        0,
-      );
-
-    const totalWorkingDays = 22;
-
-    return {
-      presentDays: presentDays + halfDays * 0.5,
-      absentDays: absentDays + unpaidLeaves,
-      paidLeaves,
-      unpaidLeaves,
-      totalWorkingDays,
-      lateCount,
-      overtimeHours,
-      totalWorkedHours,
-      totalExpectedHours,
-      totalShortfallHours,
-    };
   }
 
   async createSalaryStructure(

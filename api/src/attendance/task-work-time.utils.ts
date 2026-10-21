@@ -3,6 +3,29 @@ export type TaskWorkInterval = {
   endedAt: Date;
 };
 
+export const DEFAULT_FLEXIBLE_TASK_TIME_CUTOVER_DATE = '2026-10-17';
+
+export function getFlexibleTaskTimeCutoverDate() {
+  const value =
+    process.env.ATTENDANCE_FLEXIBLE_TASK_CUTOVER_DATE ??
+    DEFAULT_FLEXIBLE_TASK_TIME_CUTOVER_DATE;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new Error(
+      'ATTENDANCE_FLEXIBLE_TASK_CUTOVER_DATE must use YYYY-MM-DD format',
+    );
+  }
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== value
+  ) {
+    throw new Error(
+      'ATTENDANCE_FLEXIBLE_TASK_CUTOVER_DATE must be a valid calendar date',
+    );
+  }
+  return value;
+}
+
 export function sumIntervalSeconds(
   intervals: TaskWorkInterval[],
   rangeStart: Date,

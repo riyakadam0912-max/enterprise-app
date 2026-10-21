@@ -23,7 +23,7 @@ function createPrismaMock() {
       update: jest.fn(),
     },
     shift: {
-      findMany: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -75,7 +75,7 @@ function createPrismaMock() {
     },
     leaveRequest: {
       count: jest.fn(),
-      findMany: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn(),
     },
     user: {
@@ -367,7 +367,6 @@ describe('AttendanceService', () => {
         where: expect.objectContaining({
           employeeId: 7,
           organizationId: 1,
-          status: { not: 'REJECTED' },
           source: { not: 'TASK_TIMER' },
           deletedAt: null,
         }),
@@ -2044,10 +2043,22 @@ describe('AttendanceService', () => {
   it('includes absent scheduled hours and live work in monthly totals', async () => {
     jest.setSystemTime(new Date('2026-03-04T12:00:00.000Z'));
     const shift = {
+      type: 'FIXED',
       requiredHours: 8,
       weeklyHolidayDay: 0,
+      workingDays: [1, 2, 3, 4, 5],
     };
     const employee = { hireDate: null, organizationId: 1 };
+    prisma.employee.findMany.mockResolvedValue([
+      {
+        id: 7,
+        hireDate: null,
+        organizationId: 1,
+        shift,
+        shiftAssignments: [],
+        organization: { timezone: 'UTC' },
+      },
+    ]);
     prisma.attendance.findMany.mockResolvedValue([
       {
         date: new Date('2026-03-02T00:00:00.000Z'),
@@ -2098,13 +2109,19 @@ describe('AttendanceService', () => {
   });
 
   it('uses flexible task-time day equivalents in monthly summaries', async () => {
-    jest.setSystemTime(new Date('2026-10-17T12:00:00.000Z'));
+    jest.setSystemTime(new Date('2026-10-20T12:00:00.000Z'));
     prisma.employee.findMany.mockResolvedValue([
       {
         id: 19,
         hireDate: null,
         organizationId: 1,
-        shift: { id: 3, type: 'FLEXIBLE', requiredHours: 8 },
+        shift: {
+          id: 3,
+          type: 'FLEXIBLE',
+          requiredHours: 8,
+          weeklyHolidayDay: 0,
+          workingDays: [1, 2, 3, 4, 5],
+        },
         shiftAssignments: [],
         organization: { timezone: 'UTC' },
       },
@@ -2112,8 +2129,8 @@ describe('AttendanceService', () => {
     prisma.attendance.findMany.mockResolvedValue([]);
     prisma.taskTimerInterval.findMany.mockResolvedValue([
       {
-        startedAt: new Date('2026-10-17T04:00:00.000Z'),
-        endedAt: new Date('2026-10-17T12:00:00.000Z'),
+        startedAt: new Date('2026-10-19T04:00:00.000Z'),
+        endedAt: new Date('2026-10-19T12:00:00.000Z'),
       },
     ]);
 
@@ -2123,9 +2140,9 @@ describe('AttendanceService', () => {
     );
 
     expect(result.presentDays).toBe(1);
-    expect(result.totalWorkingDays).toBe(1);
+    expect(result.totalWorkingDays).toBe(14);
     expect(result.totalWorkedHours).toBe(8);
-    expect(result.totalExpectedHours).toBe(8);
+    expect(result.totalExpectedHours).toBe(112);
   });
 
   it("blocks employees from requesting another employee's monthly report", async () => {
@@ -2244,7 +2261,12 @@ describe('AttendanceService', () => {
         hireDate: null,
         department: 'Sales',
         designation: 'Associate',
-        shift: { type: 'FLEXIBLE', requiredHours: 6 },
+        shift: {
+          type: 'FLEXIBLE',
+          requiredHours: 6,
+          weeklyHolidayDay: 0,
+          workingDays: [1, 2, 3, 4, 5],
+        },
         organization: { id: 1, name: 'Main', timezone: 'UTC' },
         user: { role: 'EMPLOYEE' },
       },
@@ -2275,11 +2297,12 @@ describe('AttendanceService', () => {
     expect(result.rows[0]).toEqual(
       expect.objectContaining({
         isFlexible: true,
-        workingDayEquivalents: 1,
-        workingDays: 1,
-        presentCount: 1,
-        totalWorkedHours: 8,
-        attendancePercent: 0,
+        workingDayEquivalents: 0.38,
+        workingDays: 14,
+        presentCount: 0.38,
+        totalExpectedHours: 112,
+        totalWorkedHours: 3,
+        attendancePercent: 2.68,
       }),
     );
   });
@@ -2293,7 +2316,12 @@ describe('AttendanceService', () => {
         hireDate: null,
         department: 'Sales',
         designation: 'Associate',
-        shift: { type: 'FLEXIBLE', requiredHours: 6 },
+        shift: {
+          type: 'FLEXIBLE',
+          requiredHours: 6,
+          weeklyHolidayDay: 0,
+          workingDays: [1, 2, 3, 4, 5],
+        },
         organization: { id: 1, name: 'Main', timezone: 'UTC' },
         user: { role: 'EMPLOYEE' },
       },
@@ -2344,9 +2372,11 @@ describe('AttendanceService', () => {
       expect.objectContaining({
         isFlexible: true,
         workingDayEquivalents: 1,
-        workingDays: 1,
+        workingDays: 15,
         presentCount: 1,
+        totalExpectedHours: 120,
         totalWorkedHours: 9.25,
+        attendancePercent: 6.67,
       }),
     );
   });
@@ -2576,7 +2606,6 @@ describe('AttendanceService', () => {
         where: expect.objectContaining({
           employeeId: 7,
           organizationId: 1,
-          status: { not: 'REJECTED' },
           source: { not: 'TASK_TIMER' },
           deletedAt: null,
         }),
@@ -2584,7 +2613,7 @@ describe('AttendanceService', () => {
     );
   });
 
-  it('earns one flexible working day from eight task hours across three dates', async () => {
+  it('excludes non-working days from flexible workday equivalents', async () => {
     const now = new Date('2026-10-19T12:00:00.000Z');
     const shift = {
       id: 4,
@@ -2596,6 +2625,7 @@ describe('AttendanceService', () => {
       minPresentHours: 4,
       gracePeriodMinutes: 0,
       weeklyHolidayDay: 0,
+      workingDays: [1, 2, 3, 4, 5],
     };
     prisma.attendance.findMany.mockResolvedValue([]);
     prisma.taskTimerInterval.findMany.mockResolvedValue([
@@ -2634,11 +2664,12 @@ describe('AttendanceService', () => {
     );
     expect(balances.month).toEqual(
       expect.objectContaining({
-        completedHours: 8,
-        workingDayEquivalents: 1,
+        completedHours: 3,
+        activeDays: 1,
+        workingDayEquivalents: 0.38,
         taskWorkHours: 8,
         taskWorkActiveDays: 3,
-        taskWorkWorkingDayEquivalents: 1,
+        taskWorkWorkingDayEquivalents: 0.38,
       }),
     );
   });

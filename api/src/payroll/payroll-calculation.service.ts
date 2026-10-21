@@ -24,7 +24,7 @@ interface PayrollCalculationInput {
   month: number;
   year: number;
   salaryStructure: PayrollStructureLike;
-  attendanceData?: {
+  attendanceData: {
     presentDays: number;
     absentDays: number;
     paidLeaves: number;
@@ -112,15 +112,7 @@ export class PayrollCalculationService {
   ): Promise<PayrollCalculationResult> {
     const {
       salaryStructure,
-      attendanceData = {
-        presentDays: 22,
-        absentDays: 0,
-        paidLeaves: 0,
-        unpaidLeaves: 0,
-        totalWorkingDays: 22,
-        lateCount: 0,
-        overtimeHours: 0,
-      },
+      attendanceData,
       reimbursements = 0,
       bonus = 0,
     } = input;
@@ -170,7 +162,12 @@ export class PayrollCalculationService {
     bonus: number,
   ) {
     const dayProrata =
-      attendanceData.presentDays / attendanceData.totalWorkingDays;
+      attendanceData.totalWorkingDays > 0
+        ? Math.min(
+            1,
+            attendanceData.presentDays / attendanceData.totalWorkingDays,
+          )
+        : 1;
     const hourProrata =
       attendanceData.totalExpectedHours != null &&
       attendanceData.totalExpectedHours > 0 &&

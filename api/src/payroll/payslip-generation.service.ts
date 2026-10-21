@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { countLeaveDaysInPeriod } from '../common/utils/leave-day-count';
 import { PayrollCalculationService } from './payroll-calculation.service';
+import { getPayrollAttendanceMetrics } from './payroll-attendance.utils';
 
 @Injectable()
 export class PayslipGenerationService {
@@ -376,114 +376,13 @@ export class PayslipGenerationService {
     lateCount: number;
     overtimeHours: number;
   }> {
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0);
-
-    const [attendanceRecords, holidayRows] = await Promise.all([
-      this.prisma.attendance.findMany({
-        where: {
-          employeeId,
-          date: {
-            gte: startDate,
-            lte: endDate,
-          },
-        },
-      }),
-      this.prisma.holiday.findMany({
-        where: {
-          organizationId,
-          startDate: { lte: endDate },
-          endDate: { gte: startDate },
-        },
-        select: { startDate: true, endDate: true },
-      }),
-    ]);
-    const isCorporateHolidayAbsence = (
-      row: (typeof attendanceRecords)[number],
-    ) =>
-      !row.checkIn &&
-      holidayRows.some((holiday) => {
-        const day = new Date(row.date).toISOString().slice(0, 10);
-        return (
-          day >= holiday.startDate.toISOString().slice(0, 10) &&
-          day <= holiday.endDate.toISOString().slice(0, 10)
-        );
-      });
-
-    // Get leave records
-    const leaveRecords = await this.prisma.leaveRequest.findMany({
-      where: {
-        employeeId,
-        startDate: { lte: endDate },
-        endDate: { gte: startDate },
-        status: 'APPROVED',
-      },
-    });
-
-    // Calculate metrics
-    const presentDays = attendanceRecords.filter(
-      (a) => a.status === 'PRESENT',
-    ).length;
-    const absentDays = attendanceRecords.filter(
-      (a) => a.status === 'ABSENT' && !isCorporateHolidayAbsence(a),
-    ).length;
-    const halfDays = attendanceRecords.filter(
-      (a) => a.status === 'HALF_DAY',
-    ).length;
-    const leaveDays = attendanceRecords.filter(
-      (a) => a.status === 'LEAVE',
-    ).length;
-    const lateCount = attendanceRecords.filter(
-      (a) => (a.lateMinutes || 0) > 0,
-    ).length;
-    const overtimeHours = Number(
-      attendanceRecords
-        .reduce((sum, row) => sum + (row.overtimeHours || 0), 0)
-        .toFixed(2),
+    return getPayrollAttendanceMetrics(
+      this.prisma,
+      employeeId,
+      month,
+      year,
+      organizationId,
     );
-
-    const paidLeaves = leaveRecords
-      .filter((row) => (row.isPaid ?? true) === true)
-      .reduce(
-        (sum, row) =>
-          sum +
-          countLeaveDaysInPeriod(
-            row.startDate,
-            row.endDate,
-            row.duration,
-            startDate,
-            endDate,
-          ),
-        0,
-      );
-
-    const unpaidLeaves = leaveRecords
-      .filter((row) => (row.isPaid ?? true) === false)
-      .reduce(
-        (sum, row) =>
-          sum +
-          countLeaveDaysInPeriod(
-            row.startDate,
-            row.endDate,
-            row.duration,
-            startDate,
-            endDate,
-          ),
-        0,
-      );
-
-    // Typical working days in a month (22)
-    const totalWorkingDays = 22;
-
-    return {
-      presentDays: presentDays + halfDays * 0.5,
-      absentDays,
-      paidLeaves: Math.max(leaveDays, paidLeaves),
-      unpaidLeaves,
-      totalWorkingDays,
-      lateCount,
-      overtimeHours,
-    };
   }
 
   /**

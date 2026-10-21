@@ -39,6 +39,9 @@ describe('PayrollService', () => {
 
   beforeEach(async () => {
     mockPrisma = createMockPrismaService();
+    mockPrisma.taskTimerInterval.findMany.mockResolvedValue([]);
+    mockPrisma.timesheet.findMany.mockResolvedValue([]);
+    mockPrisma.organization.findMany.mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -71,6 +74,20 @@ describe('PayrollService', () => {
     service = module.get<PayrollService>(PayrollService);
   });
 
+  function mockPayrollEmployee() {
+    mockPrisma.employee.findFirst.mockResolvedValue({
+      hireDate: null,
+      shift: {
+        type: 'FIXED',
+        requiredHours: 8,
+        weeklyHolidayDay: 0,
+        workingDays: [1, 2, 3, 4, 5],
+      },
+      shiftAssignments: [],
+      organization: { timezone: 'UTC' },
+    });
+  }
+
   it('should throw ConflictException when a payroll cycle already exists for the same month and year', async () => {
     const user = createMockAuthUser(Role.ADMIN);
     mockPrisma.payrollCycle.findFirst.mockResolvedValueOnce({
@@ -89,7 +106,8 @@ describe('PayrollService', () => {
     expect(mockPrisma.payrollCycle.create).not.toHaveBeenCalled();
   });
 
-  it('balances flexible-day shortfall across the payroll month', async () => {
+  it('calculates expected hours from scheduled workdays in the payroll month', async () => {
+    mockPayrollEmployee();
     mockPrisma.attendance.findMany.mockResolvedValue([
       {
         date: new Date('2026-08-03T00:00:00.000Z'),
@@ -119,12 +137,14 @@ describe('PayrollService', () => {
     );
 
     expect(metrics.totalWorkedHours).toBe(15);
-    expect(metrics.totalExpectedHours).toBe(16);
-    expect(metrics.totalShortfallHours).toBe(1);
+    expect(metrics.totalWorkingDays).toBe(21);
+    expect(metrics.totalExpectedHours).toBe(168);
+    expect(metrics.totalShortfallHours).toBe(153);
     expect(metrics.overtimeHours).toBe(2);
   });
 
-  it('counts paid and unpaid half-day leave as half days and five expected hours', async () => {
+  it('counts half-day leave as half a scheduled payroll day', async () => {
+    mockPayrollEmployee();
     mockPrisma.attendance.findMany.mockResolvedValue([
       {
         date: new Date('2026-08-10T00:00:00.000Z'),
@@ -164,11 +184,13 @@ describe('PayrollService', () => {
 
     expect(metrics.paidLeaves).toBe(0.5);
     expect(metrics.unpaidLeaves).toBe(0.5);
-    expect(metrics.totalExpectedHours).toBe(10);
-    expect(metrics.totalShortfallHours).toBe(0);
+    expect(metrics.totalWorkingDays).toBe(20);
+    expect(metrics.totalExpectedHours).toBe(160);
+    expect(metrics.totalShortfallHours).toBe(150);
   });
 
   it('counts a multi-date half-day range per date in payroll', async () => {
+    mockPayrollEmployee();
     mockPrisma.attendance.findMany.mockResolvedValue([
       {
         date: new Date('2026-08-10T00:00:00.000Z'),
@@ -201,7 +223,84 @@ describe('PayrollService', () => {
     );
 
     expect(metrics.paidLeaves).toBe(1);
-    expect(metrics.totalExpectedHours).toBe(10);
-    expect(metrics.totalShortfallHours).toBe(0);
+    expect(metrics.totalWorkingDays).toBe(20);
+    expect(metrics.totalExpectedHours).toBe(160);
+    expect(metrics.totalShortfallHours).toBe(150);
+  });
+
+  it('uses flexible task time only on scheduled non-holiday dates', async () => {
+    mockPrisma.employee.findFirst.mockResolvedValue({
+      hireDate: null,
+      shift: {
+        type: 'FLEXIBLE',
+        requiredHours: 6,
+        weeklyHolidayDay: 0,
+        workingDays: [1, 2, 3, 4, 5],
+      },
+      shiftAssignments: [],
+      organization: { timezone: 'UTC' },
+    });
+    mockPrisma.attendance.findMany.mockResolvedValue([]);
+    mockPrisma.leaveRequest.findMany.mockResolvedValue([]);
+    mockPrisma.holiday.findMany.mockResolvedValue([
+      {
+        organizationId: 1,
+        familyRootOrganizationId: 1,
+        startDate: new Date('2026-10-20T00:00:00.000Z'),
+        endDate: new Date('2026-10-20T00:00:00.000Z'),
+      },
+    ]);
+    mockPrisma.organization.findMany.mockResolvedValue([
+      { id: 1, parentId: null },
+      { id: 2, parentId: 1 },
+    ]);
+    mockPrisma.taskTimerInterval.findMany.mockResolvedValue([
+      {
+        startedAt: new Date('2026-10-19T08:00:00.000Z'),
+        endedAt: new Date('2026-10-19T10:00:00.000Z'),
+      },
+      {
+        startedAt: new Date('2026-10-18T08:00:00.000Z'),
+        endedAt: new Date('2026-10-18T13:00:00.000Z'),
+      },
+    ]);
+    mockPrisma.timesheet.findMany.mockResolvedValue([
+      { date: new Date('2026-10-19T00:00:00.000Z'), hours: 2 },
+      { date: new Date('2026-10-17T00:00:00.000Z'), hours: 5 },
+    ]);
+
+    const metrics = await (service as any).getAttendanceMetricsForCycle(
+      7,
+      10,
+      2026,
+      2,
+    );
+
+    expect(metrics.totalWorkingDays).toBe(21);
+    expect(metrics.totalExpectedHours).toBe(168);
+    expect(metrics.presentDays).toBe(0.5);
+    expect(metrics.totalWorkedHours).toBe(4);
+  });
+
+  it('uses the default weekday schedule when an employee has no shift', async () => {
+    mockPrisma.employee.findFirst.mockResolvedValue({
+      hireDate: null,
+      shift: null,
+      shiftAssignments: [],
+      organization: { timezone: 'UTC' },
+    });
+    mockPrisma.attendance.findMany.mockResolvedValue([]);
+    mockPrisma.leaveRequest.findMany.mockResolvedValue([]);
+    mockPrisma.holiday.findMany.mockResolvedValue([]);
+
+    const metrics = await (service as any).getAttendanceMetricsForCycle(
+      7,
+      10,
+      2026,
+      1,
+    );
+
+    expect(metrics.totalWorkingDays).toBe(22);
+    expect(metrics.totalExpectedHours).toBe(176);
   });
 });
