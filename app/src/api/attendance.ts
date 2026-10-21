@@ -100,6 +100,10 @@ function recordFromApi(value: unknown): AttendanceRecord | null {
       typeof row.creditedWorkSeconds === "number"
         ? row.creditedWorkSeconds
         : undefined,
+    workFromHomeCredit:
+      typeof row.workFromHomeCredit === "number"
+        ? row.workFromHomeCredit
+        : undefined,
     breaks: Array.isArray(row.breaks)
       ? row.breaks
           .filter(

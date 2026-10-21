@@ -8,6 +8,7 @@ import { getErrorMessage, reportError, retryAsync } from '@/lib/error-handling';
 import { useAuthSession } from '@/stores/auth-store';
 
 interface Employee { id: number; name: string }
+type RequestType = 'LEAVE' | 'WORK_FROM_HOME';
 
 const LEAVE_TYPES: LeaveType[] = ['PAID', 'CASUAL', 'SICK', 'UNPAID', 'MATERNITY', 'PATERNITY', 'MEDICAL', 'OTHER', 'COMP_OFF'];
 const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
@@ -24,6 +25,7 @@ const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
 
 const EMPTY: {
   employeeId: string;
+  requestType: RequestType;
   startDate: string;
   endDate: string;
   duration: LeaveDuration;
@@ -31,6 +33,7 @@ const EMPTY: {
   reason: string;
 } = {
   employeeId: '',
+  requestType: 'LEAVE',
   startDate: '',
   endDate: '',
   duration: 'FULL_DAY',
@@ -88,10 +91,15 @@ export default function AddLeaveRequestPage() {
       }
 
       await createLeaveRequest({
+        requestType: form.requestType,
         startDate:  form.startDate,
         endDate:    form.endDate,
-        duration:   form.duration,
-        leaveType:  (form.leaveType || 'OTHER') as LeaveType,
+        ...(form.requestType === 'LEAVE'
+          ? {
+              duration: form.duration,
+              leaveType: (form.leaveType || 'OTHER') as LeaveType,
+            }
+          : {}),
         reason:     form.reason    || undefined,
         employeeId: resolvedEmployeeId,
       });
@@ -177,6 +185,18 @@ export default function AddLeaveRequestPage() {
 
           {/* Start Date */}
           <div className={rowCls}>
+            <label className={labelCls}>Request Type</label>
+            <select
+              value={form.requestType}
+              onChange={(e) => set('requestType', e.target.value)}
+              className={inputCls}
+            >
+              <option value="LEAVE">Leave</option>
+              <option value="WORK_FROM_HOME">Work from home</option>
+            </select>
+          </div>
+
+          <div className={rowCls}>
             <label className={labelCls}>
               Start Date <span className="text-red-500">*</span>
             </label>
@@ -206,7 +226,7 @@ export default function AddLeaveRequestPage() {
           </div>
 
           {/* Request duration */}
-          <div className={rowCls}>
+          {form.requestType === 'LEAVE' ? <div className={rowCls}>
             <label className={labelCls}>Duration</label>
             <div className="w-full">
               <select
@@ -221,10 +241,10 @@ export default function AddLeaveRequestPage() {
                 <p className="mt-1 text-xs text-gray-500">Each date counts as half a day. Work 5 hours per date, excluding breaks.</p>
               )}
             </div>
-          </div>
+          </div> : null}
 
           {/* Leave Type */}
-          <div className={rowCls}>
+          {form.requestType === 'LEAVE' ? <div className={rowCls}>
             <label className={labelCls}>Leave Type</label>
             <select
               value={form.leaveType}
@@ -236,7 +256,7 @@ export default function AddLeaveRequestPage() {
                 <option key={t} value={t}>{LEAVE_TYPE_LABELS[t]}</option>
               ))}
             </select>
-          </div>
+          </div> : <p className="text-sm text-slate-600">Approved WFH is credited as a full day for the first two scheduled dates each calendar month and a half day for additional dates.</p>}
 
           {/* Reason */}
           <div className={rowCls}>

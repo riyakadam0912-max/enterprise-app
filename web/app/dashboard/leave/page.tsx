@@ -35,15 +35,21 @@ import {
 } from '@/api/leaveRequestsApi';
 
 const leaveSchema = z.object({
-  leaveType: z.enum(['SICK', 'CASUAL', 'PAID', 'UNPAID', 'MATERNITY', 'PATERNITY', 'MEDICAL', 'OTHER', 'COMP_OFF']),
+  requestType: z.enum(['LEAVE', 'WORK_FROM_HOME']),
+  leaveType: z.enum(['SICK', 'CASUAL', 'PAID', 'UNPAID', 'MATERNITY', 'PATERNITY', 'MEDICAL', 'OTHER', 'COMP_OFF']).optional(),
   startDate: z.string().min(1, 'Start date is required'),
   endDate: z.string().min(1, 'End date is required'),
   duration: z.enum(['FULL_DAY', 'HALF_DAY']),
   reason: z.string().min(5, 'Reason must be at least 5 characters'),
-}).refine((values) => new Date(values.endDate).getTime() >= new Date(values.startDate).getTime(), {
-  message: 'End date must be on or after start date',
-  path: ['endDate'],
-});
+})
+  .refine((values) => values.requestType === 'WORK_FROM_HOME' || Boolean(values.leaveType), {
+    message: 'Leave type is required',
+    path: ['leaveType'],
+  })
+  .refine((values) => new Date(values.endDate).getTime() >= new Date(values.startDate).getTime(), {
+    message: 'End date must be on or after start date',
+    path: ['endDate'],
+  });
 
 type LeaveFormValues = z.infer<typeof leaveSchema>;
 
@@ -93,6 +99,7 @@ export default function LeavePage() {
   const form = useForm<LeaveFormValues>({
     resolver: zodResolver(leaveSchema),
     defaultValues: {
+      requestType: 'LEAVE',
       leaveType: 'CASUAL',
       startDate: '',
       endDate: '',
@@ -126,7 +133,12 @@ export default function LeavePage() {
 
   const filteredRequests = useMemo(() => {
     return requests.filter((request) => {
-      const searchMatch = !search || [request.leaveType, request.reason, request.employee?.name ?? '', request.employee?.organization?.name ?? '']
+      const searchMatch = !search || [
+        request.requestType === 'WORK_FROM_HOME' ? 'work from home' : request.leaveType,
+        request.reason,
+        request.employee?.name ?? '',
+        request.employee?.organization?.name ?? '',
+      ]
         .join(' ')
         .toLowerCase()
         .includes(search.toLowerCase());
@@ -149,8 +161,11 @@ export default function LeavePage() {
       ),
     },
     {
-      accessorKey: 'leaveType',
+      accessorKey: 'requestType',
       header: 'Type',
+      cell: ({ row }) => row.original.requestType === 'WORK_FROM_HOME'
+        ? 'Work from home'
+        : leaveTypeOptions.find((option) => option.value === row.original.leaveType)?.label ?? row.original.leaveType,
     },
     {
       accessorKey: 'startDate',
@@ -240,7 +255,16 @@ export default function LeavePage() {
   async function onCreate(values: LeaveFormValues) {
     try {
       const created = await createLeaveRequest({
-        ...values,
+        requestType: values.requestType,
+        startDate: values.startDate,
+        endDate: values.endDate,
+        reason: values.reason,
+        ...(values.requestType === 'LEAVE'
+          ? {
+              leaveType: values.leaveType ?? 'OTHER',
+              duration: values.duration,
+            }
+          : {}),
         employeeId: employeeId ?? undefined,
       });
       setRequests((current) => [created, ...current]);
@@ -397,7 +421,7 @@ export default function LeavePage() {
         />
       </div>
 
-      <Dialog open={createOpen} title="New Leave Request" description="Submit a standardized leave request for approval." onClose={() => setCreateOpen(false)}>
+      <Dialog open={createOpen} title="New Leave Request" description="Submit a leave or work-from-home request for approval." onClose={() => setCreateOpen(false)}>
         <FormWrapper
           form={form}
           onSubmit={onCreate}
@@ -411,17 +435,33 @@ export default function LeavePage() {
           }
         >
           <div className="grid gap-4 md:grid-cols-2">
-            <FormSelect name="leaveType" label="Leave type" options={leaveTypeOptions} />
-            <FormDatePicker name="startDate" label="Start date" />
-            <FormDatePicker name="endDate" label="End date" />
             <FormSelect
-              name="duration"
-              label="Duration"
+              name="requestType"
+              label="Request type"
               options={[
-                { label: 'Full day', value: 'FULL_DAY' as LeaveDuration },
-                { label: 'Half day (work 5 hours)', value: 'HALF_DAY' as LeaveDuration },
+                { label: 'Leave', value: 'LEAVE' },
+                { label: 'Work from home', value: 'WORK_FROM_HOME' },
               ]}
             />
+            {form.watch('requestType') === 'LEAVE' ? (
+              <>
+                <FormSelect name="leaveType" label="Leave type" options={leaveTypeOptions} />
+                <FormSelect
+                  name="duration"
+                  label="Duration"
+                  options={[
+                    { label: 'Full day', value: 'FULL_DAY' as LeaveDuration },
+                    { label: 'Half day (work 5 hours)', value: 'HALF_DAY' as LeaveDuration },
+                  ]}
+                />
+              </>
+            ) : (
+              <p className="text-sm text-slate-600 md:col-span-2">
+                The first two approved scheduled WFH dates per calendar month receive full-day attendance credit; additional dates receive half-day credit.
+              </p>
+            )}
+            <FormDatePicker name="startDate" label="Start date" />
+            <FormDatePicker name="endDate" label="End date" />
             <div className="md:col-span-2">
               <FormTextarea name="reason" label="Reason" rows={4} placeholder="Tell us why you need this leave" />
             </div>

@@ -46,6 +46,7 @@ import {
   resolveShiftForDate,
 } from './workday-schedule.utils';
 import type { WorkdayShift } from './workday-schedule.utils';
+import { buildApprovedWorkFromHomeCredits } from './work-from-home.utils';
 import { TasksService } from '../tasks/tasks.service';
 import type { AuthUser } from '../common/types/auth';
 
@@ -101,6 +102,7 @@ type DailyAttendanceRow = {
   lateMinutes: number;
   overtimeHours: number;
   status: AttendanceStatus;
+  workFromHomeCredit?: number;
   isShootDay: boolean;
   holidayName?: string | null;
   shiftDetails: {
@@ -122,6 +124,7 @@ type LeaveRequestLite = {
   endDate: Date;
   duration?: string | null;
   employeeId?: number | null;
+  requestType?: string;
 };
 
 type ManualTaskTimesheet = {
@@ -768,7 +771,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         shiftAssignments: { include: { shift: true } },
       },
     });
-
     if (!employee)
       throw new NotFoundException(`Employee #${employeeId} not found`);
     return employee;
@@ -783,6 +785,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       where: {
         deletedAt: null,
         employeeId,
+        requestType: 'LEAVE',
         status: 'APPROVED',
         duration,
         startDate: { lte: this.endOfDay(day) },
@@ -829,6 +832,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     onLeave: boolean,
     holidayName?: string | null,
     creditedWorkSeconds?: number,
+    workFromHomeCredit?: number,
   ): DailyAttendanceRow {
     const shift =
       attendance?.shift ??
@@ -858,6 +862,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       (attendance as { shortfallHours?: number })?.shortfallHours ??
       this.calculateShortfallHours(attendance?.workingHours ?? null, shift);
 
+    const status =
+      workFromHomeCredit === undefined
+        ? computedStatus
+        : workFromHomeCredit === 1
+          ? AttendanceStatus.PRESENT
+          : AttendanceStatus.HALF_DAY;
     return {
       id: attendance?.id ?? null,
       employeeId: employee.id,
@@ -909,7 +919,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       shortfallHours,
       lateMinutes: attendance?.lateMinutes ?? 0,
       overtimeHours: attendance?.overtimeHours ?? 0,
-      status: computedStatus,
+      status,
+      ...(workFromHomeCredit !== undefined ? { workFromHomeCredit } : {}),
       isShootDay: attendance?.isShootDay ?? false,
       holidayName:
         computedStatus === AttendanceStatus.HOLIDAY ? holidayName : null,
@@ -1984,7 +1995,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     const ids = eligibleEmployees.map((employee) => employee.id);
 
-    const [attendanceRows, leaveRows] = await Promise.all([
+    const [attendanceRows, leaveRows, wfhRequestRows] = await Promise.all([
       this.prisma.attendance.findMany({
         where: { employeeId: { in: ids }, date: this.startOfDay(day) },
         include: {
@@ -1996,6 +2007,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       this.prisma.leaveRequest.findMany({
         where: {
           employeeId: { in: ids },
+          requestType: 'LEAVE',
           status: 'APPROVED',
           duration: 'FULL_DAY',
           startDate: { lte: this.endOfDay(day) },
@@ -2003,23 +2015,85 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         },
         select: { employeeId: true },
       }),
+      this.prisma.leaveRequest.findMany({
+        where: {
+          employeeId: { in: ids },
+          requestType: 'WORK_FROM_HOME',
+          status: 'APPROVED',
+          deletedAt: null,
+          startDate: { lte: this.endOfDay(day) },
+          endDate: {
+            gte: new Date(
+              Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), 1),
+            ),
+          },
+        },
+        select: {
+          employeeId: true,
+          requestType: true,
+          status: true,
+          startDate: true,
+          endDate: true,
+        },
+      }),
     ]);
 
     const holidayOrganizationIds = [
       ...new Set(eligibleEmployees.map((employee) => employee.organizationId)),
     ];
-    const targetHolidayDate = this.parseHolidayDate(this.dateKey(day));
+    const monthStartHolidayDate = this.parseHolidayDate(
+      this.dateKey(new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), 1))),
+    );
+    const monthEndHolidayDate = this.parseHolidayDate(
+      this.dateKey(new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth() + 1, 0))),
+    );
     const { holidays, familyRootByOrganization } =
       await this.findApplicableHolidays(
         holidayOrganizationIds,
-        targetHolidayDate,
-        targetHolidayDate,
+        monthStartHolidayDate,
+        monthEndHolidayDate,
       );
 
     const attendanceMap = new Map(
       attendanceRows.map((row) => [row.employeeId, row]),
     );
     const leaveSet = new Set(leaveRows.map((row) => row.employeeId));
+    const dailyWfhCredits = buildApprovedWorkFromHomeCredits(
+      wfhRequestRows.map((request) => ({
+        employeeId: request.employeeId,
+        requestType: request.requestType,
+        status: request.status,
+        startDate: request.startDate,
+        endDate: request.endDate,
+      })),
+      (employeeId, date) => {
+        const employee = eligibleEmployees.find(
+          (row) => row.id === employeeId,
+        );
+        if (!employee || !this.isAttendanceEligible(date, employee.hireDate)) {
+          return false;
+        }
+        const attendance = attendanceMap.get(employeeId);
+        const shift = resolveShiftForDate(
+          employee.shiftAssignments,
+          employee.shift,
+          attendance?.shift ?? null,
+          date,
+        );
+        return Boolean(
+          shift &&
+            this.isScheduledWorkday(date, shift) &&
+            !holidays.some(
+              (holiday) =>
+                this.holidayAppliesToOrganization(
+                  holiday,
+                  employee.organizationId,
+                  familyRootByOrganization,
+                ) && this.holidayCoversDay(holiday, date),
+            ),
+        );
+      },
+    );
 
     const dailyCredits = new Map<number, number>();
     const today = new Date();
@@ -2080,6 +2154,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             ) && this.holidayCoversDay(holiday, day),
         )?.name,
         dailyCredits.get(employee.id),
+        dailyWfhCredits.get(`${employee.id}:${this.dateKey(day)}`),
       ),
     );
 
@@ -2547,7 +2622,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       include: { shift: true, breaks: true },
       orderBy: { date: 'asc' },
     });
-    const leaveRows: LeaveRequestLite[] =
+    const leaveRequestRows: LeaveRequestLite[] =
       await this.prisma.leaveRequest.findMany({
         where: {
           employeeId,
@@ -2556,7 +2631,16 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           startDate: { lte: monthEnd },
           endDate: { gte: monthStart },
         },
+        select: {
+          requestType: true,
+          startDate: true,
+          endDate: true,
+          duration: true,
+        },
       });
+    const leaveRows = leaveRequestRows.filter(
+      (request) => request.requestType !== 'WORK_FROM_HOME',
+    );
 
     const monthStartHolidayDate = this.parseHolidayDate(
       this.dateKey(monthStart),
@@ -2574,6 +2658,45 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         this.startOfDay(new Date(row.date)).getTime(),
         row,
       ]),
+    );
+    const workFromHomeCredits = buildApprovedWorkFromHomeCredits(
+      leaveRequestRows.map((request) => ({
+        employeeId: employee.id,
+        requestType: request.requestType ?? 'LEAVE',
+        status: 'APPROVED',
+        startDate: request.startDate,
+        endDate: request.endDate,
+      })),
+      (_employeeId, date) => {
+        if (!this.isAttendanceEligible(date, employee.hireDate)) return false;
+        const attendance = attendanceMap.get(
+          this.startOfDay(date).getTime(),
+        );
+        const shift = resolveShiftForDate(
+          employee.shiftAssignments,
+          employee.shift,
+          attendance?.shift ?? null,
+          date,
+        );
+        const dateKey = this.dateKey(date);
+        return Boolean(
+          shift &&
+            this.isScheduledWorkday(date, shift) &&
+            !holidays.some(
+              (holiday) =>
+                this.holidayAppliesToOrganization(
+                  holiday,
+                  employee.organizationId,
+                  familyRootByOrganization,
+                ) && this.holidayCoversDay(holiday, date),
+            ) &&
+            !leaveRows.some(
+              (leave) =>
+                this.dateKey(leave.startDate) <= dateKey &&
+                this.dateKey(leave.endDate) >= dateKey,
+            ),
+        );
+      },
     );
 
     const daysInMonth = new Date(
@@ -2595,6 +2718,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       lateMinutes: number;
       overtimeHours: number;
       isShootDay: boolean;
+      workFromHomeCredit?: number;
       shiftDetails: (ShiftLite & { minPresentHours: number }) | null;
     }> = [];
 
@@ -2680,6 +2804,15 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
                 shift,
                 timezone,
               }));
+      const workFromHomeCredit = workFromHomeCredits.get(
+        `${employee.id}:${this.dateKey(day)}`,
+      );
+      const effectiveStatus =
+        workFromHomeCredit === undefined
+          ? status
+          : workFromHomeCredit === 1
+            ? AttendanceStatus.PRESENT
+            : AttendanceStatus.HALF_DAY;
       const requiredHours = shift?.requiredHours ?? 8;
       const minPresentHours = shift?.minPresentHours ?? 5;
       const gracePeriodMinutes = shift?.gracePeriodMinutes ?? 15;
@@ -2722,10 +2855,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       days.push({
         date: this.startOfDay(day).toISOString(),
         day: dayNumber,
-        status,
+        status: effectiveStatus,
         isShootDay: attendance?.isShootDay ?? false,
         holidayName:
-          status === AttendanceStatus.HOLIDAY ? (holidayName ?? null) : null,
+          effectiveStatus === AttendanceStatus.HOLIDAY
+            ? (holidayName ?? null)
+            : null,
         checkIn: attendance?.checkIn?.toISOString() ?? null,
         checkOut: attendance?.checkOut?.toISOString() ?? null,
         workingHours:
@@ -2733,6 +2868,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             ? Number((creditedWorkSeconds / 3600).toFixed(2))
             : (attendance?.workingHours ?? null),
         taskHours: attendance?.taskHours ?? 0,
+        ...(workFromHomeCredit !== undefined
+          ? { workFromHomeCredit }
+          : {}),
         ...(creditedWorkSeconds !== undefined ? { creditedWorkSeconds } : {}),
         breaks: (attendance?.breaks ?? []).map((interval) => ({
           startedAt: interval.startedAt.toISOString(),
@@ -2867,6 +3005,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const leaves: LeaveRequestLite[] = await this.prisma.leaveRequest.findMany({
       where: {
         employeeId,
+        requestType: 'LEAVE',
         status: 'APPROVED',
         startDate: { lte: this.endOfDay(monthEnd) },
         endDate: { gte: queryStart },
@@ -3527,6 +3666,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
               startDate: true,
               endDate: true,
               duration: true,
+              requestType: true,
             },
           })
         : Promise.resolve([] as LeaveRequestLite[]);
@@ -3546,6 +3686,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       summaryLeavesPromise,
       summaryTimesheetsPromise,
     ]);
+    const summaryLeaveRequests = summaryLeaves as LeaveRequestLite[];
+    const ordinarySummaryLeaves = summaryLeaveRequests.filter(
+      (leave) => leave.requestType !== 'WORK_FROM_HOME',
+    );
     const corporateHolidayKeys = new Set<string>();
     for (const employee of summaryEmployees) {
       for (const holiday of holidays) {
@@ -3584,6 +3728,44 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       )
         ? AttendanceStatus.HOLIDAY
         : row.status;
+    const summaryWfhCredits = buildApprovedWorkFromHomeCredits(
+      summaryLeaveRequests.map((request) => ({
+        ...request,
+        employeeId: request.employeeId ?? null,
+        requestType: request.requestType ?? 'LEAVE',
+        status: 'APPROVED',
+      })),
+      (employeeId, date) => {
+        const employee = summaryEmployeeById.get(employeeId);
+        if (!employee || !this.isAttendanceEligible(date, employee.hireDate)) {
+          return false;
+        }
+        const dateKey = this.dateKey(date);
+        const attendance = attendanceRows.find(
+          (row) =>
+            row.employeeId === employeeId && this.dateKey(row.date) === dateKey,
+        );
+        const shift = resolveShiftForDate(
+          employee.shiftAssignments,
+          employee.shift,
+          attendance?.shift ?? null,
+          date,
+        );
+        return Boolean(
+          shift &&
+            this.isScheduledWorkday(date, shift) &&
+            !corporateHolidayKeys.has(
+              `${employee.organizationId}:${dateKey}`,
+            ) &&
+            !ordinarySummaryLeaves.some(
+              (leave) =>
+                leave.employeeId === employeeId &&
+                this.dateKey(leave.startDate) <= dateKey &&
+                this.dateKey(leave.endDate) >= dateKey,
+            ),
+        );
+      },
+    );
 
     const eligibleAttendanceRows = attendanceRows.filter((row) =>
       this.isAttendanceEligible(row.date, row.employee.hireDate),
@@ -3690,7 +3872,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             if (!this.isScheduledWorkday(day, shift)) continue;
             const orgDayKey = `${employee.organizationId}:${dayKey}`;
             if (corporateHolidayKeys.has(orgDayKey)) continue;
-            const leaveForDay = summaryLeaves.find(
+            const leaveForDay = ordinarySummaryLeaves.find(
               (leave) =>
                 leave.employeeId === employee.id &&
                 leave.startDate.toISOString().slice(0, 10) <= dayKey &&
@@ -3710,11 +3892,28 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
               employeeManualTimesheets,
             ).seconds;
             seconds += daySeconds;
-            const leaveFraction = leaveForDay ? 0.5 : 0;
-            attendanceCredit += Math.min(
-              daySeconds / 3600 / 8,
-              1 - leaveFraction,
+            const wfhCredit = summaryWfhCredits.get(
+              `${employee.id}:${dayKey}`,
             );
+            if (wfhCredit !== undefined) {
+              if (
+                day <= new Date(
+                  Date.UTC(
+                    summaryNow.getUTCFullYear(),
+                    summaryNow.getUTCMonth(),
+                    summaryNow.getUTCDate(),
+                  ),
+                )
+              ) {
+                attendanceCredit += wfhCredit;
+              }
+            } else {
+              const leaveFraction = leaveForDay ? 0.5 : 0;
+              attendanceCredit += Math.min(
+                daySeconds / 3600 / 8,
+                1 - leaveFraction,
+              );
+            }
           }
           return { seconds, attendanceCredit };
         }),
@@ -3724,6 +3923,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       3600;
     const flexibleDayEquivalents = flexibleWorkedHours / 8;
     const fixedAttendanceCredit = fixedAttendanceRows.reduce((total, row) => {
+      const wfhCredit = summaryWfhCredits.get(
+        `${row.employeeId}:${this.dateKey(row.date)}`,
+      );
+      if (wfhCredit !== undefined) {
+        return total;
+      }
       const status = statusForRow(row);
       if (
         status === AttendanceStatus.LEAVE ||
@@ -3741,7 +3946,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       );
       if (!shift || !this.isScheduledWorkday(row.date, shift)) return total;
       const dayKey = this.dateKey(row.date);
-      const leaveForDay = summaryLeaves.find(
+      const leaveForDay = ordinarySummaryLeaves.find(
         (leave) =>
           leave.employeeId === row.employeeId &&
           leave.startDate.toISOString().slice(0, 10) <= dayKey &&
@@ -3755,12 +3960,43 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       }
       return total;
     }, 0);
+    const fixedWfhCredit = [...summaryWfhCredits].reduce(
+      (total, [key, credit]) => {
+        const [employeeIdString, dateKey] = key.split(':');
+        const employeeId = Number(employeeIdString);
+        const employee = summaryEmployeeById.get(employeeId);
+        const date = this.parseHolidayDate(dateKey);
+        const shift = employee
+          ? resolveShiftForDate(
+              employee.shiftAssignments,
+              employee.shift,
+              attendanceRows.find(
+                (row) =>
+                  row.employeeId === employeeId &&
+                  this.dateKey(row.date) === dateKey,
+              )?.shift ?? null,
+              date,
+            )
+          : null;
+        const currentDate = new Date(
+          Date.UTC(
+            summaryNow.getUTCFullYear(),
+            summaryNow.getUTCMonth(),
+            summaryNow.getUTCDate(),
+          ),
+        );
+        return shift?.type !== 'FLEXIBLE' && date <= currentDate
+          ? total + credit
+          : total;
+      },
+      0,
+    );
     const flexibleAttendanceCredit = flexibleEmployeeRows.reduce(
       (total, row) => total + row.attendanceCredit,
       0,
     );
     const presentDays = Number(
-      (fixedAttendanceCredit + flexibleAttendanceCredit).toFixed(2),
+      (fixedAttendanceCredit + fixedWfhCredit + flexibleAttendanceCredit).toFixed(2),
     );
     const scheduledFixedRows = fixedAttendanceRows.filter((row) => {
       const employee = summaryEmployeeById.get(row.employeeId);
@@ -3773,6 +4009,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       return shift != null && this.isScheduledWorkday(row.date, shift);
     });
     const ordinaryFixedRows = scheduledFixedRows.filter((row) => {
+      if (
+        summaryWfhCredits.has(`${row.employeeId}:${this.dateKey(row.date)}`)
+      ) {
+        return false;
+      }
       const status = statusForRow(row);
       return (
         status !== AttendanceStatus.LEAVE &&
@@ -3791,7 +4032,22 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     ).length;
     const halfDays = ordinaryFixedRows.filter(
       (row) => statusForRow(row) === AttendanceStatus.HALF_DAY,
-    ).length;
+    ).length + [...summaryWfhCredits].filter(([key, credit]) => {
+      const [employeeIdString, dateKey] = key.split(':');
+      const employeeId = Number(employeeIdString);
+      const date = this.parseHolidayDate(dateKey);
+      const currentDate = new Date(
+        Date.UTC(
+          summaryNow.getUTCFullYear(),
+          summaryNow.getUTCMonth(),
+          summaryNow.getUTCDate(),
+        ),
+      );
+      return (
+        credit === 0.5 &&
+        date <= currentDate
+      );
+    }).length;
     const lateCount = ordinaryFixedRows.filter(
       (row) => (row.lateMinutes ?? 0) > 0,
     ).length;
@@ -4014,7 +4270,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       include: { shift: true, breaks: true },
       orderBy: [{ employeeId: 'asc' }, { date: 'asc' }],
     });
-    const leaveRows = await this.prisma.leaveRequest.findMany({
+    const leaveRequestRows = await this.prisma.leaveRequest.findMany({
       where: {
         employeeId: { in: employeeIds },
         deletedAt: null,
@@ -4023,6 +4279,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         endDate: { gte: monthStart },
       },
     });
+    const leaveRows = leaveRequestRows.filter(
+      (leave) => leave.requestType !== 'WORK_FROM_HOME',
+    );
     const manualTimesheets = await this.prisma.timesheet.findMany({
       where: {
         employeeId: { in: employeeIds },
@@ -4193,6 +4452,44 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         ),
       ),
     );
+    const reportWfhCredits = buildApprovedWorkFromHomeCredits(
+      leaveRequestRows.map((request) => ({
+        employeeId: request.employeeId ?? null,
+        requestType: request.requestType ?? 'LEAVE',
+        status: request.status,
+        startDate: request.startDate,
+        endDate: request.endDate,
+      })),
+      (employeeId, date) => {
+        const employee = employees.find((item) => item.id === employeeId);
+        if (!employee || !this.isAttendanceEligible(date, employee.hireDate)) {
+          return false;
+        }
+        const dateKey = this.dateKey(date);
+        const attendance = attendanceByEmployeeDate.get(
+          `${employeeId}:${dateKey}`,
+        );
+        const shift = resolveShiftForDate(
+          employee.shiftAssignments,
+          employee.shift,
+          attendance?.shift,
+          date,
+        );
+        return Boolean(
+          shift &&
+            this.isScheduledWorkday(date, shift) &&
+            !corporateHolidayKeys.has(
+              `${employee.organization.id}:${dateKey}`,
+            ) &&
+            !leaveRows.some(
+              (leave) =>
+                leave.employeeId === employeeId &&
+                this.dateKey(leave.startDate) <= dateKey &&
+                this.dateKey(leave.endDate) >= dateKey,
+            ),
+        );
+      },
+    );
 
     for (const row of attendanceRows) {
       const entry = grouped.get(row.employeeId);
@@ -4222,12 +4519,19 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           leave.startDate.toISOString().slice(0, 10) <= rowDateKey &&
           leave.endDate.toISOString().slice(0, 10) >= rowDateKey,
       );
+      const wfhCredit = reportWfhCredits.get(
+        `${row.employeeId}:${rowDateKey}`,
+      );
       const effectiveStatus =
-        leaveForDay && leaveForDay.duration !== 'HALF_DAY'
-        ? AttendanceStatus.LEAVE
-        : corporateHolidayKeys.has(corporateHolidayKey)
-          ? AttendanceStatus.HOLIDAY
-          : row.status;
+        wfhCredit !== undefined
+          ? wfhCredit === 1
+            ? AttendanceStatus.PRESENT
+            : AttendanceStatus.HALF_DAY
+          : leaveForDay && leaveForDay.duration !== 'HALF_DAY'
+            ? AttendanceStatus.LEAVE
+            : corporateHolidayKeys.has(corporateHolidayKey)
+              ? AttendanceStatus.HOLIDAY
+              : row.status;
       const matchesStatus =
         query.status === 'LATE'
           ? (row.lateMinutes ?? 0) > 0
@@ -4277,6 +4581,39 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         entry.presentCount += Math.min(0.5, availableDayFraction);
       }
       if ((row.lateMinutes ?? 0) > 0) entry.lateCount += 1;
+    }
+
+    for (const [key, credit] of reportWfhCredits) {
+      const [employeeIdString, dateKey] = key.split(':');
+      const employeeId = Number(employeeIdString);
+      const entry = grouped.get(employeeId);
+      const date = this.parseHolidayDate(dateKey);
+      const employee = employees.find((item) => item.id === employeeId);
+      if (
+        !entry ||
+        !employee ||
+        date > cutoffDate ||
+        attendanceByEmployeeDate.has(key)
+      ) {
+        continue;
+      }
+      const shift = resolveShiftForDate(
+        employee.shiftAssignments,
+        employee.shift,
+        null,
+        date,
+      );
+      if (shift?.type === 'FLEXIBLE') continue;
+      const wfhStatus =
+        credit === 1 ? AttendanceStatus.PRESENT : AttendanceStatus.HALF_DAY;
+      if (
+        query.status &&
+        (query.status === 'LATE' || query.status !== wfhStatus)
+      ) {
+        continue;
+      }
+      entry.presentCount += credit;
+      if (credit === 0.5) entry.halfDayCount += 1;
     }
 
     for (const leave of leaveRows) {
@@ -4396,7 +4733,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const now = reportNow;
     await Promise.all(
       flexibleEmployees.map(async (employee) => {
-        if (query.status && query.status !== AttendanceStatus.PRESENT) {
+        if (
+          query.status &&
+          query.status !== AttendanceStatus.PRESENT &&
+          query.status !== AttendanceStatus.HALF_DAY
+        ) {
           return;
         }
         if (
@@ -4485,7 +4826,26 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           const entry = grouped.get(employee.id);
           if (!entry) continue;
           entry.workingDayEquivalents += dayHours / 8;
-          entry.presentCount += Math.min(dayHours / 8, eligibleFraction);
+          const wfhCredit = reportWfhCredits.get(
+            `${employee.id}:${dayKey}`,
+          );
+          if (wfhCredit !== undefined) {
+            if (
+              !query.status ||
+              query.status ===
+                (wfhCredit === 1
+                  ? AttendanceStatus.PRESENT
+                  : AttendanceStatus.HALF_DAY)
+            ) {
+              entry.presentCount += wfhCredit;
+              if (wfhCredit === 0.5) entry.halfDayCount += 1;
+            }
+          } else if (
+            !query.status ||
+            query.status === AttendanceStatus.PRESENT
+          ) {
+            entry.presentCount += Math.min(dayHours / 8, eligibleFraction);
+          }
           const legacyTaskHours =
             dayKey < this.flexibleTaskTimeCutoverDate()
               ? (attendance?.taskHours ?? 0)

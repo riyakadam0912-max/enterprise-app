@@ -768,6 +768,7 @@ model TaskMessage {
 
 model LeaveRequest {
   id             Int          @id @default(autoincrement())
+  requestType    String       @default("LEAVE")
   startDate      DateTime
   endDate        DateTime
   duration       String       @default("FULL_DAY")
@@ -787,6 +788,7 @@ model LeaveRequest {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+  @@index([organizationId, requestType, status, startDate])
 }
 
 model LeavePolicy {

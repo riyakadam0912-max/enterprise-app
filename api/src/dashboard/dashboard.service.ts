@@ -32,6 +32,7 @@ type WorkflowActivity = {
 
 type RecentLeaveActivity = {
   id: number;
+  requestType?: string;
   leaveType: string | null;
   status: string;
   updatedAt: Date;
@@ -155,6 +156,7 @@ export class DashboardService {
     const organizationId = await this.resolveOrganizationId(user);
     const baseSelect = {
       id: true,
+      requestType: true,
       leaveType: true,
       status: true,
       updatedAt: true,
@@ -452,6 +454,7 @@ export class DashboardService {
           createdAt?: Date | string | null;
           status?: string;
           employee?: { name?: string | null } | null;
+          requestType?: string;
           leaveType?: string | null;
         }): WorkflowActivity => {
           const latestTrail = getLatestTrailEntry(item.approvalTrail);
@@ -464,7 +467,7 @@ export class DashboardService {
             id: `leave-${item.id}`,
             type: 'LEAVE',
             action: latestTrail?.action ?? 'SUBMITTED',
-            title: `${item.employee?.name ?? 'Leave request'} • ${(item.leaveType ?? 'leave').toString().replaceAll('_', ' ').toLowerCase()}`,
+            title: `${item.employee?.name ?? 'Request'} • ${item.requestType === 'WORK_FROM_HOME' ? 'work from home' : (item.leaveType ?? 'leave').toString().replaceAll('_', ' ').toLowerCase()}`,
             at: activityAt,
             status: item.status ?? '',
             href: '/dashboard/requests',

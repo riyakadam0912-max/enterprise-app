@@ -429,7 +429,11 @@ export class EmployeeSelfServiceService {
     if (endDate < startDate) {
       throw new BadRequestException('End date cannot be before start date');
     }
-    const duration = dto.duration ?? 'FULL_DAY';
+    const requestType = dto.requestType ?? 'LEAVE';
+    const duration =
+      requestType === 'WORK_FROM_HOME'
+        ? 'FULL_DAY'
+        : (dto.duration ?? 'FULL_DAY');
     const organizationId = await this.resolveOrganizationId(user);
     const days = await this.leaveEntitlementsService.countScheduledLeaveDays(
       employeeId,
@@ -444,9 +448,13 @@ export class EmployeeSelfServiceService {
       );
     }
 
-    const leaveType = this.normalizeLeaveType(dto.leaveType);
+    const leaveType =
+      requestType === 'WORK_FROM_HOME'
+        ? 'OTHER'
+        : this.normalizeLeaveType(dto.leaveType);
     const leaveRequest = await this.leaveRequestsService.create(
       {
+        requestType,
         startDate: dto.startDate,
         endDate: dto.endDate,
         duration,
@@ -459,9 +467,10 @@ export class EmployeeSelfServiceService {
 
     return {
       success: true,
-      message: `Leave request submitted for ${days} day(s)`,
+      message: `${requestType === 'WORK_FROM_HOME' ? 'Work-from-home' : 'Leave'} request submitted for ${days} day(s)`,
       data: {
         id: leaveRequest.id,
+        requestType: leaveRequest.requestType,
         leaveType: leaveRequest.leaveType,
         startDate: leaveRequest.startDate,
         endDate: leaveRequest.endDate,
@@ -522,6 +531,7 @@ export class EmployeeSelfServiceService {
         );
       return {
         id: leave.id,
+        requestType: leave.requestType,
         leaveType: leave.leaveType,
         startDate: leave.startDate,
         endDate: leave.endDate,

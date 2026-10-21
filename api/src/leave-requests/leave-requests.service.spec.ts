@@ -481,6 +481,59 @@ describe('LeaveRequestsService', () => {
       );
     });
 
+    it('creates a WFH request as a full-day workflow request without a leave type', async () => {
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      const leaveRequestDelegate = getPrismaDelegate(
+        mockPrisma,
+        'leaveRequest',
+      );
+      employeeDelegate.findFirst.mockResolvedValueOnce({
+        id: 101,
+        organizationId: 1,
+        user: null,
+      });
+      leaveRequestDelegate.create.mockResolvedValueOnce({
+        id: 21,
+        organizationId: 1,
+        employeeId: 101,
+        requestType: 'WORK_FROM_HOME',
+        duration: 'FULL_DAY',
+        leaveType: 'OTHER',
+        startDate: new Date('2026-10-01T00:00:00.000Z'),
+        endDate: new Date('2026-10-01T00:00:00.000Z'),
+      });
+      (mockWorkflowEngine.submitWorkflow as jest.Mock).mockResolvedValueOnce(
+        {},
+      );
+
+      await service.create(
+        {
+          requestType: 'WORK_FROM_HOME',
+          startDate: '2026-10-01',
+          endDate: '2026-10-01',
+          employeeId: 101,
+        } as CreateLeaveRequestDto,
+        mockAdminUser,
+      );
+
+      expect(leaveRequestDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            requestType: 'WORK_FROM_HOME',
+            duration: 'FULL_DAY',
+            leaveType: 'OTHER',
+          }),
+        }),
+      );
+      expect(mockWorkflowEngine.submitWorkflow).toHaveBeenCalledWith(
+        expect.objectContaining({
+          context: expect.objectContaining({
+            requestType: 'WORK_FROM_HOME',
+          }),
+        }),
+      );
+    });
+
     it('removes the request and surfaces a workflow initialization failure', async () => {
       const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
       const leaveRequestDelegate = getPrismaDelegate(
@@ -1025,6 +1078,53 @@ describe('LeaveRequestsService', () => {
         }),
       );
       expect(attendanceDelegate.upsert).not.toHaveBeenCalled();
+    });
+
+    it('approves WFH without debiting leave or creating leave attendance rows', async () => {
+      const leaveRequestDelegate = getPrismaDelegate(
+        mockPrisma,
+        'leaveRequest',
+      );
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      const attendanceDelegate = getPrismaDelegate(mockPrisma, 'attendance');
+      leaveRequestDelegate.findFirst.mockResolvedValueOnce({
+        id: 22,
+        status: 'PENDING_HR',
+        requestType: 'WORK_FROM_HOME',
+        approvalTrail: null,
+        employeeId: 101,
+        startDate: new Date('2026-10-01T00:00:00.000Z'),
+        endDate: new Date('2026-10-01T00:00:00.000Z'),
+        duration: 'FULL_DAY',
+        leaveType: 'OTHER',
+      });
+      (mockWorkflowEngine.approveWorkflow as jest.Mock).mockResolvedValueOnce({
+        legacyState: { approvalTrail: [] },
+      });
+      (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn) =>
+        fn(mockPrisma),
+      );
+      employeeDelegate.findFirst.mockResolvedValueOnce({
+        id: 101,
+        organizationId: 1,
+        shiftId: 1,
+      });
+      leaveRequestDelegate.update.mockResolvedValueOnce({
+        id: 22,
+        status: 'APPROVED',
+        requestType: 'WORK_FROM_HOME',
+        isPaid: true,
+      });
+
+      await service.hrApprove(22, mockHRUser);
+
+      expect(mockLeaveEntitlementsService.recordUsage).not.toHaveBeenCalled();
+      expect(attendanceDelegate.upsert).not.toHaveBeenCalled();
+      expect(leaveRequestDelegate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ isPaid: true }),
+        }),
+      );
     });
   });
 

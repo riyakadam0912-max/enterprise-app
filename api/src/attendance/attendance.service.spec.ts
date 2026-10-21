@@ -2432,6 +2432,66 @@ describe('AttendanceService', () => {
     expect(result.summary.leave).toBeGreaterThanOrEqual(1);
   });
 
+  it('credits approved WFH dates as full days twice per month, then half days', async () => {
+    const shift = {
+      id: 2,
+      name: 'Day',
+      type: 'FIXED',
+      startTime: '09:00',
+      endTime: '17:00',
+      requiredHours: 8,
+      minPresentHours: 5,
+      gracePeriodMinutes: 15,
+      weeklyHolidayDay: 0,
+      workingDays: [1, 2, 3, 4, 5],
+    };
+    const employee = {
+      id: 4,
+      name: 'Dina',
+      department: 'Finance',
+      designation: 'Lead',
+      organizationId: 1,
+      hireDate: null,
+      shift,
+      shiftAssignments: [],
+    };
+    prisma.employee.findUnique.mockResolvedValue(employee);
+    prisma.employee.findFirst.mockResolvedValue(employee);
+    prisma.attendance.findMany.mockResolvedValue([]);
+    prisma.leaveRequest.findMany.mockResolvedValue([
+      {
+        employeeId: 4,
+        requestType: 'WORK_FROM_HOME',
+        status: 'APPROVED',
+        startDate: new Date('2026-03-02T00:00:00.000Z'),
+        endDate: new Date('2026-03-04T00:00:00.000Z'),
+        duration: 'FULL_DAY',
+      },
+    ]);
+    prisma.holiday.findMany.mockResolvedValue([]);
+
+    const result = await service.getEmployeeAttendance(4, mockUser, '2026-03');
+
+    expect(result.days[1]).toEqual(
+      expect.objectContaining({
+        status: AttendanceStatus.PRESENT,
+        workFromHomeCredit: 1,
+      }),
+    );
+    expect(result.days[2]).toEqual(
+      expect.objectContaining({
+        status: AttendanceStatus.PRESENT,
+        workFromHomeCredit: 1,
+      }),
+    );
+    expect(result.days[3]).toEqual(
+      expect.objectContaining({
+        status: AttendanceStatus.HALF_DAY,
+        workFromHomeCredit: 0.5,
+      }),
+    );
+  });
+
   it('counts scheduled absences and live work across a week-month boundary', async () => {
     jest.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
     const shift = {

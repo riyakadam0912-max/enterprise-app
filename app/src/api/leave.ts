@@ -3,8 +3,9 @@ import type { LeaveApplication, LeaveBalance, LeaveRecord } from '@/src/types/hr
 export type LeaveType = 'SICK' | 'CASUAL' | 'PAID' | 'UNPAID' | 'MATERNITY' | 'PATERNITY' | 'MEDICAL' | 'OTHER' | 'COMP_OFF';
 export type LeaveStatus = 'PENDING_MANAGER' | 'PENDING_HR' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 export type LeaveDuration = 'FULL_DAY' | 'HALF_DAY';
-export type LeaveRequest = LeaveRecord & { id: number; status?: LeaveStatus; leaveType?: LeaveType; startDate?: string; endDate?: string; duration?: LeaveDuration; reason?: string | null; employee?: { id?: number; name?: string | null } | null };
-export type CreateLeaveRequestPayload = { leaveType: LeaveType; startDate: string; endDate: string; duration?: LeaveDuration; reason: string; employeeId?: number };
+export type LeaveRequestType = 'LEAVE' | 'WORK_FROM_HOME';
+export type LeaveRequest = LeaveRecord & { id: number; requestType?: LeaveRequestType; status?: LeaveStatus; leaveType?: LeaveType; startDate?: string; endDate?: string; duration?: LeaveDuration; reason?: string | null; employee?: { id?: number; name?: string | null } | null };
+export type CreateLeaveRequestPayload = { requestType?: LeaveRequestType; leaveType?: LeaveType; startDate: string; endDate: string; duration?: LeaveDuration; reason: string; employeeId?: number };
 export async function leaveHistory(): Promise<LeaveRecord[]> { const payload = unwrap<unknown>((await api.get('/ess/leave/history')).data); return Array.isArray(payload) ? payload as LeaveRecord[] : []; }
 export async function leaveBalance(): Promise<LeaveBalance> { return unwrap<LeaveBalance>((await api.get('/ess/leave/balance')).data); }
 export async function applyLeave(data: LeaveApplication) { return unwrap<LeaveRecord>((await api.post('/ess/leave/apply', data)).data); }

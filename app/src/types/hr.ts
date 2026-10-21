@@ -32,6 +32,7 @@ export type AttendanceToday = {
   checkOut: string | null;
   workingHours?: number | null;
   creditedWorkSeconds?: number;
+  workFromHomeCredit?: number;
   breaks?: { startedAt: string; endedAt: string | null }[];
   onBreak?: boolean;
   lateMinutes: number;
@@ -57,6 +58,7 @@ export type AttendanceRecord = {
   checkOut: string | null;
   workingHours: number | null;
   creditedWorkSeconds?: number;
+  workFromHomeCredit?: number;
   breaks?: { startedAt: string; endedAt: string | null }[];
   breakHours?: number;
   onBreak?: boolean;
@@ -74,6 +76,7 @@ export type TeamAttendance = {
 
 export type LeaveRecord = {
   id: number;
+  requestType?: "LEAVE" | "WORK_FROM_HOME";
   leaveType: string;
   startDate: string;
   endDate: string;
@@ -95,6 +98,7 @@ export type LeaveBalance = {
 export type LeaveApplication = {
   startDate: string;
   endDate: string;
-  leaveType: string;
+  requestType?: "LEAVE" | "WORK_FROM_HOME";
+  leaveType?: string;
   reason?: string;
 };

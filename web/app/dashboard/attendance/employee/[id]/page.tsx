@@ -194,6 +194,11 @@ export default function EmployeeAttendancePage() {
                           </p>
                         )}
                         {day.isShootDay && <p className="font-medium text-orange-700">Shoot day · attendance credited</p>}
+                        {day.workFromHomeCredit !== undefined && (
+                          <p className="font-medium text-sky-700">
+                            Work from home · {day.workFromHomeCredit === 1 ? 'full-day' : 'half-day'} attendance credit
+                          </p>
+                        )}
                         {day.creditedWorkSeconds !== undefined && (
                           <p className="text-[10px] text-teal-700">Flexible credited time</p>
                         )}

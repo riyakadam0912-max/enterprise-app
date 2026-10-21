@@ -55,6 +55,7 @@ export interface AttendanceRecord {
   workingHours: number | null;
   taskHours?: number;
   creditedWorkSeconds?: number;
+  workFromHomeCredit?: number;
   breaks?: { startedAt: string; endedAt: string | null }[];
   breakHours?: number;
   onBreak?: boolean;
@@ -93,6 +94,7 @@ export interface EmployeeAttendanceDay {
   workingHours: number | null;
   taskHours?: number;
   creditedWorkSeconds?: number;
+  workFromHomeCredit?: number;
   breaks?: { startedAt: string; endedAt: string | null }[];
   onBreak?: boolean;
   shortfallHours?: number;

@@ -55,6 +55,7 @@ export interface AttendanceRecord {
 
 export interface LeaveResponse {
   id: number;
+  requestType?: 'LEAVE' | 'WORK_FROM_HOME';
   leaveType: string;
   startDate: string;
   endDate: string;
@@ -72,6 +73,7 @@ export interface LeaveBalance {
 
 export interface LeaveRecord {
   id: number;
+  requestType?: 'LEAVE' | 'WORK_FROM_HOME';
   leaveType: string;
   startDate: string;
   endDate: string;
@@ -368,10 +370,11 @@ export async function getAttendanceHistory(): Promise<AttendanceRecord[]> {
 
 // Leave API Functions
 export async function applyLeave(data: {
+  requestType?: 'LEAVE' | 'WORK_FROM_HOME';
   startDate: string;
   endDate: string;
   duration?: 'FULL_DAY' | 'HALF_DAY';
-  leaveType: string;
+  leaveType?: string;
   reason?: string;
 }): Promise<LeaveResponse> {
   return apiClient<LeaveResponse>('/ess/leave/apply', {

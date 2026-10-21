@@ -3,7 +3,7 @@ import { Link } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { apiError } from '@/src/api/client';
-import { createLeaveRequest, leaveBalance, leaveRequests, type LeaveStatus, type LeaveType } from '@/src/api/leave';
+import { createLeaveRequest, leaveBalance, leaveRequests, type LeaveStatus, type LeaveType, type LeaveRequestType } from '@/src/api/leave';
 import { Dropdown } from '@/src/components/Dropdown';
 import { useAuth } from '@/src/providers/AuthProvider';
 
@@ -21,6 +21,7 @@ export default function Leave() {
   const { session } = useAuth();
   const client = useQueryClient();
   const [leaveType, setLeaveType] = useState<LeaveType>('CASUAL');
+  const [requestType, setRequestType] = useState<LeaveRequestType>('LEAVE');
   const [duration, setDuration] = useState<'FULL_DAY' | 'HALF_DAY'>('FULL_DAY');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -34,21 +35,28 @@ export default function Leave() {
   });
   const requests = useQuery({ queryKey: ['leave', 'requests'], queryFn: leaveRequests });
   const filteredRequests = useMemo(() => (requests.data ?? []).filter((item) => {
-    const searchable = [item.employee?.name, item.leaveType, item.reason].filter(Boolean).join(' ').toLowerCase();
+    const searchable = [item.employee?.name, item.requestType === 'WORK_FROM_HOME' ? 'work from home' : item.leaveType, item.reason].filter(Boolean).join(' ').toLowerCase();
     return (!search.trim() || searchable.includes(search.trim().toLowerCase())) && (status === 'ALL' || item.status === status);
   }), [requests.data, search, status]);
   const totalDays = filteredRequests.reduce((total, item) => total + daysBetween(item.startDate, item.endDate, item.duration), 0);
   const mutation = useMutation({
-    mutationFn: () => createLeaveRequest({ leaveType, startDate, endDate, duration, reason: reason.trim(), employeeId: session?.employeeId ?? undefined }),
+    mutationFn: () => createLeaveRequest({
+      requestType,
+      startDate,
+      endDate,
+      reason: reason.trim(),
+      employeeId: session?.employeeId ?? undefined,
+      ...(requestType === 'LEAVE' ? { leaveType, duration } : {}),
+    }),
     onSuccess: () => {
       setStartDate(''); setEndDate(''); setReason(''); setDuration('FULL_DAY');
       void client.invalidateQueries({ queryKey: ['leave'] });
-      Alert.alert('Leave submitted', 'Your request was submitted for approval.');
+      Alert.alert('Request submitted', 'Your request was submitted for approval.');
     },
     onError: (error) => Alert.alert('Unable to submit leave', apiError(error)),
   });
   const submit = () => {
-    if (!leaveType || !startDate || !endDate) return Alert.alert('Required fields', 'Choose a leave type and enter both dates.');
+    if ((requestType === 'LEAVE' && !leaveType) || !startDate || !endDate) return Alert.alert('Required fields', 'Choose a request type and enter both dates.');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) return Alert.alert('Invalid dates', 'Use dates in YYYY-MM-DD format.');
     if (new Date(endDate).getTime() < new Date(startDate).getTime()) return Alert.alert('Invalid date range', 'End date must be on or after start date.');
     if (reason.trim().length < 5) return Alert.alert('Reason required', 'Reason must be at least 5 characters.');
@@ -61,9 +69,12 @@ export default function Leave() {
       {session?.employeeId ? <View style={styles.balance}><Text style={styles.balanceLabel}>Paid leave balance</Text><Text style={styles.balanceValue}>{balance.data?.balance ?? 0} days</Text><Text style={styles.balanceDetail}>{balance.data?.year ?? new Date().getFullYear()} · Taken {balance.data?.daysTaken ?? 0} of {balance.data?.totalAllocation ?? 0}</Text><Text style={styles.balanceDetail}>Comp-off available: {balance.data?.compOffAvailable ?? 0} days</Text></View> : null}
       <View style={styles.formCard}>
         <Text style={styles.sectionTitle}>New request</Text>
-        <Dropdown label="Leave type" value={leaveType} options={leaveTypes} onChange={(value) => setLeaveType(value as LeaveType)} formatOption={formatOption} />
-        <Dropdown label="Duration" value={duration} options={['FULL_DAY', 'HALF_DAY']} onChange={(value) => setDuration(value as 'FULL_DAY' | 'HALF_DAY')} formatOption={(value) => value === 'HALF_DAY' ? 'Half day (work 5 hours)' : 'Full day'} />
-        {duration === 'HALF_DAY' ? <Text style={styles.detail}>Each date counts as half a day. Work 5 hours per date, excluding breaks.</Text> : null}
+        <Dropdown label="Request type" value={requestType} options={['LEAVE', 'WORK_FROM_HOME']} onChange={(value) => setRequestType(value as LeaveRequestType)} formatOption={(value) => value === 'WORK_FROM_HOME' ? 'Work from home' : 'Leave'} />
+        {requestType === 'LEAVE' ? <>
+          <Dropdown label="Leave type" value={leaveType} options={leaveTypes} onChange={(value) => setLeaveType(value as LeaveType)} formatOption={formatOption} />
+          <Dropdown label="Duration" value={duration} options={['FULL_DAY', 'HALF_DAY']} onChange={(value) => setDuration(value as 'FULL_DAY' | 'HALF_DAY')} formatOption={(value) => value === 'HALF_DAY' ? 'Half day (work 5 hours)' : 'Full day'} />
+          {duration === 'HALF_DAY' ? <Text style={styles.detail}>Each date counts as half a day. Work 5 hours per date, excluding breaks.</Text> : null}
+        </> : <Text style={styles.detail}>The first two approved scheduled WFH dates per calendar month receive full-day attendance credit; additional dates receive half-day credit.</Text>}
         <Field value={startDate} onChangeText={setStartDate} placeholder="Start date (YYYY-MM-DD)" />
         <Field value={endDate} onChangeText={setEndDate} placeholder="End date (YYYY-MM-DD)" />
         <Field value={reason} onChangeText={setReason} placeholder="Reason (minimum 5 characters)" multiline />
@@ -74,7 +85,7 @@ export default function Leave() {
       <TextInput value={search} onChangeText={setSearch} placeholder="Search employee, type, or reason" style={styles.input} />
       <Dropdown label="Status" value={status} options={statuses} onChange={(value) => setStatus(value as LeaveStatus | 'ALL')} formatOption={formatOption} />
       {requests.isError ? <Text style={styles.error}>{apiError(requests.error)}</Text> : null}
-      {filteredRequests.map((item) => <Link key={item.id} href={{ pathname: '/leave/[id]', params: { id: String(item.id) } }} asChild><Pressable style={styles.requestCard}><View style={styles.row}><Text style={styles.requestTitle}>{item.employee?.name ?? 'Leave request'}</Text><Text style={styles.status}>{formatOption(item.status ?? 'PENDING')}</Text></View><Text style={styles.detail}>{formatOption(item.leaveType ?? 'OTHER')} · {item.startDate ?? 'Start not set'} to {item.endDate ?? 'End not set'}</Text><Text style={styles.detail}>{item.duration === 'HALF_DAY' ? 'Half day · work 5 hours per date' : 'Full day'} · {daysBetween(item.startDate, item.endDate, item.duration)} days{item.reason ? ` · ${item.reason}` : ''}</Text></Pressable></Link>)}
+      {filteredRequests.map((item) => <Link key={item.id} href={{ pathname: '/leave/[id]', params: { id: String(item.id) } }} asChild><Pressable style={styles.requestCard}><View style={styles.row}><Text style={styles.requestTitle}>{item.employee?.name ?? 'Leave request'}</Text><Text style={styles.status}>{formatOption(item.status ?? 'PENDING')}</Text></View><Text style={styles.detail}>{item.requestType === 'WORK_FROM_HOME' ? 'Work from home' : formatOption(item.leaveType ?? 'OTHER')} · {item.startDate ?? 'Start not set'} to {item.endDate ?? 'End not set'}</Text><Text style={styles.detail}>{item.requestType === 'WORK_FROM_HOME' ? 'Attendance credit follows monthly WFH allowance' : item.duration === 'HALF_DAY' ? 'Half day · work 5 hours per date' : 'Full day'} · {daysBetween(item.startDate, item.endDate, item.duration)} days{item.reason ? ` · ${item.reason}` : ''}</Text></Pressable></Link>)}
       {!requests.isLoading && filteredRequests.length === 0 ? <View style={styles.empty}><Text style={styles.detail}>No leave requests found.</Text></View> : null}
     </ScrollView>
   );

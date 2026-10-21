@@ -12,6 +12,7 @@ export default function ESSLeavePage() {
 
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
+    requestType: 'LEAVE' as 'LEAVE' | 'WORK_FROM_HOME',
     startDate: '',
     endDate: '',
     duration: 'FULL_DAY',
@@ -41,10 +42,15 @@ export default function ESSLeavePage() {
     }
     try {
       await apply({
+        requestType: formData.requestType,
         startDate: formData.startDate,
         endDate: formData.endDate,
-        duration: formData.duration as 'FULL_DAY' | 'HALF_DAY',
-        leaveType: formData.leaveType,
+        ...(formData.requestType === 'LEAVE'
+          ? {
+              duration: formData.duration as 'FULL_DAY' | 'HALF_DAY',
+              leaveType: formData.leaveType,
+            }
+          : {}),
         reason: formData.reason,
       });
 
@@ -52,6 +58,7 @@ export default function ESSLeavePage() {
       setShowSuccess(true);
       setShowForm(false);
       setFormData({
+        requestType: 'LEAVE',
         startDate: '',
         endDate: '',
         duration: 'FULL_DAY',
@@ -149,8 +156,25 @@ export default function ESSLeavePage() {
             <h2 className="text-lg font-semibold text-gray-900 mb-6">Apply for Leave</h2>
 
             <form onSubmit={handleSubmitLeave} className="space-y-6">
-              {/* Leave Type */}
               <div>
+                <label className="block text-sm font-medium text-gray-900 mb-2">Request type</label>
+                <select
+                  value={formData.requestType}
+                  onChange={(e) =>
+                    setFormData({ ...formData, requestType: e.target.value as 'LEAVE' | 'WORK_FROM_HOME' })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+                >
+                  <option value="LEAVE">Leave</option>
+                  <option value="WORK_FROM_HOME">Work from home</option>
+                </select>
+                {formData.requestType === 'WORK_FROM_HOME' && (
+                  <p className="mt-2 text-sm text-gray-600">The first two approved scheduled WFH dates per calendar month receive full-day credit; additional dates receive half-day credit.</p>
+                )}
+              </div>
+
+              {/* Leave Type */}
+              {formData.requestType === 'LEAVE' ? <div>
                 <label className="block text-sm font-medium text-gray-900 mb-2">
                   Leave Type
                 </label>
@@ -167,9 +191,9 @@ export default function ESSLeavePage() {
                     </option>
                   ))}
                 </select>
-              </div>
+              </div> : null}
 
-              <div>
+              {formData.requestType === 'LEAVE' ? <div>
                 <label className="block text-sm font-medium text-gray-900 mb-2">Duration</label>
                 <select
                   value={formData.duration}
@@ -182,7 +206,7 @@ export default function ESSLeavePage() {
                 {formData.duration === 'HALF_DAY' && (
                     <p className="mt-1 text-xs text-gray-500">Each date counts as half a day. Five working hours excluding breaks are required per date.</p>
                 )}
-              </div>
+              </div> : null}
 
               {/* Dates */}
               <div className="grid grid-cols-2 gap-4">
@@ -279,7 +303,7 @@ export default function ESSLeavePage() {
                   {history.map((leave, idx) => (
                     <tr key={idx} className="hover:bg-gray-50">
                       <td className="px-4 py-3 font-medium text-gray-900">
-                        {leave.leaveType}
+                        {leave.requestType === 'WORK_FROM_HOME' ? 'Work from home' : leave.leaveType}
                       </td>
                       <td className="px-4 py-3">
                         {formatDate(new Date(leave.startDate))}

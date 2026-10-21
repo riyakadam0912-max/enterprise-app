@@ -188,7 +188,17 @@ export class LeaveRequestsService {
     const employeeId = dto.employeeId ?? currentEmployeeId;
     const startDate = new Date(dto.startDate);
     const endDate = new Date(dto.endDate);
-    const duration = dto.duration ?? 'FULL_DAY';
+    const requestType = dto.requestType ?? 'LEAVE';
+    const leaveType = requestType === 'WORK_FROM_HOME'
+      ? 'OTHER'
+      : dto.leaveType;
+    if (requestType === 'LEAVE' && !leaveType) {
+      throw new BadRequestException('Leave type is required');
+    }
+    const duration =
+      requestType === 'WORK_FROM_HOME'
+        ? 'FULL_DAY'
+        : (dto.duration ?? 'FULL_DAY');
     this.validateDateRange(startDate, endDate);
 
     if (user.role === Role.EMPLOYEE || user.role === Role.MANAGER) {
@@ -287,7 +297,8 @@ export class LeaveRequestsService {
         startDate,
         endDate,
         duration,
-        leaveType: dto.leaveType,
+        requestType,
+        leaveType: leaveType!,
         reason: dto.reason,
         status: 'PENDING_MANAGER',
         appliedOn: new Date(),
@@ -310,14 +321,16 @@ export class LeaveRequestsService {
         context: {
           employeeId,
           requestorUserId: user.userId,
-          leaveType: dto.leaveType,
+          requestType,
+          leaveType: leaveType!,
           duration,
           requiredWorkHours: duration === 'HALF_DAY' ? 5 : undefined,
           startDate: leaveRequest.startDate.toISOString(),
           endDate: leaveRequest.endDate.toISOString(),
         },
         metadata: {
-          leaveType: dto.leaveType,
+          requestType,
+          leaveType: leaveType!,
           duration,
           reason: dto.reason ?? null,
         },
@@ -356,7 +369,7 @@ export class LeaveRequestsService {
         empUser.managerId,
         managerUser?.name ?? null,
         managerUser?.email ?? null,
-        dto.leaveType,
+        requestType === 'WORK_FROM_HOME' ? 'WORK_FROM_HOME' : leaveType!,
         leaveRequest.startDate,
         leaveRequest.endDate,
         dto.reason,
@@ -462,8 +475,17 @@ export class LeaveRequestsService {
       ? new Date(dto.endDate)
       : existing.endDate;
     this.validateDateRange(updatedStartDate, updatedEndDate);
-    if (dto.duration !== undefined) data.duration = dto.duration;
-    if (dto.leaveType !== undefined) data.leaveType = dto.leaveType;
+    if (existing.requestType === 'WORK_FROM_HOME') {
+      data.duration = 'FULL_DAY';
+    } else if (dto.duration !== undefined) {
+      data.duration = dto.duration;
+    }
+    if (
+      existing.requestType !== 'WORK_FROM_HOME' &&
+      dto.leaveType !== undefined
+    ) {
+      data.leaveType = dto.leaveType;
+    }
     if (dto.reason !== undefined) data.reason = dto.reason;
     const updated = await this.prisma.leaveRequest.update({
       where: { id, organizationId: existing.organizationId },
@@ -584,6 +606,7 @@ export class LeaveRequestsService {
       }
     }
     const normalizedLeaveType = request.leaveType.trim().toUpperCase();
+    const isWorkFromHome = request.requestType === 'WORK_FROM_HOME';
     const leaveCategory =
       normalizedLeaveType === 'COMP_OFF' ? 'COMP_OFF' : 'PAID_LEAVE';
     const isUnpaid = normalizedLeaveType.includes('UNPAID');
@@ -594,6 +617,7 @@ export class LeaveRequestsService {
     }
 
     if (
+      !isWorkFromHome &&
       request.employeeId &&
       !isUnpaid &&
       leaveDays > 0 &&
@@ -611,6 +635,7 @@ export class LeaveRequestsService {
       }
     }
     if (
+      !isWorkFromHome &&
       request.employeeId &&
       normalizedLeaveType === 'COMP_OFF' &&
       leaveDays > 0
@@ -651,6 +676,7 @@ export class LeaveRequestsService {
         : null;
 
       if (
+        !isWorkFromHome &&
         employee &&
         leaveDays > 0 &&
         !isUnpaid
@@ -675,11 +701,12 @@ export class LeaveRequestsService {
         data: {
           ...createHrApprovalState(request.approvalTrail, user.userId),
           approvalTrail: result.legacyState.approvalTrail,
-          isPaid: !isUnpaid,
+          isPaid: isWorkFromHome || !isUnpaid,
         },
       });
 
       if (
+        !isWorkFromHome &&
         request.employeeId &&
         request.duration !== 'HALF_DAY' &&
         normalizedLeaveType !== 'COMP_OFF'

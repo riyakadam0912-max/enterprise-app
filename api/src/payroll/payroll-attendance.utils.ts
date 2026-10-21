@@ -15,6 +15,7 @@ import {
   resolveShiftForDate,
 } from '../attendance/workday-schedule.utils';
 import type { WorkdayShift } from '../attendance/workday-schedule.utils';
+import { buildApprovedWorkFromHomeCredits } from '../attendance/work-from-home.utils';
 
 export type PayrollAttendanceMetrics = {
   presentDays: number;
@@ -119,6 +120,9 @@ export async function getPayrollAttendanceMetrics(
   if (!employee) {
     throw new NotFoundException('Employee not found for payroll attendance');
   }
+  const ordinaryLeaveRows = leaveRows.filter(
+    (request) => request.requestType !== 'WORK_FROM_HOME',
+  );
 
   const timezone = employee.organization?.timezone ?? 'UTC';
   const rangeStart = localMidnightAtDateInTimezone(startKey, timezone);
@@ -178,6 +182,41 @@ export async function getPayrollAttendanceMetrics(
       holidayKeys.add(dayKey(date));
     }
   }
+  const workFromHomeCredits = buildApprovedWorkFromHomeCredits(
+    leaveRows.map((request) => ({
+      employeeId: request.employeeId ?? null,
+      requestType: request.requestType ?? 'LEAVE',
+      status: request.status,
+      startDate: request.startDate,
+      endDate: request.endDate,
+    })),
+    (requestedEmployeeId, date) => {
+      if (
+        requestedEmployeeId !== employeeId ||
+        (employee.hireDate && dayKey(date) < dayKey(employee.hireDate))
+      ) {
+        return false;
+      }
+      const dateKey = dayKey(date);
+      const attendance = attendanceByDate.get(dateKey);
+      const shift =
+        resolveShiftForDate(
+          employee.shiftAssignments,
+          employee.shift,
+          attendance?.shift,
+          date,
+        ) ?? DEFAULT_PAYROLL_SHIFT;
+      return (
+        isScheduledWorkday(date, shift) &&
+        !holidayKeys.has(dateKey) &&
+        !ordinaryLeaveRows.some(
+          (request) =>
+            dayKey(request.startDate) <= dateKey &&
+            dayKey(request.endDate) >= dateKey,
+        )
+      );
+    },
+  );
 
   const cutoverDate = getFlexibleTaskTimeCutoverDate();
   let presentDays = 0;
@@ -211,7 +250,7 @@ export async function getPayrollAttendanceMetrics(
         date,
       ) ?? DEFAULT_PAYROLL_SHIFT;
     if (!isScheduledWorkday(date, shift)) continue;
-    const leave = leaveRows.find(
+    const leave = ordinaryLeaveRows.find(
       (request) =>
         dayKey(request.startDate) <= dateKey &&
         dayKey(request.endDate) >= dateKey,
@@ -280,13 +319,29 @@ export async function getPayrollAttendanceMetrics(
           : sumIntervalSeconds(taskIntervals, dayStart, dayEnd) / 3600 +
             dayTimesheetHours;
       totalWorkedHours += creditedHours;
-      presentDays += Math.min(creditedHours / 8, eligibleFraction);
-      if (attendance?.status === 'ABSENT') absentDays += eligibleFraction;
+      const workFromHomeCredit = workFromHomeCredits.get(
+        `${employeeId}:${dateKey}`,
+      );
+      presentDays +=
+        workFromHomeCredit !== undefined
+          ? workFromHomeCredit
+          : Math.min(creditedHours / 8, eligibleFraction);
+      if (
+        workFromHomeCredit === undefined &&
+        attendance?.status === 'ABSENT'
+      ) {
+        absentDays += eligibleFraction;
+      }
       continue;
     }
 
+    const workFromHomeCredit = workFromHomeCredits.get(
+      `${employeeId}:${dateKey}`,
+    );
     const status = attendance?.status;
-    if (status === 'PRESENT') presentDays += eligibleFraction;
+    if (workFromHomeCredit !== undefined) {
+      presentDays += workFromHomeCredit;
+    } else if (status === 'PRESENT') presentDays += eligibleFraction;
     else if (status === 'HALF_DAY') {
       presentDays += Math.min(0.5, eligibleFraction);
     } else if (status === 'ABSENT') {
