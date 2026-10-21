@@ -41,6 +41,7 @@ export default function AddQuotePage() {
   const isEditing = Boolean(editId);
   const session = useAuthSession();
   const canCreateService = session.isSuperAdmin || session.role === 'ADMIN' || session.permissions.includes('product.create');
+  const canEditService = session.isSuperAdmin || session.isPlatformAdmin || session.role === 'ADMIN' || session.permissions.includes('product.update');
 
   const [customerId, setCustomerId] = useState('');
   const [quoteDate, setQuoteDate] = useState(new Date().toISOString().slice(0, 10));
@@ -232,8 +233,12 @@ export default function AddQuotePage() {
   }
 
   function handleCreatedService(product: Product) {
-    setProducts((prev) => [...prev, product]);
+    setProducts((prev) => prev.some((item) => item.id === product.id) ? prev.map((item) => item.id === product.id ? product : item) : [...prev, product]);
     if (serviceModalIndex !== null) selectProduct(serviceModalIndex, product);
+  }
+
+  function handleUpdatedService(product: Product) {
+    setProducts((prev) => prev.map((item) => item.id === product.id ? product : item));
   }
 
   function handleCreateCustomer() {
@@ -437,7 +442,7 @@ export default function AddQuotePage() {
         </div>
       </form>
       <CustomerPickerModal open={customerModalOpen} customers={customers} selectedId={customerId ? Number(customerId) : undefined} loading={metadataLoading} error={metadataError} onClose={() => setCustomerModalOpen(false)} onSelect={selectCustomer} onCreateCustomer={handleCreateCustomer} />
-      <ServicePickerModal open={serviceModalIndex !== null} products={products} selectedId={serviceModalIndex === null ? undefined : items[serviceModalIndex]?.productId} canCreate={canCreateService} onClose={() => setServiceModalIndex(null)} onSelect={handleCreatedService} onRemoveSelected={removeSelectedItem} />
+      <ServicePickerModal open={serviceModalIndex !== null} products={products} selectedId={serviceModalIndex === null ? undefined : items[serviceModalIndex]?.productId} canCreate={canCreateService} canEdit={canEditService} onClose={() => setServiceModalIndex(null)} onSelect={handleCreatedService} onUpdate={handleUpdatedService} onRemoveSelected={removeSelectedItem} />
     </div>
   );
 }

@@ -20,3 +20,7 @@ export function getProducts(): Promise<Product[]> {
 export function createProduct(data: ProductInput): Promise<Product> {
   return apiClient<Product>('/products', { method: 'POST', body: JSON.stringify(data) });
 }
+
+export function updateProduct(id: number, data: ProductInput): Promise<Product> {
+  return apiClient<Product>(`/products/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+}

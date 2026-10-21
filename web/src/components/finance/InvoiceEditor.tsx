@@ -92,6 +92,11 @@ export default function InvoiceEditor({ invoiceId }: { invoiceId?: number }) {
     session.isSuperAdmin ||
     session.role === "ADMIN" ||
     session.permissions.includes("product.create");
+  const canEditProduct =
+    session.isSuperAdmin ||
+    session.isPlatformAdmin ||
+    session.role === "ADMIN" ||
+    session.permissions.includes("product.update");
   const createdCustomerId = searchParams.get("createdCustomerId");
   const issueDateDefault = dateInputValue(new Date());
   const [invoiceNo, setInvoiceNo] = useState("");
@@ -406,6 +411,12 @@ export default function InvoiceEditor({ invoiceId }: { invoiceId?: number }) {
       ),
     );
     setProductModalIndex(null);
+  }
+
+  function updateCatalogProduct(product: Product) {
+    setProducts((current) =>
+      current.map((item) => (item.id === product.id ? product : item)),
+    );
   }
 
   function openNewCustomer() {
@@ -1008,11 +1019,13 @@ export default function InvoiceEditor({ invoiceId }: { invoiceId?: number }) {
             : items[productModalIndex]?.productId
         }
         canCreate={canCreateProduct}
+        canEdit={canEditProduct}
         onClose={() => setProductModalIndex(null)}
         onSelect={(product) =>
           productModalIndex !== null &&
           selectProduct(productModalIndex, product)
         }
+        onUpdate={updateCatalogProduct}
         onRemoveSelected={() =>
           productModalIndex !== null &&
           setItems((current) =>
