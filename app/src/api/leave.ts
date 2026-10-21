@@ -1,6 +1,6 @@
 import { api, unwrap } from './client';
 import type { LeaveApplication, LeaveBalance, LeaveRecord } from '@/src/types/hr';
-export type LeaveType = 'SICK' | 'CASUAL' | 'PAID' | 'UNPAID' | 'MATERNITY' | 'PATERNITY' | 'MEDICAL' | 'OTHER';
+export type LeaveType = 'SICK' | 'CASUAL' | 'PAID' | 'UNPAID' | 'MATERNITY' | 'PATERNITY' | 'MEDICAL' | 'OTHER' | 'COMP_OFF';
 export type LeaveStatus = 'PENDING_MANAGER' | 'PENDING_HR' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 export type LeaveDuration = 'FULL_DAY' | 'HALF_DAY';
 export type LeaveRequest = LeaveRecord & { id: number; status?: LeaveStatus; leaveType?: LeaveType; startDate?: string; endDate?: string; duration?: LeaveDuration; reason?: string | null; employee?: { id?: number; name?: string | null } | null };

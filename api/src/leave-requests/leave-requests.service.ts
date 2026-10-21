@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Inject,
+  InternalServerErrorException,
   Injectable,
   Logger,
   NotFoundException,
@@ -20,13 +21,13 @@ import {
   createSubmittedApprovalState,
 } from '../common/workflows/approval-workflow';
 import { DASHBOARD_CACHE_KEY } from '../common/utils/cache-keys';
-import { countLeaveDaysInPeriod } from '../common/utils/leave-day-count';
 import { PrismaService } from '../prisma/prisma.service';
 import { BusinessUnitsService } from '../business-units/business-units.service';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { UpdateLeaveRequestDto } from './dto/update-leave-request.dto';
 import { EmployeeLeaveRequestedEvent } from './events/employee-leave-requested.event';
 import { OrganizationScopeService } from '../organizations/organization-scope.service';
+import { LeaveEntitlementsService } from './leave-entitlements.service';
 
 const FINAL_LEAVE_STATUSES = ['APPROVED', 'REJECTED', 'CANCELLED'] as const;
 type FinalLeaveStatus = (typeof FINAL_LEAVE_STATUSES)[number];
@@ -46,6 +47,7 @@ export class LeaveRequestsService {
     private readonly workflowEngine: WorkflowEngineService,
     private readonly businessUnitsService: BusinessUnitsService,
     private readonly organizationScopeService: OrganizationScopeService,
+    private readonly leaveEntitlementsService: LeaveEntitlementsService,
   ) {}
 
   private async invalidateDashboardCache() {
@@ -103,7 +105,9 @@ export class LeaveRequestsService {
     const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
     const isHierarchyAdmin = user.role === Role.ADMIN || user.role === Role.HR;
     const organizationIds = isHierarchyAdmin
-      ? await this.organizationScopeService.getOrganizationIds(user)
+      ? ((await this.organizationScopeService.getOrganizationIds(user)) ?? [
+          organizationId,
+        ])
       : [organizationId];
     const descendantIds =
       organizationIds?.filter((id) => id !== organizationId) ?? [];
@@ -169,39 +173,10 @@ export class LeaveRequestsService {
     });
   }
 
-  private computeLeaveDays(
-    startDate: Date,
-    endDate: Date,
-    duration: string | null | undefined = 'FULL_DAY',
-  ) {
-    return countLeaveDaysInPeriod(
-      startDate,
-      endDate,
-      duration,
-      startDate,
-      endDate,
-    );
-  }
-
   private validateDateRange(startDate: Date, endDate: Date) {
     if (endDate < startDate) {
       throw new BadRequestException('End date cannot be before start date');
     }
-  }
-
-  private enumerateDays(startDate: Date, endDate: Date) {
-    const cursor = new Date(startDate);
-    cursor.setHours(0, 0, 0, 0);
-    const end = new Date(endDate);
-    end.setHours(0, 0, 0, 0);
-
-    const days: Date[] = [];
-    while (cursor.getTime() <= end.getTime()) {
-      days.push(new Date(cursor));
-      cursor.setDate(cursor.getDate() + 1);
-    }
-
-    return days;
   }
 
   async create(dto: CreateLeaveRequestDto, user: AuthUser) {
@@ -270,6 +245,41 @@ export class LeaveRequestsService {
     }
     organizationId = employee.organizationId;
 
+    const requestedDays =
+      await this.leaveEntitlementsService.countScheduledLeaveDays(
+        employeeId,
+        organizationId,
+        startDate,
+        endDate,
+        duration,
+      );
+    if (requestedDays <= 0) {
+      throw new BadRequestException(
+        'The selected dates contain no scheduled workdays',
+      );
+    }
+
+    const overlappingLeave = await this.prisma.leaveRequest.findFirst({
+      where: {
+        employeeId,
+        organizationId,
+        deletedAt: null,
+        status: {
+          in: ['PENDING', 'PENDING_MANAGER', 'PENDING_HR', 'APPROVED'],
+        },
+        AND: [
+          { startDate: { lte: endDate } },
+          { endDate: { gte: startDate } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (overlappingLeave) {
+      throw new BadRequestException(
+        'You already have a leave request for these dates',
+      );
+    }
+
     const leaveRequest = await this.prisma.leaveRequest.create({
       data: {
         organizationId,
@@ -316,6 +326,12 @@ export class LeaveRequestsService {
       this.logger.error(
         `Leave request ${leaveRequest.id} was created, but workflow initialization failed`,
         error instanceof Error ? error.stack : String(error),
+      );
+      await this.prisma.leaveRequest.delete({
+        where: { id: leaveRequest.id, organizationId },
+      });
+      throw new InternalServerErrorException(
+        'The leave request could not be submitted for approval. Please try again.',
       );
     }
 
@@ -383,7 +399,7 @@ export class LeaveRequestsService {
       throw new NotFoundException(`LeaveRequest #${id} not found`);
     }
 
-    if (user.role === Role.EMPLOYEE && isFinalLeaveStatus(existing.status)) {
+    if (isFinalLeaveStatus(existing.status)) {
       throw new ForbiddenException('Finalized leave requests cannot be edited');
     }
 
@@ -460,6 +476,11 @@ export class LeaveRequestsService {
 
   async remove(id: number, user: AuthUser) {
     const request = await this.findOne(id, user);
+    if (isFinalLeaveStatus(request.status)) {
+      throw new ForbiddenException(
+        'Finalized leave requests cannot be deleted',
+      );
+    }
     const deleted = await this.prisma.leaveRequest.update({
       where: { id, organizationId: request.organizationId },
       data: { deletedAt: new Date() },
@@ -531,11 +552,80 @@ export class LeaveRequestsService {
     }
     const organizationId = request.organizationId;
 
-    const leaveDays = this.computeLeaveDays(
-      request.startDate,
-      request.endDate,
-      request.duration,
-    );
+    const scheduledLeaveDates = request.employeeId
+      ? await this.leaveEntitlementsService.getScheduledLeaveDates(
+          request.employeeId,
+          organizationId,
+          request.startDate,
+          request.endDate,
+        )
+      : [];
+    const leaveDays =
+      request.duration === 'HALF_DAY'
+        ? scheduledLeaveDates.length * 0.5
+        : scheduledLeaveDates.length;
+    const leaveUsageByYear = new Map<
+      number,
+      { amount: number; periodStart: Date; periodEnd: Date }
+    >();
+    for (const leaveDate of scheduledLeaveDates) {
+      const year = leaveDate.getUTCFullYear();
+      const current = leaveUsageByYear.get(year);
+      const amount = request.duration === 'HALF_DAY' ? 0.5 : 1;
+      if (!current) {
+        leaveUsageByYear.set(year, {
+          amount,
+          periodStart: leaveDate,
+          periodEnd: leaveDate,
+        });
+      } else {
+        current.amount += amount;
+        current.periodEnd = leaveDate;
+      }
+    }
+    const normalizedLeaveType = request.leaveType.trim().toUpperCase();
+    const leaveCategory =
+      normalizedLeaveType === 'COMP_OFF' ? 'COMP_OFF' : 'PAID_LEAVE';
+    const isUnpaid = normalizedLeaveType.includes('UNPAID');
+    if (request.employeeId && leaveDays <= 0) {
+      throw new BadRequestException(
+        'The selected dates contain no scheduled workdays',
+      );
+    }
+
+    if (
+      request.employeeId &&
+      !isUnpaid &&
+      leaveDays > 0 &&
+      normalizedLeaveType !== 'COMP_OFF'
+    ) {
+      const available = await this.leaveEntitlementsService.getAvailableBalance(
+        request.employeeId,
+        organizationId,
+        'PAID_LEAVE',
+      );
+      if (available < leaveDays) {
+        throw new BadRequestException(
+          `Insufficient paid leave balance. Available: ${available} day(s).`,
+        );
+      }
+    }
+    if (
+      request.employeeId &&
+      normalizedLeaveType === 'COMP_OFF' &&
+      leaveDays > 0
+    ) {
+      const available = await this.leaveEntitlementsService.getAvailableBalance(
+        request.employeeId,
+        organizationId,
+        'COMP_OFF',
+      );
+      if (available < leaveDays) {
+        throw new BadRequestException(
+          `Insufficient comp-off balance. Available: ${available} day(s).`,
+        );
+      }
+    }
 
     const result = await this.workflowEngine.approveWorkflow({
       definitionKey: 'leave-request-approval',
@@ -560,12 +650,24 @@ export class LeaveRequestsService {
           })
         : null;
 
-      if (employee) {
-        const currentBalance = employee.leaveBalance ?? 0;
-        await tx.employee.update({
-          where: { id: employee.id, organizationId },
-          data: { leaveBalance: Math.max(0, currentBalance - leaveDays) },
-        });
+      if (
+        employee &&
+        leaveDays > 0 &&
+        !isUnpaid
+      ) {
+        for (const [year, usage] of leaveUsageByYear) {
+          await this.leaveEntitlementsService.recordUsage(tx, {
+            employeeId: employee.id,
+            organizationId,
+            category: leaveCategory,
+            amount: usage.amount,
+            sourceKey: `leave-usage:${id}:${year}`,
+            sourceId: id,
+            description: `Approved ${request.leaveType} leave request #${id}`,
+            periodStart: usage.periodStart,
+            periodEnd: usage.periodEnd,
+          });
+        }
       }
 
       const approved = await tx.leaveRequest.update({
@@ -573,17 +675,16 @@ export class LeaveRequestsService {
         data: {
           ...createHrApprovalState(request.approvalTrail, user.userId),
           approvalTrail: result.legacyState.approvalTrail,
-          isPaid: request.leaveType?.toUpperCase().includes('UNPAID')
-            ? false
-            : true,
+          isPaid: !isUnpaid,
         },
       });
 
-      if (request.employeeId && request.duration !== 'HALF_DAY') {
-        for (const leaveDay of this.enumerateDays(
-          approved.startDate,
-          approved.endDate,
-        )) {
+      if (
+        request.employeeId &&
+        request.duration !== 'HALF_DAY' &&
+        normalizedLeaveType !== 'COMP_OFF'
+      ) {
+        for (const leaveDay of scheduledLeaveDates) {
           await tx.attendance.upsert({
             where: {
               employeeId_date: {
@@ -595,7 +696,7 @@ export class LeaveRequestsService {
               organizationId,
               shiftId: employee?.shiftId ?? undefined,
               status: 'LEAVE',
-              isPaidLeave: approved.isPaid ?? true,
+              isPaidLeave: !isUnpaid,
               checkIn: null,
               checkOut: null,
               workingHours: null,
@@ -609,7 +710,7 @@ export class LeaveRequestsService {
               shiftId: employee?.shiftId ?? undefined,
               date: leaveDay,
               status: 'LEAVE',
-              isPaidLeave: approved.isPaid ?? true,
+              isPaidLeave: !isUnpaid,
               requiredHours: employee?.shift?.requiredHours ?? 8,
               remarks: 'On Leave',
             },
@@ -623,6 +724,185 @@ export class LeaveRequestsService {
     await this.invalidateDashboardCache();
 
     return approved;
+  }
+
+  private async getScopedCompOffWhere(
+    user: AuthUser,
+  ): Promise<Prisma.LeaveCompOffClaimWhereInput> {
+    const organizationId = this.getOrganizationId(user);
+    const isHierarchyAdmin = user.role === Role.ADMIN || user.role === Role.HR;
+    const organizationIds = isHierarchyAdmin
+      ? ((await this.organizationScopeService.getOrganizationIds(user)) ?? [
+          organizationId,
+        ])
+      : [organizationId];
+    const buScope = await this.businessUnitsService.resolveScope(user as any);
+    const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
+    let employeeWhere: Prisma.EmployeeWhereInput;
+    if (user.role === Role.EMPLOYEE) {
+      employeeWhere = {
+        id: await this.resolveCurrentEmployeeId(user),
+        organizationId,
+        deletedAt: null,
+      };
+    } else if (user.role === Role.MANAGER) {
+      employeeWhere = {
+        organizationId,
+        deletedAt: null,
+        AND: [
+          buWhere,
+          {
+            OR: [
+              { user: { managerId: user.userId } },
+              {
+                user: {
+                  reportingManagers: { some: { managerId: user.userId } },
+                },
+              },
+            ],
+          },
+        ],
+      };
+    } else if (isHierarchyAdmin && organizationIds.length > 1) {
+      employeeWhere = {
+        OR: [
+          buWhere,
+          {
+            organizationId: { in: organizationIds.filter((id) => id !== organizationId) },
+            deletedAt: null,
+          },
+        ],
+      };
+    } else {
+      employeeWhere = buWhere;
+    }
+    return {
+      organizationId:
+        organizationIds.length === 1
+          ? organizationIds[0]
+          : { in: organizationIds },
+      employee: employeeWhere,
+    };
+  }
+
+  async findCompOffClaims(user: AuthUser) {
+    const scope = await this.getScopedCompOffWhere(user);
+    return this.prisma.leaveCompOffClaim.findMany({
+      where: { ...scope, status: 'PENDING' },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            name: true,
+            organization: { select: { id: true, name: true } },
+          },
+        },
+      },
+      orderBy: [{ workDate: 'desc' }, { id: 'desc' }],
+    });
+  }
+
+  private async findScopedCompOffClaim(id: number, user: AuthUser) {
+    const scope = await this.getScopedCompOffWhere(user);
+    return this.prisma.leaveCompOffClaim.findFirst({
+      where: { id, ...scope },
+      include: {
+        employee: {
+          include: {
+            user: { select: { id: true } },
+          },
+        },
+      },
+    });
+  }
+
+  async approveCompOffClaim(id: number, user: AuthUser) {
+    const claim = await this.findScopedCompOffClaim(id, user);
+    if (!claim) {
+      throw new NotFoundException(`Comp-off claim #${id} not found`);
+    }
+    if (claim.status !== 'PENDING') {
+      throw new ForbiddenException('Comp-off claim is no longer pending');
+    }
+    if (claim.employee.user?.id === user.userId) {
+      throw new ForbiddenException(
+        'Employees cannot approve their own comp-off claims',
+      );
+    }
+
+    const policy = await this.prisma.leavePolicy.findUnique({
+      where: { organizationId: claim.organizationId },
+      select: { compOffExpiryDays: true },
+    });
+    const earnedDays = claim.hours >= 8 ? 1 : 0.5;
+    const reviewedAt = new Date();
+    const expiresAt = new Date(
+      reviewedAt.getTime() + (policy?.compOffExpiryDays ?? 90) * 86_400_000,
+    );
+
+    await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.leaveCompOffClaim.updateMany({
+        where: { id, organizationId: claim.organizationId, status: 'PENDING' },
+        data: {
+          status: 'APPROVED',
+          reviewedById: user.userId,
+          reviewedAt,
+        },
+      });
+      if (updated.count !== 1) {
+        throw new BadRequestException(
+          'Comp-off claim changed; refresh and review again',
+        );
+      }
+      await tx.leaveBalanceEntry.create({
+        data: {
+          employeeId: claim.employeeId,
+          organizationId: claim.organizationId,
+          category: 'COMP_OFF',
+          entryType: 'COMPOFF_EARNED',
+          amount: earnedDays,
+          sourceKey: `compoff-claim:${claim.id}`,
+          sourceId: claim.id,
+          description: `Comp-off earned for holiday work on ${claim.workDate.toISOString().slice(0, 10)}`,
+          periodStart: claim.workDate,
+          periodEnd: claim.workDate,
+          expiresAt,
+        },
+      });
+    });
+
+    await this.invalidateDashboardCache();
+    return this.findScopedCompOffClaim(id, user);
+  }
+
+  async rejectCompOffClaim(id: number, user: AuthUser) {
+    const claim = await this.findScopedCompOffClaim(id, user);
+    if (!claim) {
+      throw new NotFoundException(`Comp-off claim #${id} not found`);
+    }
+    if (claim.status !== 'PENDING') {
+      throw new ForbiddenException('Comp-off claim is no longer pending');
+    }
+    if (claim.employee.user?.id === user.userId) {
+      throw new ForbiddenException(
+        'Employees cannot reject their own comp-off claims',
+      );
+    }
+    const updated = await this.prisma.leaveCompOffClaim.updateMany({
+      where: { id, organizationId: claim.organizationId, status: 'PENDING' },
+      data: {
+        status: 'REJECTED',
+        reviewedById: user.userId,
+        reviewedAt: new Date(),
+      },
+    });
+    if (updated.count !== 1) {
+      throw new BadRequestException(
+        'Comp-off claim changed; refresh and review again',
+      );
+    }
+    await this.invalidateDashboardCache();
+    return this.findScopedCompOffClaim(id, user);
   }
 
   async reject(id: number, user: AuthUser, reason?: string) {

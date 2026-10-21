@@ -35,7 +35,6 @@ export default function EditEmployeePage() {
     hireDate: '',
     manager: '',
     reportingManagerIds: [] as number[],
-    leaveBalance: '',
     status: '',
     shiftId: '',
   });
@@ -78,7 +77,6 @@ export default function EditEmployeePage() {
           ...(employee.user?.reportingManagers?.map(({ manager }) => manager.id) ?? []),
           ...(employee.user?.managerId && !employee.user.reportingManagers?.some((r) => r.manager.id === employee.user?.managerId) ? [employee.user.managerId] : []),
         ],
-        leaveBalance: employee.leaveBalance != null ? String(employee.leaveBalance) : '',
         status: employee.status ?? '',
         shiftId: employee.shift?.id ? String(employee.shift.id) : '',
       });
@@ -109,7 +107,6 @@ export default function EditEmployeePage() {
         hireDate: form.hireDate || undefined,
         manager: form.manager.trim() || undefined,
         managerIds: form.reportingManagerIds.map(Number),
-        leaveBalance: form.leaveBalance ? Number(form.leaveBalance) : undefined,
         status: form.status || undefined,
         shiftId: form.shiftId ? Number(form.shiftId) : null,
       });
@@ -336,11 +333,6 @@ export default function EditEmployeePage() {
             />
           </div>
 
-          {/* Leave Balance */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Leave Balance</label>
-            <input type="number" name="leaveBalance" value={form.leaveBalance} onChange={handleChange} placeholder="#######" min="0" className={inputCls} />
-          </div>
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Assigned Shift</label>

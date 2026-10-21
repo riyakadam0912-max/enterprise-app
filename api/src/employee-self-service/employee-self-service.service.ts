@@ -7,7 +7,6 @@ import {
 import { AttendanceCheckoutSource, type Prisma } from '@prisma/client';
 import type { AuthUser } from '../common/types/auth';
 import { PrismaService } from '../prisma/prisma.service';
-import { countLeaveDaysInPeriod } from '../common/utils/leave-day-count';
 import { ApplyLeaveDto } from './dto/apply-leave.dto';
 import { SubmitExpenseDto } from './dto/submit-expense.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -17,10 +16,16 @@ import {
   calculateLateMinutesInTimezone,
   dateKeyInTimezone,
 } from '../attendance/attendance-time.utils';
+import { LeaveRequestsService } from '../leave-requests/leave-requests.service';
+import { LeaveEntitlementsService } from '../leave-requests/leave-entitlements.service';
 
 @Injectable()
 export class EmployeeSelfServiceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly leaveRequestsService: LeaveRequestsService,
+    private readonly leaveEntitlementsService: LeaveEntitlementsService,
+  ) {}
 
   private async resolveOrganizationId(user: AuthUser): Promise<number> {
     if (
@@ -418,14 +423,6 @@ export class EmployeeSelfServiceService {
 
   async applyLeave(user: AuthUser, dto: ApplyLeaveDto) {
     const employeeId = await this.resolveEmployeeId(user);
-    const employee = await this.prisma.employee.findUnique({
-      where: { id: employeeId },
-    });
-
-    if (!employee) {
-      throw new NotFoundException('Employee not found');
-    }
-
     const startDate = new Date(dto.startDate);
     const endDate = new Date(dto.endDate);
 
@@ -433,48 +430,36 @@ export class EmployeeSelfServiceService {
       throw new BadRequestException('End date cannot be before start date');
     }
     const duration = dto.duration ?? 'FULL_DAY';
-    // Check for overlapping leaves
-    const overlappingLeave = await this.prisma.leaveRequest.findFirst({
-      where: {
-        employeeId,
-        status: { in: ['PENDING', 'APPROVED'] },
-        AND: [{ startDate: { lte: endDate } }, { endDate: { gte: startDate } }],
-      },
-    });
-
-    if (overlappingLeave) {
-      throw new BadRequestException(
-        'You already have a leave request for these dates',
-      );
-    }
-
     const organizationId = await this.resolveOrganizationId(user);
-    const leaveRequest = await this.prisma.leaveRequest.create({
-      data: {
-        organizationId,
-        employeeId,
-        startDate,
-        endDate,
-        duration,
-        leaveType: dto.leaveType,
-        reason: dto.reason,
-        status: 'PENDING',
-        appliedOn: new Date(),
-      },
-    });
-
-    // Calculate number of days
-    const daysDiff = countLeaveDaysInPeriod(
+    const days = await this.leaveEntitlementsService.countScheduledLeaveDays(
+      employeeId,
+      organizationId,
       startDate,
       endDate,
       duration,
-      startDate,
-      endDate,
+    );
+    if (days <= 0) {
+      throw new BadRequestException(
+        'The selected dates contain no scheduled workdays',
+      );
+    }
+
+    const leaveType = this.normalizeLeaveType(dto.leaveType);
+    const leaveRequest = await this.leaveRequestsService.create(
+      {
+        startDate: dto.startDate,
+        endDate: dto.endDate,
+        duration,
+        leaveType,
+        reason: dto.reason,
+        employeeId,
+      },
+      user,
     );
 
     return {
       success: true,
-      message: `Leave request submitted for ${daysDiff} day(s)`,
+      message: `Leave request submitted for ${days} day(s)`,
       data: {
         id: leaveRequest.id,
         leaveType: leaveRequest.leaveType,
@@ -482,75 +467,59 @@ export class EmployeeSelfServiceService {
         endDate: leaveRequest.endDate,
         duration: leaveRequest.duration,
         status: leaveRequest.status,
-        days: daysDiff,
+        days,
       },
     };
+  }
+
+  private normalizeLeaveType(leaveType: string) {
+    const normalized = leaveType
+      .trim()
+      .toUpperCase()
+      .replace(/[\s-]+/g, '_');
+    const aliases: Record<string, string> = {
+      CASUAL: 'CASUAL',
+      SICK: 'SICK',
+      PAID: 'PAID',
+      UNPAID: 'UNPAID',
+      MATERNITY: 'MATERNITY',
+      PATERNITY: 'PATERNITY',
+      MEDICAL: 'MEDICAL',
+      OTHER: 'OTHER',
+      COMPENSATORY_OFF: 'COMP_OFF',
+      COMPOFF: 'COMP_OFF',
+      COMP_OFF: 'COMP_OFF',
+    };
+    const value = aliases[normalized];
+    if (!value) {
+      throw new BadRequestException('Unsupported leave type');
+    }
+    return value as ApplyLeaveDto['leaveType'];
   }
 
   async getMyLeaveBalance(user: AuthUser) {
     const employeeId = await this.resolveEmployeeId(user);
-    const employee = await this.prisma.employee.findUnique({
-      where: { id: employeeId },
-    });
-
-    if (!employee) {
-      throw new NotFoundException('Employee not found');
-    }
-
-    const currentYear = new Date().getFullYear();
-    const yearStart = new Date(currentYear, 0, 1);
-    const yearEnd = new Date(currentYear, 11, 31);
-
-    // Get approved leaves for this year
-    const approvedLeaves = await this.prisma.leaveRequest.findMany({
-      where: {
-        employeeId,
-        status: 'APPROVED',
-        startDate: { lte: yearEnd },
-        endDate: { gte: yearStart },
-      },
-    });
-
-    // Calculate total days taken
-    let daysTaken = 0;
-    approvedLeaves.forEach((leave) => {
-      daysTaken += countLeaveDaysInPeriod(
-        leave.startDate,
-        leave.endDate,
-        leave.duration,
-        yearStart,
-        yearEnd,
-      );
-    });
-
-    // Default: 20 days per year
-    const totalAllocation = 20;
-    const balance = totalAllocation - daysTaken;
-
-    return {
-      totalAllocation,
-      daysTaken,
-      balance: Math.max(0, balance),
-      year: currentYear,
-    };
+    const organizationId = await this.resolveOrganizationId(user);
+    return this.leaveEntitlementsService.getBalance(employeeId, organizationId);
   }
 
   async getMyLeaveHistory(user: AuthUser) {
     const employeeId = await this.resolveEmployeeId(user);
+    const organizationId = await this.resolveOrganizationId(user);
     const leaves = await this.prisma.leaveRequest.findMany({
-      where: { employeeId },
+      where: { employeeId, organizationId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
     });
 
-    return leaves.map((leave) => {
-      const days = countLeaveDaysInPeriod(
-        leave.startDate,
-        leave.endDate,
-        leave.duration,
-        leave.startDate,
-        leave.endDate,
-      );
-
+    return Promise.all(
+      leaves.map(async (leave) => {
+        const days = await this.leaveEntitlementsService.countScheduledLeaveDays(
+          employeeId,
+          organizationId,
+          leave.startDate,
+          leave.endDate,
+          leave.duration,
+        );
       return {
         id: leave.id,
         leaveType: leave.leaveType,
@@ -562,7 +531,8 @@ export class EmployeeSelfServiceService {
         days,
         appliedOn: leave.appliedOn,
       };
-    });
+      }),
+    );
   }
 
   /**

@@ -7,6 +7,7 @@ import { LeaveRequestsController } from './leave-requests.controller';
 import { LeaveRequestsService } from './leave-requests.service';
 import { LeaveRequestNotificationListener } from './listeners/leave-request-notification.listener';
 import { BusinessUnitsModule } from '../business-units/business-units.module';
+import { LeaveEntitlementsService } from './leave-entitlements.service';
 
 @Module({
   imports: [
@@ -17,6 +18,11 @@ import { BusinessUnitsModule } from '../business-units/business-units.module';
     BusinessUnitsModule,
   ],
   controllers: [LeaveRequestsController],
-  providers: [LeaveRequestsService, LeaveRequestNotificationListener],
+  providers: [
+    LeaveRequestsService,
+    LeaveEntitlementsService,
+    LeaveRequestNotificationListener,
+  ],
+  exports: [LeaveRequestsService, LeaveEntitlementsService],
 })
 export class LeaveRequestsModule {}

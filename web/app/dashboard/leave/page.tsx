@@ -22,17 +22,20 @@ import { useAuthSession } from '@/stores/auth-store';
 import {
   createLeaveRequest,
   getLeaveRequests,
+  getCompOffClaims,
   hrApproveLeaveRequest,
   managerApproveLeaveRequest,
   rejectLeaveRequest,
+  reviewCompOffClaim,
   type LeaveRequest,
+  type LeaveCompOffClaim,
   type LeaveDuration,
   type LeaveStatus,
   type LeaveType,
 } from '@/api/leaveRequestsApi';
 
 const leaveSchema = z.object({
-  leaveType: z.enum(['SICK', 'CASUAL', 'PAID', 'UNPAID', 'MATERNITY', 'PATERNITY', 'MEDICAL', 'OTHER']),
+  leaveType: z.enum(['SICK', 'CASUAL', 'PAID', 'UNPAID', 'MATERNITY', 'PATERNITY', 'MEDICAL', 'OTHER', 'COMP_OFF']),
   startDate: z.string().min(1, 'Start date is required'),
   endDate: z.string().min(1, 'End date is required'),
   duration: z.enum(['FULL_DAY', 'HALF_DAY']),
@@ -53,6 +56,7 @@ const leaveTypeOptions: Array<{ label: string; value: LeaveType }> = [
   { label: 'Paternity leave', value: 'PATERNITY' },
   { label: 'Medical leave', value: 'MEDICAL' },
   { label: 'Other', value: 'OTHER' },
+  { label: 'Comp-off', value: 'COMP_OFF' },
 ];
 
 const statusFilters: Array<{ label: string; value: LeaveStatus | 'all' }> = [
@@ -72,6 +76,7 @@ function formatDate(value?: string | null) {
 export default function LeavePage() {
   const session = useAuthSession();
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [compOffClaims, setCompOffClaims] = useState<LeaveCompOffClaim[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | LeaveStatus>('all');
@@ -83,7 +88,7 @@ export default function LeavePage() {
   const employeeId = session.employeeId;
   const isEmployee = role.toUpperCase() === 'EMPLOYEE';
   const canCreateOwnRequest = isEmployee || role.toUpperCase() === 'MANAGER';
-  const isManager = ['MANAGER', 'ADMIN', 'HR'].includes(role.toUpperCase());
+  const isManager = ['MANAGER', 'ADMIN', 'HR', 'SUPER_ADMIN'].includes(role.toUpperCase());
 
   const form = useForm<LeaveFormValues>({
     resolver: zodResolver(leaveSchema),
@@ -100,10 +105,15 @@ export default function LeavePage() {
     async function load() {
       setLoading(true);
       try {
-        const data = await getLeaveRequests();
+        const [data, claims] = await Promise.all([
+          getLeaveRequests(),
+          getCompOffClaims(),
+        ]);
         setRequests(data);
+        setCompOffClaims(claims);
       } catch {
         setRequests([]);
+        setCompOffClaims([]);
       } finally {
         setLoading(false);
       }
@@ -175,9 +185,11 @@ export default function LeavePage() {
         const isOwnManagerRequest =
           role.toUpperCase() === 'MANAGER' && request.employeeId === employeeId;
         const canApprove =
-          isManager &&
           !isOwnManagerRequest &&
-          (request.status === 'PENDING_MANAGER' || request.status === 'PENDING_HR');
+          ((request.status === 'PENDING_MANAGER' &&
+            ['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(role.toUpperCase())) ||
+            (request.status === 'PENDING_HR' &&
+              ['HR', 'ADMIN', 'SUPER_ADMIN'].includes(role.toUpperCase())));
         const canReject =
           ['ADMIN', 'HR', 'SUPER_ADMIN'].includes(role.toUpperCase()) &&
           request.status !== 'REJECTED' &&
@@ -258,6 +270,20 @@ export default function LeavePage() {
     }
   }
 
+  async function reviewClaim(claimId: number, decision: 'approve' | 'reject') {
+    try {
+      await reviewCompOffClaim(claimId, decision);
+      setCompOffClaims((current) =>
+        current.filter((claim) => claim.id !== claimId),
+      );
+      toast.success(
+        decision === 'approve' ? 'Comp-off approved' : 'Comp-off rejected',
+      );
+    } catch {
+      toast.error('Action failed', `Unable to ${decision} comp-off claim.`);
+    }
+  }
+
   return (
     <ModuleTemplate
       title="Leave Requests"
@@ -276,6 +302,48 @@ export default function LeavePage() {
       }
     >
       <div className="space-y-6">
+        {isManager && compOffClaims.length > 0 ? (
+          <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+            <h2 className="text-lg font-semibold text-slate-900">Comp-off claims</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Holiday work of 4+ hours earns 0.5 day; 8+ hours earns 1 day after approval.
+            </p>
+            <div className="mt-4 space-y-3">
+              {compOffClaims.map((claim) => (
+                <div key={claim.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white p-4">
+                  <div>
+                    <p className="font-medium text-slate-900">{claim.employee.name}</p>
+                    <p className="text-sm text-slate-600">
+                      Worked {claim.hours} hours on {formatDate(claim.workDate)}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="success" size="sm" onClick={() => void reviewClaim(claim.id, 'approve')}>
+                      Approve
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={() => void reviewClaim(claim.id, 'reject')}>
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+        {!isManager && compOffClaims.length > 0 ? (
+          <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+            <h2 className="text-lg font-semibold text-slate-900">
+              Comp-off claims awaiting approval
+            </h2>
+            <div className="mt-3 space-y-2">
+              {compOffClaims.map((claim) => (
+                <p key={claim.id} className="text-sm text-slate-700">
+                  {claim.hours} hours worked on {formatDate(claim.workDate)} · pending manager/HR review
+                </p>
+              ))}
+            </div>
+          </section>
+        ) : null}
         <div className="grid gap-4 md:grid-cols-4">
           <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Requests</p>

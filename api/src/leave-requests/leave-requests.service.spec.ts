@@ -18,6 +18,7 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { BusinessUnitsService } from '../business-units/business-units.service';
 import { OrganizationScopeService } from '../organizations/organization-scope.service';
+import { LeaveEntitlementsService } from './leave-entitlements.service';
 
 // Helper to create valid mock AuthUser
 function createMockAuthUser(
@@ -58,6 +59,12 @@ describe('LeaveRequestsService', () => {
     resolveScope: jest.Mock;
     buildEmployeeBUWhere: jest.Mock;
   };
+  let mockLeaveEntitlementsService: {
+    countScheduledLeaveDays: jest.Mock;
+    getScheduledLeaveDates: jest.Mock;
+    getAvailableBalance: jest.Mock;
+    recordUsage: jest.Mock;
+  };
 
   const mockAdminUser = createMockAuthUser(Role.ADMIN, { userId: 1 });
   const mockHRUser = createMockAuthUser(Role.HR, { userId: 2 });
@@ -82,6 +89,15 @@ describe('LeaveRequestsService', () => {
       }),
       buildEmployeeBUWhere: jest.fn().mockReturnValue({}),
     };
+    mockLeaveEntitlementsService = {
+      countScheduledLeaveDays: jest.fn().mockResolvedValue(2),
+      getScheduledLeaveDates: jest.fn().mockResolvedValue([
+        new Date('2026-01-01T00:00:00.000Z'),
+        new Date('2026-01-02T00:00:00.000Z'),
+      ]),
+      getAvailableBalance: jest.fn().mockResolvedValue(10),
+      recordUsage: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -91,6 +107,10 @@ describe('LeaveRequestsService', () => {
         { provide: CACHE_MANAGER, useValue: mockCacheManager },
         { provide: EventEmitter2, useValue: mockEventEmitter },
         { provide: BusinessUnitsService, useValue: mockBusinessUnitsService },
+        {
+          provide: LeaveEntitlementsService,
+          useValue: mockLeaveEntitlementsService,
+        },
         {
           provide: OrganizationScopeService,
           useValue: {
@@ -461,7 +481,7 @@ describe('LeaveRequestsService', () => {
       );
     });
 
-    it('should return the created request when workflow initialization fails', async () => {
+    it('removes the request and surfaces a workflow initialization failure', async () => {
       const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
       const leaveRequestDelegate = getPrismaDelegate(
         mockPrisma,
@@ -498,7 +518,12 @@ describe('LeaveRequestsService', () => {
           } as CreateLeaveRequestDto,
           mockAdminUser,
         ),
-      ).resolves.toMatchObject({ id: 2, employeeId: 101 });
+      ).rejects.toThrow(
+        'The leave request could not be submitted for approval. Please try again.',
+      );
+      expect(leaveRequestDelegate.delete).toHaveBeenCalledWith({
+        where: { id: 2, organizationId: 1 },
+      });
     });
   });
 
@@ -912,7 +937,6 @@ describe('LeaveRequestsService', () => {
         leaveBalance: 10,
         shiftId: 1,
       });
-      employeeDelegate.update.mockResolvedValueOnce({});
       leaveRequestDelegate.update.mockResolvedValueOnce({
         id: 1,
         status: 'APPROVED',
@@ -927,6 +951,14 @@ describe('LeaveRequestsService', () => {
         expect.objectContaining({ id: 1, status: 'APPROVED', isPaid: true }),
       );
       expect(mockWorkflowEngine.approveWorkflow).toHaveBeenCalledTimes(1);
+      expect(mockLeaveEntitlementsService.recordUsage).toHaveBeenCalledWith(
+        mockPrisma,
+        expect.objectContaining({
+          category: 'PAID_LEAVE',
+          amount: 2,
+          sourceKey: 'leave-usage:1:2026',
+        }),
+      );
       expect(attendanceDelegate.upsert).toHaveBeenCalledTimes(2);
       expect(attendanceDelegate.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -957,6 +989,13 @@ describe('LeaveRequestsService', () => {
         duration: 'HALF_DAY',
         leaveType: 'CASUAL',
       });
+      mockLeaveEntitlementsService.getScheduledLeaveDates.mockResolvedValueOnce(
+        [
+          new Date('2026-01-01T00:00:00.000Z'),
+          new Date('2026-01-02T00:00:00.000Z'),
+          new Date('2026-01-03T00:00:00.000Z'),
+        ],
+      );
       (mockWorkflowEngine.approveWorkflow as jest.Mock).mockResolvedValueOnce({
         legacyState: { approvalTrail: [] },
       });
@@ -977,12 +1016,71 @@ describe('LeaveRequestsService', () => {
 
       await service.hrApprove(2, mockHRUser);
 
-      expect(employeeDelegate.update).toHaveBeenCalledWith(
+      expect(mockLeaveEntitlementsService.recordUsage).toHaveBeenCalledWith(
+        mockPrisma,
         expect.objectContaining({
-          data: { leaveBalance: 0.5 },
+          category: 'PAID_LEAVE',
+          amount: 1.5,
+          sourceKey: 'leave-usage:2:2026',
         }),
       );
       expect(attendanceDelegate.upsert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('approveCompOffClaim', () => {
+    it.each([
+      [4, 0.5],
+      [7.99, 0.5],
+      [8, 1],
+    ])('grants %s work hours as %s comp-off day(s)', async (hours, days) => {
+      const claimDelegate = getPrismaDelegate(
+        mockPrisma,
+        'leaveCompOffClaim',
+      );
+      const ledgerDelegate = getPrismaDelegate(
+        mockPrisma,
+        'leaveBalanceEntry',
+      );
+      const claim = {
+        id: 17,
+        employeeId: 101,
+        organizationId: 1,
+        workDate: new Date('2026-10-18T00:00:00.000Z'),
+        hours,
+        status: 'PENDING',
+        employee: { user: { id: 22 } },
+      };
+      claimDelegate.findFirst.mockResolvedValue(claim);
+      claimDelegate.updateMany.mockResolvedValue({ count: 1 });
+      ledgerDelegate.create.mockResolvedValue({});
+      const policyDelegate = getPrismaDelegate(mockPrisma, 'leavePolicy');
+      policyDelegate.findUnique.mockResolvedValue({ compOffExpiryDays: 90 });
+      (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn) =>
+        fn(mockPrisma),
+      );
+
+      await service.approveCompOffClaim(17, mockHRUser);
+
+      expect(ledgerDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            category: 'COMP_OFF',
+            entryType: 'COMPOFF_EARNED',
+            amount: days,
+            sourceKey: 'compoff-claim:17',
+          }),
+        }),
+      );
+      expect(claimDelegate.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 17, organizationId: 1, status: 'PENDING' },
+          data: expect.objectContaining({
+            status: 'APPROVED',
+            reviewedById: mockHRUser.userId,
+          }),
+        }),
+      );
     });
   });
 

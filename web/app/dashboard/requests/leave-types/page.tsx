@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { getLeaveRequests, LeaveRequest, LeaveType } from '../../../../src/api/leaveRequestsApi';
 import { reportError } from '@/lib/error-handling';
 
-const LEAVE_TYPE_COLUMNS: LeaveType[] = ['PAID', 'CASUAL', 'SICK', 'MEDICAL', 'MATERNITY', 'PATERNITY', 'UNPAID', 'OTHER'];
+const LEAVE_TYPE_COLUMNS: LeaveType[] = ['PAID', 'CASUAL', 'SICK', 'MEDICAL', 'MATERNITY', 'PATERNITY', 'UNPAID', 'OTHER', 'COMP_OFF'];
 
 const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
   PAID: 'Paid',
@@ -16,6 +16,7 @@ const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
   MEDICAL:   'Medical',
   PATERNITY: 'Paternity',
   OTHER:     'Other',
+  COMP_OFF: 'Comp-off',
 };
 
 function EmptyIllustration({ label }: { label: string }) {

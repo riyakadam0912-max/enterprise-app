@@ -7,7 +7,7 @@ import { createLeaveRequest, leaveBalance, leaveRequests, type LeaveStatus, type
 import { Dropdown } from '@/src/components/Dropdown';
 import { useAuth } from '@/src/providers/AuthProvider';
 
-const leaveTypes: LeaveType[] = ['SICK', 'CASUAL', 'PAID', 'UNPAID', 'MATERNITY', 'PATERNITY', 'MEDICAL', 'OTHER'];
+const leaveTypes: LeaveType[] = ['SICK', 'CASUAL', 'PAID', 'UNPAID', 'MATERNITY', 'PATERNITY', 'MEDICAL', 'OTHER', 'COMP_OFF'];
 const statuses: Array<LeaveStatus | 'ALL'> = ['ALL', 'PENDING_MANAGER', 'PENDING_HR', 'APPROVED', 'REJECTED', 'CANCELLED'];
 const formatOption = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 const daysBetween = (start?: string, end?: string, duration?: string) => {
@@ -58,7 +58,7 @@ export default function Leave() {
     <ScrollView contentContainerStyle={styles.page}>
       <Text style={styles.title}>Leave Requests</Text>
       <Text style={styles.subtitle}>Submit, track, and review leave within your ERP scope.</Text>
-      {session?.employeeId ? <View style={styles.balance}><Text style={styles.balanceLabel}>Leave balance</Text><Text style={styles.balanceValue}>{balance.data?.balance ?? 0} days</Text><Text style={styles.balanceDetail}>{balance.data?.year ?? new Date().getFullYear()} · Taken {balance.data?.daysTaken ?? 0} of {balance.data?.totalAllocation ?? 0}</Text></View> : null}
+      {session?.employeeId ? <View style={styles.balance}><Text style={styles.balanceLabel}>Paid leave balance</Text><Text style={styles.balanceValue}>{balance.data?.balance ?? 0} days</Text><Text style={styles.balanceDetail}>{balance.data?.year ?? new Date().getFullYear()} · Taken {balance.data?.daysTaken ?? 0} of {balance.data?.totalAllocation ?? 0}</Text><Text style={styles.balanceDetail}>Comp-off available: {balance.data?.compOffAvailable ?? 0} days</Text></View> : null}
       <View style={styles.formCard}>
         <Text style={styles.sectionTitle}>New request</Text>
         <Dropdown label="Leave type" value={leaveType} options={leaveTypes} onChange={(value) => setLeaveType(value as LeaveType)} formatOption={formatOption} />

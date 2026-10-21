@@ -1,7 +1,16 @@
 import { apiClient } from './apiClient';
 
 export type LeaveStatus = 'PENDING_MANAGER' | 'PENDING_HR' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
-export type LeaveType = 'SICK' | 'CASUAL' | 'PAID' | 'UNPAID' | 'MATERNITY' | 'PATERNITY' | 'MEDICAL' | 'OTHER';
+export type LeaveType = 'SICK' | 'CASUAL' | 'PAID' | 'UNPAID' | 'MATERNITY' | 'PATERNITY' | 'MEDICAL' | 'OTHER' | 'COMP_OFF';
+
+export interface LeaveCompOffClaim {
+  id: number;
+  employeeId: number;
+  workDate: string;
+  hours: number;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  employee: { id: number; name: string; organization?: { id: number; name: string } };
+}
 export type LeaveDuration = 'FULL_DAY' | 'HALF_DAY';
 
 export interface LeaveRequest {
@@ -82,5 +91,15 @@ export function rejectLeaveRequest(id: number, reason?: string): Promise<LeaveRe
   return apiClient<LeaveRequest>(`/leave-requests/${id}/reject`, {
     method: 'PATCH',
     body: JSON.stringify({ reason }),
+  });
+}
+
+export function getCompOffClaims(): Promise<LeaveCompOffClaim[]> {
+  return apiClient<LeaveCompOffClaim[]>('/leave-requests/comp-off-claims');
+}
+
+export function reviewCompOffClaim(id: number, decision: 'approve' | 'reject'): Promise<LeaveCompOffClaim> {
+  return apiClient<LeaveCompOffClaim>(`/leave-requests/comp-off-claims/${id}/${decision}`, {
+    method: 'PATCH',
   });
 }

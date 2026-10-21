@@ -15,10 +15,17 @@ import {
   createMockPrismaService,
   getMockPrismaDelegate,
 } from '../../test/helpers/mocks.helper';
+import { LeaveRequestsService } from '../leave-requests/leave-requests.service';
+import { LeaveEntitlementsService } from '../leave-requests/leave-entitlements.service';
 
 describe('EmployeeSelfServiceService', () => {
   let service: EmployeeSelfServiceService;
   let mockPrisma: ReturnType<typeof createMockPrismaService>;
+  let mockLeaveRequests: { create: jest.Mock };
+  let mockLeaveEntitlements: {
+    countScheduledLeaveDays: jest.Mock;
+    getBalance: jest.Mock;
+  };
 
   const createUser = (overrides: Partial<AuthUser> = {}): AuthUser => ({
     id: 7,
@@ -37,10 +44,32 @@ describe('EmployeeSelfServiceService', () => {
 
   beforeEach(async () => {
     mockPrisma = createMockPrismaService();
+    mockLeaveRequests = {
+      create: jest.fn().mockResolvedValue({
+        id: 5,
+        leaveType: 'CASUAL',
+        startDate: new Date('2026-08-10T00:00:00.000Z'),
+        endDate: new Date('2026-08-12T00:00:00.000Z'),
+        duration: 'HALF_DAY',
+        status: 'PENDING_MANAGER',
+      } as never),
+    };
+    mockLeaveEntitlements = {
+      countScheduledLeaveDays: jest.fn().mockResolvedValue(1.5 as never),
+      getBalance: jest.fn().mockResolvedValue({
+        totalAllocation: 1.5,
+        daysTaken: 0,
+        balance: 1.5,
+        compOffAvailable: 0,
+        year: 2026,
+      } as never),
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EmployeeSelfServiceService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: LeaveRequestsService, useValue: mockLeaveRequests },
+        { provide: LeaveEntitlementsService, useValue: mockLeaveEntitlements },
       ],
     }).compile();
 
@@ -56,21 +85,7 @@ describe('EmployeeSelfServiceService', () => {
   it('accepts a multi-date half-day request and reports half a day per date', async () => {
     const user = createUser({ employeeId: 22 });
     const employeeDelegate = getMockPrismaDelegate(mockPrisma, 'employee');
-    const leaveRequestDelegate = getMockPrismaDelegate(
-      mockPrisma,
-      'leaveRequest',
-    );
     employeeDelegate.findFirst.mockResolvedValue({ id: 22 });
-    employeeDelegate.findUnique.mockResolvedValue({ id: 22 });
-    leaveRequestDelegate.findFirst.mockResolvedValue(null);
-    leaveRequestDelegate.create.mockResolvedValue({
-      id: 5,
-      leaveType: 'CASUAL',
-      startDate: new Date('2026-08-10T00:00:00.000Z'),
-      endDate: new Date('2026-08-12T00:00:00.000Z'),
-      duration: 'HALF_DAY',
-      status: 'PENDING',
-    });
 
     const result = await service.applyLeave(user, {
       startDate: '2026-08-10',
@@ -80,14 +95,16 @@ describe('EmployeeSelfServiceService', () => {
     });
 
     expect(result.data.days).toBe(1.5);
-    expect(leaveRequestDelegate.create).toHaveBeenCalledWith(
+    expect(result.data.status).toBe('PENDING_MANAGER');
+    expect(mockLeaveRequests.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          startDate: new Date('2026-08-10'),
-          endDate: new Date('2026-08-12'),
-          duration: 'HALF_DAY',
-        }),
+        startDate: '2026-08-10',
+        endDate: '2026-08-12',
+        duration: 'HALF_DAY',
+        leaveType: 'CASUAL',
+        employeeId: 22,
       }),
+      user,
     );
   });
 

@@ -16,6 +16,7 @@ const LEAVE_TYPES = [
   'PATERNITY',
   'MEDICAL',
   'OTHER',
+  'COMP_OFF',
 ] as const;
 
 type LeaveType = (typeof LEAVE_TYPES)[number];

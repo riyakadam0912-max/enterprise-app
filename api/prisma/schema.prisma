@@ -163,6 +163,9 @@ model Organization {
   jobOpenings              JobOpening[]
   leads                    Lead[]
   leaveRequests            LeaveRequest[]
+  leavePolicies            LeavePolicy[]
+  leaveBalanceEntries      LeaveBalanceEntry[]
+  compOffClaims            LeaveCompOffClaim[]
   ledgerEntries            LedgerEntry[]
   marketingCampaigns       MarketingCampaign[]
   marketingPosts           MarketingPost[]
@@ -298,7 +301,7 @@ model Employee {
   designation           String?
   email                 String?
   hireDate              DateTime?
-  leaveBalance          Float?
+  leaveBalance          Float                     @default(0)
   manager               String?
   name                  String
   phoneNumber           String?
@@ -326,6 +329,8 @@ model Employee {
   goals                 Goal[]
   leadAssignments       Lead[]                    @relation("LeadAssignee")
   leaveRequests         LeaveRequest[]
+  leaveBalanceEntries   LeaveBalanceEntry[]
+  compOffClaims         LeaveCompOffClaim[]
   payrollEntries        PayrollEntry[]
   payslips              Payslip[]
   performanceReviews    PerformanceReview[]
@@ -782,6 +787,61 @@ model LeaveRequest {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+}
+
+model LeavePolicy {
+  id                      Int          @id @default(autoincrement())
+  organizationId          Int          @unique
+  monthlyPaidLeave        Float        @default(1.5)
+  taskHoursBonusThreshold Float        @default(8)
+  compOffMinimumHours     Float        @default(4)
+  compOffExpiryDays       Int          @default(90)
+  firstAccrualMonth       DateTime     @db.Date
+  compOffEffectiveFrom    DateTime     @db.Date
+  organization            Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([firstAccrualMonth])
+}
+
+model LeaveBalanceEntry {
+  id             Int          @id @default(autoincrement())
+  employeeId     Int
+  organizationId Int
+  category       String
+  entryType      String
+  amount         Float
+  sourceKey      String       @unique
+  sourceId       Int?
+  description    String?
+  periodStart    DateTime?    @db.Date
+  periodEnd      DateTime?    @db.Date
+  expiresAt      DateTime?
+  createdAt      DateTime     @default(now())
+  employee       Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, category, createdAt])
+  @@index([organizationId, category, createdAt])
+  @@index([category, expiresAt])
+}
+
+model LeaveCompOffClaim {
+  id             Int          @id @default(autoincrement())
+  employeeId     Int
+  organizationId Int
+  workDate       DateTime     @db.Date
+  hours          Float
+  status         String       @default("PENDING")
+  reviewedById   Int?
+  reviewedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  employee       Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, workDate])
+  @@index([organizationId, status, createdAt])
+  @@index([employeeId, status])
 }
 
 model TicketType {

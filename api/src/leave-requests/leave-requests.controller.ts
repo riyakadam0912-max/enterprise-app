@@ -35,7 +35,7 @@ import type { AuthenticatedRequest } from '../common/types/request';
 export class LeaveRequestsController {
   constructor(private readonly service: LeaveRequestsService) {}
 
-  @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
   @ApiOperation({ summary: 'POST /' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -60,6 +60,30 @@ export class LeaveRequestsController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.service.importRecords(body.records, req.user);
+  }
+
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)
+  @Get('comp-off-claims')
+  findCompOffClaims(@Req() req: AuthenticatedRequest) {
+    return this.service.findCompOffClaims(req.user);
+  }
+
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER)
+  @Patch('comp-off-claims/:id/approve')
+  approveCompOffClaim(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.service.approveCompOffClaim(id, req.user);
+  }
+
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER)
+  @Patch('comp-off-claims/:id/reject')
+  rejectCompOffClaim(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.service.rejectCompOffClaim(id, req.user);
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.MANAGER, Role.EMPLOYEE)

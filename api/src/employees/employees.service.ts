@@ -461,6 +461,20 @@ export class EmployeesService {
         include: { user: true },
       });
 
+      if (employee.leaveBalance > 0) {
+        await tx.leaveBalanceEntry.create({
+          data: {
+            employeeId: employee.id,
+            organizationId,
+            category: 'PAID_LEAVE',
+            entryType: 'OPENING_BALANCE',
+            amount: employee.leaveBalance,
+            sourceKey: `opening-balance:${employee.id}`,
+            description: 'Initial paid leave balance',
+          },
+        });
+      }
+
       if (wantsLoginAccount) {
         const emailNormalized = createEmployeeDto.email!.trim();
 
@@ -644,6 +658,11 @@ export class EmployeesService {
   ) {
     this.validateOrganization(user);
     const employee = await this.findOne(id, user);
+    if (updateEmployeeDto.leaveBalance !== undefined) {
+      throw new BadRequestException(
+        'Leave balances are managed by the leave ledger and cannot be edited here.',
+      );
+    }
     const organizationId = employee.organizationId;
     const canPrivilegedEdit =
       user.role === Role.ADMIN ||
@@ -883,7 +902,22 @@ export class EmployeesService {
           status: typeof r.status === 'string' ? r.status : undefined,
         };
 
-        await this.prisma.employee.create({ data });
+        await this.prisma.$transaction(async (tx) => {
+          const employee = await tx.employee.create({ data });
+          if ((employee.leaveBalance ?? 0) > 0) {
+            await tx.leaveBalanceEntry.create({
+              data: {
+                employeeId: employee.id,
+                organizationId,
+                category: 'PAID_LEAVE',
+                entryType: 'OPENING_BALANCE',
+                amount: employee.leaveBalance,
+                sourceKey: `opening-balance:${employee.id}`,
+                description: 'Initial paid leave balance',
+              },
+            });
+          }
+        });
         imported++;
       } catch (error: unknown) {
         const message =

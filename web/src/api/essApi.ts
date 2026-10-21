@@ -66,6 +66,7 @@ export interface LeaveBalance {
   totalAllocation: number;
   daysTaken: number;
   balance: number;
+  compOffAvailable: number;
   year: number;
 }
 

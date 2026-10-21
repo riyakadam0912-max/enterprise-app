@@ -7,6 +7,17 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+export type ApplyLeaveType =
+  | 'SICK'
+  | 'CASUAL'
+  | 'PAID'
+  | 'UNPAID'
+  | 'MATERNITY'
+  | 'PATERNITY'
+  | 'MEDICAL'
+  | 'OTHER'
+  | 'COMP_OFF';
+
 export class ApplyLeaveDto {
   @IsNotEmpty()
   @IsDateString()
@@ -25,7 +36,7 @@ export class ApplyLeaveDto {
 
   @IsNotEmpty()
   @IsString()
-  leaveType: string; // Casual, Sick, Paid, Unpaid, etc.
+  leaveType!: ApplyLeaveType;
 
   @IsOptional()
   @IsString()

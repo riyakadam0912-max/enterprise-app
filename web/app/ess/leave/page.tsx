@@ -69,7 +69,7 @@ export default function ESSLeavePage() {
     }
   };
 
-  const leaveTypes = ['Casual', 'Sick', 'Paid', 'Unpaid', 'Maternity', 'Paternity'];
+  const leaveTypes = ['Casual', 'Sick', 'Paid', 'Unpaid', 'Maternity', 'Paternity', 'Comp-off'];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -109,7 +109,7 @@ export default function ESSLeavePage() {
           <div className="bg-white rounded-lg border border-gray-200 p-6 animate-pulse h-32 mb-8"></div>
         ) : balance && (
           <div className="bg-linear-to-r from-blue-600 to-blue-700 text-white rounded-lg p-8 mb-8">
-            <div className="grid grid-cols-3 gap-8">
+            <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
               <div>
                 <p className="text-blue-100 text-sm uppercase mb-2">Available Balance</p>
                 <p className="text-4xl font-bold">{balance.balance}</p>
@@ -119,12 +119,17 @@ export default function ESSLeavePage() {
               <div>
                 <p className="text-blue-100 text-sm uppercase mb-2">Total Allocated</p>
                 <p className="text-4xl font-bold">{balance.totalAllocation}</p>
-                <p className="text-blue-100 text-xs mt-2">days per year</p>
+                <p className="text-blue-100 text-xs mt-2">earned this year</p>
               </div>
               <div>
                 <p className="text-blue-100 text-sm uppercase mb-2">Days Used</p>
                 <p className="text-4xl font-bold">{balance.daysTaken}</p>
                 <p className="text-blue-100 text-xs mt-2">days taken</p>
+              </div>
+              <div>
+                <p className="text-blue-100 text-sm uppercase mb-2">Comp-off</p>
+                <p className="text-4xl font-bold">{balance.compOffAvailable}</p>
+                <p className="text-blue-100 text-xs mt-2">days available</p>
               </div>
             </div>
           </div>

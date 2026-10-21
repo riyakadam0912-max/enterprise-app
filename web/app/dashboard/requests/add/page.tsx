@@ -9,7 +9,7 @@ import { useAuthSession } from '@/stores/auth-store';
 
 interface Employee { id: number; name: string }
 
-const LEAVE_TYPES: LeaveType[] = ['PAID', 'CASUAL', 'SICK', 'UNPAID', 'MATERNITY', 'PATERNITY', 'MEDICAL', 'OTHER'];
+const LEAVE_TYPES: LeaveType[] = ['PAID', 'CASUAL', 'SICK', 'UNPAID', 'MATERNITY', 'PATERNITY', 'MEDICAL', 'OTHER', 'COMP_OFF'];
 const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
   PAID:      'Paid',
   CASUAL:    'Casual',
@@ -19,6 +19,7 @@ const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
   PATERNITY: 'Paternity',
   MEDICAL:   'Medical',
   OTHER:     'Other',
+  COMP_OFF:  'Comp-off',
 };
 
 const EMPTY: {
