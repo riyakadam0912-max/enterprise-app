@@ -1797,69 +1797,82 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   async startBreak(user: AttendanceUser) {
     const employeeId = await this.resolveScopedEmployeeId(user);
     const employee = await this.ensureEmployee(employeeId, user);
-    let record = await this.prisma.attendance.findFirst({
-      where: {
-        employeeId,
-        checkIn: { not: null },
-        checkOut: null,
-      },
-      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-      include: { breaks: true },
-    });
-    if (employee.shift?.type === 'FLEXIBLE') {
-      const existingBreak = await this.prisma.attendance.findFirst({
-        where: {
-          employeeId,
-          organizationId: employee.organizationId ?? user.organizationId,
-          breaks: { some: { endedAt: null } },
-        },
-        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-        include: { breaks: true },
-      });
-      if (existingBreak) {
-        throw new ConflictException('A break is already in progress');
-      }
-
+    const flexibleShift =
+      employee.shift?.type === 'FLEXIBLE' ? employee.shift : null;
+    let attendanceDay: Date | undefined;
+    if (flexibleShift) {
       const organization = await this.prisma.organization.findUnique({
         where: { id: employee.organizationId ?? user.organizationId },
         select: { timezone: true },
       });
       const timezone = organization?.timezone ?? 'UTC';
       const dateKey = dateKeyInTimezone(new Date(), timezone);
-      const day = attendanceDateFromKey(dateKey);
-      record = await this.prisma.attendance.findUnique({
-        where: { employeeId_date: { employeeId, date: day } },
-        include: { breaks: true },
-      });
-      if (!record) {
-        record = await this.prisma.attendance.create({
-          data: {
-            employeeId,
-            organizationId: employee.organizationId,
-            shiftId: employee.shift.id,
-            date: day,
-            requiredHours: employee.shift.requiredHours,
-            status: AttendanceStatus.NOT_STARTED,
-          },
-          include: { breaks: true },
-        });
-      }
-    }
-    if (!record)
-      throw new BadRequestException('Check in before starting a break');
-    if (record.checkIn && new Date(record.checkIn).getTime() > Date.now()) {
-      throw new BadRequestException('A break cannot start before check-in');
-    }
-    if (record.breaks.some((interval) => interval.endedAt === null)) {
-      throw new ConflictException('A break is already in progress');
+      attendanceDay = attendanceDateFromKey(dateKey);
     }
     const startedAt = new Date();
     const created = await this.prisma.$transaction(async (tx) => {
-      await this.tasksService.stopAllOpenTimersForUser(
-        user as AuthUser,
-        startedAt,
-        tx,
-      );
+      await this.tasksService.lockTimerAndAttendanceStateForUser(user, tx);
+      let record: Prisma.AttendanceGetPayload<{
+        include: { breaks: true };
+      }> | null;
+      if (flexibleShift) {
+        const existingBreak = await tx.attendance.findFirst({
+          where: {
+            employeeId,
+            organizationId: employee.organizationId ?? user.organizationId,
+            breaks: { some: { endedAt: null } },
+          },
+          select: { id: true },
+        });
+        if (existingBreak) {
+          throw new ConflictException('A break is already in progress');
+        }
+        record = await tx.attendance.findUnique({
+          where: {
+            employeeId_date: {
+              employeeId,
+              date: attendanceDay!,
+            },
+          },
+          include: { breaks: true },
+        });
+        if (!record) {
+          record = await tx.attendance.create({
+            data: {
+              employeeId,
+              organizationId: employee.organizationId,
+              shiftId: flexibleShift.id,
+              date: attendanceDay!,
+              requiredHours: flexibleShift.requiredHours,
+              status: AttendanceStatus.NOT_STARTED,
+            },
+            include: { breaks: true },
+          });
+        }
+      } else {
+        record = await tx.attendance.findFirst({
+          where: {
+            employeeId,
+            checkIn: { not: null },
+            checkOut: null,
+          },
+          orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+          include: { breaks: true },
+        });
+        if (!record) {
+          throw new BadRequestException('Check in before starting a break');
+        }
+      }
+      if (
+        record.checkIn &&
+        new Date(record.checkIn).getTime() > startedAt.getTime()
+      ) {
+        throw new BadRequestException('A break cannot start before check-in');
+      }
+      if (record.breaks.some((interval) => interval.endedAt === null)) {
+        throw new ConflictException('A break is already in progress');
+      }
+      await this.tasksService.stopRunningTimersForUser(user, startedAt, tx);
       return tx.attendanceBreak.create({
         data: { attendanceId: record.id, startedAt },
       });

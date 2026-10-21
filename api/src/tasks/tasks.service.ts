@@ -828,14 +828,22 @@ export class TasksService {
     }
 
     if (dto.action === 'start') {
-      if (session) {
-        throw new ConflictException(
-          'You already have an active timer for this task',
-        );
-      }
       try {
         await this.db.$transaction(async (tx) => {
-          await this.closeActiveBreaksForUser(user, now, tx);
+          await this.lockTimerAndAttendanceStateForUser(user, tx);
+          const activeSession = await tx.taskTimerSession.findFirst({
+            where: {
+              taskId,
+              userId,
+              organizationId,
+              status: { in: ['RUNNING', 'PAUSED'] },
+            },
+          });
+          if (activeSession) {
+            throw new ConflictException(
+              'You already have an active timer for this task',
+            );
+          }
           await this.assertUserIsWorking(user, tx);
           await this.stopAllOpenTimersForUser(user, now, tx);
           await tx.taskTimerSession.create({
@@ -908,29 +916,32 @@ export class TasksService {
       if (session.status !== 'PAUSED') {
         throw new BadRequestException('Only a paused timer can be resumed');
       }
-      await this.assertUserIsWorking(user);
-      const otherRunningTimer = await this.db.taskTimerSession.findFirst({
-        where: {
-          organizationId,
-          userId,
-          status: 'RUNNING',
-          id: { not: session.id },
-        },
-        include: { task: { select: { taskName: true } } },
-      });
-      if (otherRunningTimer) {
-        throw new ConflictException(
-          `Your timer is already running for task: ${otherRunningTimer.task.taskName}`,
-        );
-      }
       try {
-        const updated = await this.db.taskTimerSession.updateMany({
-          where: { id: session.id, status: 'PAUSED' },
-          data: { status: 'RUNNING', startedAt: now },
+        await this.db.$transaction(async (tx) => {
+          await this.lockTimerAndAttendanceStateForUser(user, tx);
+          await this.assertUserIsWorking(user, tx);
+          const otherRunningTimer = await tx.taskTimerSession.findFirst({
+            where: {
+              organizationId,
+              userId,
+              status: 'RUNNING',
+              id: { not: session.id },
+            },
+            include: { task: { select: { taskName: true } } },
+          });
+          if (otherRunningTimer) {
+            throw new ConflictException(
+              `Your timer is already running for task: ${otherRunningTimer.task.taskName}`,
+            );
+          }
+          const updated = await tx.taskTimerSession.updateMany({
+            where: { id: session.id, status: 'PAUSED' },
+            data: { status: 'RUNNING', startedAt: now },
+          });
+          if (updated.count !== 1) {
+            throw new ConflictException('Timer changed; refresh and try again');
+          }
         });
-        if (updated.count !== 1) {
-          throw new ConflictException('Timer changed; refresh and try again');
-        }
       } catch (error) {
         if (this.isTimerUniquenessConflict(error)) {
           throw new ConflictException('You already have an active task timer');
@@ -1052,6 +1063,53 @@ export class TasksService {
     return sessions.map((session) => session.id);
   }
 
+  async stopRunningTimersForUser(
+    user: Pick<AuthUser, 'userId' | 'organizationId'>,
+    now: Date,
+    transaction: Prisma.TransactionClient,
+  ) {
+    if (user.organizationId == null) {
+      throw new ForbiddenException('User has no associated organization');
+    }
+    const sessions = await transaction.taskTimerSession.findMany({
+      where: {
+        userId: user.userId,
+        organizationId: user.organizationId,
+        status: 'RUNNING',
+      },
+      include: { task: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    for (const session of sessions) {
+      await this.finishTaskTimerSession(
+        session,
+        session.task,
+        user.userId,
+        now,
+        undefined,
+        transaction,
+      );
+    }
+
+    return sessions.map((session) => session.id);
+  }
+
+  async lockTimerAndAttendanceStateForUser(
+    user: Pick<AuthUser, 'userId' | 'organizationId'>,
+    transaction: Prisma.TransactionClient,
+  ) {
+    if (user.organizationId == null) {
+      throw new ForbiddenException('User has no associated organization');
+    }
+    await transaction.$queryRaw`
+      SELECT pg_advisory_xact_lock(
+        137701::integer,
+        ${user.userId}::integer
+      )
+    `;
+  }
+
   async stopActiveTimerForEmployee(
     employeeId: number,
     organizationId: number,
@@ -1153,41 +1211,6 @@ export class TasksService {
     }
   }
 
-  private async closeActiveBreaksForUser(
-    user: AuthUser,
-    now: Date,
-    transaction: Prisma.TransactionClient,
-  ) {
-    const organizationId = this.validateOrganization(user);
-    if (user.employeeId == null) {
-      throw new ForbiddenException(
-        'Link your account to an employee to track work time',
-      );
-    }
-    const openAttendance = await transaction.attendance.findMany({
-      where: {
-        employeeId: user.employeeId,
-        organizationId,
-        breaks: { some: { endedAt: null } },
-      },
-      select: {
-        breaks: {
-          where: { endedAt: null },
-          select: { id: true },
-        },
-      },
-    });
-    const openBreakIds = openAttendance.flatMap((attendance) =>
-      attendance.breaks.map((interval) => interval.id),
-    );
-    if (openBreakIds.length === 0) return;
-
-    await transaction.attendanceBreak.updateMany({
-      where: { id: { in: openBreakIds }, endedAt: null },
-      data: { endedAt: now },
-    });
-  }
-
   private async finishTaskTimerSession(
     session: {
       id: number;
@@ -1226,15 +1249,6 @@ export class TasksService {
         : 0;
     const totalSeconds = session.totalSeconds + elapsedSeconds;
     const finish = async (tx: Prisma.TransactionClient) => {
-      const timesheetOwner = await tx.user.findFirst({
-        where: { id: userId, organizationId: task.organizationId },
-        select: { employeeId: true },
-      });
-      if (timesheetOwner?.employeeId == null) {
-        throw new BadRequestException(
-          'Link your account to an employee before recording task time',
-        );
-      }
       const updated = await tx.taskTimerSession.updateMany({
         where: {
           id: session.id,
@@ -1266,29 +1280,40 @@ export class TasksService {
           },
         });
       }
-      await tx.timesheet.create({
-        data: {
-          organizationId: task.organizationId,
-          task: task.taskName,
-          project: task.project,
-          taskId: task.id,
-          projectId: task.projectId,
-          timerSessionId: session.id,
-          date: session.createdAt,
-          hours: Math.max(1, totalSeconds) / 3600,
-          employeeId: timesheetOwner.employeeId,
-          status: 'PENDING',
-          source: 'TASK_TIMER',
-          notes: notes?.trim() || 'Tracked with task timer',
-          createdByUserId: userId,
-        },
-      });
-      await this.attendanceTaskHours.recomputeTimesheetHours(
-        timesheetOwner.employeeId,
-        task.organizationId,
-        session.createdAt,
-        tx,
-      );
+      if (totalSeconds > 0) {
+        const timesheetOwner = await tx.user.findFirst({
+          where: { id: userId, organizationId: task.organizationId },
+          select: { employeeId: true },
+        });
+        if (timesheetOwner?.employeeId == null) {
+          throw new BadRequestException(
+            'Link your account to an employee before recording task time',
+          );
+        }
+        await tx.timesheet.create({
+          data: {
+            organizationId: task.organizationId,
+            task: task.taskName,
+            project: task.project,
+            taskId: task.id,
+            projectId: task.projectId,
+            timerSessionId: session.id,
+            date: session.createdAt,
+            hours: totalSeconds / 3600,
+            employeeId: timesheetOwner.employeeId,
+            status: 'PENDING',
+            source: 'TASK_TIMER',
+            notes: notes?.trim() || 'Tracked with task timer',
+            createdByUserId: userId,
+          },
+        });
+        await this.attendanceTaskHours.recomputeTimesheetHours(
+          timesheetOwner.employeeId,
+          task.organizationId,
+          session.createdAt,
+          tx,
+        );
+      }
     };
     if (transaction) return finish(transaction);
     return this.db.$transaction(finish);

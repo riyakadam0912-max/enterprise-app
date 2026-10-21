@@ -118,6 +118,8 @@ describe('AttendanceService', () => {
   let mockBusinessUnitsService: any;
   let mockOrganizationScopeService: any;
   let mockTasksService: {
+    lockTimerAndAttendanceStateForUser: jest.Mock;
+    stopRunningTimersForUser: jest.Mock;
     stopAllOpenTimersForUser: jest.Mock;
     stopActiveTimerForEmployee: jest.Mock;
   };
@@ -149,6 +151,8 @@ describe('AttendanceService', () => {
       ),
     };
     mockTasksService = {
+      lockTimerAndAttendanceStateForUser: jest.fn().mockResolvedValue(undefined),
+      stopRunningTimersForUser: jest.fn().mockResolvedValue([]),
       stopAllOpenTimersForUser: jest.fn().mockResolvedValue([]),
       stopActiveTimerForEmployee: jest.fn().mockResolvedValue(null),
     };
@@ -1318,7 +1322,10 @@ describe('AttendanceService', () => {
     expect(prisma.attendanceBreak.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ attendanceId: 10 }),
     });
-    expect(mockTasksService.stopAllOpenTimersForUser).toHaveBeenCalledWith(
+    expect(
+      mockTasksService.lockTimerAndAttendanceStateForUser,
+    ).toHaveBeenCalledWith(mockUser, prisma);
+    expect(mockTasksService.stopRunningTimersForUser).toHaveBeenCalledWith(
       mockUser,
       expect.any(Date),
       prisma,
@@ -1361,13 +1368,18 @@ describe('AttendanceService', () => {
     expect(prisma.attendanceBreak.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ attendanceId: 10 }),
     });
+    expect(mockTasksService.stopRunningTimersForUser).toHaveBeenCalledWith(
+      mockUser,
+      expect.any(Date),
+      prisma,
+    );
     expect(result.onBreak).toBe(true);
   });
 
   it('does not create a break when stopping the task timer fails', async () => {
     prisma.employee.findFirst.mockResolvedValue({ id: 7 });
     prisma.attendance.findFirst.mockResolvedValue({ id: 10, breaks: [] });
-    mockTasksService.stopAllOpenTimersForUser.mockRejectedValueOnce(
+    mockTasksService.stopRunningTimersForUser.mockRejectedValueOnce(
       new Error('timer write failed'),
     );
 

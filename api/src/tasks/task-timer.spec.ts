@@ -52,6 +52,7 @@ describe('TasksService per-user task timer sessions', () => {
     taskTimerSession: {
       updateMany: jest.Mock;
       findMany: jest.Mock;
+      findFirst: jest.Mock;
       create: jest.Mock;
     };
     taskTimerInterval: { create: jest.Mock };
@@ -60,6 +61,7 @@ describe('TasksService per-user task timer sessions', () => {
     attendanceBreak: { updateMany: jest.Mock };
     employee: { findFirst: jest.Mock };
     user: { findFirst: jest.Mock };
+    $queryRaw: jest.Mock;
   };
 
   beforeEach(() => {
@@ -67,6 +69,7 @@ describe('TasksService per-user task timer sessions', () => {
       taskTimerSession: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 101 }),
       },
       taskTimerInterval: { create: jest.fn().mockResolvedValue({ id: 51 }) },
@@ -82,6 +85,7 @@ describe('TasksService per-user task timer sessions', () => {
         findFirst: jest.fn().mockResolvedValue({ shift: { type: 'FIXED' } }),
       },
       user: { findFirst: jest.fn().mockResolvedValue({ employeeId: 101 }) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
     };
     prisma = {
       task: {
@@ -159,7 +163,7 @@ describe('TasksService per-user task timer sessions', () => {
     expect(tx.taskTimerSession.create).not.toHaveBeenCalled();
   });
 
-  it('stops open timers and closes an active break before starting a new timer', async () => {
+  it('stops open timers before starting a new timer without changing break state', async () => {
     const startedAt = new Date(Date.now() - 30_000);
     const worker = makeUser(11, Role.EMPLOYEE, 101);
     tx.taskTimerSession.findMany.mockResolvedValueOnce([
@@ -177,14 +181,10 @@ describe('TasksService per-user task timer sessions', () => {
         task: { ...task, id: 9 },
       },
     ]);
-    tx.attendance.findMany.mockResolvedValueOnce([{ breaks: [{ id: 12 }] }]);
-
     await service.updateTimer(8, { action: 'start' }, worker);
 
-    expect(tx.attendanceBreak.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: [12] }, endedAt: null },
-      data: { endedAt: expect.any(Date) },
-    });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.attendanceBreak.updateMany).not.toHaveBeenCalled();
     expect(tx.taskTimerSession.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 101, status: 'RUNNING', startedAt },
@@ -206,6 +206,66 @@ describe('TasksService per-user task timer sessions', () => {
       expect.any(Date),
       tx,
     );
+  });
+
+  it('does not start a timer while a break is active', async () => {
+    tx.attendance.findFirst.mockResolvedValueOnce(null);
+
+    await expect(
+      service.updateTimer(
+        8,
+        { action: 'start' },
+        makeUser(11, Role.EMPLOYEE, 101),
+      ),
+    ).rejects.toThrow('Check in and end any break');
+
+    expect(tx.taskTimerSession.create).not.toHaveBeenCalled();
+    expect(tx.attendanceBreak.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('does not resume a paused timer while a flexible-shift break is active', async () => {
+    prisma.taskTimerSession.findFirst.mockResolvedValueOnce({
+      id: 101,
+      status: 'PAUSED',
+    });
+    tx.employee.findFirst.mockResolvedValue({
+      shift: { type: 'FLEXIBLE' },
+    });
+    tx.attendance.findFirst.mockResolvedValueOnce({ id: 201 });
+
+    await expect(
+      service.updateTimer(
+        8,
+        { action: 'resume' },
+        makeUser(11, Role.EMPLOYEE, 101),
+      ),
+    ).rejects.toThrow('End your break before starting or resuming a task timer');
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.taskTimerSession.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('resumes a paused timer after the break has ended', async () => {
+    prisma.taskTimerSession.findFirst.mockResolvedValueOnce({
+      id: 101,
+      status: 'PAUSED',
+    });
+    tx.employee.findFirst.mockResolvedValue({
+      shift: { type: 'FLEXIBLE' },
+    });
+    tx.attendance.findFirst.mockResolvedValueOnce(null);
+
+    await service.updateTimer(
+      8,
+      { action: 'resume' },
+      makeUser(11, Role.EMPLOYEE, 101),
+    );
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.taskTimerSession.updateMany).toHaveBeenCalledWith({
+      where: { id: 101, status: 'PAUSED' },
+      data: { status: 'RUNNING', startedAt: expect.any(Date) },
+    });
   });
 
   it('allows a timer to start without a task estimate', async () => {
@@ -354,7 +414,7 @@ describe('TasksService per-user task timer sessions', () => {
     });
   });
 
-  it('finalizes the active timer when attendance starts a break', async () => {
+  it('finalizes a running timer when attendance starts a break', async () => {
     const startedAt = new Date(Date.now() - 30_000);
     tx.taskTimerSession.findMany.mockResolvedValueOnce([
       {
@@ -372,7 +432,7 @@ describe('TasksService per-user task timer sessions', () => {
       },
     ]);
 
-    await service.stopAllOpenTimersForUser(
+    await service.stopRunningTimersForUser(
       makeUser(11, Role.EMPLOYEE, 101),
       new Date(),
       tx as never,
@@ -388,6 +448,53 @@ describe('TasksService per-user task timer sessions', () => {
     expect(tx.timesheet.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ timerSessionId: 101 }),
     });
+  });
+
+  it('stops only running timers when a break starts', async () => {
+    await service.stopRunningTimersForUser(
+      makeUser(11, Role.EMPLOYEE, 101),
+      new Date(),
+      tx as never,
+    );
+
+    expect(tx.taskTimerSession.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          userId: 11,
+          organizationId,
+          status: 'RUNNING',
+        },
+      }),
+    );
+  });
+
+  it('does not create a timesheet for a timer with no tracked time', async () => {
+    const startedAt = new Date();
+    attendanceTaskHours.recomputeTimesheetHours.mockClear();
+    tx.taskTimerSession.findMany.mockResolvedValueOnce([
+      {
+        id: 101,
+        taskId: 8,
+        userId: 11,
+        organizationId,
+        status: 'PAUSED',
+        durationSeconds: 0,
+        remainingSeconds: 0,
+        startedAt: null,
+        totalSeconds: 0,
+        createdAt: startedAt,
+        task,
+      },
+    ]);
+
+    await service.stopAllOpenTimersForUser(
+      makeUser(11, Role.EMPLOYEE, 101),
+      new Date(),
+      tx as never,
+    );
+
+    expect(tx.timesheet.create).not.toHaveBeenCalled();
+    expect(attendanceTaskHours.recomputeTimesheetHours).not.toHaveBeenCalled();
   });
 
   it('treats repeated stop as idempotent after the session is already closed', async () => {
