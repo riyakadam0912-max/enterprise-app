@@ -48,7 +48,6 @@ import {
 import type { WorkdayShift } from './workday-schedule.utils';
 import { buildApprovedWorkFromHomeCredits } from './work-from-home.utils';
 import { TasksService } from '../tasks/tasks.service';
-import type { AuthUser } from '../common/types/auth';
 
 type AttendanceUser = {
   userId: number;
@@ -3075,7 +3074,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
               timezone,
             )
           : { seconds: 0, activeDays: 0 };
-      const taskWorkHours = taskWork.seconds / 3600;
       for (
         const day = new Date(periodStart);
         day <= scheduledThrough;
@@ -3934,7 +3932,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const flexibleWorkedHours =
       flexibleEmployeeRows.reduce((total, row) => total + row.seconds, 0) /
       3600;
-    const flexibleDayEquivalents = flexibleWorkedHours / 8;
     const fixedAttendanceCredit = fixedAttendanceRows.reduce((total, row) => {
       const wfhCredit = summaryWfhCredits.get(
         `${row.employeeId}:${this.dateKey(row.date)}`,
@@ -4046,8 +4043,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const halfDays = ordinaryFixedRows.filter(
       (row) => statusForRow(row) === AttendanceStatus.HALF_DAY,
     ).length + [...summaryWfhCredits].filter(([key, credit]) => {
-      const [employeeIdString, dateKey] = key.split(':');
-      const employeeId = Number(employeeIdString);
+      const [, dateKey] = key.split(':');
       const date = this.parseHolidayDate(dateKey);
       const currentDate = new Date(
         Date.UTC(
@@ -4353,26 +4349,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       corporateHolidayDays.map(
         (holiday) => `${holiday.organizationId}:${holiday.dateKey}`,
       ),
-    );
-    const fullLeaveDateKeys = new Set(
-      leaveRows.flatMap((leave) => {
-        if (leave.duration === 'HALF_DAY') return [];
-        const dates: string[] = [];
-        const start = this.startOfDay(
-          new Date(Math.max(leave.startDate.getTime(), monthStart.getTime())),
-        );
-        const end = this.startOfDay(
-          new Date(Math.min(leave.endDate.getTime(), monthEnd.getTime())),
-        );
-        for (
-          const date = new Date(start);
-          date <= end;
-          date.setUTCDate(date.getUTCDate() + 1)
-        ) {
-          dates.push(`${leave.employeeId}:${date.toISOString().slice(0, 10)}`);
-        }
-        return dates;
-      }),
     );
     const grouped = new Map<
       number,
