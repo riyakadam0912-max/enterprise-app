@@ -53,12 +53,12 @@ export interface Quote {
     customerName: string;
     email: string | null;
     phoneNumber: string | null;
-    addressLine1: string;
+    addressLine1: string | null;
     addressLine2: string | null;
-    city: string;
-    state: string;
-    country: string;
-    zipCode: string;
+    city: string | null;
+    state: string | null;
+    country: string | null;
+    zipCode: string | null;
   } | null;
   items:     QuoteItem[];
   statusHistory?: Array<{ status: QuoteStatus | string; at: string; note?: string | null }>;

@@ -42,13 +42,16 @@ export class CustomersService {
       data: {
         organizationId,
         customerName: dto.customerName.trim(),
-        customerType: dto.customerType,
-        addressLine1: dto.addressLine1.trim(),
+        ...(dto.customerType && {
+          customerType: dto.customerType,
+        }),
+        shortName: dto.shortName?.trim() || null,
+        addressLine1: dto.addressLine1?.trim() || null,
         addressLine2: dto.addressLine2?.trim() || null,
-        city: dto.city.trim(),
-        state: dto.state.trim(),
-        country: dto.country.trim(),
-        zipCode: dto.zipCode.trim(),
+        city: dto.city?.trim() || null,
+        state: dto.state?.trim() || null,
+        country: dto.country?.trim() || null,
+        zipCode: dto.zipCode?.trim() || null,
         webAddress: dto.webAddress?.trim() || null,
         email: dto.email?.trim().toLowerCase() || null,
         phoneNumber: dto.phoneNumber?.trim() || null,
@@ -90,6 +93,9 @@ export class CustomersService {
       data: {
         ...(dto.customerName !== undefined && {
           customerName: dto.customerName.trim(),
+        }),
+        ...(dto.shortName !== undefined && {
+          shortName: dto.shortName?.trim() || null,
         }),
         ...(dto.customerType !== undefined && {
           customerType: dto.customerType,

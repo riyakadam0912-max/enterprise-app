@@ -74,6 +74,7 @@ describe('CustomersService', () => {
     await service.create(
       {
         customerName: ' Acme ',
+        shortName: ' AC ',
         customerType: CustomerType.BUSINESS,
         addressLine1: ' Main Street ',
         city: ' Mumbai ',
@@ -89,9 +90,31 @@ describe('CustomersService', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           customerName: 'Acme',
+          shortName: 'AC',
+          addressLine1: 'Main Street',
           webAddress: 'https://acme.test',
           email: 'sales@acme.test',
           organizationId: 10,
+        }),
+      }),
+    );
+  });
+
+  it('creates a customer with only its required name', async () => {
+    prisma.customer.create.mockResolvedValueOnce({ id: 2 });
+    await service.create({ customerName: ' Acme ' }, admin);
+
+    expect(prisma.customer.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          customerName: 'Acme',
+          shortName: null,
+          addressLine1: null,
+          addressLine2: null,
+          city: null,
+          state: null,
+          country: null,
+          zipCode: null,
         }),
       }),
     );

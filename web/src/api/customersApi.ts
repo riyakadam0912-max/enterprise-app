@@ -5,13 +5,14 @@ export type CustomerType = 'BUSINESS' | 'INDIVIDUAL';
 export interface Customer {
   id: number;
   customerName: string;
+  shortName: string | null;
   customerType: CustomerType;
-  addressLine1: string;
+  addressLine1: string | null;
   addressLine2: string | null;
-  city: string;
-  state: string;
-  country: string;
-  zipCode: string;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  zipCode: string | null;
   webAddress: string | null;
   email: string | null;
   phoneNumber: string | null;
@@ -19,13 +20,10 @@ export interface Customer {
   _count?: { projects: number; clientProfiles: number };
 }
 
-export type CustomerInput = Omit<Customer, 'id' | 'status' | '_count' | 'webAddress'> & {
-  webAddress?: string | null;
-};
+export type CustomerInput = Pick<Customer, 'customerName'> &
+  Partial<Omit<Customer, 'id' | 'customerName' | 'status' | '_count'>>;
 
-export type CustomerUpdateInput = Partial<Omit<CustomerInput, 'webAddress'>> & {
-  webAddress?: string | null;
-};
+export type CustomerUpdateInput = Partial<CustomerInput>;
 
 export function getCustomers(): Promise<Customer[]> {
   return apiClient<Customer[]>('/customers');

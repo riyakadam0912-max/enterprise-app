@@ -1,48 +1,67 @@
-import { IsEmail, IsEnum, IsOptional, IsString, IsUrl } from 'class-validator';
+import {
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CustomerType } from '@prisma/client';
 
 export class CreateCustomerDto {
   @IsString()
+  @IsNotEmpty()
+  @Matches(/\S/)
   @ApiProperty({ example: 'Acme Corporation' })
   customerName!: string;
 
+  @IsOptional()
   @IsEnum(CustomerType)
-  @ApiProperty({ enum: CustomerType, example: CustomerType.BUSINESS })
-  customerType!: CustomerType;
+  @ApiPropertyOptional({ enum: CustomerType, example: CustomerType.BUSINESS })
+  customerType?: CustomerType;
 
+  @IsOptional()
   @IsString()
-  @ApiProperty({ example: '221B Baker Street' })
-  addressLine1!: string;
+  @ApiPropertyOptional({ example: 'ACME' })
+  shortName?: string;
+
+  @IsOptional()
+  @IsString()
+  @ApiPropertyOptional({ example: '221B Baker Street' })
+  addressLine1?: string;
 
   @IsOptional()
   @IsString()
   @ApiPropertyOptional({ example: 'Suite 400' })
   addressLine2?: string;
 
+  @IsOptional()
   @IsString()
-  @ApiProperty({ example: 'Mumbai' })
-  city!: string;
-
-  @IsString()
-  @ApiProperty({ example: 'Maharashtra' })
-  state!: string;
-
-  @IsString()
-  @ApiProperty({ example: 'India' })
-  country!: string;
-
-  @IsString()
-  @ApiProperty({ example: '400001' })
-  zipCode!: string;
+  @ApiPropertyOptional({ example: 'Mumbai' })
+  city?: string;
 
   @IsOptional()
-  @IsUrl({ require_protocol: true })
+  @IsString()
+  @ApiPropertyOptional({ example: 'Maharashtra' })
+  state?: string;
+
+  @IsOptional()
+  @IsString()
+  @ApiPropertyOptional({ example: 'India' })
+  country?: string;
+
+  @IsOptional()
+  @IsString()
+  @ApiPropertyOptional({ example: '400001' })
+  zipCode?: string;
+
+  @IsOptional()
+  @IsString()
   @ApiPropertyOptional({ example: 'https://acme.example.com' })
   webAddress?: string;
 
   @IsOptional()
-  @IsEmail()
+  @IsString()
   @ApiPropertyOptional({ example: 'hello@acme.example.com' })
   email?: string;
 

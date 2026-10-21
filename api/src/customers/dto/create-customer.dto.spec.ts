@@ -2,27 +2,30 @@ import { validate } from 'class-validator';
 import { CreateCustomerDto } from './create-customer.dto';
 
 describe('CreateCustomerDto', () => {
-  it('allows a missing web address', async () => {
-    const dto = new CreateCustomerDto();
+  it('requires a non-empty customer name', async () => {
+    const dto = Object.assign(new CreateCustomerDto(), { customerName: '  ' });
 
     const errors = await validate(dto);
-    const webAddressError = errors.find(
-      (error) => error.property === 'webAddress',
-    );
+    const nameError = errors.find((error) => error.property === 'customerName');
 
-    expect(webAddressError).toBeUndefined();
+    expect(nameError).toBeDefined();
   });
 
-  it('validates a supplied web address', async () => {
+  it('allows creation with only a customer name', async () => {
     const dto = Object.assign(new CreateCustomerDto(), {
-      webAddress: 'not-a-url',
+      customerName: 'Acme Corporation',
     });
 
-    const errors = await validate(dto);
-    const webAddressError = errors.find(
-      (error) => error.property === 'webAddress',
-    );
+    await expect(validate(dto)).resolves.toHaveLength(0);
+  });
 
-    expect(webAddressError?.constraints).toHaveProperty('isUrl');
+  it('does not apply email or web address format constraints', async () => {
+    const dto = Object.assign(new CreateCustomerDto(), {
+      customerName: 'Acme Corporation',
+      webAddress: 'website without a protocol',
+      email: 'not-an-email',
+    });
+
+    await expect(validate(dto)).resolves.toHaveLength(0);
   });
 });

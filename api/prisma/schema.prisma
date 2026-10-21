@@ -1090,13 +1090,14 @@ model Customer {
   id             Int             @id @default(autoincrement())
   organizationId Int
   customerName   String
+  shortName      String?
   customerType   CustomerType    @default(BUSINESS)
-  addressLine1   String
+  addressLine1   String?
   addressLine2   String?
-  city           String
-  state          String
-  country        String
-  zipCode        String
+  city           String?
+  state          String?
+  country        String?
+  zipCode        String?
   webAddress     String?
   email          String?
   phoneNumber    String?
