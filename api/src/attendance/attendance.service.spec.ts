@@ -551,13 +551,13 @@ describe('AttendanceService', () => {
     );
   });
 
-  it('shows an active flexible break from an earlier attendance date in today status', async () => {
+  it('shows an active session break even when the current shift is not flexible', async () => {
     prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
     jest.spyOn(service as any, 'buildDailySnapshot').mockResolvedValue({
       rows: [
         {
           employeeId: 7,
-          shiftDetails: { type: 'FLEXIBLE' },
+          shiftDetails: { type: 'FIXED' },
           onBreak: false,
         },
       ],
@@ -718,6 +718,62 @@ describe('AttendanceService', () => {
         }),
       }),
     });
+  });
+
+  it('allows editing attendance in an authorized descendant organization', async () => {
+    const record = {
+      id: 1260,
+      employeeId: 7,
+      organizationId: 2,
+      date: new Date('2026-10-22T00:00:00.000Z'),
+      checkIn: new Date('2026-10-22T09:00:00.000Z'),
+      checkOut: new Date('2026-10-22T18:00:00.000Z'),
+      status: AttendanceStatus.PRESENT,
+      breaks: [],
+      employee: { name: 'Employee', hireDate: null, shift: null },
+      shift: {
+        id: 3,
+        type: 'FIXED',
+        requiredHours: 8,
+        minPresentHours: 5,
+      },
+    };
+    mockOrganizationScopeService.getDescendantOrganizationIds.mockResolvedValue(
+      [1, 2],
+    );
+    prisma.attendance.findFirst
+      .mockResolvedValueOnce(record)
+      .mockResolvedValueOnce(null);
+    prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
+    prisma.attendance.update.mockResolvedValue({ id: 1260, checkOut: null });
+    jest.spyOn(service as any, 'calculateLateMinutes').mockReturnValue(0);
+    jest
+      .spyOn(service as any, 'findApprovedLeaveForDay')
+      .mockResolvedValue(null);
+
+    await service.update(
+      1260,
+      { reopenAsWorking: true } as any,
+      mockUser as any,
+    );
+
+    expect(prisma.attendance.findFirst).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 1260,
+          organizationId: { in: [1, 2] },
+          employee: expect.objectContaining({
+            OR: expect.arrayContaining([
+              expect.objectContaining({
+                organizationId: { in: [2] },
+                deletedAt: null,
+              }),
+            ]),
+          }),
+        }),
+      }),
+    );
   });
 
   it('does not reopen fixed attendance when another session is already open', async () => {
@@ -1714,6 +1770,37 @@ describe('AttendanceService', () => {
     expect(prisma.attendanceSessionBreak.create).not.toHaveBeenCalled();
   });
 
+  it('starts a break in an open flexible session when the employee shift is stale', async () => {
+    prisma.employee.findFirst
+      .mockResolvedValueOnce({ id: 7 })
+      .mockResolvedValueOnce({
+        id: 7,
+        organizationId: 1,
+        shift: { type: 'FIXED' },
+      });
+    prisma.attendanceSession.findFirst
+      .mockResolvedValueOnce({ id: 11 })
+      .mockResolvedValueOnce({ id: 11, breaks: [] });
+    prisma.attendanceSessionBreak.create.mockResolvedValue({
+      id: 21,
+      attendanceSessionId: 11,
+      startedAt: new Date(),
+      endedAt: null,
+    });
+
+    const result = await service.startBreak(mockUser);
+
+    expect(prisma.attendanceSessionBreak.create).toHaveBeenCalledWith({
+      data: {
+        attendanceSessionId: 11,
+        startedAt: expect.any(Date),
+      },
+    });
+    expect(prisma.attendanceBreak.create).not.toHaveBeenCalled();
+    expect(mockTasksService.stopRunningTimersForUser).toHaveBeenCalled();
+    expect(result.onBreak).toBe(true);
+  });
+
   it('does not create a break when stopping the task timer fails', async () => {
     prisma.employee.findFirst.mockResolvedValue({ id: 7 });
     prisma.attendance.findFirst.mockResolvedValue({ id: 10, breaks: [] });
@@ -1773,17 +1860,19 @@ describe('AttendanceService', () => {
         organizationId: 1,
         shift: { type: 'FLEXIBLE' },
       });
-    prisma.attendanceSession.findFirst.mockResolvedValue({
-      id: 11,
-      breaks: [
-        {
-          id: 21,
-          attendanceSessionId: 11,
-          startedAt: new Date(),
-          endedAt: null,
-        },
-      ],
-    });
+    prisma.attendanceSession.findFirst
+      .mockResolvedValueOnce({ id: 11 })
+      .mockResolvedValueOnce({
+        id: 11,
+        breaks: [
+          {
+            id: 21,
+            attendanceSessionId: 11,
+            startedAt: new Date(),
+            endedAt: null,
+          },
+        ],
+      });
     prisma.attendanceSessionBreak.update.mockResolvedValue({
       id: 21,
       attendanceSessionId: 11,
@@ -1807,6 +1896,44 @@ describe('AttendanceService', () => {
     expect(result).toEqual(
       expect.objectContaining({ closedBreakCount: 1, onBreak: false }),
     );
+    expect(result.onBreak).toBe(false);
+  });
+
+  it('closes an open flexible session break when the employee shift is stale', async () => {
+    prisma.employee.findFirst
+      .mockResolvedValueOnce({ id: 7 })
+      .mockResolvedValueOnce({
+        id: 7,
+        organizationId: 1,
+        shift: { type: 'FIXED' },
+      });
+    prisma.attendanceSession.findFirst
+      .mockResolvedValueOnce({ id: 11 })
+      .mockResolvedValueOnce({
+        id: 11,
+        breaks: [
+          {
+            id: 21,
+            attendanceSessionId: 11,
+            startedAt: new Date(),
+            endedAt: null,
+          },
+        ],
+      });
+    prisma.attendanceSessionBreak.update.mockResolvedValue({
+      id: 21,
+      attendanceSessionId: 11,
+      startedAt: new Date(),
+      endedAt: new Date(),
+    });
+
+    const result = await service.stopBreak(mockUser);
+
+    expect(prisma.attendanceSessionBreak.update).toHaveBeenCalledWith({
+      where: { id: 21 },
+      data: { endedAt: expect.any(Date) },
+    });
+    expect(prisma.attendanceBreak.update).not.toHaveBeenCalled();
     expect(result.onBreak).toBe(false);
   });
 

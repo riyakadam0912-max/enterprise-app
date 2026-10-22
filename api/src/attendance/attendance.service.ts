@@ -2234,11 +2234,13 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   async startBreak(user: AttendanceUser) {
     const employeeId = await this.resolveScopedEmployeeId(user);
     const employee = await this.ensureEmployee(employeeId, user);
-    const flexibleShift =
-      employee.shift?.type === 'FLEXIBLE' ? employee.shift : null;
+    const organizationId = employee.organizationId ?? user.organizationId;
+    const openFlexibleSession = await this.prisma.attendanceSession.findFirst({
+      where: { employeeId, organizationId, endedAt: null },
+      select: { id: true },
+    });
     const startedAt = new Date();
-    if (flexibleShift) {
-      const organizationId = employee.organizationId ?? user.organizationId;
+    if (employee.shift?.type === 'FLEXIBLE' || openFlexibleSession) {
       const created = await this.prisma.$transaction(async (tx) => {
         await this.lockFlexibleAttendanceForEmployee(
           employeeId,
@@ -2300,18 +2302,28 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   async stopBreak(user: AttendanceUser) {
     const employeeId = await this.resolveScopedEmployeeId(user);
     const employee = await this.ensureEmployee(employeeId, user);
-    if (employee.shift?.type === 'FLEXIBLE') {
+    const organizationId = employee.organizationId ?? user.organizationId;
+    const openFlexibleBreak = await this.prisma.attendanceSession.findFirst({
+      where: {
+        employeeId,
+        organizationId,
+        endedAt: null,
+        breaks: { some: { endedAt: null } },
+      },
+      select: { id: true },
+    });
+    if (employee.shift?.type === 'FLEXIBLE' || openFlexibleBreak) {
       const endedAt = new Date();
       const updatedBreak = await this.prisma.$transaction(async (tx) => {
         await this.lockFlexibleAttendanceForEmployee(
           employeeId,
-          employee.organizationId ?? user.organizationId,
+          organizationId,
           tx,
         );
         const session = await tx.attendanceSession.findFirst({
           where: {
             employeeId,
-            organizationId: employee.organizationId ?? user.organizationId,
+            organizationId,
             endedAt: null,
             breaks: { some: { endedAt: null } },
           },
@@ -2338,7 +2350,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const record = await this.prisma.attendance.findFirst({
       where: {
         employeeId,
-        organizationId: employee.organizationId ?? user.organizationId,
+        organizationId,
         checkIn: { not: null },
         checkOut: null,
       },
@@ -2773,13 +2785,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       user,
     );
     if (!date) {
-      const flexibleEmployeeIds = rows
-        .filter((row) => row.shiftDetails?.type === 'FLEXIBLE')
-        .map((row) => row.employeeId);
-      if (flexibleEmployeeIds.length > 0) {
+      const employeeIds = rows.map((row) => row.employeeId);
+      if (employeeIds.length > 0) {
         const openBreakRows = await this.prisma.attendanceSession.findMany({
           where: {
-            employeeId: { in: flexibleEmployeeIds },
+            employeeId: { in: employeeIds },
             endedAt: null,
             breaks: { some: { endedAt: null } },
           },
@@ -5645,11 +5655,35 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   async update(id: number, dto: UpdateAttendanceDto, user: AttendanceUser) {
     const buScope = await this.businessUnitsService.resolveScope(user as any);
     const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
+    const organizationIds = await this.getAttendanceOrganizationIds(user);
+    const descendantIds = organizationIds?.filter(
+      (organizationId) => organizationId !== buScope.organizationId,
+    );
+    const employeeScope =
+      organizationIds === null
+        ? { deletedAt: null }
+        : descendantIds && descendantIds.length > 0
+          ? {
+              OR: [
+                buWhere,
+                {
+                  organizationId: { in: descendantIds },
+                  deletedAt: null,
+                },
+              ],
+            }
+          : {
+              deletedAt: null,
+              ...this.buildOrganizationScope(user),
+              ...buWhere,
+            };
     const record = await this.prisma.attendance.findFirst({
       where: {
         id,
-        ...this.buildOrganizationScope(user),
-        employee: buWhere,
+        ...(organizationIds === null
+          ? {}
+          : { organizationId: { in: organizationIds } }),
+        employee: employeeScope,
       },
       include: {
         employee: { include: { shift: true } },
