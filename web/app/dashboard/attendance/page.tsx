@@ -408,6 +408,8 @@ function EmployeeAttendancePanel(props: {
   const hasCheckedIn = Boolean(row?.checkIn);
   const hasCheckedOut = Boolean(row?.checkOut);
   const isFlexible = row?.shiftDetails?.type === 'FLEXIBLE';
+  const canCheckIn =
+    !hasCheckedIn || (isFlexible && hasCheckedOut);
   const breakAction = (
     <button
       onClick={onBreakAction}
@@ -453,10 +455,14 @@ function EmployeeAttendancePanel(props: {
           <div className="grid gap-3 sm:grid-cols-3">
             <button
               onClick={onCheckIn}
-              disabled={!accountLinked || hasCheckedIn || checkInLoading}
+              disabled={!accountLinked || !canCheckIn || checkInLoading}
               className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {checkInLoading ? 'Checking In…' : hasCheckedIn ? 'Already Checked In' : 'Mark Check In'}
+              {checkInLoading
+                ? 'Checking In…'
+                : hasCheckedIn
+                  ? 'Already Checked In'
+                  : 'Mark Check In'}
             </button>
             {breakAction}
             <button
@@ -477,10 +483,14 @@ function EmployeeAttendancePanel(props: {
               <div className="absolute left-0 z-10 mt-2 grid w-56 gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
                 <button
                   onClick={onCheckIn}
-                  disabled={!accountLinked || hasCheckedIn || checkInLoading}
+                  disabled={!accountLinked || !canCheckIn || checkInLoading}
                   className="rounded-lg border border-slate-200 px-3 py-2 text-left text-sm font-medium text-slate-700 disabled:opacity-40"
                 >
-                  {hasCheckedIn ? 'Checked in' : 'Mark check in'}
+                  {hasCheckedIn && !canCheckIn
+                    ? 'Checked in'
+                    : hasCheckedOut
+                      ? 'Start another session'
+                      : 'Mark check in'}
                 </button>
                 <button
                   onClick={onCheckOut}
