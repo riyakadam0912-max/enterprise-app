@@ -677,6 +677,7 @@ describe('AttendanceService', () => {
     prisma.attendance.findFirst
       .mockResolvedValueOnce(record)
       .mockResolvedValueOnce(null);
+    prisma.attendance.findUnique.mockResolvedValueOnce({ checkOut });
     prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
     prisma.attendance.update.mockResolvedValue({ id: 49, checkOut: null });
     jest.spyOn(service as any, 'calculateLateMinutes').mockReturnValue(0);
@@ -684,12 +685,9 @@ describe('AttendanceService', () => {
       .spyOn(service as any, 'findApprovedLeaveForDay')
       .mockResolvedValue(null);
 
-    await service.update(
+    await service.reopenAttendance(
       49,
-      {
-        reopenAsWorking: true,
-        reopenReason: 'Checkout was recorded by mistake',
-      } as any,
+      { reason: 'Checkout was recorded by mistake' },
       mockUser as any,
     );
 
@@ -719,6 +717,35 @@ describe('AttendanceService', () => {
         }),
       }),
     });
+    expect(
+      mockTasksService.lockTimerAndAttendanceStateForUser,
+    ).toHaveBeenCalledWith(
+      { userId: mockUser.userId, organizationId: record.organizationId },
+      prisma,
+    );
+  });
+
+  it('does not allow employees to reopen checked-out attendance', async () => {
+    prisma.attendance.findFirst.mockResolvedValue({
+      id: 49,
+      employeeId: 7,
+      organizationId: 1,
+      date: new Date('2026-10-22T00:00:00.000Z'),
+      checkIn: new Date('2026-10-22T09:00:00.000Z'),
+      checkOut: new Date('2026-10-22T18:00:00.000Z'),
+      status: AttendanceStatus.PRESENT,
+      breaks: [],
+      employee: { name: 'Employee', hireDate: null, shift: null },
+      shift: null,
+    });
+
+    await expect(
+      service.reopenAttendance(49, {}, {
+        ...mockUser,
+        role: Role.EMPLOYEE,
+      } as any),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.attendance.update).not.toHaveBeenCalled();
   });
 
   it('allows editing attendance in an authorized descendant organization', async () => {
@@ -745,6 +772,9 @@ describe('AttendanceService', () => {
     prisma.attendance.findFirst
       .mockResolvedValueOnce(record)
       .mockResolvedValueOnce(null);
+    prisma.attendance.findUnique.mockResolvedValueOnce({
+      checkOut: record.checkOut,
+    });
     prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
     prisma.attendance.update.mockResolvedValue({ id: 1260, checkOut: null });
     jest.spyOn(service as any, 'calculateLateMinutes').mockReturnValue(0);
@@ -752,11 +782,7 @@ describe('AttendanceService', () => {
       .spyOn(service as any, 'findApprovedLeaveForDay')
       .mockResolvedValue(null);
 
-    await service.update(
-      1260,
-      { reopenAsWorking: true } as any,
-      mockUser as any,
-    );
+    await service.reopenAttendance(1260, {}, mockUser as any);
 
     expect(prisma.attendance.findFirst).toHaveBeenNthCalledWith(
       1,
@@ -797,10 +823,13 @@ describe('AttendanceService', () => {
         },
       })
       .mockResolvedValueOnce({ id: 51 });
+    prisma.attendance.findUnique.mockResolvedValueOnce({
+      checkOut: new Date('2026-10-22T18:00:00.000Z'),
+    });
     prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
 
     await expect(
-      service.update(50, { reopenAsWorking: true } as any, mockUser as any),
+      service.reopenAttendance(50, {}, mockUser as any),
     ).rejects.toThrow('Employee already has another open attendance record');
     expect(prisma.attendance.update).not.toHaveBeenCalled();
   });
@@ -849,6 +878,7 @@ describe('AttendanceService', () => {
     };
     prisma.attendance.findFirst.mockResolvedValue(record);
     prisma.attendance.findUnique
+      .mockResolvedValueOnce({ checkOut })
       .mockResolvedValueOnce({ id: 52 })
       .mockResolvedValueOnce({ ...record, checkOut: null });
     prisma.attendance.update.mockResolvedValue({
@@ -868,7 +898,7 @@ describe('AttendanceService', () => {
       .spyOn(service as any, 'findApprovedLeaveForDay')
       .mockResolvedValue(null);
 
-    await service.update(52, { reopenAsWorking: true } as any, mockUser as any);
+    await service.reopenAttendance(52, {}, mockUser as any);
 
     expect(prisma.attendanceSession.updateMany).toHaveBeenCalledWith({
       where: { id: 82, endedAt: checkOut },

@@ -296,10 +296,12 @@ export interface UpdateAttendancePayload {
   date?: string;
   checkIn?: string;
   checkOut?: string;
-  reopenAsWorking?: boolean;
-  reopenReason?: string;
   status?: AttendanceStatus;
   breaks?: { startedAt: string; endedAt: string | null }[];
+}
+
+export interface ReopenAttendancePayload {
+  reason?: string;
 }
 
 function buildQuery(filters: { [key: string]: string | number | undefined | null }) {
@@ -505,6 +507,13 @@ export function checkOut(data: AttendanceActionPayload): Promise<AttendanceRecor
 export function updateAttendance(id: number, data: UpdateAttendancePayload): Promise<AttendanceRecord> {
   return apiClient<AttendanceRecord>(`/attendance/${id}`, {
     method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export function reopenAttendance(id: number, data: ReopenAttendancePayload): Promise<AttendanceRecord> {
+  return apiClient<AttendanceRecord>(`/attendance/${id}/reopen`, {
+    method: 'POST',
     body: JSON.stringify(data),
   });
 }

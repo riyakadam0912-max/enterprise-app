@@ -25,6 +25,7 @@ import { CreateShiftDto } from './dto/create-shift.dto';
 import { CreateHolidayDto } from './dto/create-holiday.dto';
 import { QueryAttendanceDto } from './dto/query-attendance.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
+import { ReopenAttendanceDto } from './dto/reopen-attendance.dto';
 import { UpdateShiftDto } from './dto/update-shift.dto';
 import { UpdateHolidayDto } from './dto/update-holiday.dto';
 import {
@@ -57,6 +58,29 @@ export class AttendanceController {
   @Get('holidays')
   listHolidays(@Req() req: AuthenticatedRequest) {
     return this.attendanceService.listHolidays(this.scopedUser(req));
+  }
+
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
+  @ApiOperation({
+    summary:
+      'Reopen checked-out attendance so the employee can continue working',
+  })
+  @ApiResponse({ status: 200, description: 'Attendance reopened.' })
+  @ApiResponse({ status: 400, description: 'Attendance cannot be reopened.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @ApiResponse({ status: 404, description: 'Attendance not found.' })
+  @ApiBody({ type: ReopenAttendanceDto })
+  @Post(':id/reopen')
+  reopen(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReopenAttendanceDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.attendanceService.reopenAttendance(
+      id,
+      dto,
+      this.scopedUser(req),
+    );
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)

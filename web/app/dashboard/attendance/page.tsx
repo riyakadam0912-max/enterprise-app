@@ -653,11 +653,11 @@ function EditAttendanceModal(props: {
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Date</label>
-            <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+            <input type="date" value={date} disabled={reopenAsWorking} onChange={(event) => setDate(event.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-slate-100 disabled:text-slate-500" />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Status</label>
-            <select value={status} onChange={(event) => setStatus(event.target.value as AttendanceStatus)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
+            <select value={status} disabled={reopenAsWorking} onChange={(event) => setStatus(event.target.value as AttendanceStatus)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-slate-100 disabled:text-slate-500">
               <option value="PRESENT">Present</option>
               <option value="ABSENT">Absent</option>
               <option value="HALF_DAY">Half Day</option>
@@ -668,7 +668,7 @@ function EditAttendanceModal(props: {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Check In</label>
-            <input type="time" value={checkIn} onChange={(event) => setCheckIn(event.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+            <input type="time" value={checkIn} disabled={reopenAsWorking} onChange={(event) => setCheckIn(event.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-slate-100 disabled:text-slate-500" />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Check Out</label>
@@ -684,12 +684,12 @@ function EditAttendanceModal(props: {
                   onChange={(event) => setReopenAsWorking(event.target.checked)}
                   className="mt-0.5 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
                 />
-                <span>Employee is still working — reopen attendance</span>
+                <span>Clear the mistaken checkout and let the employee continue working</span>
               </label>
               {reopenAsWorking && (
                 <>
                   <p className="mt-2 text-xs text-slate-600">
-                    This clears the checkout and keeps attendance open. Any task timer stopped at checkout stays stopped; it will not be resumed automatically.
+                    This clears the checkout and leaves attendance open. The employee can start a new task timer when ready and check out from their account when finished. Any timer stopped at the original checkout remains stopped.
                   </p>
                   <label className="mt-3 block text-xs font-medium text-slate-600">
                     Correction reason (optional)
@@ -777,7 +777,7 @@ function EditAttendanceModal(props: {
         <div className="flex justify-end gap-3 border-t border-slate-100 bg-slate-50 px-5 py-4">
           <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
           <button onClick={submitChanges} disabled={loading} className="px-4 py-2 rounded-lg bg-orange-500 text-sm font-medium text-white hover:bg-orange-600 disabled:opacity-50">
-            {loading ? 'Saving…' : 'Save Changes'}
+            {loading ? (reopenAsWorking ? 'Reopening…' : 'Saving…') : reopenAsWorking ? 'Reopen Attendance' : 'Save Changes'}
           </button>
         </div>
       </div>
@@ -974,19 +974,27 @@ export default function AttendancePage() {
     if (!editingRecord?.id) return;
 
     try {
-      await updateAttendanceMutation.mutate(editingRecord.id, {
-        date: payload.date,
-        checkIn: payload.checkIn ? toIsoFromParts(payload.date, payload.checkIn) : undefined,
-        checkOut: payload.reopenAsWorking
-          ? undefined
-          : payload.checkOut
+      if (payload.reopenAsWorking) {
+        const confirmed = window.confirm(
+          `Reopen attendance for ${editingRecord.employee.name}? This clears the checkout, leaves attendance open, and requires the employee to start a new task timer and check out when finished.`,
+        );
+        if (!confirmed) return;
+        await updateAttendanceMutation.reopen(editingRecord.id, {
+          reason: payload.reopenReason,
+        });
+      } else {
+        await updateAttendanceMutation.mutate(editingRecord.id, {
+          date: payload.date,
+          checkIn: payload.checkIn
+            ? toIsoFromParts(payload.date, payload.checkIn)
+            : undefined,
+          checkOut: payload.checkOut
             ? toIsoFromParts(payload.date, payload.checkOut)
             : undefined,
-        reopenAsWorking: payload.reopenAsWorking,
-        reopenReason: payload.reopenReason,
-        status: payload.status,
-        breaks: payload.breaks,
-      });
+          status: payload.status,
+          breaks: payload.breaks,
+        });
+      }
       await Promise.all([refetch(), today.refetch()]);
       setEditingRecord(null);
     } catch {

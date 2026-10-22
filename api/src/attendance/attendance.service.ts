@@ -26,6 +26,7 @@ import { CreateShiftDto } from './dto/create-shift.dto';
 import { CreateHolidayDto } from './dto/create-holiday.dto';
 import { QueryAttendanceDto } from './dto/query-attendance.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
+import { ReopenAttendanceDto } from './dto/reopen-attendance.dto';
 import { UpdateShiftDto } from './dto/update-shift.dto';
 import { UpdateHolidayDto } from './dto/update-holiday.dto';
 import {
@@ -5702,11 +5703,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         'Could not determine local attendance day boundary',
       );
     }
-    await this.lockFlexibleAttendanceForEmployee(
-      record.employeeId,
-      record.organizationId,
-      tx,
-    );
     const candidates = await tx.attendanceSession.findMany({
       where: {
         employeeId: record.employeeId,
@@ -5819,6 +5815,31 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   }
 
   async update(id: number, dto: UpdateAttendanceDto, user: AttendanceUser) {
+    return this.updateAttendance(id, dto, user, false);
+  }
+
+  async reopenAttendance(
+    id: number,
+    dto: ReopenAttendanceDto,
+    user: AttendanceUser,
+  ) {
+    return this.updateAttendance(
+      id,
+      { reopenAsWorking: true, reopenReason: dto.reason },
+      user,
+      true,
+    );
+  }
+
+  private async updateAttendance(
+    id: number,
+    dto: UpdateAttendanceDto & {
+      reopenAsWorking?: boolean;
+      reopenReason?: string;
+    },
+    user: AttendanceUser,
+    allowReopen: boolean,
+  ) {
     const buScope = await this.businessUnitsService.resolveScope(user as any);
     const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
     const organizationIds = await this.getAttendanceOrganizationIds(user);
@@ -5862,6 +5883,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException(`Attendance #${id} not found`);
     }
     const reopening = dto.reopenAsWorking === true;
+    if (reopening && !allowReopen) {
+      throw new BadRequestException(
+        'Use the reopen attendance action to clear a checkout',
+      );
+    }
     if (
       reopening &&
       user.role !== Role.ADMIN &&
@@ -5877,12 +5903,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         'Only a checked-out attendance record can be reopened',
       );
     }
-    if (dto.reopenReason && !reopening) {
-      throw new BadRequestException(
-        'A correction reason can only be provided when reopening attendance',
-      );
-    }
-
     const nextDate = dto.date
       ? attendanceDateFromKey(dto.date.slice(0, 10))
       : new Date(record.date);
@@ -6059,6 +6079,26 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         throw new BadRequestException(
           'Breaks cannot be edited in the same action as reopening attendance',
         );
+      }
+      if (reopening) {
+        await this.lockFlexibleAttendanceForEmployee(
+          record.employeeId,
+          record.organizationId,
+          tx,
+          user.userId,
+        );
+        const currentAttendance = await tx.attendance.findUnique({
+          where: { id },
+          select: { checkOut: true },
+        });
+        if (
+          !currentAttendance?.checkOut ||
+          currentAttendance.checkOut.getTime() !== record.checkOut?.getTime()
+        ) {
+          throw new ConflictException(
+            'Attendance record changed; refresh and try again',
+          );
+        }
       }
       if (reopening && shift?.type === 'FLEXIBLE') {
         return this.reopenFlexibleAttendanceSession(

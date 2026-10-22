@@ -15,8 +15,10 @@ import {
   getEmployeeAttendance,
   getMyAttendance,
   getTodayAttendance,
+  reopenAttendance,
   updateAttendance,
   UpdateAttendancePayload,
+  ReopenAttendancePayload,
 } from '@/api/attendanceApi';
 
 function getFriendlyLoadError(message?: string) {
@@ -201,7 +203,20 @@ export function useUpdateAttendance() {
     }
   }, []);
 
-  return { mutate, loading, error, setError };
+  const reopen = useCallback(async (attendanceId: number, payload: ReopenAttendancePayload) => {
+    setLoading(true);
+    setError(null);
+    try {
+      return await reopenAttendance(attendanceId, payload);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Attendance could not be reopened.');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { mutate, reopen, loading, error, setError };
 }
 
 export function useAttendanceSummary(month?: string, employeeId?: number) {
