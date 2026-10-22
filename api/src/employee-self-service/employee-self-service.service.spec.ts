@@ -17,6 +17,7 @@ import {
 } from '../../test/helpers/mocks.helper';
 import { LeaveRequestsService } from '../leave-requests/leave-requests.service';
 import { LeaveEntitlementsService } from '../leave-requests/leave-entitlements.service';
+import { TasksService } from '../tasks/tasks.service';
 
 describe('EmployeeSelfServiceService', () => {
   let service: EmployeeSelfServiceService;
@@ -26,6 +27,7 @@ describe('EmployeeSelfServiceService', () => {
     countScheduledLeaveDays: jest.Mock;
     getBalance: jest.Mock;
   };
+  let mockTasksService: { stopActiveTimerForEmployee: jest.Mock };
 
   const createUser = (overrides: Partial<AuthUser> = {}): AuthUser => ({
     id: 7,
@@ -64,12 +66,19 @@ describe('EmployeeSelfServiceService', () => {
         year: 2026,
       } as never),
     };
+    mockTasksService = {
+      stopActiveTimerForEmployee: jest.fn().mockResolvedValue(null as never),
+    };
+    mockPrisma.$transaction.mockImplementation(
+      (operation: (tx: typeof mockPrisma) => unknown) => operation(mockPrisma),
+    );
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EmployeeSelfServiceService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: LeaveRequestsService, useValue: mockLeaveRequests },
         { provide: LeaveEntitlementsService, useValue: mockLeaveEntitlements },
+        { provide: TasksService, useValue: mockTasksService },
       ],
     }).compile();
 
@@ -213,6 +222,7 @@ describe('EmployeeSelfServiceService', () => {
       checkIn: new Date('2026-03-13T03:46:00.000Z'),
       checkOut: null,
       shift: { requiredHours: 8, minPresentHours: 5 },
+      breaks: [],
     });
     attendanceDelegate.update.mockResolvedValue({
       checkIn: new Date('2026-03-13T03:46:00.000Z'),
@@ -235,6 +245,107 @@ describe('EmployeeSelfServiceService', () => {
         }),
       }),
     );
+    expect(mockTasksService.stopActiveTimerForEmployee).toHaveBeenCalledWith(
+      22,
+      2,
+      new Date('2026-03-13T06:46:00.000Z'),
+      mockPrisma,
+    );
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes an open break and finalizes the task timer in the checkout transaction', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-03-13T06:46:00.000Z'));
+    const user = createUser({ employeeId: 22 });
+    const employeeDelegate = getMockPrismaDelegate(mockPrisma, 'employee');
+    const organizationDelegate = getMockPrismaDelegate(
+      mockPrisma,
+      'organization',
+    );
+    const attendanceDelegate = getMockPrismaDelegate(mockPrisma, 'attendance');
+    const attendanceBreakDelegate = getMockPrismaDelegate(
+      mockPrisma,
+      'attendanceBreak',
+    );
+
+    employeeDelegate.findFirst.mockResolvedValue({ id: 22 });
+    employeeDelegate.findUnique.mockResolvedValue({ id: 22 });
+    organizationDelegate.findUnique.mockResolvedValue({ timezone: 'UTC' });
+    attendanceDelegate.findUnique.mockResolvedValue({
+      id: 4,
+      checkIn: new Date('2026-03-13T03:46:00.000Z'),
+      checkOut: null,
+      shift: { requiredHours: 8, minPresentHours: 5 },
+      breaks: [
+        {
+          id: 6,
+          startedAt: new Date('2026-03-13T05:46:00.000Z'),
+          endedAt: null,
+        },
+      ],
+    });
+    attendanceDelegate.update.mockResolvedValue({
+      checkIn: new Date('2026-03-13T03:46:00.000Z'),
+      checkOut: new Date('2026-03-13T06:46:00.000Z'),
+      workingHours: 2,
+      overtimeHours: 0,
+      lateMinutes: 1,
+    });
+
+    await service.checkOut(user);
+
+    expect(attendanceBreakDelegate.update).toHaveBeenCalledWith({
+      where: { id: 6 },
+      data: { endedAt: new Date('2026-03-13T06:46:00.000Z') },
+    });
+    expect(mockTasksService.stopActiveTimerForEmployee).toHaveBeenCalledWith(
+      22,
+      2,
+      new Date('2026-03-13T06:46:00.000Z'),
+      mockPrisma,
+    );
+    expect(attendanceDelegate.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          workingHours: 2,
+          shortfallHours: 6,
+        }),
+      }),
+    );
+  });
+
+  it('does not save self-service checkout when the task timer cannot be finalized', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-03-13T06:46:00.000Z'));
+    const user = createUser({ employeeId: 22 });
+    const employeeDelegate = getMockPrismaDelegate(mockPrisma, 'employee');
+    const organizationDelegate = getMockPrismaDelegate(
+      mockPrisma,
+      'organization',
+    );
+    const attendanceDelegate = getMockPrismaDelegate(mockPrisma, 'attendance');
+
+    employeeDelegate.findFirst.mockResolvedValue({ id: 22 });
+    employeeDelegate.findUnique.mockResolvedValue({ id: 22 });
+    organizationDelegate.findUnique.mockResolvedValue({ timezone: 'UTC' });
+    attendanceDelegate.findUnique.mockResolvedValue({
+      id: 4,
+      checkIn: new Date('2026-03-13T03:46:00.000Z'),
+      checkOut: null,
+      shift: { requiredHours: 8, minPresentHours: 5 },
+      breaks: [],
+    });
+    mockTasksService.stopActiveTimerForEmployee.mockImplementationOnce(
+      async () => {
+        throw new Error('timer write failed');
+      },
+    );
+
+    await expect(service.checkOut(user)).rejects.toThrow('timer write failed');
+
+    expect(attendanceDelegate.update).not.toHaveBeenCalled();
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it('loads today attendance using the organization timezone', async () => {

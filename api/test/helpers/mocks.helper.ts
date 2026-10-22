@@ -86,6 +86,7 @@ export type MockPrismaService = Partial<
   authSession: DelegateMock;
   employee: DelegateMock;
   attendance: DelegateMock;
+  attendanceBreak: DelegateMock;
   holiday: DelegateMock;
   shift: DelegateMock;
   leaveRequest: DelegateMock;
@@ -169,6 +170,7 @@ export const createMockPrismaService = (): MockPrismaService => ({
   authSession: createDelegateMock(),
   employee: createDelegateMock(),
   attendance: createDelegateMock(),
+  attendanceBreak: createDelegateMock(),
   holiday: createDelegateMock(),
   shift: createDelegateMock(),
   leaveRequest: createDelegateMock(),

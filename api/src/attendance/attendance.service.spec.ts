@@ -151,7 +151,9 @@ describe('AttendanceService', () => {
       ),
     };
     mockTasksService = {
-      lockTimerAndAttendanceStateForUser: jest.fn().mockResolvedValue(undefined),
+      lockTimerAndAttendanceStateForUser: jest
+        .fn()
+        .mockResolvedValue(undefined),
       stopRunningTimersForUser: jest.fn().mockResolvedValue([]),
       stopAllOpenTimersForUser: jest.fn().mockResolvedValue([]),
       stopActiveTimerForEmployee: jest.fn().mockResolvedValue(null),
@@ -1153,8 +1155,9 @@ describe('AttendanceService', () => {
     expect(prisma.attendance.create).not.toHaveBeenCalled();
   });
 
-  it('updates working hours and status on check-out', async () => {
+  it('lets a manager check out an employee and finalize their task timer', async () => {
     jest.setSystemTime(new Date('2026-03-13T14:00:00.000Z'));
+    const managerUser = { ...mockUser, role: Role.MANAGER };
     const mockEmployee = {
       id: 7,
       name: 'Ava',
@@ -1169,7 +1172,7 @@ describe('AttendanceService', () => {
       },
     };
     prisma.employee.findFirst.mockResolvedValue(mockEmployee);
-    prisma.attendance.findUnique.mockResolvedValue({
+    prisma.attendance.findFirst.mockResolvedValue({
       id: 10,
       employeeId: 7,
       date: new Date('2026-03-13T00:00:00.000Z'),
@@ -1188,21 +1191,14 @@ describe('AttendanceService', () => {
       shift: mockEmployee.shift,
     });
 
-    const result = await service.checkOut(
-      {
-        employeeId: 7,
-        date: '2026-03-13',
-        timestamp: '2026-03-13T14:00:00.000Z',
-      },
-      mockUser,
-    );
+    const result = await service.checkOut({ employeeId: 7 }, managerUser);
 
     expect(prisma.attendance.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           workingHours: 5,
           checkoutSource: 'USER',
-          checkoutActorId: mockUser.userId,
+          checkoutActorId: managerUser.userId,
         }),
       }),
     );
@@ -1220,6 +1216,41 @@ describe('AttendanceService', () => {
       employee: mockEmployee,
       shift: mockEmployee.shift,
     });
+  });
+
+  it('stops the employee task timer when checking out from a flexible shift', async () => {
+    jest.setSystemTime(new Date('2026-03-13T14:00:00.000Z'));
+    const mockEmployee = {
+      id: 7,
+      organizationId: 1,
+      shift: { id: 2, type: 'FLEXIBLE', requiredHours: 8 },
+    };
+    prisma.employee.findFirst.mockResolvedValue(mockEmployee);
+    prisma.attendance.findUnique.mockResolvedValue({
+      id: 10,
+      employeeId: 7,
+      date: new Date('2026-03-13T00:00:00.000Z'),
+      checkIn: new Date('2026-03-13T09:00:00.000Z'),
+      checkOut: null,
+      shift: mockEmployee.shift,
+      breaks: [],
+    });
+
+    await service.checkOut(
+      {
+        employeeId: 7,
+        date: '2026-03-13',
+        timestamp: '2026-03-13T14:00:00.000Z',
+      },
+      mockUser,
+    );
+
+    expect(mockTasksService.stopActiveTimerForEmployee).toHaveBeenCalledWith(
+      7,
+      1,
+      new Date('2026-03-13T14:00:00.000Z'),
+      prisma,
+    );
   });
 
   it('credits flexible attendance hours when no task timer was recorded that day', async () => {

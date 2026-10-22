@@ -18,6 +18,8 @@ import {
 } from '../attendance/attendance-time.utils';
 import { LeaveRequestsService } from '../leave-requests/leave-requests.service';
 import { LeaveEntitlementsService } from '../leave-requests/leave-entitlements.service';
+import { TasksService } from '../tasks/tasks.service';
+import { calculateNetWorkingHours } from '../attendance/attendance-work-time.utils';
 
 @Injectable()
 export class EmployeeSelfServiceService {
@@ -25,6 +27,7 @@ export class EmployeeSelfServiceService {
     private readonly prisma: PrismaService,
     private readonly leaveRequestsService: LeaveRequestsService,
     private readonly leaveEntitlementsService: LeaveEntitlementsService,
+    private readonly tasksService: TasksService,
   ) {}
 
   private async resolveOrganizationId(user: AuthUser): Promise<number> {
@@ -251,7 +254,7 @@ export class EmployeeSelfServiceService {
           date: today,
         },
       },
-      include: { shift: true },
+      include: { shift: true, breaks: true },
     });
 
     if (!attendance) {
@@ -268,9 +271,16 @@ export class EmployeeSelfServiceService {
 
     const checkInTime = new Date(attendance.checkIn);
 
-    // Calculate working hours
-    const workingHours = parseFloat(
-      ((now.getTime() - checkInTime.getTime()) / (1000 * 3600)).toFixed(2),
+    const breaks = attendance.breaks ?? [];
+    const openBreak = breaks.find((item) => item.endedAt === null);
+    const closedBreaks = breaks.map((item) => ({
+      startedAt: item.startedAt,
+      endedAt: item.endedAt ?? now,
+    }));
+    const workingHours = calculateNetWorkingHours(
+      checkInTime,
+      now,
+      closedBreaks,
     );
 
     let overtimeHours = 0;
@@ -285,29 +295,42 @@ export class EmployeeSelfServiceService {
       overtimeHours = parseFloat((workingHours - requiredHours).toFixed(2));
     }
 
-    // Update attendance
-    const updatedAttendance = await this.prisma.attendance.update({
-      where: {
-        employeeId_date: {
-          employeeId,
-          date: today,
+    const updatedAttendance = await this.prisma.$transaction(async (tx) => {
+      if (openBreak) {
+        await tx.attendanceBreak.update({
+          where: { id: openBreak.id },
+          data: { endedAt: now },
+        });
+      }
+      await this.tasksService.stopActiveTimerForEmployee(
+        employeeId,
+        organizationId,
+        now,
+        tx,
+      );
+      return tx.attendance.update({
+        where: {
+          employeeId_date: {
+            employeeId,
+            date: today,
+          },
         },
-      },
-      data: {
-        checkOut: now,
-        checkoutSource: AttendanceCheckoutSource.USER,
-        checkoutActorId: user.userId ?? user.id,
-        workingHours,
-        overtimeHours,
-        shortfallHours: parseFloat(
-          Math.max(0, requiredHours - workingHours).toFixed(2),
-        ),
-        status,
-      },
-      include: {
-        employee: true,
-        shift: true,
-      },
+        data: {
+          checkOut: now,
+          checkoutSource: AttendanceCheckoutSource.USER,
+          checkoutActorId: user.userId ?? user.id,
+          workingHours,
+          overtimeHours,
+          shortfallHours: parseFloat(
+            Math.max(0, requiredHours - workingHours).toFixed(2),
+          ),
+          status,
+        },
+        include: {
+          employee: true,
+          shift: true,
+        },
+      });
     });
 
     return {
@@ -522,25 +545,26 @@ export class EmployeeSelfServiceService {
 
     return Promise.all(
       leaves.map(async (leave) => {
-        const days = await this.leaveEntitlementsService.countScheduledLeaveDays(
-          employeeId,
-          organizationId,
-          leave.startDate,
-          leave.endDate,
-          leave.duration,
-        );
-      return {
-        id: leave.id,
-        requestType: leave.requestType,
-        leaveType: leave.leaveType,
-        startDate: leave.startDate,
-        endDate: leave.endDate,
-        reason: leave.reason,
-        status: leave.status,
-        duration: leave.duration,
-        days,
-        appliedOn: leave.appliedOn,
-      };
+        const days =
+          await this.leaveEntitlementsService.countScheduledLeaveDays(
+            employeeId,
+            organizationId,
+            leave.startDate,
+            leave.endDate,
+            leave.duration,
+          );
+        return {
+          id: leave.id,
+          requestType: leave.requestType,
+          leaveType: leave.leaveType,
+          startDate: leave.startDate,
+          endDate: leave.endDate,
+          reason: leave.reason,
+          status: leave.status,
+          duration: leave.duration,
+          days,
+          appliedOn: leave.appliedOn,
+        };
       }),
     );
   }

@@ -3,9 +3,10 @@ import { EmployeeSelfServiceController } from './employee-self-service.controlle
 import { EmployeeSelfServiceService } from './employee-self-service.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { LeaveRequestsModule } from '../leave-requests/leave-requests.module';
+import { TasksModule } from '../tasks/tasks.module';
 
 @Module({
-  imports: [PrismaModule, LeaveRequestsModule],
+  imports: [PrismaModule, LeaveRequestsModule, TasksModule],
   controllers: [EmployeeSelfServiceController],
   providers: [EmployeeSelfServiceService],
   exports: [EmployeeSelfServiceService],

@@ -1730,14 +1730,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           data: { endedAt: checkOutTime },
         });
       }
-      if (shift?.type !== 'FLEXIBLE') {
-        await this.tasksService.stopActiveTimerForEmployee(
-          employeeId,
-          employee.organizationId ?? user.organizationId,
-          checkOutTime,
-          tx,
-        );
-      }
+      await this.tasksService.stopActiveTimerForEmployee(
+        employeeId,
+        employee.organizationId ?? user.organizationId,
+        checkOutTime,
+        tx,
+      );
       return tx.attendance.update({
         where: { id: record.id },
         data: {
