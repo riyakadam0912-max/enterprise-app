@@ -50,6 +50,8 @@ model User {
   reviewedTimesheets           Timesheet[]            @relation("TimesheetReviewedBy")
   taskTimerSessions            TaskTimerSession[]
   attendanceCheckouts          Attendance[]           @relation("AttendanceCheckoutActor")
+  attendanceSessionCheckins    AttendanceSession[]    @relation("AttendanceSessionCheckinActor")
+  attendanceSessionCheckouts   AttendanceSession[]    @relation("AttendanceSessionCheckoutActor")
   employee                     Employee?              @relation("UserEmployee", fields: [employeeId], references: [id])
   manager                      User?                  @relation("UserManager", fields: [managerId], references: [id])
   teamMembers                  User[]                 @relation("UserManager")
@@ -140,6 +142,7 @@ model Organization {
   activityTimelineComments ActivityTimelineComment[]
   businessUnitAdmins       BusinessUnitAdmin[]
   attendances              Attendance[]
+  attendanceSessions       AttendanceSession[]
   auditLogs                AuditLog[]
   campaignLeads            CampaignLead[]
   candidates               Candidate[]
@@ -318,6 +321,7 @@ model Employee {
   pan                   String?
   shiftId               Int?
   attendances           Attendance[]
+  attendanceSessions    AttendanceSession[]
   dealAssignments       Deal[]                    @relation("DealAssignee")
   organization          Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   businessUnit          BusinessUnit?             @relation("EmployeeBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
@@ -365,6 +369,7 @@ model Shift {
   attendances        Attendance[]
   employees          Employee[]
   assignments        EmployeeShiftAssignment[]
+  attendanceSessions AttendanceSession[]
   organization       Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
@@ -426,6 +431,41 @@ model AttendanceBreak {
   attendance   Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
 
   @@index([attendanceId, startedAt])
+}
+
+model AttendanceSession {
+  id              Int                       @id @default(autoincrement())
+  employeeId      Int
+  organizationId  Int
+  shiftId         Int?
+  startedAt       DateTime
+  endedAt         DateTime?
+  checkInSource   AttendanceCheckoutSource?
+  checkInActorId  Int?
+  checkoutSource  AttendanceCheckoutSource?
+  checkoutActorId Int?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  employee        Employee                  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  organization    Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  shift           Shift?                    @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  checkInActor    User?                     @relation("AttendanceSessionCheckinActor", fields: [checkInActorId], references: [id], onDelete: SetNull)
+  checkoutActor   User?                     @relation("AttendanceSessionCheckoutActor", fields: [checkoutActorId], references: [id], onDelete: SetNull)
+  breaks          AttendanceSessionBreak[]
+
+  @@index([employeeId, startedAt])
+  @@index([organizationId, startedAt])
+  @@index([shiftId])
+}
+
+model AttendanceSessionBreak {
+  id                  Int               @id @default(autoincrement())
+  attendanceSessionId Int
+  startedAt           DateTime          @default(now())
+  endedAt             DateTime?
+  attendanceSession   AttendanceSession @relation(fields: [attendanceSessionId], references: [id], onDelete: Cascade)
+
+  @@index([attendanceSessionId, startedAt])
 }
 
 model Holiday {

@@ -1178,10 +1178,21 @@ export class TasksService {
       select: { shift: { select: { type: true } } },
     });
     if (employee?.shift?.type === 'FLEXIBLE') {
-      const activeBreak = await db.attendance.findFirst({
+      const activeSession = await db.attendanceSession.findFirst({
         where: {
           employeeId: user.employeeId,
           organizationId,
+          endedAt: null,
+          breaks: { none: { endedAt: null } },
+        },
+        select: { id: true },
+      });
+      if (activeSession) return;
+      const activeBreak = await db.attendanceSession.findFirst({
+        where: {
+          employeeId: user.employeeId,
+          organizationId,
+          endedAt: null,
           breaks: { some: { endedAt: null } },
         },
         select: { id: true },
@@ -1191,7 +1202,9 @@ export class TasksService {
           'End your break before starting or resuming a task timer',
         );
       }
-      return;
+      throw new BadRequestException(
+        'Check in and end any break before starting a task timer',
+      );
     }
 
     const attendance = await db.attendance.findFirst({

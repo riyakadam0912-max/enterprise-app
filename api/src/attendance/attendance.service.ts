@@ -30,6 +30,7 @@ import { UpdateShiftDto } from './dto/update-shift.dto';
 import { UpdateHolidayDto } from './dto/update-holiday.dto';
 import {
   attendanceDateFromKey,
+  attendanceStatusForWorkedHours,
   calculateLateMinutesInTimezone,
   dateKeyInTimezone,
   localMidnightAtDateInTimezone,
@@ -618,6 +619,401 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     }
 
     return employeeId;
+  }
+
+  private async resolveAttendanceActionEmployeeId(
+    user: AttendanceUser,
+    requestedEmployeeId?: number | null,
+  ) {
+    if (requestedEmployeeId == null) {
+      return this.resolveScopedEmployeeId(user);
+    }
+    const ownEmployeeId = await this.resolveCurrentEmployeeId(user);
+    if (requestedEmployeeId === ownEmployeeId) {
+      return ownEmployeeId;
+    }
+    const scopedIds = await this.getScopedEmployeeFilter(
+      user,
+      requestedEmployeeId,
+    );
+    if (!scopedIds?.includes(requestedEmployeeId)) {
+      throw new ForbiddenException(
+        'You can only manage attendance for employees in your scope',
+      );
+    }
+    return requestedEmployeeId;
+  }
+
+  private async lockFlexibleAttendanceForEmployee(
+    employeeId: number,
+    organizationId: number,
+    tx: Prisma.TransactionClient,
+  ) {
+    await tx.$queryRaw`
+      SELECT pg_advisory_xact_lock(
+        137702::integer,
+        ${employeeId}::integer
+      )
+    `;
+    const timerOwner = await tx.user.findFirst({
+      where: { employeeId, organizationId },
+      select: { id: true },
+    });
+    if (timerOwner) {
+      await this.tasksService.lockTimerAndAttendanceStateForUser(
+        { userId: timerOwner.id, organizationId },
+        tx,
+      );
+    }
+  }
+
+  private async startFlexibleAttendanceSession(
+    employee: {
+      id: number;
+      organizationId: number;
+      shift: ShiftLite | null;
+    },
+    date: Date,
+    startedAt: Date,
+    user: AttendanceUser,
+  ) {
+    const organizationId = employee.organizationId;
+    const shift = employee.shift;
+    if (!shift || shift.type !== 'FLEXIBLE') {
+      throw new BadRequestException('An active flexible shift is required');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await this.lockFlexibleAttendanceForEmployee(
+        employee.id,
+        organizationId,
+        tx,
+      );
+      const [activeSession, legacyOpenAttendance] = await Promise.all([
+        tx.attendanceSession.findFirst({
+          where: { employeeId: employee.id, organizationId, endedAt: null },
+          select: { id: true },
+        }),
+        tx.attendance.findFirst({
+          where: {
+            employeeId: employee.id,
+            organizationId,
+            checkIn: { not: null },
+            checkOut: null,
+          },
+          select: { id: true },
+        }),
+      ]);
+      if (activeSession || legacyOpenAttendance) {
+        throw new ConflictException(
+          'Employee already has an open attendance session',
+        );
+      }
+
+      const session = await tx.attendanceSession.create({
+        data: {
+          employeeId: employee.id,
+          organizationId,
+          shiftId: shift.id,
+          startedAt,
+          checkInSource: AttendanceCheckoutSource.USER,
+          checkInActorId: user.userId,
+        },
+      });
+      const existingAttendance = await tx.attendance.findUnique({
+        where: { employeeId_date: { employeeId: employee.id, date } },
+        select: { checkIn: true },
+      });
+      return tx.attendance
+        .upsert({
+          where: {
+            employeeId_date: { employeeId: employee.id, date },
+          },
+          create: {
+            employeeId: employee.id,
+            organizationId,
+            shiftId: shift.id,
+            date,
+            checkIn: startedAt,
+            checkOut: null,
+            workingHours: 0,
+            requiredHours: shift.requiredHours,
+            lateMinutes: 0,
+            overtimeHours: 0,
+            shortfallHours: shift.requiredHours,
+            status: AttendanceStatus.PRESENT,
+          },
+          update: {
+            checkIn:
+              existingAttendance?.checkIn &&
+              existingAttendance.checkIn.getTime() < startedAt.getTime()
+                ? existingAttendance.checkIn
+                : startedAt,
+            checkOut: null,
+            shiftId: shift.id,
+            requiredHours: shift.requiredHours,
+            status: AttendanceStatus.PRESENT,
+            checkoutSource: null,
+            checkoutActorId: null,
+            isAutoClosed: false,
+          },
+          include: { employee: true, shift: true },
+        })
+        .then((attendance) => ({
+          ...attendance,
+          attendanceSessionId: session.id,
+        }));
+    });
+  }
+
+  private async closeFlexibleAttendanceSession(
+    session: {
+      id: number;
+      employeeId: number;
+      organizationId: number;
+      shiftId: number | null;
+      startedAt: Date;
+      breaks: { id: number; startedAt: Date; endedAt: Date | null }[];
+      shift: ShiftLite | null;
+    },
+    employee: { organizationId: number },
+    checkOutTime: Date,
+    timezone: string,
+    user: AttendanceUser,
+  ) {
+    if (checkOutTime.getTime() < session.startedAt.getTime()) {
+      throw new BadRequestException(
+        'Check-out time cannot be earlier than check-in time',
+      );
+    }
+
+    const organizationId = employee.organizationId;
+
+    return this.prisma.$transaction(async (tx) => {
+      await this.lockFlexibleAttendanceForEmployee(
+        session.employeeId,
+        organizationId,
+        tx,
+      );
+      const currentSession = await tx.attendanceSession.findUnique({
+        where: { id: session.id },
+        include: { breaks: true, shift: true },
+      });
+      if (!currentSession || currentSession.endedAt) {
+        throw new ConflictException(
+          'Attendance session changed; refresh and try again',
+        );
+      }
+      if (checkOutTime.getTime() < currentSession.startedAt.getTime()) {
+        throw new BadRequestException(
+          'Check-out time cannot be earlier than check-in time',
+        );
+      }
+      const breaks = currentSession.breaks.map((interval) => ({
+        startedAt: interval.startedAt,
+        endedAt: interval.endedAt ?? checkOutTime,
+      }));
+      const shift = currentSession.shift;
+      const closed = await tx.attendanceSession.updateMany({
+        where: { id: session.id, endedAt: null },
+        data: {
+          endedAt: checkOutTime,
+          checkoutSource: AttendanceCheckoutSource.USER,
+          checkoutActorId: user.userId,
+        },
+      });
+      if (closed.count !== 1) {
+        throw new ConflictException(
+          'Attendance session changed; refresh and try again',
+        );
+      }
+      await tx.attendanceSessionBreak.updateMany({
+        where: { attendanceSessionId: session.id, endedAt: null },
+        data: { endedAt: checkOutTime },
+      });
+      await this.tasksService.stopActiveTimerForEmployee(
+        session.employeeId,
+        organizationId,
+        checkOutTime,
+        tx,
+      );
+
+      const dateSummaries: Array<{
+        date: Date;
+        start: Date;
+        end: Date;
+        hours: number;
+      }> = [];
+      let cursor = session.startedAt;
+      while (cursor.getTime() < checkOutTime.getTime()) {
+        const dateKey = dateKeyInTimezone(cursor, timezone);
+        const dayEnd = localMidnightAfterDateInTimezone(dateKey, timezone);
+        if (!dayEnd) {
+          throw new BadRequestException(
+            'Could not determine local attendance day boundary',
+          );
+        }
+        const segmentEnd = new Date(
+          Math.min(dayEnd.getTime(), checkOutTime.getTime()),
+        );
+        const hours = calculateNetWorkingHours(cursor, segmentEnd, breaks);
+        dateSummaries.push({
+          date: attendanceDateFromKey(dateKey),
+          start: cursor,
+          end: segmentEnd,
+          hours,
+        });
+        cursor = segmentEnd;
+      }
+
+      let finalAttendance:
+        | (Awaited<ReturnType<typeof tx.attendance.upsert>> & {
+            employee: unknown;
+            shift: unknown;
+          })
+        | null = null;
+      for (const summary of dateSummaries) {
+        const existing = await tx.attendance.findUnique({
+          where: {
+            employeeId_date: {
+              employeeId: session.employeeId,
+              date: summary.date,
+            },
+          },
+          select: { checkIn: true, checkOut: true, workingHours: true },
+        });
+        const workingHours = Number(
+          (Number(existing?.workingHours ?? 0) + summary.hours).toFixed(2),
+        );
+        const requiredHours = shift?.requiredHours ?? 8;
+        const minPresentHours = shift?.minPresentHours ?? 5;
+        const halfDayLeave = await this.findApprovedLeaveForDay(
+          session.employeeId,
+          summary.date,
+          'HALF_DAY',
+        );
+        const effectiveRequiredHours = halfDayLeave
+          ? Math.min(requiredHours, 5)
+          : requiredHours;
+        const overtimeHours = Math.max(
+          0,
+          Number((workingHours - effectiveRequiredHours).toFixed(2)),
+        );
+        const shortfallHours = Math.max(
+          0,
+          Number((effectiveRequiredHours - workingHours).toFixed(2)),
+        );
+        finalAttendance = await tx.attendance.upsert({
+          where: {
+            employeeId_date: {
+              employeeId: session.employeeId,
+              date: summary.date,
+            },
+          },
+          create: {
+            employeeId: session.employeeId,
+            organizationId,
+            shiftId: session.shiftId,
+            date: summary.date,
+            checkIn: summary.start,
+            checkOut: summary.end,
+            workingHours,
+            requiredHours,
+            overtimeHours,
+            shortfallHours,
+            status: attendanceStatusForWorkedHours(
+              workingHours,
+              Math.min(minPresentHours, effectiveRequiredHours),
+            ),
+            checkoutSource: AttendanceCheckoutSource.USER,
+            checkoutActorId: user.userId,
+          },
+          update: {
+            checkIn:
+              existing?.checkIn &&
+              existing.checkIn.getTime() < summary.start.getTime()
+                ? existing.checkIn
+                : summary.start,
+            checkOut:
+              existing?.checkOut &&
+              existing.checkOut.getTime() > summary.end.getTime()
+                ? existing.checkOut
+                : summary.end,
+            workingHours,
+            requiredHours,
+            overtimeHours,
+            shortfallHours,
+            status: attendanceStatusForWorkedHours(
+              workingHours,
+              Math.min(minPresentHours, effectiveRequiredHours),
+            ),
+            checkoutSource: AttendanceCheckoutSource.USER,
+            checkoutActorId: user.userId,
+            isAutoClosed: false,
+          },
+          include: { employee: true, shift: true },
+        });
+        for (const interval of breaks) {
+          const breakStart = new Date(
+            Math.max(interval.startedAt.getTime(), summary.start.getTime()),
+          );
+          const breakEnd = new Date(
+            Math.min(
+              interval.endedAt?.getTime() ?? checkOutTime.getTime(),
+              summary.end.getTime(),
+            ),
+          );
+          if (breakEnd > breakStart) {
+            await tx.attendanceBreak.create({
+              data: {
+                attendanceId: finalAttendance.id,
+                startedAt: breakStart,
+                endedAt: breakEnd,
+              },
+            });
+          }
+        }
+      }
+
+      if (dateSummaries.length === 0) {
+        const dateKey = dateKeyInTimezone(session.startedAt, timezone);
+        const date = attendanceDateFromKey(dateKey);
+        const requiredHours = shift?.requiredHours ?? 8;
+        finalAttendance = await tx.attendance.upsert({
+          where: {
+            employeeId_date: { employeeId: session.employeeId, date },
+          },
+          create: {
+            employeeId: session.employeeId,
+            organizationId,
+            shiftId: session.shiftId,
+            date,
+            checkIn: session.startedAt,
+            checkOut: checkOutTime,
+            workingHours: 0,
+            requiredHours,
+            overtimeHours: 0,
+            shortfallHours: requiredHours,
+            status: AttendanceStatus.ABSENT,
+            checkoutSource: AttendanceCheckoutSource.USER,
+            checkoutActorId: user.userId,
+          },
+          update: {
+            checkOut: checkOutTime,
+            checkoutSource: AttendanceCheckoutSource.USER,
+            checkoutActorId: user.userId,
+          },
+          include: { employee: true, shift: true },
+        });
+      }
+
+      if (!finalAttendance) {
+        throw new BadRequestException(
+          'Attendance session must have a positive duration',
+        );
+      }
+      return finalAttendance;
+    });
   }
 
   private async getManagerEmployeeIds(userId: number, user: AttendanceUser) {
@@ -1498,7 +1894,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   }
 
   async checkIn(dto: CheckInDto, user: AttendanceUser) {
-    const employeeId = await this.resolveScopedEmployeeId(user, dto.employeeId);
+    const employeeId = await this.resolveAttendanceActionEmployeeId(
+      user,
+      dto.employeeId,
+    );
     const employee = await this.ensureEmployee(employeeId, user);
 
     if (!employee.shift) {
@@ -1529,7 +1928,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       include: { shift: true },
     });
 
-    if (existing?.checkIn) {
+    if (existing?.checkIn && employee.shift.type !== 'FLEXIBLE') {
       throw new ConflictException('Employee has already checked in today');
     }
 
@@ -1572,6 +1971,17 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       timezone,
     );
 
+    if (employee.shift.type === 'FLEXIBLE') {
+      const result = await this.startFlexibleAttendanceSession(
+        employee,
+        day,
+        checkInTime,
+        user,
+      );
+      await this.invalidateDashboardCache();
+      return result;
+    }
+
     // Calculate status based on late check-in
     const status = AttendanceStatus.PRESENT;
 
@@ -1613,7 +2023,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   }
 
   async checkOut(dto: CheckOutDto, user: AttendanceUser) {
-    const employeeId = await this.resolveScopedEmployeeId(user, dto.employeeId);
+    const employeeId = await this.resolveAttendanceActionEmployeeId(
+      user,
+      dto.employeeId,
+    );
     const employee = await this.ensureEmployee(employeeId, user);
 
     const organization = await this.prisma.organization.findUnique({
@@ -1627,6 +2040,27 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       user,
       timezone,
     );
+    const flexibleSession = await this.prisma.attendanceSession.findFirst({
+      where: {
+        employeeId,
+        organizationId: employee.organizationId ?? user.organizationId,
+        endedAt: null,
+      },
+      include: { breaks: true, shift: true },
+      orderBy: { startedAt: 'desc' },
+    });
+    if (flexibleSession) {
+      const result = await this.closeFlexibleAttendanceSession(
+        flexibleSession,
+        employee,
+        checkOutTime,
+        timezone,
+        user,
+      );
+      await this.invalidateDashboardCache();
+      return result;
+    }
+
     let record: {
       id: number;
       checkIn: Date | null;
@@ -1798,69 +2232,51 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const employee = await this.ensureEmployee(employeeId, user);
     const flexibleShift =
       employee.shift?.type === 'FLEXIBLE' ? employee.shift : null;
-    let attendanceDay: Date | undefined;
-    if (flexibleShift) {
-      const organization = await this.prisma.organization.findUnique({
-        where: { id: employee.organizationId ?? user.organizationId },
-        select: { timezone: true },
-      });
-      const timezone = organization?.timezone ?? 'UTC';
-      const dateKey = dateKeyInTimezone(new Date(), timezone);
-      attendanceDay = attendanceDateFromKey(dateKey);
-    }
     const startedAt = new Date();
+    if (flexibleShift) {
+      const organizationId = employee.organizationId ?? user.organizationId;
+      const created = await this.prisma.$transaction(async (tx) => {
+        await this.lockFlexibleAttendanceForEmployee(
+          employeeId,
+          organizationId,
+          tx,
+        );
+        const session = await tx.attendanceSession.findFirst({
+          where: { employeeId, organizationId, endedAt: null },
+          include: { breaks: true },
+          orderBy: { startedAt: 'desc' },
+        });
+        if (!session) {
+          throw new BadRequestException('Check in before starting a break');
+        }
+        if (session.breaks.some((interval) => interval.endedAt === null)) {
+          throw new ConflictException('A break is already in progress');
+        }
+        await this.tasksService.stopRunningTimersForUser(user, startedAt, tx);
+        return tx.attendanceSessionBreak.create({
+          data: { attendanceSessionId: session.id, startedAt },
+        });
+      });
+      await this.invalidateDashboardCache();
+      return { break: created, onBreak: true };
+    }
+
     const created = await this.prisma.$transaction(async (tx) => {
       await this.tasksService.lockTimerAndAttendanceStateForUser(user, tx);
       let record: Prisma.AttendanceGetPayload<{
         include: { breaks: true };
       }> | null;
-      if (flexibleShift) {
-        const existingBreak = await tx.attendance.findFirst({
-          where: {
-            employeeId,
-            organizationId: employee.organizationId ?? user.organizationId,
-            breaks: { some: { endedAt: null } },
-          },
-          select: { id: true },
-        });
-        if (existingBreak) {
-          throw new ConflictException('A break is already in progress');
-        }
-        record = await tx.attendance.findUnique({
-          where: {
-            employeeId_date: {
-              employeeId,
-              date: attendanceDay!,
-            },
-          },
-          include: { breaks: true },
-        });
-        if (!record) {
-          record = await tx.attendance.create({
-            data: {
-              employeeId,
-              organizationId: employee.organizationId,
-              shiftId: flexibleShift.id,
-              date: attendanceDay!,
-              requiredHours: flexibleShift.requiredHours,
-              status: AttendanceStatus.NOT_STARTED,
-            },
-            include: { breaks: true },
-          });
-        }
-      } else {
-        record = await tx.attendance.findFirst({
-          where: {
-            employeeId,
-            checkIn: { not: null },
-            checkOut: null,
-          },
-          orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-          include: { breaks: true },
-        });
-        if (!record) {
-          throw new BadRequestException('Check in before starting a break');
-        }
+      record = await tx.attendance.findFirst({
+        where: {
+          employeeId,
+          checkIn: { not: null },
+          checkOut: null,
+        },
+        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+        include: { breaks: true },
+      });
+      if (!record) {
+        throw new BadRequestException('Check in before starting a break');
       }
       if (
         record.checkIn &&
@@ -1884,36 +2300,37 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const employeeId = await this.resolveScopedEmployeeId(user);
     const employee = await this.ensureEmployee(employeeId, user);
     if (employee.shift?.type === 'FLEXIBLE') {
-      const activeRecords = await this.prisma.attendance.findMany({
-        where: {
-          employeeId,
-          organizationId: employee.organizationId ?? user.organizationId,
-          breaks: { some: { endedAt: null } },
-        },
-        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-        include: { breaks: { where: { endedAt: null } } },
-      });
-      const openBreaks = activeRecords.flatMap((record) => record.breaks);
-      if (openBreaks.length === 0) {
-        throw new BadRequestException('No break is in progress');
-      }
-
       const endedAt = new Date();
-      const updatedBreaks = await this.prisma.$transaction((tx) =>
-        Promise.all(
-          openBreaks.map((interval) =>
-            tx.attendanceBreak.update({
-              where: { id: interval.id },
-              data: { endedAt },
-            }),
-          ),
-        ),
-      );
+      const updatedBreak = await this.prisma.$transaction(async (tx) => {
+        await this.lockFlexibleAttendanceForEmployee(
+          employeeId,
+          employee.organizationId ?? user.organizationId,
+          tx,
+        );
+        const session = await tx.attendanceSession.findFirst({
+          where: {
+            employeeId,
+            organizationId: employee.organizationId ?? user.organizationId,
+            endedAt: null,
+            breaks: { some: { endedAt: null } },
+          },
+          include: { breaks: { where: { endedAt: null } } },
+          orderBy: { startedAt: 'desc' },
+        });
+        const openBreak = session?.breaks[0];
+        if (!openBreak) {
+          throw new BadRequestException('No break is in progress');
+        }
+        return tx.attendanceSessionBreak.update({
+          where: { id: openBreak.id },
+          data: { endedAt },
+        });
+      });
       await this.invalidateDashboardCache();
       return {
-        break: updatedBreaks[0],
+        break: updatedBreak,
         onBreak: false,
-        closedBreakCount: updatedBreaks.length,
+        closedBreakCount: 1,
       };
     }
 
@@ -2359,9 +2776,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         .filter((row) => row.shiftDetails?.type === 'FLEXIBLE')
         .map((row) => row.employeeId);
       if (flexibleEmployeeIds.length > 0) {
-        const openBreakRows = await this.prisma.attendance.findMany({
+        const openBreakRows = await this.prisma.attendanceSession.findMany({
           where: {
             employeeId: { in: flexibleEmployeeIds },
+            endedAt: null,
             breaks: { some: { endedAt: null } },
           },
           select: { employeeId: true },
@@ -5108,6 +5526,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     for (const attendance of openAttendances) {
       if (!attendance.checkIn || !attendance.employee) continue;
       const shift = attendance.shift ?? attendance.employee.shift;
+      if (shift?.type === 'FLEXIBLE') continue;
       const timezone = attendance.employee.organization?.timezone ?? 'UTC';
       const dateKey = new Date(attendance.date).toISOString().slice(0, 10);
       if (dateKeyInTimezone(now, timezone) <= dateKey) continue;

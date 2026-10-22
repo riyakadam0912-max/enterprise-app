@@ -46,6 +46,7 @@ describe('TasksService per-user task timer sessions', () => {
     };
     employee: { findFirst: jest.Mock };
     attendance: { findFirst: jest.Mock };
+    attendanceSession: { findFirst: jest.Mock };
     $transaction: jest.Mock;
   };
   let tx: {
@@ -59,6 +60,7 @@ describe('TasksService per-user task timer sessions', () => {
     timesheet: { create: jest.Mock };
     attendance: { findMany: jest.Mock; findFirst: jest.Mock };
     attendanceBreak: { updateMany: jest.Mock };
+    attendanceSession: { findFirst: jest.Mock };
     employee: { findFirst: jest.Mock };
     user: { findFirst: jest.Mock };
     $queryRaw: jest.Mock;
@@ -81,6 +83,7 @@ describe('TasksService per-user task timer sessions', () => {
       attendanceBreak: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
+      attendanceSession: { findFirst: jest.fn().mockResolvedValue(null) },
       employee: {
         findFirst: jest.fn().mockResolvedValue({ shift: { type: 'FIXED' } }),
       },
@@ -104,6 +107,9 @@ describe('TasksService per-user task timer sessions', () => {
       },
       attendance: {
         findFirst: jest.fn().mockResolvedValue({ id: 201 }),
+      },
+      attendanceSession: {
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       $transaction: jest.fn((callback: (transaction: typeof tx) => unknown) =>
         callback(tx),
@@ -231,7 +237,9 @@ describe('TasksService per-user task timer sessions', () => {
     tx.employee.findFirst.mockResolvedValue({
       shift: { type: 'FLEXIBLE' },
     });
-    tx.attendance.findFirst.mockResolvedValueOnce({ id: 201 });
+    tx.attendanceSession.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 201 });
 
     await expect(
       service.updateTimer(
@@ -239,7 +247,9 @@ describe('TasksService per-user task timer sessions', () => {
         { action: 'resume' },
         makeUser(11, Role.EMPLOYEE, 101),
       ),
-    ).rejects.toThrow('End your break before starting or resuming a task timer');
+    ).rejects.toThrow(
+      'End your break before starting or resuming a task timer',
+    );
 
     expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
     expect(tx.taskTimerSession.updateMany).not.toHaveBeenCalled();
@@ -253,7 +263,7 @@ describe('TasksService per-user task timer sessions', () => {
     tx.employee.findFirst.mockResolvedValue({
       shift: { type: 'FLEXIBLE' },
     });
-    tx.attendance.findFirst.mockResolvedValueOnce(null);
+    tx.attendanceSession.findFirst.mockResolvedValueOnce({ id: 201 });
 
     await service.updateTimer(
       8,
@@ -304,7 +314,7 @@ describe('TasksService per-user task timer sessions', () => {
     tx.employee.findFirst.mockResolvedValue({
       shift: { type: 'FLEXIBLE' },
     });
-    tx.attendance.findFirst.mockResolvedValueOnce(null);
+    tx.attendanceSession.findFirst.mockResolvedValueOnce({ id: 201 });
 
     await service.updateTimer(
       8,
@@ -312,10 +322,11 @@ describe('TasksService per-user task timer sessions', () => {
       makeUser(11, Role.EMPLOYEE, 101),
     );
 
-    expect(tx.attendance.findFirst).toHaveBeenCalledWith(
+    expect(tx.attendanceSession.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          breaks: { some: { endedAt: null } },
+          endedAt: null,
+          breaks: { none: { endedAt: null } },
         }),
       }),
     );

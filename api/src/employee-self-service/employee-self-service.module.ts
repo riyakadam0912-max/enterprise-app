@@ -4,9 +4,10 @@ import { EmployeeSelfServiceService } from './employee-self-service.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { LeaveRequestsModule } from '../leave-requests/leave-requests.module';
 import { TasksModule } from '../tasks/tasks.module';
+import { AttendanceModule } from '../attendance/attendance.module';
 
 @Module({
-  imports: [PrismaModule, LeaveRequestsModule, TasksModule],
+  imports: [PrismaModule, LeaveRequestsModule, TasksModule, AttendanceModule],
   controllers: [EmployeeSelfServiceController],
   providers: [EmployeeSelfServiceService],
   exports: [EmployeeSelfServiceService],

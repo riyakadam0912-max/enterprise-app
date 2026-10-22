@@ -20,6 +20,7 @@ import { LeaveRequestsService } from '../leave-requests/leave-requests.service';
 import { LeaveEntitlementsService } from '../leave-requests/leave-entitlements.service';
 import { TasksService } from '../tasks/tasks.service';
 import { calculateNetWorkingHours } from '../attendance/attendance-work-time.utils';
+import { AttendanceService } from '../attendance/attendance.service';
 
 @Injectable()
 export class EmployeeSelfServiceService {
@@ -28,6 +29,7 @@ export class EmployeeSelfServiceService {
     private readonly leaveRequestsService: LeaveRequestsService,
     private readonly leaveEntitlementsService: LeaveEntitlementsService,
     private readonly tasksService: TasksService,
+    private readonly attendanceService: AttendanceService,
   ) {}
 
   private async resolveOrganizationId(user: AuthUser): Promise<number> {
@@ -130,6 +132,38 @@ export class EmployeeSelfServiceService {
     const timezone = organization?.timezone ?? 'UTC';
     const now = new Date();
     const today = attendanceDateFromKey(dateKeyInTimezone(now, timezone));
+    const assignedShift = employee.shiftId
+      ? await this.prisma.shift.findUnique({
+          where: { id: employee.shiftId },
+          select: {
+            type: true,
+            name: true,
+            startTime: true,
+            endTime: true,
+            gracePeriodMinutes: true,
+            weeklyHolidayDay: true,
+          },
+        })
+      : null;
+    if (assignedShift?.type === 'FLEXIBLE') {
+      const attendance = await this.attendanceService.checkIn(
+        {},
+        { ...user, organizationId },
+      );
+      return {
+        success: true,
+        message: `Check-in recorded at ${now.toLocaleTimeString()}`,
+        data: {
+          checkIn: attendance.checkIn,
+          lateMinutes: attendance.lateMinutes,
+          shift: {
+            name: assignedShift.name,
+            startTime: assignedShift.startTime,
+            endTime: assignedShift.endTime,
+          },
+        },
+      };
+    }
 
     // Check if already checked in today
     const existingAttendance = await this.prisma.attendance.findUnique({
@@ -157,17 +191,7 @@ export class EmployeeSelfServiceService {
 
     // Calculate late minutes if shift is assigned
     if (employee.shiftId) {
-      shift = await this.prisma.shift.findUnique({
-        where: { id: employee.shiftId },
-        select: {
-          type: true,
-          name: true,
-          startTime: true,
-          endTime: true,
-          gracePeriodMinutes: true,
-          weeklyHolidayDay: true,
-        },
-      });
+      shift = assignedShift;
 
       if (shift && shift.weeklyHolidayDay === today.getUTCDay()) {
         throw new BadRequestException('Today is the employee weekly holiday');
@@ -246,6 +270,30 @@ export class EmployeeSelfServiceService {
     const timezone = organization?.timezone ?? 'UTC';
     const now = new Date();
     const today = attendanceDateFromKey(dateKeyInTimezone(now, timezone));
+    const assignedShift = employee.shiftId
+      ? await this.prisma.shift.findUnique({
+          where: { id: employee.shiftId },
+          select: { type: true },
+        })
+      : null;
+    if (assignedShift?.type === 'FLEXIBLE') {
+      const attendance = await this.attendanceService.checkOut(
+        {},
+        { ...user, organizationId },
+      );
+      return {
+        success: true,
+        message: `Check-out recorded at ${now.toLocaleTimeString()}`,
+        data: {
+          checkIn: attendance.checkIn,
+          checkOut: attendance.checkOut,
+          workingHours: attendance.workingHours,
+          overtimeHours: attendance.overtimeHours,
+          late: attendance.lateMinutes > 0,
+          lateMinutes: attendance.lateMinutes,
+        },
+      };
+    }
 
     const attendance = await this.prisma.attendance.findUnique({
       where: {

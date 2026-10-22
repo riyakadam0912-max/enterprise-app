@@ -18,6 +18,7 @@ import {
 import { LeaveRequestsService } from '../leave-requests/leave-requests.service';
 import { LeaveEntitlementsService } from '../leave-requests/leave-entitlements.service';
 import { TasksService } from '../tasks/tasks.service';
+import { AttendanceService } from '../attendance/attendance.service';
 
 describe('EmployeeSelfServiceService', () => {
   let service: EmployeeSelfServiceService;
@@ -28,6 +29,10 @@ describe('EmployeeSelfServiceService', () => {
     getBalance: jest.Mock;
   };
   let mockTasksService: { stopActiveTimerForEmployee: jest.Mock };
+  let mockAttendanceService: {
+    checkIn: jest.Mock;
+    checkOut: jest.Mock;
+  };
 
   const createUser = (overrides: Partial<AuthUser> = {}): AuthUser => ({
     id: 7,
@@ -69,6 +74,10 @@ describe('EmployeeSelfServiceService', () => {
     mockTasksService = {
       stopActiveTimerForEmployee: jest.fn().mockResolvedValue(null as never),
     };
+    mockAttendanceService = {
+      checkIn: jest.fn(),
+      checkOut: jest.fn(),
+    };
     mockPrisma.$transaction.mockImplementation(
       (operation: (tx: typeof mockPrisma) => unknown) => operation(mockPrisma),
     );
@@ -79,6 +88,7 @@ describe('EmployeeSelfServiceService', () => {
         { provide: LeaveRequestsService, useValue: mockLeaveRequests },
         { provide: LeaveEntitlementsService, useValue: mockLeaveEntitlements },
         { provide: TasksService, useValue: mockTasksService },
+        { provide: AttendanceService, useValue: mockAttendanceService },
       ],
     }).compile();
 
