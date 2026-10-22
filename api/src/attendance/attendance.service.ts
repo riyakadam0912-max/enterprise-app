@@ -2263,10 +2263,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     const created = await this.prisma.$transaction(async (tx) => {
       await this.tasksService.lockTimerAndAttendanceStateForUser(user, tx);
-      let record: Prisma.AttendanceGetPayload<{
-        include: { breaks: true };
-      }> | null;
-      record = await tx.attendance.findFirst({
+      const record = await tx.attendance.findFirst({
         where: {
           employeeId,
           checkIn: { not: null },
