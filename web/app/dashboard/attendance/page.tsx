@@ -1477,9 +1477,9 @@ export default function AttendancePage() {
           </div>
 
           <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
-            <div className="overflow-x-auto">
+            <div className="max-h-72 overflow-auto scrollbar-hide">
               <table className="min-w-full text-sm">
-                <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                <thead className="sticky top-0 z-10 bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="px-3 py-2">Shift</th>
                     <th className="px-3 py-2">Schedule</th>
@@ -1605,7 +1605,7 @@ export default function AttendancePage() {
             </div>
           )}
 
-          <div className="mt-3 divide-y divide-slate-100 rounded-lg border border-slate-200">
+          <div className="mt-3 max-h-72 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200 scrollbar-hide">
             {holidays.length === 0 ? (
               <div className="px-3 py-7 text-center">
                 <CalendarDays aria-hidden="true" className="mx-auto h-5 w-5 text-slate-400" />
