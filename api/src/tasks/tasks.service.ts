@@ -1102,11 +1102,15 @@ export class TasksService {
     if (user.organizationId == null) {
       throw new ForbiddenException('User has no associated organization');
     }
-    await transaction.$queryRaw`
-      SELECT pg_advisory_xact_lock(
-        137701::integer,
-        ${user.userId}::integer
+    await transaction.$queryRaw<Array<{ locked: number }>>`
+      WITH lock_result AS MATERIALIZED (
+        SELECT pg_advisory_xact_lock(
+          137701::integer,
+          ${user.userId}::integer
+        )
       )
+      SELECT 1 AS locked
+      FROM lock_result
     `;
   }
 

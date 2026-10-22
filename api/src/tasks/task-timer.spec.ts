@@ -190,6 +190,9 @@ describe('TasksService per-user task timer sessions', () => {
     await service.updateTimer(8, { action: 'start' }, worker);
 
     expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    const [lockQuery] = tx.$queryRaw.mock.calls[0];
+    expect(lockQuery.join(' ')).toContain('WITH lock_result AS MATERIALIZED');
+    expect(lockQuery.join(' ')).toContain('SELECT 1 AS locked');
     expect(tx.attendanceBreak.updateMany).not.toHaveBeenCalled();
     expect(tx.taskTimerSession.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({

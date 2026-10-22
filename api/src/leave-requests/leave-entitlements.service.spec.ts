@@ -99,6 +99,9 @@ describe('LeaveEntitlementsService', () => {
       periodEnd: new Date('2026-10-12T00:00:00.000Z'),
     });
 
+    const [lockQuery] = transaction.$queryRaw.mock.calls[0];
+    expect(lockQuery.join(' ')).toContain('WITH lock_result AS MATERIALIZED');
+    expect(lockQuery.join(' ')).toContain('SELECT 1 AS locked');
     expect(transaction.leaveBalanceEntry.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         amount: -0.5,
@@ -114,7 +117,9 @@ describe('LeaveEntitlementsService', () => {
 
   it('credits the monthly accrual and one task-hours bonus at the threshold', async () => {
     const tx = {
-      leaveBalanceEntry: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      leaveBalanceEntry: {
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
       employee: { update: jest.fn().mockResolvedValue({}) },
     };
     const prisma = {
@@ -143,8 +148,8 @@ describe('LeaveEntitlementsService', () => {
       },
       attendance: { findMany: jest.fn().mockResolvedValue([]) },
       leaveBalanceEntry: { createMany: jest.fn() },
-      $transaction: jest.fn(async (callback: (transaction: unknown) => unknown) =>
-        callback(tx),
+      $transaction: jest.fn(
+        async (callback: (transaction: unknown) => unknown) => callback(tx),
       ),
     } as unknown as PrismaService;
     const scheduler = new LeaveEntitlementsService(

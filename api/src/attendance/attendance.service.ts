@@ -649,11 +649,15 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     organizationId: number,
     tx: Prisma.TransactionClient,
   ) {
-    await tx.$queryRaw`
-      SELECT pg_advisory_xact_lock(
-        137702::integer,
-        ${employeeId}::integer
+    await tx.$queryRaw<Array<{ locked: number }>>`
+      WITH lock_result AS MATERIALIZED (
+        SELECT pg_advisory_xact_lock(
+          137702::integer,
+          ${employeeId}::integer
+        )
       )
+      SELECT 1 AS locked
+      FROM lock_result
     `;
     const timerOwner = await tx.user.findFirst({
       where: { employeeId, organizationId },

@@ -207,11 +207,15 @@ export class LeaveEntitlementsService implements OnModuleInit, OnModuleDestroy {
     },
   ) {
     const lockCategory = input.category === 'PAID_LEAVE' ? 1 : 2;
-    await writer.$queryRaw`
-      SELECT pg_advisory_xact_lock(
-        ${input.employeeId}::integer,
-        ${lockCategory}::integer
+    await writer.$queryRaw<Array<{ locked: number }>>`
+      WITH lock_result AS MATERIALIZED (
+        SELECT pg_advisory_xact_lock(
+          ${input.employeeId}::integer,
+          ${lockCategory}::integer
+        )
       )
+      SELECT 1 AS locked
+      FROM lock_result
     `;
 
     const existing = await writer.leaveBalanceEntry.findUnique({
