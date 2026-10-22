@@ -533,6 +533,139 @@ describe('AttendanceService', () => {
     expect(result.summary.absent).toBe(0);
   });
 
+  it('filters attendance rows for operational dashboard cards', async () => {
+    const rows = [
+      {
+        id: 1,
+        employeeId: 11,
+        status: AttendanceStatus.PRESENT,
+        checkIn: new Date('2026-10-22T08:00:00.000Z').toISOString(),
+        checkOut: null,
+        lateMinutes: 0,
+        overtimeHours: 0,
+        workingHours: 2,
+        taskHours: 1,
+        employee: { department: 'Sales' },
+      },
+      {
+        id: 2,
+        employeeId: 12,
+        status: AttendanceStatus.ABSENT,
+        checkIn: null,
+        checkOut: null,
+        lateMinutes: 0,
+        overtimeHours: 0,
+        workingHours: null,
+        taskHours: 0,
+        employee: { department: 'Sales' },
+      },
+      {
+        id: 3,
+        employeeId: 13,
+        status: AttendanceStatus.PRESENT,
+        checkIn: new Date('2026-10-22T09:15:00.000Z').toISOString(),
+        checkOut: null,
+        lateMinutes: 15,
+        overtimeHours: 0,
+        workingHours: 1,
+        taskHours: 0,
+        employee: { department: 'Design' },
+      },
+      {
+        id: 4,
+        employeeId: 14,
+        status: AttendanceStatus.PRESENT,
+        checkIn: new Date('2026-10-22T08:00:00.000Z').toISOString(),
+        checkOut: new Date('2026-10-22T16:00:00.000Z').toISOString(),
+        lateMinutes: 0,
+        overtimeHours: 0,
+        workingHours: 8,
+        taskHours: 0,
+        employee: { department: 'Design' },
+      },
+    ];
+    jest
+      .spyOn(service as any, 'getScopedEmployeeFilter')
+      .mockResolvedValue(null);
+    jest
+      .spyOn(service as any, 'buildDailySnapshot')
+      .mockResolvedValue({ rows, summary: {} });
+
+    const working = await service.findAll(
+      { attentionFilter: 'WORKING', page: 1, limit: 10 },
+      mockUser as any,
+    );
+    const absent = await service.findAll(
+      { attentionFilter: 'NOT_CHECKED_IN', page: 1, limit: 10 },
+      mockUser as any,
+    );
+    const late = await service.findAll(
+      { attentionFilter: 'LATE', page: 1, limit: 10 },
+      mockUser as any,
+    );
+    const followUp = await service.findAll(
+      { attentionFilter: 'FOLLOW_UP', page: 1, limit: 10 },
+      mockUser as any,
+    );
+
+    expect(working.data.map((row) => row.id)).toEqual([1, 3]);
+    expect(absent.data.map((row) => row.id)).toEqual([2]);
+    expect(late.data.map((row) => row.id)).toEqual([3]);
+    expect(followUp.data.map((row) => row.id)).toEqual([2, 3]);
+  });
+
+  it('scopes an attendance table organization filter to authorized organizations', async () => {
+    const rows = [
+      {
+        id: 1,
+        employeeId: 11,
+        status: AttendanceStatus.PRESENT,
+        checkIn: null,
+        checkOut: null,
+        lateMinutes: 0,
+        overtimeHours: 0,
+        workingHours: null,
+        taskHours: 0,
+        employee: { department: 'Sales', organization: { id: 1, name: 'One' } },
+      },
+      {
+        id: 2,
+        employeeId: 12,
+        status: AttendanceStatus.PRESENT,
+        checkIn: null,
+        checkOut: null,
+        lateMinutes: 0,
+        overtimeHours: 0,
+        workingHours: null,
+        taskHours: 0,
+        employee: { department: 'Sales', organization: { id: 2, name: 'Two' } },
+      },
+    ];
+    jest
+      .spyOn(service as any, 'getScopedEmployeeFilter')
+      .mockResolvedValue(null);
+    jest
+      .spyOn(service as any, 'getAttendanceOrganizationIds')
+      .mockResolvedValue([1, 2]);
+    const buildSnapshot = jest
+      .spyOn(service as any, 'buildDailySnapshot')
+      .mockResolvedValue({ rows, summary: {} });
+
+    const result = await service.findAll(
+      { organizationId: 2, page: 1, limit: 10 },
+      mockUser as any,
+    );
+
+    expect(result.data.map((row) => row.id)).toEqual([2]);
+    await expect(
+      service.findAll(
+        { organizationId: 99, page: 1, limit: 10 },
+        mockUser as any,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(buildSnapshot).toHaveBeenCalledTimes(1);
+  });
+
   it('uses the organization timezone when resolving today without a date', async () => {
     jest.setSystemTime(new Date('2026-03-12T19:00:00.000Z'));
     prisma.organization.findUnique.mockResolvedValue({

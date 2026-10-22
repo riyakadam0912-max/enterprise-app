@@ -44,7 +44,16 @@ export function useAttendance(filters: AttendanceFilters, scope: 'all' | 'me' = 
   const [data, setData] = useState<AttendanceListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { date, department, employeeId, limit, page, status } = filters;
+  const {
+    attentionFilter,
+    date,
+    department,
+    employeeId,
+    limit,
+    organizationId,
+    page,
+    status,
+  } = filters;
 
   useEffect(() => {
     let cancelled = false;
@@ -56,7 +65,16 @@ export function useAttendance(filters: AttendanceFilters, scope: 'all' | 'me' = 
       try {
         const response = await (scope === 'me'
           ? getMyAttendance({ date, limit, page, status })
-          : getAttendance({ date, department, employeeId, limit, page, status }));
+          : getAttendance({
+              attentionFilter,
+              date,
+              department,
+              employeeId,
+              limit,
+              organizationId,
+              page,
+              status,
+            }));
         if (!cancelled) setData(response);
       } catch (err) {
         const message = err instanceof Error ? err.message : undefined;
@@ -71,7 +89,17 @@ export function useAttendance(filters: AttendanceFilters, scope: 'all' | 'me' = 
       clearTimeout(delay);
       cancelled = true;
     };
-  }, [date, department, employeeId, limit, page, scope, status]);
+  }, [
+    attentionFilter,
+    date,
+    department,
+    employeeId,
+    limit,
+    organizationId,
+    page,
+    scope,
+    status,
+  ]);
 
   const refetch = useCallback(async () => {
     setLoading(true);
@@ -79,7 +107,16 @@ export function useAttendance(filters: AttendanceFilters, scope: 'all' | 'me' = 
     try {
       const response = await (scope === 'me'
         ? getMyAttendance({ date, limit, page, status })
-        : getAttendance({ date, department, employeeId, limit, page, status }));
+        : getAttendance({
+            attentionFilter,
+            date,
+            department,
+            employeeId,
+            limit,
+            organizationId,
+            page,
+            status,
+          }));
       setData(response);
     } catch (err) {
       const message = err instanceof Error ? err.message : undefined;
@@ -87,7 +124,17 @@ export function useAttendance(filters: AttendanceFilters, scope: 'all' | 'me' = 
     } finally {
       setLoading(false);
     }
-  }, [date, department, employeeId, limit, page, scope, status]);
+  }, [
+    attentionFilter,
+    date,
+    department,
+    employeeId,
+    limit,
+    organizationId,
+    page,
+    scope,
+    status,
+  ]);
 
   return { data, loading, error, refetch };
 }

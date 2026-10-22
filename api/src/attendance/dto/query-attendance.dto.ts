@@ -19,6 +19,13 @@ const STATUSES = [
   'LATE',
 ] as const;
 
+const ATTENDANCE_QUEUE_FILTERS = [
+  'WORKING',
+  'NOT_CHECKED_IN',
+  'LATE',
+  'FOLLOW_UP',
+] as const;
+
 export class QueryAttendanceDto {
   @IsOptional()
   @Type(() => Number)
@@ -37,6 +44,12 @@ export class QueryAttendanceDto {
   @IsInt()
   @ApiPropertyOptional({ example: 123 })
   employeeId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @ApiPropertyOptional({ example: 123 })
+  organizationId?: number;
 
   @IsOptional()
   @IsString()
@@ -74,4 +87,8 @@ export class QueryAttendanceDto {
   @IsOptional()
   @IsIn(STATUSES)
   status?: (typeof STATUSES)[number];
+
+  @IsOptional()
+  @IsIn(ATTENDANCE_QUEUE_FILTERS)
+  attentionFilter?: (typeof ATTENDANCE_QUEUE_FILTERS)[number];
 }

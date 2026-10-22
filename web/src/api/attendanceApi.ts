@@ -244,9 +244,11 @@ export interface AttendanceFilters {
   page?: number;
   limit?: number;
   employeeId?: number;
+  organizationId?: number;
   department?: string;
   date?: string;
   status?: AttendanceStatus;
+  attentionFilter?: 'WORKING' | 'NOT_CHECKED_IN' | 'LATE' | 'FOLLOW_UP';
 }
 
 export interface MonthlyAttendanceReportRow {
@@ -319,9 +321,11 @@ export function getAttendance(filters: AttendanceFilters = {}): Promise<Attendan
       page: filters.page,
       limit: filters.limit,
       employeeId: filters.employeeId,
+      organizationId: filters.organizationId,
       department: filters.department,
       date: filters.date,
       status: filters.status,
+      attentionFilter: filters.attentionFilter,
     })}`,
   );
 }

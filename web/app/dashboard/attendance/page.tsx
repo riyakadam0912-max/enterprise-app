@@ -161,6 +161,52 @@ function StatCard({ label, value, tone, icon }: { label: string; value: number |
   );
 }
 
+function DashboardMetricCard({
+  label,
+  value,
+  description,
+  tone,
+  icon,
+  active = false,
+  onClick,
+}: {
+  label: string;
+  value: number | string;
+  description: string;
+  tone: string;
+  icon: string;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  const content = (
+    <>
+      <div className="flex items-center justify-between gap-3">
+        <span className={`flex h-9 w-9 items-center justify-center rounded-xl text-lg ${tone}`}>{icon}</span>
+        <span className="text-2xl font-semibold text-slate-900">{value}</span>
+      </div>
+      <p className="mt-3 text-sm font-semibold text-slate-800">{label}</p>
+      <p className="mt-1 text-xs text-slate-500">{description}</p>
+    </>
+  );
+
+  return onClick ? (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`rounded-2xl border bg-white px-4 py-4 text-left shadow-sm transition hover:border-orange-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-orange-400 ${
+        active ? 'border-orange-400 ring-2 ring-orange-100' : 'border-slate-200'
+      }`}
+    >
+      {content}
+    </button>
+  ) : (
+    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+      {content}
+    </div>
+  );
+}
+
 function StatusBadge({ status }: { status: AttendanceStatus }) {
   return (
     <span className={`inline-flex items-center px-2.5 py-1 rounded-full border text-xs font-semibold ${STATUS_STYLES[status]}`}>
@@ -817,6 +863,10 @@ export default function AttendancePage() {
   const [department, setDepartment] = useState(searchParams.get('department') || '');
   const [date, setDate] = useState(searchParams.get('date') || todayString());
   const [status, setStatus] = useState(searchParams.get('status') || '');
+  const [attendanceCardFilter, setAttendanceCardFilter] = useState<
+    'WORKING' | 'NOT_CHECKED_IN' | 'LATE' | 'FOLLOW_UP' | undefined
+  >();
+  const [overviewOrganizationId, setOverviewOrganizationId] = useState('');
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
   const [shifts, setShifts] = useState<ShiftRecord[]>([]);
   const [holidays, setHolidays] = useState<HolidayRecord[]>([]);
@@ -855,10 +905,106 @@ export default function AttendancePage() {
       department: canViewAdminAttendance && department ? department : undefined,
       date,
       status: status ? (status as AttendanceStatus) : undefined,
+      organizationId:
+        session.role === 'SUPER_ADMIN' && overviewOrganizationId
+          ? Number(overviewOrganizationId)
+          : undefined,
+      attentionFilter: attendanceCardFilter,
     },
     canViewAdminAttendance ? 'all' : 'me',
   );
   const today = useTodayAttendance();
+  const todayRows = useMemo(() => today.data?.rows ?? [], [today.data?.rows]);
+  const overviewUnavailable = today.loading || Boolean(today.error);
+  const overviewOrganizations = useMemo(() => {
+    const organizations = new Map<number, string>();
+    for (const row of todayRows) {
+      const organization = row.employee.organization;
+      if (organization) organizations.set(organization.id, organization.name);
+    }
+    return [...organizations.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }, [todayRows]);
+  const overviewRows = useMemo(
+    () =>
+      overviewOrganizationId
+        ? todayRows.filter(
+            (row) =>
+              row.employee.organization?.id === Number(overviewOrganizationId),
+          )
+        : todayRows,
+    [overviewOrganizationId, todayRows],
+  );
+  const overviewMetrics = useMemo(() => {
+    const scheduledRows = overviewRows.filter((row) =>
+      ['PRESENT', 'ABSENT', 'HALF_DAY'].includes(row.status),
+    );
+    const presentRows = scheduledRows.filter((row) =>
+      ['PRESENT', 'HALF_DAY'].includes(row.status),
+    );
+    const followUpRows = overviewRows.filter(
+      (row) => row.status === 'ABSENT' || row.lateMinutes > 0,
+    );
+    const organizations = new Map<
+      number,
+      { id: number; name: string; scheduled: number; present: number; absent: number; late: number; followUp: number }
+    >();
+    for (const row of overviewRows) {
+      const organization = row.employee.organization;
+      if (!organization) continue;
+      const metrics = organizations.get(organization.id) ?? {
+        id: organization.id,
+        name: organization.name,
+        scheduled: 0,
+        present: 0,
+        absent: 0,
+        late: 0,
+        followUp: 0,
+      };
+      if (['PRESENT', 'ABSENT', 'HALF_DAY'].includes(row.status)) {
+        metrics.scheduled += 1;
+      }
+      if (['PRESENT', 'HALF_DAY'].includes(row.status)) metrics.present += 1;
+      if (row.status === 'ABSENT') metrics.absent += 1;
+      if (row.lateMinutes > 0) metrics.late += 1;
+      if (row.status === 'ABSENT' || row.lateMinutes > 0) {
+        metrics.followUp += 1;
+      }
+      organizations.set(organization.id, metrics);
+    }
+    const organizationRows = [...organizations.values()].sort((left, right) =>
+      left.name.localeCompare(right.name),
+    );
+    return {
+      checkedIn: overviewRows.filter((row) => row.checkIn && !row.checkOut).length,
+      notCheckedIn: overviewRows.filter((row) => row.status === 'ABSENT').length,
+      late: overviewRows.filter((row) => row.lateMinutes > 0).length,
+      followUp: followUpRows.length,
+      scheduled: scheduledRows.length,
+      present: presentRows.length,
+      coverage:
+        scheduledRows.length > 0
+          ? Math.round((presentRows.length / scheduledRows.length) * 100)
+          : null,
+      organizations: organizationRows,
+      organizationsWithFollowUp: organizationRows.filter(
+        (organization) => organization.followUp > 0,
+      ).length,
+      workHours: {
+        overtime: overviewRows.reduce((total, row) => total + row.overtimeHours, 0),
+        shortfall: overviewRows.reduce(
+          (total, row) => total + (row.shortfallHours ?? 0),
+          0,
+        ),
+        worked: overviewRows.reduce(
+          (total, row) => total + (row.workingHours ?? 0) + (row.taskHours ?? 0),
+          0,
+        ),
+        task: overviewRows.reduce((total, row) => total + (row.taskHours ?? 0), 0),
+      },
+    };
+  }, [overviewRows]);
   const checkInMutation = useCheckIn();
   const checkOutMutation = useCheckOut();
   const updateAttendanceMutation = useUpdateAttendance();
@@ -1017,6 +1163,31 @@ export default function AttendancePage() {
     setDepartment('');
     setDate(todayString());
     setStatus('');
+    setAttendanceCardFilter(undefined);
+    setOverviewOrganizationId('');
+    setPage(1);
+  }
+
+  function applyAttendanceCardFilter(
+    filter: 'WORKING' | 'NOT_CHECKED_IN' | 'LATE' | 'FOLLOW_UP',
+  ) {
+    setDate(todayString());
+    setStatus('');
+    setEmployeeId('');
+    setDepartment('');
+    setAttendanceCardFilter((current) =>
+      current === filter ? undefined : filter,
+    );
+    setPage(1);
+  }
+
+  function selectOverviewOrganization(value: string) {
+    setOverviewOrganizationId(value);
+    setAttendanceCardFilter(undefined);
+    setStatus('');
+    setEmployeeId('');
+    setDepartment('');
+    setDate(todayString());
     setPage(1);
   }
 
@@ -1328,23 +1499,254 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {canViewAdminAttendance && <>
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
-        <StatCard label="Present Today" value={today.data?.summary.present ?? 0} tone="bg-emerald-100 text-emerald-700" icon="✓" />
-        <StatCard label="Absent" value={today.data?.summary.absent ?? 0} tone="bg-red-100 text-red-700" icon="×" />
-        <StatCard label="On Leave" value={today.data?.summary.leave ?? 0} tone="bg-sky-100 text-sky-700" icon="☼" />
-        <StatCard label="Holiday" value={today.data?.summary.holiday ?? 0} tone="bg-teal-100 text-teal-700" icon="◆" />
-        <StatCard label="Half Day" value={today.data?.summary.halfDay ?? 0} tone="bg-amber-100 text-amber-700" icon="◐" />
-      </div>
+      {canViewAdminAttendance && (
+        <>
+          <section
+            className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5"
+            aria-label="Attendance operations overview"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  {session.role === 'SUPER_ADMIN'
+                    ? 'Organization attendance overview'
+                    : 'Today’s attendance operations'}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {session.role === 'SUPER_ADMIN'
+                    ? 'Compare attendance coverage across organizations in your authorized scope.'
+                    : 'Select a card to see the employees who need attention.'}
+                </p>
+              </div>
+              {session.role === 'SUPER_ADMIN' && (
+                <label className="w-full sm:w-72">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Organization scope
+                  </span>
+                  <select
+                    value={overviewOrganizationId}
+                    onChange={(event) =>
+                      selectOverviewOrganization(event.target.value)
+                    }
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700"
+                  >
+                    <option value="">All organizations in scope</option>
+                    {overviewOrganizations.map((organization) => (
+                      <option key={organization.id} value={organization.id}>
+                        {organization.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
+            {today.error && (
+              <p
+                role="alert"
+                className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+              >
+                Unable to load attendance overview: {today.error}
+              </p>
+            )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
-        <StatCard label="Late Count" value={today.data?.summary.lateCount ?? 0} tone="bg-yellow-100 text-yellow-700" icon="!" />
-        <StatCard label="Overtime" value={formatHoursDuration(today.data?.summary.overtimeHours ?? 0)} tone="bg-indigo-100 text-indigo-700" icon="+" />
-        <StatCard label="Total Worked" value={formatHoursDuration(today.data?.summary.totalWorkedHours ?? 0)} tone="bg-teal-100 text-teal-700" icon="⌚" />
-        <StatCard label="Task Hours" value={formatHoursDuration(today.data?.summary.totalTaskHours ?? 0)} tone="bg-slate-100 text-slate-700" icon="◷" />
-        <StatCard label="Shortfall" value={formatHoursDuration(today.data?.summary.shortfallHours ?? 0)} tone="bg-rose-100 text-rose-700" icon="−" />
-      </div>
-      </>}
+            {session.role === 'SUPER_ADMIN' ? (
+              <>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <DashboardMetricCard
+                    label="Organizations covered"
+                    value={
+                      overviewUnavailable
+                        ? '—'
+                        : overviewMetrics.organizations.length
+                    }
+                    description={
+                      overviewOrganizationId
+                        ? 'Organization in selected scope'
+                        : 'With eligible employees today'
+                    }
+                    tone="bg-indigo-100 text-indigo-700"
+                    icon="◇"
+                    onClick={() => selectOverviewOrganization('')}
+                    active={!overviewOrganizationId}
+                  />
+                  <DashboardMetricCard
+                    label="Attendance coverage"
+                    value={
+                      overviewUnavailable
+                        ? '—'
+                        : overviewMetrics.coverage === null
+                          ? '—'
+                          : `${overviewMetrics.coverage}%`
+                    }
+                    description={`${overviewMetrics.present} of ${overviewMetrics.scheduled} scheduled employees present`}
+                    tone="bg-emerald-100 text-emerald-700"
+                    icon="✓"
+                  />
+                  <DashboardMetricCard
+                    label="Organizations with follow-up"
+                    value={
+                      overviewUnavailable
+                        ? '—'
+                        : overviewMetrics.organizationsWithFollowUp
+                    }
+                    description="At least one absence or late arrival"
+                    tone="bg-amber-100 text-amber-700"
+                    icon="!"
+                    onClick={() =>
+                      applyAttendanceCardFilter('FOLLOW_UP')
+                    }
+                    active={attendanceCardFilter === 'FOLLOW_UP'}
+                  />
+                  <DashboardMetricCard
+                    label="Employees to follow up"
+                    value={overviewUnavailable ? '—' : overviewMetrics.followUp}
+                    description="Absent or late today"
+                    tone="bg-rose-100 text-rose-700"
+                    icon="↗"
+                    onClick={() =>
+                      applyAttendanceCardFilter('FOLLOW_UP')
+                    }
+                    active={attendanceCardFilter === 'FOLLOW_UP'}
+                  />
+                </div>
+                {!overviewOrganizationId && overviewMetrics.organizations.length > 0 && (
+                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                    <div className="border-b border-slate-100 px-4 py-3">
+                      <h3 className="text-sm font-semibold text-slate-800">
+                        Organization breakdown
+                      </h3>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Choose an organization to open its attendance table.
+                      </p>
+                    </div>
+                    <div className="max-h-64 divide-y divide-slate-100 overflow-y-auto scrollbar-hide">
+                      {overviewMetrics.organizations.map((organization) => (
+                        <button
+                          key={organization.id}
+                          type="button"
+                          onClick={() =>
+                            selectOverviewOrganization(String(organization.id))
+                          }
+                          className="grid w-full grid-cols-2 items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50 sm:grid-cols-[minmax(0,1.4fr)_repeat(4,minmax(5rem,0.7fr))]"
+                        >
+                          <span className="truncate text-sm font-medium text-slate-800">
+                            {organization.name}
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            Coverage{' '}
+                            <strong className="text-slate-800">
+                              {organization.scheduled > 0
+                                ? `${Math.round((organization.present / organization.scheduled) * 100)}%`
+                                : '—'}
+                            </strong>
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            Present <strong className="text-slate-800">{organization.present}</strong>
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            Absent <strong className="text-slate-800">{organization.absent}</strong>
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            Late <strong className="text-slate-800">{organization.late}</strong>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <DashboardMetricCard
+                  label="Checked in now"
+                  value={overviewUnavailable ? '—' : overviewMetrics.checkedIn}
+                  description="Attendance is open; checkout not recorded"
+                  tone="bg-emerald-100 text-emerald-700"
+                  icon="●"
+                  onClick={() => applyAttendanceCardFilter('WORKING')}
+                  active={attendanceCardFilter === 'WORKING'}
+                />
+                <DashboardMetricCard
+                  label="Not checked in"
+                  value={overviewUnavailable ? '—' : overviewMetrics.notCheckedIn}
+                  description="Scheduled employees marked absent"
+                  tone="bg-slate-200 text-slate-700"
+                  icon="—"
+                  onClick={() => applyAttendanceCardFilter('NOT_CHECKED_IN')}
+                  active={attendanceCardFilter === 'NOT_CHECKED_IN'}
+                />
+                <DashboardMetricCard
+                  label="Late arrivals"
+                  value={overviewUnavailable ? '—' : overviewMetrics.late}
+                  description="Employees with recorded late minutes"
+                  tone="bg-amber-100 text-amber-700"
+                  icon="!"
+                  onClick={() => applyAttendanceCardFilter('LATE')}
+                  active={attendanceCardFilter === 'LATE'}
+                />
+                <DashboardMetricCard
+                  label="Needs follow-up"
+                  value={overviewUnavailable ? '—' : overviewMetrics.followUp}
+                  description="Absent or late today"
+                  tone="bg-rose-100 text-rose-700"
+                  icon="↗"
+                  onClick={() => applyAttendanceCardFilter('FOLLOW_UP')}
+                  active={attendanceCardFilter === 'FOLLOW_UP'}
+                />
+              </div>
+            )}
+          </section>
+
+          {!overviewUnavailable &&
+            (session.role !== 'SUPER_ADMIN' || overviewOrganizationId) && (
+            <section aria-label="Today's work-hour totals">
+              <div className="mb-3">
+                <h2 className="text-base font-semibold text-slate-900">
+                  Today&apos;s work-hour totals
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {session.role === 'SUPER_ADMIN'
+                    ? 'Totals for the selected organization.'
+                    : 'Detailed time metrics for your organization.'}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                <StatCard
+                  label="Overtime"
+                  value={formatHoursDuration(overviewMetrics.workHours.overtime)}
+                  tone="bg-indigo-100 text-indigo-700"
+                  icon="+"
+                />
+                <StatCard
+                  label="Total worked"
+                  value={formatHoursDuration(overviewMetrics.workHours.worked)}
+                  tone="bg-teal-100 text-teal-700"
+                  icon="⌚"
+                />
+                <StatCard
+                  label="Task hours"
+                  value={formatHoursDuration(overviewMetrics.workHours.task)}
+                  tone="bg-slate-100 text-slate-700"
+                  icon="◷"
+                />
+                <StatCard
+                  label="Shortfall"
+                  value={formatHoursDuration(overviewMetrics.workHours.shortfall)}
+                  tone="bg-rose-100 text-rose-700"
+                  icon="−"
+                />
+              </div>
+            </section>
+          )}
+          {!today.error &&
+            session.role === 'SUPER_ADMIN' &&
+            !overviewOrganizationId && (
+            <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              Select one organization to view its overtime, worked time, task hours, and shortfall.
+            </p>
+          )}
+        </>
+      )}
 
       {canViewAdminAttendance && (
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">
@@ -1840,6 +2242,7 @@ export default function AttendancePage() {
                 value={employeeId}
                 onChange={(event) => {
                   setEmployeeId(event.target.value);
+                  setAttendanceCardFilter(undefined);
                   setPage(1);
                 }}
                 className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
@@ -1857,6 +2260,7 @@ export default function AttendancePage() {
                 value={department}
                 onChange={(event) => {
                   setDepartment(event.target.value);
+                  setAttendanceCardFilter(undefined);
                   setPage(1);
                 }}
                 placeholder="Filter by department"
@@ -1872,6 +2276,7 @@ export default function AttendancePage() {
               value={date}
               onChange={(event) => {
                 setDate(event.target.value);
+                setAttendanceCardFilter(undefined);
                 setPage(1);
               }}
               className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
@@ -1884,6 +2289,7 @@ export default function AttendancePage() {
               value={status}
               onChange={(event) => {
                 setStatus(event.target.value);
+                setAttendanceCardFilter(undefined);
                 setPage(1);
               }}
               className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
@@ -1925,6 +2331,7 @@ export default function AttendancePage() {
               value={status}
               onChange={(event) => {
                 setStatus(event.target.value);
+                setAttendanceCardFilter(undefined);
                 setPage(1);
               }}
               className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm sm:w-52"

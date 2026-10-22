@@ -2787,18 +2787,47 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       query.employeeId,
     );
 
+    if (query.organizationId != null) {
+      const organizationIds = await this.getAttendanceOrganizationIds(user);
+      if (
+        organizationIds !== null &&
+        !organizationIds.includes(query.organizationId)
+      ) {
+        throw new ForbiddenException(
+          'Selected organization is outside your attendance scope',
+        );
+      }
+    }
     const { rows } = await this.buildDailySnapshot(day, scopedIds, user);
-    const statusFilteredRows = query.status
-      ? rows.filter((row) => row.status === query.status)
-      : rows;
-
-    const filteredRows = query.department
-      ? statusFilteredRows.filter((row) =>
-          (row.employee.department ?? 'Unassigned')
-            .toLowerCase()
-            .includes(query.department!.toLowerCase()),
-        )
-      : statusFilteredRows;
+    const filteredRows = rows.filter((row) => {
+      if (
+        query.organizationId != null &&
+        row.employee.organization?.id !== query.organizationId
+      ) {
+        return false;
+      }
+      if (query.status && row.status !== query.status) return false;
+      if (
+        query.department &&
+        !(row.employee.department ?? 'Unassigned')
+          .toLowerCase()
+          .includes(query.department.toLowerCase())
+      ) {
+        return false;
+      }
+      switch (query.attentionFilter) {
+        case 'WORKING':
+          return Boolean(row.checkIn && !row.checkOut);
+        case 'NOT_CHECKED_IN':
+          return row.status === AttendanceStatus.ABSENT;
+        case 'LATE':
+          return row.lateMinutes > 0;
+        case 'FOLLOW_UP':
+          return row.status === AttendanceStatus.ABSENT || row.lateMinutes > 0;
+        default:
+          return true;
+      }
+    });
 
     const start = (page - 1) * limit;
     const data = filteredRows.slice(start, start + limit);
