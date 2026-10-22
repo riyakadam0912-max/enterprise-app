@@ -240,9 +240,10 @@ describe('TasksService per-user task timer sessions', () => {
     tx.employee.findFirst.mockResolvedValue({
       shift: { type: 'FLEXIBLE' },
     });
-    tx.attendanceSession.findFirst
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ id: 201 });
+    tx.attendanceSession.findFirst.mockResolvedValueOnce({
+      id: 201,
+      breaks: [{ endedAt: null }],
+    });
 
     await expect(
       service.updateTimer(
@@ -266,7 +267,10 @@ describe('TasksService per-user task timer sessions', () => {
     tx.employee.findFirst.mockResolvedValue({
       shift: { type: 'FLEXIBLE' },
     });
-    tx.attendanceSession.findFirst.mockResolvedValueOnce({ id: 201 });
+    tx.attendanceSession.findFirst.mockResolvedValueOnce({
+      id: 201,
+      breaks: [],
+    });
 
     await service.updateTimer(
       8,
@@ -317,7 +321,10 @@ describe('TasksService per-user task timer sessions', () => {
     tx.employee.findFirst.mockResolvedValue({
       shift: { type: 'FLEXIBLE' },
     });
-    tx.attendanceSession.findFirst.mockResolvedValueOnce({ id: 201 });
+    tx.attendanceSession.findFirst.mockResolvedValueOnce({
+      id: 201,
+      breaks: [],
+    });
 
     await service.updateTimer(
       8,
@@ -329,11 +336,53 @@ describe('TasksService per-user task timer sessions', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           endedAt: null,
-          breaks: { none: { endedAt: null } },
         }),
+        include: { breaks: true },
       }),
     );
     expect(tx.taskTimerSession.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows an open flexible session to start a timer when the current shift is stale', async () => {
+    tx.employee.findFirst.mockResolvedValue({
+      shift: { type: 'FIXED' },
+    });
+    tx.attendanceSession.findFirst.mockResolvedValueOnce({
+      id: 201,
+      breaks: [],
+    });
+
+    await service.updateTimer(
+      8,
+      { action: 'start' },
+      makeUser(11, Role.EMPLOYEE, 101),
+    );
+
+    expect(tx.attendance.findFirst).not.toHaveBeenCalled();
+    expect(tx.taskTimerSession.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects starting a timer during an open flexible-session break when the current shift is stale', async () => {
+    tx.employee.findFirst.mockResolvedValue({
+      shift: { type: 'FIXED' },
+    });
+    tx.attendanceSession.findFirst.mockResolvedValueOnce({
+      id: 201,
+      breaks: [{ endedAt: null }],
+    });
+
+    await expect(
+      service.updateTimer(
+        8,
+        { action: 'start' },
+        makeUser(11, Role.EMPLOYEE, 101),
+      ),
+    ).rejects.toThrow(
+      'End your break before starting or resuming a task timer',
+    );
+
+    expect(tx.attendance.findFirst).not.toHaveBeenCalled();
+    expect(tx.taskTimerSession.create).not.toHaveBeenCalled();
   });
 
   it('links a stopped session to exactly one attributed pending timesheet', async () => {

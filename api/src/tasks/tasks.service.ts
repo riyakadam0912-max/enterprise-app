@@ -1181,27 +1181,22 @@ export class TasksService {
       },
       select: { shift: { select: { type: true } } },
     });
-    if (employee?.shift?.type === 'FLEXIBLE') {
-      const activeSession = await db.attendanceSession.findFirst({
-        where: {
-          employeeId: user.employeeId,
-          organizationId,
-          endedAt: null,
-          breaks: { none: { endedAt: null } },
-        },
-        select: { id: true },
-      });
-      if (activeSession) return;
-      const activeBreak = await db.attendanceSession.findFirst({
-        where: {
-          employeeId: user.employeeId,
-          organizationId,
-          endedAt: null,
-          breaks: { some: { endedAt: null } },
-        },
-        select: { id: true },
-      });
-      if (activeBreak) {
+    const activeSession = await db.attendanceSession.findFirst({
+      where: {
+        employeeId: user.employeeId,
+        organizationId,
+        endedAt: null,
+      },
+      include: { breaks: true },
+    });
+    if (employee?.shift?.type === 'FLEXIBLE' || activeSession) {
+      if (
+        activeSession &&
+        !activeSession.breaks.some((item) => !item.endedAt)
+      ) {
+        return;
+      }
+      if (activeSession) {
         throw new BadRequestException(
           'End your break before starting or resuming a task timer',
         );
