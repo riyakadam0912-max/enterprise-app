@@ -563,6 +563,8 @@ function EditAttendanceModal(props: {
     date: string;
     checkIn: string;
     checkOut: string;
+    reopenAsWorking: boolean;
+    reopenReason?: string;
     status: AttendanceStatus;
     breaks?: { startedAt: string; endedAt: string | null }[];
   }) => void;
@@ -571,6 +573,8 @@ function EditAttendanceModal(props: {
   const [date, setDate] = useState('');
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
+  const [reopenAsWorking, setReopenAsWorking] = useState(false);
+  const [reopenReason, setReopenReason] = useState('');
   const [status, setStatus] = useState<AttendanceStatus>('PRESENT');
   const [breaks, setBreaks] = useState<{ startedAt: string; endedAt: string }[]>([]);
   const [editingBreaks, setEditingBreaks] = useState(false);
@@ -583,6 +587,8 @@ function EditAttendanceModal(props: {
       setDate(formatDateInput(record.date));
       setCheckIn(formatTimeInput(record.checkIn));
       setCheckOut(formatTimeInput(record.checkOut));
+      setReopenAsWorking(false);
+      setReopenReason('');
       setStatus(record.status);
       setBreaks((record.breaks ?? []).map((interval) => ({
         startedAt: formatDateTimeLocal(interval.startedAt),
@@ -609,7 +615,7 @@ function EditAttendanceModal(props: {
           setFormError(`Enter valid start and end times for break ${index + 1}.`);
           return;
         }
-        if (!endedAt && checkOut) {
+        if (!endedAt && checkOut && !reopenAsWorking) {
           setFormError('Add an end time for every break before checking out.');
           return;
         }
@@ -617,7 +623,15 @@ function EditAttendanceModal(props: {
       }
     }
     setFormError(null);
-    onSubmit({ date, checkIn, checkOut, status, breaks: normalizedBreaks });
+    onSubmit({
+      date,
+      checkIn,
+      checkOut: reopenAsWorking ? '' : checkOut,
+      reopenAsWorking,
+      reopenReason: reopenReason.trim() || undefined,
+      status,
+      breaks: reopenAsWorking ? undefined : normalizedBreaks,
+    });
   }
 
   return (
@@ -658,10 +672,42 @@ function EditAttendanceModal(props: {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Check Out</label>
-            <input type="time" value={checkOut} onChange={(event) => setCheckOut(event.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
+            <input type="time" value={checkOut} disabled={reopenAsWorking} onChange={(event) => setCheckOut(event.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-slate-100 disabled:text-slate-500" />
           </div>
 
-          {canEditBreaks && (
+          {record.checkOut && (
+            <section className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+              <label className="flex items-start gap-3 text-sm font-medium text-slate-800">
+                <input
+                  type="checkbox"
+                  checked={reopenAsWorking}
+                  onChange={(event) => setReopenAsWorking(event.target.checked)}
+                  className="mt-0.5 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
+                />
+                <span>Employee is still working — reopen attendance</span>
+              </label>
+              {reopenAsWorking && (
+                <>
+                  <p className="mt-2 text-xs text-slate-600">
+                    This clears the checkout and keeps attendance open. Any task timer stopped at checkout stays stopped; it will not be resumed automatically.
+                  </p>
+                  <label className="mt-3 block text-xs font-medium text-slate-600">
+                    Correction reason (optional)
+                    <input
+                      type="text"
+                      maxLength={500}
+                      value={reopenReason}
+                      onChange={(event) => setReopenReason(event.target.value)}
+                      placeholder="Checkout was recorded by mistake"
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                    />
+                  </label>
+                </>
+              )}
+            </section>
+          )}
+
+          {canEditBreaks && !reopenAsWorking && (
             <section className="md:col-span-2" aria-label="Attendance breaks">
               <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2.5">
                 <div className="min-w-0">
@@ -920,6 +966,8 @@ export default function AttendancePage() {
     date: string;
     checkIn: string;
     checkOut: string;
+    reopenAsWorking: boolean;
+    reopenReason?: string;
     status: AttendanceStatus;
     breaks?: { startedAt: string; endedAt: string | null }[];
   }) {
@@ -929,7 +977,13 @@ export default function AttendancePage() {
       await updateAttendanceMutation.mutate(editingRecord.id, {
         date: payload.date,
         checkIn: payload.checkIn ? toIsoFromParts(payload.date, payload.checkIn) : undefined,
-        checkOut: payload.checkOut ? toIsoFromParts(payload.date, payload.checkOut) : undefined,
+        checkOut: payload.reopenAsWorking
+          ? undefined
+          : payload.checkOut
+            ? toIsoFromParts(payload.date, payload.checkOut)
+            : undefined,
+        reopenAsWorking: payload.reopenAsWorking,
+        reopenReason: payload.reopenReason,
         status: payload.status,
         breaks: payload.breaks,
       });

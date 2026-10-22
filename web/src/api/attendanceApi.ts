@@ -296,6 +296,8 @@ export interface UpdateAttendancePayload {
   date?: string;
   checkIn?: string;
   checkOut?: string;
+  reopenAsWorking?: boolean;
+  reopenReason?: string;
   status?: AttendanceStatus;
   breaks?: { startedAt: string; endedAt: string | null }[];
 }

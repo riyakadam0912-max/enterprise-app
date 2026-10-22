@@ -2,9 +2,12 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsDateString,
   IsIn,
   IsOptional,
+  IsString,
+  MaxLength,
   ValidateNested,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
@@ -42,6 +45,15 @@ export class UpdateAttendanceDto {
   @IsDateString()
   @ApiPropertyOptional({ example: 'sample-checkOut' })
   checkOut?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  reopenAsWorking?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reopenReason?: string;
 
   @IsOptional()
   @IsIn(STATUSES)

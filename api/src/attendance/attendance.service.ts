@@ -5282,6 +5282,366 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  private async rebuildFlexibleAttendanceAfterReopen(
+    tx: Prisma.TransactionClient,
+    employeeId: number,
+    organizationId: number,
+    firstDate: Date,
+    timezone: string,
+    now: Date,
+  ) {
+    const firstKey = dateKeyInTimezone(firstDate, timezone);
+    const lastKey = dateKeyInTimezone(now, timezone);
+    const firstDay = attendanceDateFromKey(firstKey);
+    const lastDay = attendanceDateFromKey(lastKey);
+    const dates: Date[] = [];
+    for (
+      const day = new Date(firstDay);
+      day.getTime() <= lastDay.getTime();
+      day.setUTCDate(day.getUTCDate() + 1)
+    ) {
+      dates.push(new Date(day));
+    }
+
+    let updatedAttendance: Awaited<
+      ReturnType<typeof tx.attendance.findUnique>
+    > | null = null;
+    for (const date of dates) {
+      const dateKey = this.dateKey(date);
+      const dayStart = this.localDateStart(dateKey, timezone);
+      const dayEnd = localMidnightAfterDateInTimezone(dateKey, timezone);
+      if (!dayEnd) {
+        throw new BadRequestException(
+          'Could not determine local attendance day boundary',
+        );
+      }
+      const sessions = await tx.attendanceSession.findMany({
+        where: {
+          employeeId,
+          organizationId,
+          startedAt: { lt: dayEnd },
+          OR: [{ endedAt: null }, { endedAt: { gt: dayStart } }],
+        },
+        include: { breaks: true, shift: true },
+        orderBy: { startedAt: 'asc' },
+      });
+      const daySessions: Array<{
+        session: (typeof sessions)[number];
+        start: Date;
+        end: Date;
+        isOpen: boolean;
+      }> = [];
+      for (const session of sessions) {
+        const start = new Date(
+          Math.max(session.startedAt.getTime(), dayStart.getTime()),
+        );
+        const end = new Date(
+          Math.min(
+            session.endedAt?.getTime() ?? now.getTime(),
+            dayEnd.getTime(),
+            now.getTime(),
+          ),
+        );
+        if (end > start) {
+          daySessions.push({
+            session,
+            start,
+            end,
+            isOpen: session.endedAt === null,
+          });
+        }
+      }
+      if (daySessions.length === 0) continue;
+
+      const workingHours = Number(
+        daySessions
+          .filter((item) => !item.isOpen)
+          .reduce((total, item) => {
+            const breaks = item.session.breaks.map((interval) => ({
+              startedAt: interval.startedAt,
+              endedAt: interval.endedAt ?? item.end,
+            }));
+            return (
+              total + calculateNetWorkingHours(item.start, item.end, breaks)
+            );
+          }, 0)
+          .toFixed(2),
+      );
+      const firstSession = daySessions[0];
+      const lastSession = daySessions[daySessions.length - 1];
+      const checkIn = firstSession.start;
+      const hasOpenSession = daySessions.some((item) => item.isOpen);
+      const checkOut = hasOpenSession
+        ? null
+        : daySessions.reduce(
+            (latest, item) => (item.end > latest ? item.end : latest),
+            daySessions[0].end,
+          );
+      const shift = (lastSession.session.shift ??
+        firstSession.session.shift ??
+        null) as ShiftLite | null;
+      const requiredHours = shift?.requiredHours ?? 8;
+      const minPresentHours = shift?.minPresentHours ?? 5;
+      const halfDayLeave = await this.findApprovedLeaveForDay(
+        employeeId,
+        date,
+        'HALF_DAY',
+      );
+      const effectiveRequiredHours = halfDayLeave
+        ? Math.min(requiredHours, 5)
+        : requiredHours;
+      const overtimeHours = Math.max(
+        0,
+        Number((workingHours - effectiveRequiredHours).toFixed(2)),
+      );
+      const shortfallHours = Math.max(
+        0,
+        Number((effectiveRequiredHours - workingHours).toFixed(2)),
+      );
+      const status = hasOpenSession
+        ? AttendanceStatus.PRESENT
+        : attendanceStatusForWorkedHours(
+            workingHours,
+            Math.min(minPresentHours, effectiveRequiredHours),
+          );
+      const lateMinutes = this.calculateLateMinutes(
+        checkIn,
+        dateKey,
+        shift,
+        timezone,
+      );
+      const closedBreaks = daySessions
+        .filter((item) => !item.isOpen)
+        .flatMap((item) =>
+          item.session.breaks.flatMap((interval) => {
+            const startedAt = new Date(
+              Math.max(interval.startedAt.getTime(), item.start.getTime()),
+            );
+            const endedAt = new Date(
+              Math.min(
+                interval.endedAt?.getTime() ?? item.end.getTime(),
+                item.end.getTime(),
+              ),
+            );
+            return endedAt > startedAt ? [{ startedAt, endedAt }] : [];
+          }),
+        );
+
+      const existing = await tx.attendance.findUnique({
+        where: { employeeId_date: { employeeId, date } },
+        select: { id: true },
+      });
+      let attendanceId: number;
+      if (existing) {
+        attendanceId = existing.id;
+        await tx.attendanceBreak.deleteMany({
+          where: { attendanceId: existing.id },
+        });
+        updatedAttendance = await tx.attendance.update({
+          where: { id: existing.id },
+          data: {
+            checkIn,
+            checkOut,
+            workingHours,
+            requiredHours,
+            overtimeHours,
+            shortfallHours,
+            lateMinutes,
+            status,
+            checkoutSource: hasOpenSession
+              ? null
+              : lastSession.session.checkoutSource,
+            checkoutActorId: hasOpenSession
+              ? null
+              : lastSession.session.checkoutActorId,
+            isAutoClosed: false,
+          },
+          include: { employee: true, shift: true, breaks: true },
+        });
+      } else {
+        const createdAttendance = await tx.attendance.create({
+          data: {
+            employeeId,
+            organizationId,
+            shiftId: shift?.id ?? null,
+            date,
+            checkIn,
+            checkOut,
+            workingHours,
+            requiredHours,
+            overtimeHours,
+            shortfallHours,
+            lateMinutes,
+            status,
+            checkoutSource: hasOpenSession
+              ? null
+              : lastSession.session.checkoutSource,
+            checkoutActorId: hasOpenSession
+              ? null
+              : lastSession.session.checkoutActorId,
+          },
+          include: { employee: true, shift: true, breaks: true },
+        });
+        updatedAttendance = createdAttendance;
+        attendanceId = createdAttendance.id;
+      }
+      if (closedBreaks.length > 0) {
+        await tx.attendanceBreak.createMany({
+          data: closedBreaks.map((interval) => ({
+            attendanceId,
+            ...interval,
+          })),
+        });
+      }
+    }
+    return updatedAttendance;
+  }
+
+  private async reopenFlexibleAttendanceSession(
+    tx: Prisma.TransactionClient,
+    record: {
+      id: number;
+      employeeId: number;
+      organizationId: number;
+      date: Date;
+      checkIn: Date | null;
+      checkOut: Date | null;
+      employee: { name: string };
+    },
+    attendanceDate: Date,
+    timezone: string,
+    user: AttendanceUser,
+    reason?: string,
+  ) {
+    if (!record.checkIn || !record.checkOut) {
+      throw new ConflictException(
+        'Only a checked-out flexible attendance record can be reopened',
+      );
+    }
+    const dateKey = this.dateKey(attendanceDate);
+    const dayStart = this.localDateStart(dateKey, timezone);
+    const dayEnd = localMidnightAfterDateInTimezone(dateKey, timezone);
+    if (!dayEnd) {
+      throw new BadRequestException(
+        'Could not determine local attendance day boundary',
+      );
+    }
+    await this.lockFlexibleAttendanceForEmployee(
+      record.employeeId,
+      record.organizationId,
+      tx,
+    );
+    const candidates = await tx.attendanceSession.findMany({
+      where: {
+        employeeId: record.employeeId,
+        organizationId: record.organizationId,
+        startedAt: { lt: dayEnd },
+        endedAt: { gte: dayStart },
+      },
+      include: { breaks: true, shift: true },
+      orderBy: { endedAt: 'desc' },
+    });
+    const target = candidates[0];
+    if (!target) {
+      throw new ConflictException(
+        'No closed flexible session was found for this attendance date',
+      );
+    }
+    const latestClosedSession = await tx.attendanceSession.findFirst({
+      where: {
+        employeeId: record.employeeId,
+        organizationId: record.organizationId,
+        endedAt: { not: null },
+      },
+      orderBy: { endedAt: 'desc' },
+      select: { id: true },
+    });
+    if (latestClosedSession?.id !== target.id) {
+      throw new ConflictException(
+        'Only the employee’s latest flexible attendance session can be reopened',
+      );
+    }
+
+    const openSession = await tx.attendanceSession.findFirst({
+      where: {
+        employeeId: record.employeeId,
+        organizationId: record.organizationId,
+        endedAt: null,
+      },
+      select: { id: true },
+    });
+    if (openSession) {
+      throw new ConflictException(
+        'Employee already has an open flexible attendance session',
+      );
+    }
+    const reopened = await tx.attendanceSession.updateMany({
+      where: { id: target.id, endedAt: target.endedAt },
+      data: {
+        endedAt: null,
+        checkoutSource: null,
+        checkoutActorId: null,
+      },
+    });
+    if (reopened.count !== 1) {
+      throw new ConflictException(
+        'Attendance session changed; refresh and try again',
+      );
+    }
+
+    const now = new Date();
+    const updated = await this.rebuildFlexibleAttendanceAfterReopen(
+      tx,
+      record.employeeId,
+      record.organizationId,
+      target.startedAt,
+      timezone,
+      now,
+    );
+    if (!updated) {
+      throw new ConflictException(
+        'Could not rebuild flexible attendance summaries',
+      );
+    }
+    await tx.auditLog.create({
+      data: {
+        userId: user.userId,
+        userRole: user.role,
+        module: 'ATTENDANCE',
+        entityType: 'Attendance',
+        entityId: record.id,
+        action: 'REOPEN_ATTENDANCE',
+        fieldName: 'checkOut',
+        oldValue: { checkOut: record.checkOut.toISOString() },
+        newValue: {
+          checkOut: null,
+          reopenedAt: now.toISOString(),
+          attendanceSessionId: target.id,
+          shiftType: 'FLEXIBLE',
+          reason: reason?.trim() || null,
+        },
+        description: `Reopened flexible attendance for ${record.employee.name}${reason?.trim() ? `: ${reason.trim()}` : ''}`,
+        status: 'SUCCESS',
+        organizationId: record.organizationId,
+      },
+    });
+    const result = await tx.attendance.findUnique({
+      where: {
+        employeeId_date: {
+          employeeId: record.employeeId,
+          date: attendanceDate,
+        },
+      },
+      include: { employee: true, shift: true, breaks: true },
+    });
+    if (!result) {
+      throw new ConflictException(
+        'Could not load the reopened attendance summary',
+      );
+    }
+    return result;
+  }
+
   async update(id: number, dto: UpdateAttendanceDto, user: AttendanceUser) {
     const buScope = await this.businessUnitsService.resolveScope(user as any);
     const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
@@ -5301,10 +5661,36 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     if (!record) {
       throw new NotFoundException(`Attendance #${id} not found`);
     }
+    const reopening = dto.reopenAsWorking === true;
+    if (
+      reopening &&
+      user.role !== Role.ADMIN &&
+      user.role !== Role.HR &&
+      user.role !== Role.SUPER_ADMIN
+    ) {
+      throw new ForbiddenException(
+        'Only administrators can reopen checked-out attendance',
+      );
+    }
+    if (reopening && (!record.checkIn || !record.checkOut)) {
+      throw new ConflictException(
+        'Only a checked-out attendance record can be reopened',
+      );
+    }
+    if (dto.reopenReason && !reopening) {
+      throw new BadRequestException(
+        'A correction reason can only be provided when reopening attendance',
+      );
+    }
 
     const nextDate = dto.date
       ? attendanceDateFromKey(dto.date.slice(0, 10))
       : new Date(record.date);
+    if (reopening && nextDate.getTime() !== new Date(record.date).getTime()) {
+      throw new BadRequestException(
+        'Attendance date cannot be changed while reopening a session',
+      );
+    }
     const attendanceDateShiftMs =
       nextDate.getTime() - new Date(record.date).getTime();
     this.assertAttendanceEligible(nextDate, record.employee.hireDate);
@@ -5326,21 +5712,24 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    const checkIn =
-      dto.checkIn !== undefined
+    const checkIn = reopening
+      ? record.checkIn
+      : dto.checkIn !== undefined
         ? dto.checkIn
           ? new Date(dto.checkIn)
           : null
         : record.checkIn;
-    const checkOut =
-      dto.checkOut !== undefined
+    const checkOut = reopening
+      ? null
+      : dto.checkOut !== undefined
         ? dto.checkOut
           ? new Date(dto.checkOut)
           : null
         : record.checkOut;
     const checkoutChanged =
-      dto.checkOut !== undefined &&
-      checkOut?.getTime() !== record.checkOut?.getTime();
+      reopening ||
+      (dto.checkOut !== undefined &&
+        checkOut?.getTime() !== record.checkOut?.getTime());
 
     if (checkOut && !checkIn) {
       throw new BadRequestException('Check-in is required before check-out');
@@ -5451,20 +5840,53 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       record.employeeId,
       nextDate,
     );
-    const status =
-      dto.status ??
-      this.calculateStatus({
-        day: nextDate,
-        checkIn,
-        checkOut,
-        workingHours,
-        onLeave: Boolean(leave),
-        shift,
-        lateMinutes,
-        timezone,
-      });
+    const status = reopening
+      ? AttendanceStatus.PRESENT
+      : (dto.status ??
+        this.calculateStatus({
+          day: nextDate,
+          checkIn,
+          checkOut,
+          workingHours,
+          onLeave: Boolean(leave),
+          shift,
+          lateMinutes,
+          timezone,
+        }));
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      if (reopening && dto.breaks !== undefined) {
+        throw new BadRequestException(
+          'Breaks cannot be edited in the same action as reopening attendance',
+        );
+      }
+      if (reopening && shift?.type === 'FLEXIBLE') {
+        return this.reopenFlexibleAttendanceSession(
+          tx,
+          record,
+          nextDate,
+          timezone,
+          user,
+          dto.reopenReason,
+        );
+      }
+      if (reopening) {
+        const otherOpenAttendance = await tx.attendance.findFirst({
+          where: {
+            employeeId: record.employeeId,
+            organizationId: record.organizationId,
+            id: { not: id },
+            checkIn: { not: null },
+            checkOut: null,
+          },
+          select: { id: true },
+        });
+        if (otherOpenAttendance) {
+          throw new ConflictException(
+            'Employee already has another open attendance record',
+          );
+        }
+      }
       if (dto.breaks !== undefined || attendanceDateShiftMs !== 0) {
         await tx.attendanceBreak.deleteMany({ where: { attendanceId: id } });
         if (orderedBreaks.length > 0) {
@@ -5478,7 +5900,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         }
       }
 
-      return tx.attendance.update({
+      const updatedAttendance = await tx.attendance.update({
         where: { id, organizationId: record.organizationId },
         data: {
           date: nextDate,
@@ -5502,6 +5924,32 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         },
         include: { employee: true, shift: true, breaks: true },
       });
+      if (reopening) {
+        await tx.auditLog.create({
+          data: {
+            userId: user.userId,
+            userRole: user.role,
+            module: 'ATTENDANCE',
+            entityType: 'Attendance',
+            entityId: id,
+            action: 'REOPEN_ATTENDANCE',
+            fieldName: 'checkOut',
+            oldValue: {
+              checkOut: record.checkOut?.toISOString() ?? null,
+            },
+            newValue: {
+              checkOut: null,
+              reopenedAt: new Date().toISOString(),
+              shiftType: shift?.type ?? null,
+              reason: dto.reopenReason?.trim() || null,
+            },
+            description: `Reopened attendance for ${record.employee.name}${dto.reopenReason?.trim() ? `: ${dto.reopenReason.trim()}` : ''}`,
+            status: 'SUCCESS',
+            organizationId: record.organizationId,
+          },
+        });
+      }
+      return updatedAttendance;
     });
     await this.invalidateDashboardCache();
     return updated;
