@@ -5703,6 +5703,74 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         'Could not determine local attendance day boundary',
       );
     }
+    const openSession = await tx.attendanceSession.findFirst({
+      where: {
+        employeeId: record.employeeId,
+        organizationId: record.organizationId,
+        endedAt: null,
+      },
+      select: { id: true, startedAt: true },
+    });
+    if (openSession) {
+      if (openSession.startedAt >= dayEnd) {
+        throw new ConflictException(
+          'Employee already has an open flexible attendance session',
+        );
+      }
+      const now = new Date();
+      const updated = await this.rebuildFlexibleAttendanceAfterReopen(
+        tx,
+        record.employeeId,
+        record.organizationId,
+        record.checkIn,
+        timezone,
+        now,
+      );
+      if (!updated) {
+        throw new ConflictException(
+          'Could not rebuild flexible attendance summaries',
+        );
+      }
+      await tx.auditLog.create({
+        data: {
+          userId: user.userId,
+          userRole: user.role,
+          module: 'ATTENDANCE',
+          entityType: 'Attendance',
+          entityId: record.id,
+          action: 'REOPEN_ATTENDANCE',
+          fieldName: 'checkOut',
+          oldValue: { checkOut: record.checkOut.toISOString() },
+          newValue: {
+            checkOut: null,
+            reopenedAt: now.toISOString(),
+            attendanceSessionId: openSession.id,
+            shiftType: 'FLEXIBLE',
+            reconciledExistingOpenSession: true,
+            reason: reason?.trim() || null,
+          },
+          description: `Reconciled already-open flexible attendance for ${record.employee.name}${reason?.trim() ? `: ${reason.trim()}` : ''}`,
+          status: 'SUCCESS',
+          organizationId: record.organizationId,
+        },
+      });
+      const result = await tx.attendance.findUnique({
+        where: {
+          employeeId_date: {
+            employeeId: record.employeeId,
+            date: attendanceDate,
+          },
+        },
+        include: { employee: true, shift: true, breaks: true },
+      });
+      if (!result) {
+        throw new ConflictException(
+          'Could not load the reopened attendance summary',
+        );
+      }
+      return result;
+    }
+
     const candidates = await tx.attendanceSession.findMany({
       where: {
         employeeId: record.employeeId,
@@ -5734,19 +5802,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    const openSession = await tx.attendanceSession.findFirst({
-      where: {
-        employeeId: record.employeeId,
-        organizationId: record.organizationId,
-        endedAt: null,
-      },
-      select: { id: true },
-    });
-    if (openSession) {
-      throw new ConflictException(
-        'Employee already has an open flexible attendance session',
-      );
-    }
     const reopened = await tx.attendanceSession.updateMany({
       where: { id: target.id, endedAt: target.endedAt },
       data: {

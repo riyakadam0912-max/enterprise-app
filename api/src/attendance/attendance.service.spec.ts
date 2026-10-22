@@ -889,8 +889,8 @@ describe('AttendanceService', () => {
       .mockResolvedValueOnce([session])
       .mockResolvedValueOnce([{ ...session, endedAt: null }]);
     prisma.attendanceSession.findFirst
-      .mockResolvedValueOnce({ id: 82 })
-      .mockResolvedValueOnce(null);
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 82 });
     prisma.attendanceSession.updateMany.mockResolvedValue({ count: 1 });
     prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
     jest.spyOn(service as any, 'calculateLateMinutes').mockReturnValue(0);
@@ -927,6 +927,73 @@ describe('AttendanceService', () => {
         data: expect.objectContaining({
           action: 'REOPEN_ATTENDANCE',
           newValue: expect.objectContaining({ attendanceSessionId: 82 }),
+        }),
+      }),
+    );
+  });
+
+  it('reconciles a checked-out summary when its flexible attendance session is already open', async () => {
+    const checkIn = new Date('2026-10-22T09:00:00.000Z');
+    const checkOut = new Date('2026-10-22T12:00:00.000Z');
+    const record = {
+      id: 53,
+      employeeId: 7,
+      organizationId: 1,
+      date: new Date('2026-10-22T00:00:00.000Z'),
+      checkIn,
+      checkOut,
+      status: AttendanceStatus.PRESENT,
+      breaks: [],
+      employee: {
+        name: 'Flexible Employee',
+        hireDate: null,
+        shift: { id: 2, type: 'FLEXIBLE' },
+      },
+      shift: {
+        id: 2,
+        type: 'FLEXIBLE',
+        requiredHours: 8,
+        minPresentHours: 5,
+      },
+    };
+    const activeSession = {
+      id: 83,
+      startedAt: new Date('2026-10-22T13:00:00.000Z'),
+    };
+    const openAttendance = { ...record, checkOut: null, workingHours: 0 };
+    prisma.attendance.findFirst.mockResolvedValueOnce(record);
+    prisma.attendance.findUnique
+      .mockResolvedValueOnce({ checkOut })
+      .mockResolvedValueOnce(openAttendance);
+    prisma.attendanceSession.findFirst.mockResolvedValueOnce(activeSession);
+    prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
+    jest
+      .spyOn(service as any, 'rebuildFlexibleAttendanceAfterReopen')
+      .mockResolvedValue(openAttendance);
+
+    const result = await service.reopenAttendance(53, {}, mockUser as any);
+
+    expect(result).toEqual(openAttendance);
+    expect(
+      (service as any).rebuildFlexibleAttendanceAfterReopen,
+    ).toHaveBeenCalledWith(
+      prisma,
+      record.employeeId,
+      record.organizationId,
+      checkIn,
+      'UTC',
+      expect.any(Date),
+    );
+    expect(prisma.attendanceSession.updateMany).not.toHaveBeenCalled();
+    expect(prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'REOPEN_ATTENDANCE',
+          newValue: expect.objectContaining({
+            attendanceSessionId: activeSession.id,
+            reconciledExistingOpenSession: true,
+            checkOut: null,
+          }),
         }),
       }),
     );
