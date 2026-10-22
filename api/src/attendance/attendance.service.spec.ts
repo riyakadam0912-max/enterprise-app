@@ -52,6 +52,7 @@ function createPrismaMock() {
     attendanceBreak: {
       create: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
       deleteMany: jest.fn(),
       createMany: jest.fn(),
     },
@@ -1743,7 +1744,10 @@ describe('AttendanceService', () => {
     });
     expect(
       mockTasksService.lockTimerAndAttendanceStateForUser,
-    ).toHaveBeenCalledWith(mockUser, prisma);
+    ).toHaveBeenCalledWith(
+      { userId: mockUser.userId, organizationId: mockUser.organizationId },
+      prisma,
+    );
     expect(mockTasksService.stopRunningTimersForUser).toHaveBeenCalledWith(
       mockUser,
       expect.any(Date),
@@ -1765,7 +1769,7 @@ describe('AttendanceService', () => {
         },
       });
     await expect(service.startBreak(mockUser)).rejects.toThrow(
-      'Check in before starting a break',
+      'No active flexible check-in was found',
     );
     expect(prisma.attendanceSessionBreak.create).not.toHaveBeenCalled();
   });
@@ -1778,9 +1782,11 @@ describe('AttendanceService', () => {
         organizationId: 1,
         shift: { type: 'FIXED' },
       });
-    prisma.attendanceSession.findFirst
-      .mockResolvedValueOnce({ id: 11 })
-      .mockResolvedValueOnce({ id: 11, breaks: [] });
+    prisma.attendanceSession.findFirst.mockResolvedValueOnce({
+      id: 11,
+      breaks: [],
+      shift: { type: 'FLEXIBLE' },
+    });
     prisma.attendanceSessionBreak.create.mockResolvedValue({
       id: 21,
       attendanceSessionId: 11,
@@ -1799,6 +1805,110 @@ describe('AttendanceService', () => {
     expect(prisma.attendanceBreak.create).not.toHaveBeenCalled();
     expect(mockTasksService.stopRunningTimersForUser).toHaveBeenCalled();
     expect(result.onBreak).toBe(true);
+  });
+
+  it('recovers a missing flexible session from an open attendance check-in before starting a break', async () => {
+    const checkIn = new Date('2026-10-22T09:00:00.000Z');
+    prisma.employee.findFirst
+      .mockResolvedValueOnce({ id: 7 })
+      .mockResolvedValueOnce({
+        id: 7,
+        organizationId: 1,
+        name: 'Flexible Employee',
+        shift: {
+          id: 4,
+          type: 'FLEXIBLE',
+          requiredHours: 8,
+        },
+        shiftAssignments: [],
+      });
+    prisma.attendanceSession.findFirst.mockResolvedValue(null);
+    prisma.attendance.findFirst.mockResolvedValue({
+      id: 60,
+      employeeId: 7,
+      organizationId: 1,
+      date: new Date('2026-10-22T00:00:00.000Z'),
+      checkIn,
+      checkOut: null,
+      shiftId: 4,
+      shift: { id: 4, type: 'FLEXIBLE' },
+      breaks: [],
+    });
+    prisma.attendanceSession.create.mockResolvedValue({
+      id: 82,
+      startedAt: checkIn,
+      breaks: [],
+      shift: { id: 4, type: 'FLEXIBLE' },
+    });
+    prisma.attendanceSessionBreak.create.mockResolvedValue({
+      id: 21,
+      attendanceSessionId: 82,
+      startedAt: new Date(),
+      endedAt: null,
+    });
+
+    const result = await service.startBreak(mockUser);
+
+    expect(prisma.attendanceSession.create).toHaveBeenCalledWith({
+      data: {
+        employeeId: 7,
+        organizationId: 1,
+        shiftId: 4,
+        startedAt: checkIn,
+      },
+      include: { breaks: true, shift: true },
+    });
+    expect(prisma.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'RECOVER_FLEXIBLE_ATTENDANCE_SESSION',
+        entityId: 60,
+        newValue: expect.objectContaining({
+          attendanceSessionId: 82,
+          startedAt: checkIn,
+        }),
+      }),
+    });
+    expect(prisma.attendanceSessionBreak.create).toHaveBeenCalledWith({
+      data: {
+        attendanceSessionId: 82,
+        startedAt: expect.any(Date),
+      },
+    });
+    expect(result.onBreak).toBe(true);
+  });
+
+  it('refuses to reconstruct a missing session when flexible session history exists that day', async () => {
+    const checkIn = new Date('2026-10-22T09:00:00.000Z');
+    prisma.employee.findFirst
+      .mockResolvedValueOnce({ id: 7 })
+      .mockResolvedValueOnce({
+        id: 7,
+        organizationId: 1,
+        name: 'Flexible Employee',
+        shift: { id: 4, type: 'FLEXIBLE' },
+        shiftAssignments: [],
+      });
+    prisma.attendanceSession.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 81 });
+    prisma.attendance.findFirst.mockResolvedValue({
+      id: 60,
+      employeeId: 7,
+      organizationId: 1,
+      date: new Date('2026-10-22T00:00:00.000Z'),
+      checkIn,
+      checkOut: null,
+      shiftId: 4,
+      shift: { id: 4, type: 'FLEXIBLE' },
+      breaks: [],
+    });
+
+    await expect(service.startBreak(mockUser)).rejects.toThrow(
+      'Flexible attendance history is inconsistent',
+    );
+
+    expect(prisma.attendanceSession.create).not.toHaveBeenCalled();
+    expect(prisma.attendanceSessionBreak.create).not.toHaveBeenCalled();
   });
 
   it('does not create a break when stopping the task timer fails', async () => {
@@ -1860,19 +1970,18 @@ describe('AttendanceService', () => {
         organizationId: 1,
         shift: { type: 'FLEXIBLE' },
       });
-    prisma.attendanceSession.findFirst
-      .mockResolvedValueOnce({ id: 11 })
-      .mockResolvedValueOnce({
-        id: 11,
-        breaks: [
-          {
-            id: 21,
-            attendanceSessionId: 11,
-            startedAt: new Date(),
-            endedAt: null,
-          },
-        ],
-      });
+    prisma.attendanceSession.findFirst.mockResolvedValueOnce({
+      id: 11,
+      shift: { type: 'FLEXIBLE' },
+      breaks: [
+        {
+          id: 21,
+          attendanceSessionId: 11,
+          startedAt: new Date(),
+          endedAt: null,
+        },
+      ],
+    });
     prisma.attendanceSessionBreak.update.mockResolvedValue({
       id: 21,
       attendanceSessionId: 11,
@@ -1888,7 +1997,6 @@ describe('AttendanceService', () => {
           employeeId: 7,
           organizationId: 1,
           endedAt: null,
-          breaks: { some: { endedAt: null } },
         }),
       }),
     );
@@ -1907,19 +2015,18 @@ describe('AttendanceService', () => {
         organizationId: 1,
         shift: { type: 'FIXED' },
       });
-    prisma.attendanceSession.findFirst
-      .mockResolvedValueOnce({ id: 11 })
-      .mockResolvedValueOnce({
-        id: 11,
-        breaks: [
-          {
-            id: 21,
-            attendanceSessionId: 11,
-            startedAt: new Date(),
-            endedAt: null,
-          },
-        ],
-      });
+    prisma.attendanceSession.findFirst.mockResolvedValueOnce({
+      id: 11,
+      shift: { type: 'FLEXIBLE' },
+      breaks: [
+        {
+          id: 21,
+          attendanceSessionId: 11,
+          startedAt: new Date(),
+          endedAt: null,
+        },
+      ],
+    });
     prisma.attendanceSessionBreak.update.mockResolvedValue({
       id: 21,
       attendanceSessionId: 11,
@@ -1935,6 +2042,124 @@ describe('AttendanceService', () => {
     });
     expect(prisma.attendanceBreak.update).not.toHaveBeenCalled();
     expect(result.onBreak).toBe(false);
+  });
+
+  it('migrates a legacy open break into an active flexible session when ending it', async () => {
+    const startedAt = new Date('2026-10-22T12:00:00.000Z');
+    prisma.employee.findFirst
+      .mockResolvedValueOnce({ id: 7 })
+      .mockResolvedValueOnce({
+        id: 7,
+        organizationId: 1,
+        shift: { id: 4, type: 'FLEXIBLE' },
+      });
+    prisma.attendanceSession.findFirst.mockResolvedValueOnce({
+      id: 82,
+      shift: { id: 4, type: 'FLEXIBLE' },
+      breaks: [],
+    });
+    prisma.attendance.findFirst.mockResolvedValue({
+      id: 60,
+      employeeId: 7,
+      organizationId: 1,
+      checkIn: new Date('2026-10-22T09:00:00.000Z'),
+      checkOut: null,
+      breaks: [{ id: 14, startedAt, endedAt: null }],
+      shift: { id: 4, type: 'FLEXIBLE' },
+    });
+    prisma.attendanceSessionBreak.create.mockResolvedValue({
+      id: 21,
+      attendanceSessionId: 82,
+      startedAt,
+      endedAt: null,
+    });
+    prisma.attendanceSessionBreak.update.mockResolvedValue({
+      id: 21,
+      attendanceSessionId: 82,
+      startedAt,
+      endedAt: new Date(),
+    });
+
+    await service.stopBreak(mockUser);
+
+    expect(prisma.attendanceSessionBreak.create).toHaveBeenCalledWith({
+      data: { attendanceSessionId: 82, startedAt },
+    });
+    expect(prisma.attendanceSessionBreak.update).toHaveBeenCalledWith({
+      where: { id: 21 },
+      data: { endedAt: expect.any(Date) },
+    });
+    expect(prisma.attendanceBreak.updateMany).toHaveBeenCalledWith({
+      where: { attendanceId: 60, endedAt: null },
+      data: { endedAt: expect.any(Date) },
+    });
+  });
+
+  it('recovers a missing flexible session and closes its legacy open break', async () => {
+    const checkIn = new Date('2026-10-22T09:00:00.000Z');
+    const breakStartedAt = new Date('2026-10-22T12:00:00.000Z');
+    prisma.employee.findFirst
+      .mockResolvedValueOnce({ id: 7 })
+      .mockResolvedValueOnce({
+        id: 7,
+        organizationId: 1,
+        name: 'Flexible Employee',
+        shift: { id: 4, type: 'FLEXIBLE' },
+        shiftAssignments: [],
+      });
+    prisma.attendanceSession.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    prisma.attendance.findFirst.mockResolvedValue({
+      id: 60,
+      employeeId: 7,
+      organizationId: 1,
+      date: new Date('2026-10-22T00:00:00.000Z'),
+      checkIn,
+      checkOut: null,
+      shiftId: 4,
+      shift: { id: 4, type: 'FLEXIBLE' },
+      breaks: [{ startedAt: breakStartedAt, endedAt: null }],
+    });
+    prisma.attendanceSession.create.mockResolvedValue({
+      id: 82,
+      startedAt: checkIn,
+      breaks: [],
+      shift: { id: 4, type: 'FLEXIBLE' },
+    });
+    prisma.attendanceSessionBreak.create.mockResolvedValue({
+      id: 21,
+      attendanceSessionId: 82,
+      startedAt: breakStartedAt,
+      endedAt: null,
+    });
+    prisma.attendanceSessionBreak.update.mockResolvedValue({
+      id: 21,
+      attendanceSessionId: 82,
+      startedAt: breakStartedAt,
+      endedAt: new Date(),
+    });
+
+    const result = await service.stopBreak(mockUser);
+
+    expect(prisma.attendanceSessionBreak.create).toHaveBeenCalledWith({
+      data: {
+        attendanceSessionId: 82,
+        startedAt: breakStartedAt,
+        endedAt: null,
+      },
+    });
+    expect(prisma.attendanceSessionBreak.update).toHaveBeenCalledWith({
+      where: { id: 21 },
+      data: { endedAt: expect.any(Date) },
+    });
+    expect(prisma.attendanceBreak.updateMany).toHaveBeenCalledWith({
+      where: { attendanceId: 60, endedAt: null },
+      data: { endedAt: expect.any(Date) },
+    });
+    expect(result).toEqual(
+      expect.objectContaining({ onBreak: false, closedBreakCount: 1 }),
+    );
   });
 
   it('builds the daily attendance table with unscheduled and leave statuses', async () => {

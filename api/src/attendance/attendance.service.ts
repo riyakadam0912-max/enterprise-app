@@ -648,6 +648,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     employeeId: number,
     organizationId: number,
     tx: Prisma.TransactionClient,
+    fallbackUserId?: number,
   ) {
     await tx.$queryRaw<Array<{ locked: number }>>`
       WITH lock_result AS MATERIALIZED (
@@ -663,9 +664,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       where: { employeeId, organizationId },
       select: { id: true },
     });
-    if (timerOwner) {
+    const timerUserId = timerOwner?.id ?? fallbackUserId;
+    if (timerUserId) {
       await this.tasksService.lockTimerAndAttendanceStateForUser(
-        { userId: timerOwner.id, organizationId },
+        { userId: timerUserId, organizationId },
         tx,
       );
     }
@@ -2231,53 +2233,176 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     return actionTime;
   }
 
+  private async recoverFlexibleAttendanceSession(
+    tx: Prisma.TransactionClient,
+    employee: { id: number; name: string },
+    organizationId: number,
+    record: {
+      id: number;
+      date: Date;
+      checkIn: Date | null;
+      checkOut: Date | null;
+      shiftId: number | null;
+      breaks: { id: number; startedAt: Date; endedAt: Date | null }[];
+    },
+    shift: ShiftLite | null,
+    timezone: string,
+    user: AttendanceUser,
+  ) {
+    if (!record.checkIn || record.checkOut) {
+      throw new BadRequestException(
+        'No active flexible check-in was found. Refresh attendance and try again.',
+      );
+    }
+
+    const dateKey = dateKeyInTimezone(record.checkIn, timezone);
+    const dayStart = this.localDateStart(dateKey, timezone);
+    const dayEnd = localMidnightAfterDateInTimezone(dateKey, timezone);
+    if (!dayEnd) {
+      throw new BadRequestException(
+        'Could not determine the flexible attendance day boundary',
+      );
+    }
+    const priorSession = await tx.attendanceSession.findFirst({
+      where: {
+        employeeId: employee.id,
+        organizationId,
+        startedAt: { lt: dayEnd },
+        OR: [{ endedAt: null }, { endedAt: { gt: dayStart } }],
+      },
+      select: { id: true },
+    });
+    if (priorSession) {
+      throw new ConflictException(
+        'Flexible attendance history is inconsistent. Ask an administrator to review this check-in before starting a break.',
+      );
+    }
+
+    const session = await tx.attendanceSession.create({
+      data: {
+        employeeId: employee.id,
+        organizationId,
+        shiftId: record.shiftId ?? shift?.id ?? null,
+        startedAt: record.checkIn,
+      },
+      include: { breaks: true, shift: true },
+    });
+    const recoveredBreaks: {
+      id: number;
+      startedAt: Date;
+      endedAt: Date | null;
+    }[] = [];
+    for (const interval of record.breaks) {
+      const recovered = {
+        startedAt: interval.startedAt,
+        endedAt: interval.endedAt,
+      };
+      const createdBreak = await tx.attendanceSessionBreak.create({
+        data: {
+          attendanceSessionId: session.id,
+          ...recovered,
+        },
+      });
+      recoveredBreaks.push({ id: createdBreak.id, ...recovered });
+    }
+    await tx.auditLog.create({
+      data: {
+        userId: user.userId,
+        userRole: user.role,
+        module: 'ATTENDANCE',
+        entityType: 'Attendance',
+        entityId: record.id,
+        action: 'RECOVER_FLEXIBLE_ATTENDANCE_SESSION',
+        fieldName: 'attendanceSession',
+        oldValue: { attendanceId: record.id, checkIn: record.checkIn },
+        newValue: {
+          attendanceSessionId: session.id,
+          startedAt: record.checkIn,
+          recoveredBreakCount: recoveredBreaks.length,
+        },
+        description: `Recovered missing flexible attendance session for ${employee.name}`,
+        status: 'SUCCESS',
+        organizationId,
+      },
+    });
+    return { ...session, breaks: recoveredBreaks };
+  }
+
   async startBreak(user: AttendanceUser) {
     const employeeId = await this.resolveScopedEmployeeId(user);
     const employee = await this.ensureEmployee(employeeId, user);
     const organizationId = employee.organizationId ?? user.organizationId;
-    const openFlexibleSession = await this.prisma.attendanceSession.findFirst({
-      where: { employeeId, organizationId, endedAt: null },
-      select: { id: true },
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { timezone: true },
     });
+    const timezone = organization?.timezone ?? 'UTC';
     const startedAt = new Date();
-    if (employee.shift?.type === 'FLEXIBLE' || openFlexibleSession) {
-      const created = await this.prisma.$transaction(async (tx) => {
-        await this.lockFlexibleAttendanceForEmployee(
-          employeeId,
-          organizationId,
-          tx,
-        );
-        const session = await tx.attendanceSession.findFirst({
-          where: { employeeId, organizationId, endedAt: null },
-          include: { breaks: true },
-          orderBy: { startedAt: 'desc' },
-        });
-        if (!session) {
-          throw new BadRequestException('Check in before starting a break');
-        }
-        if (session.breaks.some((interval) => interval.endedAt === null)) {
-          throw new ConflictException('A break is already in progress');
-        }
-        await this.tasksService.stopRunningTimersForUser(user, startedAt, tx);
-        return tx.attendanceSessionBreak.create({
-          data: { attendanceSessionId: session.id, startedAt },
-        });
-      });
-      await this.invalidateDashboardCache();
-      return { break: created, onBreak: true };
-    }
-
     const created = await this.prisma.$transaction(async (tx) => {
-      await this.tasksService.lockTimerAndAttendanceStateForUser(user, tx);
+      await this.lockFlexibleAttendanceForEmployee(
+        employeeId,
+        organizationId,
+        tx,
+        user.userId,
+      );
+      const session = await tx.attendanceSession.findFirst({
+        where: { employeeId, organizationId, endedAt: null },
+        include: { breaks: true, shift: true },
+        orderBy: { startedAt: 'desc' },
+      });
       const record = await tx.attendance.findFirst({
         where: {
           employeeId,
+          organizationId,
           checkIn: { not: null },
           checkOut: null,
         },
         orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-        include: { breaks: true },
+        include: { breaks: true, shift: true },
       });
+
+      const effectiveShift = this.employeeShiftForDay(
+        employee.shiftAssignments,
+        employee.shift,
+        record?.date ?? startedAt,
+      );
+      const flexible =
+        Boolean(session) ||
+        session?.shift?.type === 'FLEXIBLE' ||
+        record?.shift?.type === 'FLEXIBLE' ||
+        effectiveShift?.type === 'FLEXIBLE';
+
+      if (flexible) {
+        const activeSession =
+          session ??
+          (record
+            ? await this.recoverFlexibleAttendanceSession(
+                tx,
+                employee,
+                organizationId,
+                record,
+                effectiveShift,
+                timezone,
+                user,
+              )
+            : null);
+        if (!activeSession) {
+          throw new BadRequestException(
+            'No active flexible check-in was found. Refresh attendance and try again.',
+          );
+        }
+        if (
+          activeSession.breaks.some((interval) => interval.endedAt === null) ||
+          record?.breaks.some((interval) => interval.endedAt === null)
+        ) {
+          throw new ConflictException('A break is already in progress');
+        }
+        await this.tasksService.stopRunningTimersForUser(user, startedAt, tx);
+        return tx.attendanceSessionBreak.create({
+          data: { attendanceSessionId: activeSession.id, startedAt },
+        });
+      }
+
       if (!record) {
         throw new BadRequestException('Check in before starting a break');
       }
@@ -2303,74 +2428,115 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const employeeId = await this.resolveScopedEmployeeId(user);
     const employee = await this.ensureEmployee(employeeId, user);
     const organizationId = employee.organizationId ?? user.organizationId;
-    const openFlexibleBreak = await this.prisma.attendanceSession.findFirst({
-      where: {
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { timezone: true },
+    });
+    const timezone = organization?.timezone ?? 'UTC';
+    const endedAt = new Date();
+    const result = await this.prisma.$transaction(async (tx) => {
+      await this.lockFlexibleAttendanceForEmployee(
         employeeId,
         organizationId,
-        endedAt: null,
-        breaks: { some: { endedAt: null } },
-      },
-      select: { id: true },
-    });
-    if (employee.shift?.type === 'FLEXIBLE' || openFlexibleBreak) {
-      const endedAt = new Date();
-      const updatedBreak = await this.prisma.$transaction(async (tx) => {
-        await this.lockFlexibleAttendanceForEmployee(
+        tx,
+        user.userId,
+      );
+      const session = await tx.attendanceSession.findFirst({
+        where: { employeeId, organizationId, endedAt: null },
+        include: { breaks: true, shift: true },
+        orderBy: { startedAt: 'desc' },
+      });
+      const record = await tx.attendance.findFirst({
+        where: {
           employeeId,
           organizationId,
-          tx,
+          checkIn: { not: null },
+          checkOut: null,
+        },
+        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+        include: { breaks: true, shift: true },
+      });
+      const effectiveShift = this.employeeShiftForDay(
+        employee.shiftAssignments,
+        employee.shift,
+        record?.date ?? endedAt,
+      );
+      const flexible =
+        Boolean(session) ||
+        session?.shift?.type === 'FLEXIBLE' ||
+        record?.shift?.type === 'FLEXIBLE' ||
+        effectiveShift?.type === 'FLEXIBLE';
+
+      if (flexible) {
+        const activeSession =
+          session ??
+          (record
+            ? await this.recoverFlexibleAttendanceSession(
+                tx,
+                employee,
+                organizationId,
+                record,
+                effectiveShift,
+                timezone,
+                user,
+              )
+            : null);
+        let openBreak = activeSession?.breaks.find(
+          (interval) => interval.endedAt === null,
         );
-        const session = await tx.attendanceSession.findFirst({
-          where: {
-            employeeId,
-            organizationId,
+        const legacyOpenBreak = record?.breaks.find(
+          (interval) => interval.endedAt === null,
+        );
+        if (!openBreak && activeSession && legacyOpenBreak) {
+          const recoveredBreak = await tx.attendanceSessionBreak.create({
+            data: {
+              attendanceSessionId: activeSession.id,
+              startedAt: legacyOpenBreak.startedAt,
+            },
+          });
+          openBreak = {
+            id: recoveredBreak.id,
+            startedAt: legacyOpenBreak.startedAt,
             endedAt: null,
-            breaks: { some: { endedAt: null } },
-          },
-          include: { breaks: { where: { endedAt: null } } },
-          orderBy: { startedAt: 'desc' },
-        });
-        const openBreak = session?.breaks[0];
-        if (!openBreak) {
+          };
+        }
+        if (!activeSession || !openBreak) {
           throw new BadRequestException('No break is in progress');
         }
-        return tx.attendanceSessionBreak.update({
+        const updatedBreak = await tx.attendanceSessionBreak.update({
           where: { id: openBreak.id },
           data: { endedAt },
         });
-      });
-      await this.invalidateDashboardCache();
-      return {
-        break: updatedBreak,
-        onBreak: false,
-        closedBreakCount: 1,
-      };
-    }
+        if (legacyOpenBreak && record) {
+          await tx.attendanceBreak.updateMany({
+            where: { attendanceId: record.id, endedAt: null },
+            data: { endedAt },
+          });
+        }
+        return {
+          break: updatedBreak,
+          onBreak: false,
+          closedBreakCount: 1,
+        };
+      }
 
-    const record = await this.prisma.attendance.findFirst({
-      where: {
-        employeeId,
-        organizationId,
-        checkIn: { not: null },
-        checkOut: null,
-      },
-      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-      include: { breaks: true },
-    });
-    if (!record)
-      throw new BadRequestException('No active check-in record found');
-    const openBreak = record.breaks.find(
-      (interval) => interval.endedAt === null,
-    );
-    if (!openBreak)
-      throw new BadRequestException('There is no break in progress');
-    const endedAt = new Date();
-    const updated = await this.prisma.attendanceBreak.update({
-      where: { id: openBreak.id },
-      data: { endedAt },
+      if (!record) {
+        throw new BadRequestException('No active check-in record found');
+      }
+      const openBreak = record.breaks.find(
+        (interval) => interval.endedAt === null,
+      );
+      if (!openBreak) {
+        throw new BadRequestException('There is no break in progress');
+      }
+      const updated = await tx.attendanceBreak.update({
+        where: { id: openBreak.id },
+        data: { endedAt },
+      });
+      return { break: updated, onBreak: false };
     });
     await this.invalidateDashboardCache();
-    return { break: updated, onBreak: false };
+    return result;
   }
 
   private async buildDailySnapshot(

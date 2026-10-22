@@ -1189,34 +1189,50 @@ export class TasksService {
       },
       include: { breaks: true },
     });
-    if (employee?.shift?.type === 'FLEXIBLE' || activeSession) {
-      if (
-        activeSession &&
-        !activeSession.breaks.some((item) => !item.endedAt)
-      ) {
-        return;
-      }
-      if (activeSession) {
-        throw new BadRequestException(
-          'End your break before starting or resuming a task timer',
-        );
-      }
+    if (activeSession?.breaks.some((item) => !item.endedAt)) {
       throw new BadRequestException(
-        'Check in and end any break before starting a task timer',
+        'End your break before starting or resuming a task timer',
       );
     }
-
-    const attendance = await db.attendance.findFirst({
+    const openAttendance = await db.attendance.findFirst({
       where: {
         employeeId: user.employeeId,
         organizationId,
         checkIn: { not: null },
         checkOut: null,
-        breaks: { none: { endedAt: null } },
       },
-      select: { id: true },
+      include: { breaks: true, shift: true },
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     });
-    if (!attendance) {
+    if (activeSession) {
+      if (openAttendance?.breaks.some((item) => !item.endedAt)) {
+        throw new BadRequestException(
+          'End your break before starting or resuming a task timer',
+        );
+      }
+      return;
+    }
+    const flexibleAttendance =
+      employee?.shift?.type === 'FLEXIBLE' ||
+      openAttendance?.shift?.type === 'FLEXIBLE';
+    if (flexibleAttendance) {
+      if (!openAttendance) {
+        throw new BadRequestException(
+          'Check in and end any break before starting a task timer',
+        );
+      }
+      if (openAttendance.breaks.some((item) => !item.endedAt)) {
+        throw new BadRequestException(
+          'End your break before starting or resuming a task timer',
+        );
+      }
+      return;
+    }
+
+    if (
+      !openAttendance ||
+      openAttendance.breaks.some((item) => !item.endedAt)
+    ) {
       throw new BadRequestException(
         'Check in and end any break before starting a task timer',
       );
