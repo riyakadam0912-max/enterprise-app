@@ -2947,6 +2947,68 @@ describe('AttendanceService', () => {
     expect(result.checkOut).toBe('2026-03-13T18:30:00.000Z');
   });
 
+  it('returns an open flexible session even when it started on a prior day', async () => {
+    const startedAt = new Date('2026-03-12T22:30:00.000Z');
+    const breakStartedAt = new Date('2026-03-13T01:00:00.000Z');
+    const employeeUser = {
+      ...mockUser,
+      role: Role.EMPLOYEE,
+    };
+    prisma.employee.findFirst.mockResolvedValue({
+      id: 7,
+      organizationId: 1,
+    });
+    jest.spyOn(service, 'getToday').mockResolvedValue({
+      date: '2026-03-13T00:00:00.000Z',
+      rows: [],
+      summary: {} as any,
+    } as any);
+    prisma.attendanceSession.findFirst.mockResolvedValue({
+      id: 81,
+      startedAt,
+      breaks: [{ id: 91, startedAt: breakStartedAt, endedAt: null }],
+      shift: {
+        id: 4,
+        name: 'Flexible',
+        type: 'FLEXIBLE',
+        startTime: '00:00',
+        endTime: '23:59',
+        requiredHours: 8,
+        minPresentHours: 5,
+        gracePeriodMinutes: 0,
+      },
+    });
+
+    const result = await service.getMySnapshot(employeeUser);
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        checkIn: startedAt.toISOString(),
+        checkOut: null,
+        onBreak: true,
+        status: AttendanceStatus.PRESENT,
+        activeSession: {
+          startedAt: startedAt.toISOString(),
+          breaks: [
+            {
+              startedAt: breakStartedAt.toISOString(),
+              endedAt: null,
+            },
+          ],
+          shiftDetails: expect.objectContaining({
+            id: 4,
+            type: 'FLEXIBLE',
+          }),
+        },
+      }),
+    );
+    expect(prisma.attendanceSession.findFirst).toHaveBeenCalledWith({
+      where: { employeeId: 7, organizationId: 1, endedAt: null },
+      include: { breaks: true, shift: true },
+      orderBy: { startedAt: 'desc' },
+    });
+  });
+
   it('allows a super admin to view attendance without forcing a single organization scope', async () => {
     prisma.attendance.findMany.mockResolvedValue([]);
 

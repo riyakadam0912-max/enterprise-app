@@ -28,6 +28,7 @@ export type AttendanceToday = {
   date: string;
   status: AttendanceStatus;
   isShootDay?: boolean;
+  activeSession?: { startedAt: string } | null;
   checkIn: string | null;
   checkOut: string | null;
   workingHours?: number | null;

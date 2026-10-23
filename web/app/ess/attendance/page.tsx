@@ -74,15 +74,13 @@ export default function ESSAttendancePage() {
     }
   };
 
-  const isCheckedIn = today?.status === 'CHECKED_IN';
+  const isCheckedIn =
+    Boolean(today?.activeSession) || today?.status === 'CHECKED_IN';
   const isFlexible = today?.shift?.type === 'FLEXIBLE';
   const breakAction = (
     <button
       onClick={handleBreak}
-      disabled={
-        (!isFlexible && (!isCheckedIn || today?.status === 'CHECKED_OUT')) ||
-        breakLoading
-      }
+      disabled={!isCheckedIn || breakLoading}
       className={`flex-1 py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-2 disabled:bg-gray-300 ${
         isFlexible
           ? 'bg-teal-700 text-white hover:bg-teal-800'

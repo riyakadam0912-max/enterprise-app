@@ -520,15 +520,24 @@ export default function Attendance() {
   const hasCheckedOut = Boolean(today.data?.checkOut);
   const hasActiveShift = Boolean(today.data?.shift);
   const isFlexible = today.data?.shift?.type === "FLEXIBLE";
+  const hasActiveFlexibleSession = Boolean(today.data?.activeSession);
   const canCheckIn =
     hasActiveShift &&
-    !hasCheckedIn &&
-    !hasCheckedOut &&
+    (isFlexible
+      ? !hasActiveFlexibleSession
+      : !hasCheckedIn && !hasCheckedOut) &&
     status !== "LEAVE" &&
     !mutation.isPending;
-  const canCheckOut = hasCheckedIn && !hasCheckedOut && !mutation.isPending;
+  const canCheckOut =
+    (isFlexible
+      ? hasActiveFlexibleSession
+      : hasCheckedIn && !hasCheckedOut) &&
+    !mutation.isPending;
   const canBreak =
-    (isFlexible || (hasCheckedIn && !hasCheckedOut)) && !mutation.isPending;
+    (isFlexible
+      ? hasActiveFlexibleSession
+      : hasCheckedIn && !hasCheckedOut) &&
+    !mutation.isPending;
 
   return (
     <ScrollView contentContainerStyle={styles.page}>

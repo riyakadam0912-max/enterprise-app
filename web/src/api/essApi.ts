@@ -22,6 +22,7 @@ export interface CheckOutResponse {
 
 export interface AttendanceStatus {
   status: 'NOT_CHECKED_IN' | 'CHECKED_IN' | 'CHECKED_OUT';
+  activeSession: { startedAt: string } | null;
   checkIn: string | null;
   checkOut: string | null;
   workingHours: number;
@@ -286,10 +287,11 @@ export async function stopAttendanceBreak() {
 }
 
 export async function getAttendanceToday(): Promise<AttendanceStatus> {
-  const result = await apiClient<unknown>('/attendance/today');
-  if (!isRecord(result) || !Array.isArray(result.rows)) {
+  const result = await apiClient<unknown>('/attendance/my');
+  if (!isRecord(result)) {
     return {
       status: 'NOT_CHECKED_IN',
+      activeSession: null,
       checkIn: null,
       checkOut: null,
       workingHours: 0,
@@ -301,40 +303,36 @@ export async function getAttendanceToday(): Promise<AttendanceStatus> {
     };
   }
 
-  const first = result.rows[0];
-  if (!isRecord(first)) {
-    return {
-      status: 'NOT_CHECKED_IN',
-      checkIn: null,
-      checkOut: null,
-      workingHours: 0,
-      breaks: [],
-      onBreak: false,
-      lateMinutes: 0,
-      overtimeHours: 0,
-      shift: null,
-    };
-  }
-
-  const checkInValue = getString(first.checkIn);
-  const checkOutValue = getString(first.checkOut);
-  const workingHours = getNumber(first.workingHours) ?? 0;
-  const lateMinutes = getNumber(first.lateMinutes) ?? 0;
-  const overtimeHours = getNumber(first.overtimeHours) ?? 0;
-  const shift = normalizeShift(first.shiftDetails ?? first.shift);
-  const breaks = Array.isArray(first.breaks)
-    ? first.breaks.flatMap((item) => isRecord(item) && getString(item.startedAt)
+  const session = isRecord(result.activeSession)
+    ? result.activeSession
+    : null;
+  const activeSessionStartedAt = session
+    ? getString(session.startedAt)
+    : null;
+  const checkInValue = activeSessionStartedAt ?? getString(result.checkIn);
+  const checkOutValue = activeSessionStartedAt
+    ? null
+    : getString(result.checkOut);
+  const workingHours = getNumber(result.workingHours) ?? 0;
+  const lateMinutes = getNumber(result.lateMinutes) ?? 0;
+  const overtimeHours = getNumber(result.overtimeHours) ?? 0;
+  const shift = normalizeShift(result.shiftDetails ?? result.shift);
+  const breaks = Array.isArray(result.breaks)
+    ? result.breaks.flatMap((item) => isRecord(item) && getString(item.startedAt)
       ? [{ startedAt: getString(item.startedAt)!, endedAt: getString(item.endedAt) ?? null }]
       : [])
     : [];
 
   return {
+    activeSession: activeSessionStartedAt
+      ? { startedAt: activeSessionStartedAt }
+      : null,
     status: deriveEssStatus(checkInValue, checkOutValue),
     checkIn: checkInValue,
     checkOut: checkOutValue,
     workingHours,
     breaks,
-    onBreak: first.onBreak === true,
+    onBreak: result.onBreak === true,
     lateMinutes,
     overtimeHours,
     shift,

@@ -3009,6 +3009,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
   async getMySnapshot(user: AttendanceUser) {
     const employeeId = await this.resolveCurrentEmployeeId(user);
+    const employee = await this.ensureEmployee(employeeId, user);
     const today = await this.getToday(
       {
         ...user,
@@ -3016,39 +3017,80 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       },
       undefined,
     );
+    const activeSession = await this.prisma.attendanceSession.findFirst({
+      where: {
+        employeeId,
+        organizationId: employee.organizationId,
+        endedAt: null,
+      },
+      include: { breaks: true, shift: true },
+      orderBy: { startedAt: 'desc' },
+    });
+    const activeSessionDetails = activeSession
+      ? {
+          startedAt: activeSession.startedAt.toISOString(),
+          breaks: activeSession.breaks.map((interval) => ({
+            startedAt: interval.startedAt.toISOString(),
+            endedAt: interval.endedAt?.toISOString() ?? null,
+          })),
+          shiftDetails: activeSession.shift
+            ? {
+                id: activeSession.shift.id,
+                name: activeSession.shift.name,
+                type: activeSession.shift.type,
+                startTime: activeSession.shift.startTime,
+                endTime: activeSession.shift.endTime,
+                requiredHours: activeSession.shift.requiredHours,
+                minPresentHours: activeSession.shift.minPresentHours,
+                gracePeriodMinutes: activeSession.shift.gracePeriodMinutes,
+              }
+            : null,
+        }
+      : null;
 
     const row =
       today.rows.find((item) => item.employeeId === employeeId) ?? null;
     if (!row) {
       return {
         date: today.date,
-        checkIn: null,
+        checkIn: activeSessionDetails?.startedAt ?? null,
         checkOut: null,
         workingHours: null,
         taskHours: 0,
-        breaks: [],
-        onBreak: false,
+        breaks: activeSessionDetails?.breaks ?? [],
+        onBreak:
+          activeSessionDetails?.breaks.some(
+            (interval) => interval.endedAt === null,
+          ) ?? false,
         lateMinutes: 0,
         overtimeHours: 0,
-        status: AttendanceStatus.NOT_SCHEDULED,
+        status: activeSessionDetails
+          ? AttendanceStatus.PRESENT
+          : AttendanceStatus.NOT_SCHEDULED,
         isShootDay: false,
-        shiftDetails: null,
+        shiftDetails: activeSessionDetails?.shiftDetails ?? null,
+        activeSession: activeSessionDetails,
       };
     }
 
     return {
       date: today.date,
-      checkIn: row.checkIn,
-      checkOut: row.checkOut,
+      checkIn: activeSessionDetails?.startedAt ?? row.checkIn,
+      checkOut: activeSessionDetails ? null : row.checkOut,
       workingHours: row.workingHours,
       taskHours: row.taskHours ?? 0,
-      breaks: row.breaks,
-      onBreak: row.onBreak,
+      breaks: activeSessionDetails?.breaks ?? row.breaks,
+      onBreak:
+        activeSessionDetails?.breaks.some(
+          (interval) => interval.endedAt === null,
+        ) ?? row.onBreak,
       lateMinutes: row.lateMinutes,
       overtimeHours: row.overtimeHours,
-      status: row.status,
+      status: activeSessionDetails ? AttendanceStatus.PRESENT : row.status,
       isShootDay: row.isShootDay,
-      shiftDetails: row.shiftDetails,
+      shiftDetails:
+        activeSessionDetails?.shiftDetails ?? row.shiftDetails,
+      activeSession: activeSessionDetails,
     };
   }
 

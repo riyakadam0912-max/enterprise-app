@@ -10,6 +10,7 @@ import type {
 const emptyToday: AttendanceToday = {
   date: new Date().toISOString(),
   status: "ABSENT",
+  activeSession: null,
   checkIn: null,
   checkOut: null,
   workingHours: null,
@@ -173,6 +174,16 @@ export async function attendanceToday(): Promise<AttendanceToday> {
   const value = payload as Record<string, unknown>;
   return {
     date: typeof value.date === "string" ? value.date : emptyToday.date,
+    activeSession:
+      value.activeSession &&
+      typeof value.activeSession === "object" &&
+      typeof (value.activeSession as { startedAt?: unknown }).startedAt ===
+        "string"
+        ? {
+            startedAt: (value.activeSession as { startedAt: string })
+              .startedAt,
+          }
+        : null,
     status:
       typeof value.status === "string"
         ? (value.status as AttendanceToday["status"])
