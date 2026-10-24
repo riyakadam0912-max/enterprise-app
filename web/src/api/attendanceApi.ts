@@ -119,6 +119,12 @@ export interface EmployeeAttendanceResponse {
 }
 
 export interface MyAttendanceResponse {
+  activeAttendance?: {
+    kind: 'IDLE' | 'SESSION' | 'REVIEW_REQUIRED';
+    id: number | null;
+    startedAt: string | null;
+    message: string | null;
+  };
   date: string;
   checkIn: string | null;
   checkOut: string | null;

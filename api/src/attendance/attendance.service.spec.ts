@@ -1900,6 +1900,50 @@ describe('AttendanceService', () => {
     );
   });
 
+  it.each([true, false])(
+    'keeps check-in blocked with an actionable reason (canonical session: %s)',
+    async (canonical) => {
+      jest.setSystemTime(new Date('2026-10-22T11:00:00Z'));
+      const shift = {
+        id: 2,
+        type: 'FLEXIBLE',
+        requiredHours: 8,
+        minPresentHours: 5,
+        weeklyHolidayDay: 0,
+      };
+      jest
+        .spyOn(service as any, 'ensureEmployee')
+        .mockResolvedValue({ id: 7, organizationId: 1, shift });
+      prisma.employee.findFirst.mockResolvedValue({
+        id: 7,
+        organizationId: 1,
+        shift,
+      });
+      prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
+      prisma.attendance.findUnique.mockResolvedValue(null);
+      prisma.attendanceSession.findFirst.mockResolvedValue(
+        canonical ? { id: 81 } : null,
+      );
+      prisma.attendance.findFirst.mockResolvedValue(
+        canonical ? null : { id: 90 },
+      );
+      try {
+        await service.checkIn({}, { ...mockUser, role: Role.EMPLOYEE });
+        throw new Error('Expected conflict');
+      } catch (error) {
+        expect(error).toBeInstanceOf(ConflictException);
+        expect((error as ConflictException).getResponse()).toMatchObject({
+          code: canonical
+            ? 'ATTENDANCE_OPEN_SESSION'
+            : 'ATTENDANCE_REVIEW_REQUIRED',
+        });
+      }
+      expect(prisma.attendanceSession.create).not.toHaveBeenCalled();
+      expect(prisma.attendance.upsert).not.toHaveBeenCalled();
+      expect(prisma.$queryRaw).toHaveBeenCalled();
+    },
+  );
+
   it('allows a second flexible session on the same local day after the first is closed', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-10-22T11:00:00.000Z'));
@@ -3092,6 +3136,124 @@ describe('AttendanceService', () => {
     expect(result.status).toBe(AttendanceStatus.PRESENT);
     expect(result.checkIn).toBe('2026-03-13T09:30:00.000Z');
     expect(result.checkOut).toBe('2026-03-13T18:30:00.000Z');
+  });
+
+  it("surfaces yesterday's blocking legacy flexible record despite a closed summary today", async () => {
+    const shift = { id: 2, type: 'FLEXIBLE' };
+    prisma.employee.findFirst.mockResolvedValue({
+      id: 7,
+      organizationId: 1,
+      shift,
+    });
+    const legacy = {
+      id: 90,
+      employeeId: 7,
+      organizationId: 1,
+      checkIn: new Date('2026-10-22T17:00:00Z'),
+      checkOut: null,
+      shift,
+      breaks: [],
+    };
+    prisma.attendance.findFirst.mockResolvedValue(legacy);
+    jest.spyOn(service, 'getToday').mockResolvedValue({
+      date: '2026-10-24T00:00:00Z',
+      summary: {} as any,
+      rows: [
+        {
+          employeeId: 7,
+          checkIn: '2026-10-24T00:00:00Z',
+          checkOut: '2026-10-24T07:20:00Z',
+          breaks: [],
+          status: AttendanceStatus.HALF_DAY,
+        },
+      ],
+    } as any);
+
+    const result = await service.getMySnapshot(mockUser);
+
+    expect(result.activeSession).toBeNull();
+    expect(result.activeAttendance).toMatchObject({
+      kind: 'REVIEW_REQUIRED',
+      id: 90,
+      startedAt: legacy.checkIn.toISOString(),
+      message: expect.stringContaining('Ask HR'),
+    });
+    expect(prisma.attendance.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          employeeId: 7,
+          organizationId: 1,
+          checkIn: { not: null },
+          checkOut: null,
+        },
+      }),
+    );
+    expect(prisma.attendanceSession.create).not.toHaveBeenCalled();
+    expect(prisma.attendance.update).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a blocking legacy record even without a daily summary', async () => {
+    prisma.employee.findFirst.mockResolvedValue({
+      id: 7,
+      organizationId: 1,
+      shift: { type: 'FLEXIBLE' },
+    });
+    prisma.attendance.findFirst.mockResolvedValue({
+      id: 91,
+      checkIn: new Date('2026-10-22T17:00:00Z'),
+      shift: { type: 'FLEXIBLE' },
+    });
+    jest
+      .spyOn(service, 'getToday')
+      .mockResolvedValue({ date: '2026-10-24', rows: [], summary: {} } as any);
+    expect((await service.getMySnapshot(mockUser)).activeAttendance.kind).toBe(
+      'REVIEW_REQUIRED',
+    );
+  });
+
+  it('does not classify ordinary fixed-shift attendance as legacy flexible history', async () => {
+    prisma.employee.findFirst.mockResolvedValue({
+      id: 7,
+      organizationId: 1,
+      shift: { type: 'FIXED' },
+    });
+    prisma.attendance.findFirst.mockResolvedValue({
+      id: 91,
+      checkIn: new Date('2026-10-24T09:00:00Z'),
+      shift: { type: 'FIXED' },
+    });
+    jest
+      .spyOn(service, 'getToday')
+      .mockResolvedValue({ date: '2026-10-24', rows: [], summary: {} } as any);
+    expect((await service.getMySnapshot(mockUser)).activeAttendance.kind).toBe(
+      'IDLE',
+    );
+  });
+
+  it('keeps the canonical session actionable when a closed daily summary disagrees', async () => {
+    prisma.employee.findFirst.mockResolvedValue({ id: 7, organizationId: 1 });
+    prisma.attendanceSession.findFirst.mockResolvedValue({
+      id: 81,
+      startedAt: new Date('2026-10-23T17:00:00Z'),
+      breaks: [],
+      shift: null,
+    });
+    jest.spyOn(service, 'getToday').mockResolvedValue({
+      date: '2026-10-24',
+      rows: [
+        {
+          employeeId: 7,
+          checkIn: '2026-10-24T00:00:00Z',
+          checkOut: '2026-10-24T07:20:00Z',
+          breaks: [],
+        },
+      ],
+      summary: {},
+    } as any);
+    const result = await service.getMySnapshot(mockUser);
+    expect(result.activeAttendance).toMatchObject({ kind: 'SESSION', id: 81 });
+    expect(result.checkOut).toBeNull();
+    expect(result.checkIn).toBe('2026-10-23T17:00:00.000Z');
   });
 
   it('returns an open flexible session even when it started on a prior day', async () => {

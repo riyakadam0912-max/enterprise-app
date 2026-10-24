@@ -680,6 +680,31 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private async resolveOpenAttendance(
+    employeeId: number,
+    organizationId: number,
+    db: Prisma.TransactionClient = this.prisma,
+  ) {
+    const [session, legacyAttendance] = await Promise.all([
+      db.attendanceSession.findFirst({
+        where: { employeeId, organizationId, endedAt: null },
+        include: { breaks: true, shift: true },
+        orderBy: { startedAt: 'desc' },
+      }),
+      db.attendance.findFirst({
+        where: {
+          employeeId,
+          organizationId,
+          checkIn: { not: null },
+          checkOut: null,
+        },
+        include: { breaks: true, shift: true },
+        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      }),
+    ]);
+    return { session, legacyAttendance };
+  }
+
   private async startFlexibleAttendanceSession(
     employee: {
       id: number;
@@ -702,25 +727,17 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         organizationId,
         tx,
       );
-      const [activeSession, legacyOpenAttendance] = await Promise.all([
-        tx.attendanceSession.findFirst({
-          where: { employeeId: employee.id, organizationId, endedAt: null },
-          select: { id: true },
-        }),
-        tx.attendance.findFirst({
-          where: {
-            employeeId: employee.id,
-            organizationId,
-            checkIn: { not: null },
-            checkOut: null,
-          },
-          select: { id: true },
-        }),
-      ]);
+      const { session: activeSession, legacyAttendance: legacyOpenAttendance } =
+        await this.resolveOpenAttendance(employee.id, organizationId, tx);
       if (activeSession || legacyOpenAttendance) {
-        throw new ConflictException(
-          'Employee already has an open attendance session',
-        );
+        throw new ConflictException({
+          message: activeSession
+            ? 'Employee already has an open attendance session'
+            : 'An earlier attendance record is still open. Ask HR to review it before starting another session.',
+          code: activeSession
+            ? 'ATTENDANCE_OPEN_SESSION'
+            : 'ATTENDANCE_REVIEW_REQUIRED',
+        });
       }
 
       const session = await tx.attendanceSession.create({
@@ -2478,21 +2495,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         tx,
         user.userId,
       );
-      const session = await tx.attendanceSession.findFirst({
-        where: { employeeId, organizationId, endedAt: null },
-        include: { breaks: true, shift: true },
-        orderBy: { startedAt: 'desc' },
-      });
-      const record = await tx.attendance.findFirst({
-        where: {
-          employeeId,
-          organizationId,
-          checkIn: { not: null },
-          checkOut: null,
-        },
-        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-        include: { breaks: true, shift: true },
-      });
+      const { session, legacyAttendance: record } =
+        await this.resolveOpenAttendance(employeeId, organizationId, tx);
 
       const effectiveShift = this.employeeShiftForDay(
         employee.shiftAssignments,
@@ -2574,21 +2578,8 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         tx,
         user.userId,
       );
-      const session = await tx.attendanceSession.findFirst({
-        where: { employeeId, organizationId, endedAt: null },
-        include: { breaks: true, shift: true },
-        orderBy: { startedAt: 'desc' },
-      });
-      const record = await tx.attendance.findFirst({
-        where: {
-          employeeId,
-          organizationId,
-          checkIn: { not: null },
-          checkOut: null,
-        },
-        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-        include: { breaks: true, shift: true },
-      });
+      const { session, legacyAttendance: record } =
+        await this.resolveOpenAttendance(employeeId, organizationId, tx);
       const effectiveShift = this.employeeShiftForDay(
         employee.shiftAssignments,
         employee.shift,
@@ -3149,15 +3140,26 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       },
       undefined,
     );
-    const activeSession = await this.prisma.attendanceSession.findFirst({
-      where: {
-        employeeId,
-        organizationId: employee.organizationId,
-        endedAt: null,
-      },
-      include: { breaks: true, shift: true },
-      orderBy: { startedAt: 'desc' },
-    });
+    const { session: activeSession, legacyAttendance } =
+      await this.resolveOpenAttendance(employeeId, employee.organizationId);
+    const activeAttendance = activeSession
+      ? {
+          kind: 'SESSION' as const,
+          id: activeSession.id,
+          startedAt: activeSession.startedAt.toISOString(),
+          message: null,
+        }
+      : legacyAttendance?.checkIn &&
+          (legacyAttendance.shift?.type === 'FLEXIBLE' ||
+            employee.shift?.type === 'FLEXIBLE')
+        ? {
+            kind: 'REVIEW_REQUIRED' as const,
+            id: legacyAttendance.id,
+            startedAt: legacyAttendance.checkIn.toISOString(),
+            message:
+              'An earlier attendance record is still open. Ask HR to review it before starting another session.',
+          }
+        : { kind: 'IDLE' as const, id: null, startedAt: null, message: null };
     const activeSessionDetails = activeSession
       ? {
           startedAt: activeSession.startedAt.toISOString(),
@@ -3202,6 +3204,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         isShootDay: false,
         shiftDetails: activeSessionDetails?.shiftDetails ?? null,
         activeSession: activeSessionDetails,
+        activeAttendance,
       };
     }
 
@@ -3222,6 +3225,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       isShootDay: row.isShootDay,
       shiftDetails: activeSessionDetails?.shiftDetails ?? row.shiftDetails,
       activeSession: activeSessionDetails,
+      activeAttendance,
     };
   }
 

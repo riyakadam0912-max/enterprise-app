@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArrowRight, CalendarDays, CalendarRange, Clock3, Pencil, Plus, Trash2, UsersRound, X } from 'lucide-react';
 import { assignShift, AttendanceRecord, AttendanceStatus, createAttendanceForEmployeeDate, createHoliday, createShift, DailyTaskWorkSummary, deleteHoliday, deleteShift, getHolidays, getMonthlyAttendanceReport, getMyAttendanceHistory, getMyTaskWorkSummary, getShifts, getTeamWeeklyWorkHours, getWorkHourBalances, HolidayRecord, MyAttendanceResponse, ShiftRecord, startAttendanceBreak, stopAttendanceBreak, TeamWeeklyWorkHours, updateHoliday, updateShift, WorkHourBalances } from '@/api/attendanceApi';
@@ -444,6 +444,7 @@ function EmployeeAttendancePanel(props: {
   helperError: string | null;
   row: AttendanceRecord | null;
   activeSession: MyAttendanceResponse['activeSession'];
+  activeAttendance: MyAttendanceResponse['activeAttendance'];
   attendanceLoading: boolean;
   checkInLoading: boolean;
   checkOutLoading: boolean;
@@ -454,6 +455,8 @@ function EmployeeAttendancePanel(props: {
 }) {
   const { name, employeeId, accountLinked, helperError, row, activeSession, attendanceLoading, checkInLoading, checkOutLoading, breakActionLoading, onCheckIn, onCheckOut, onBreakAction } = props;
   const hasActiveSession = Boolean(activeSession);
+  const needsReview = props.activeAttendance?.kind === 'REVIEW_REQUIRED';
+  const actionsUnavailable = attendanceLoading || needsReview || checkInLoading || checkOutLoading || breakActionLoading;
   const hasCheckedIn = Boolean(activeSession?.startedAt ?? row?.checkIn);
   const hasCheckedOut = !hasActiveSession && Boolean(row?.checkOut);
   const isFlexible =
@@ -473,7 +476,7 @@ function EmployeeAttendancePanel(props: {
       onClick={onBreakAction}
       disabled={
         !accountLinked ||
-        attendanceLoading ||
+        actionsUnavailable ||
         (isFlexible
           ? !hasActiveSession
           : !hasCheckedIn || hasCheckedOut) ||
@@ -516,7 +519,7 @@ function EmployeeAttendancePanel(props: {
           <div className="grid gap-3 sm:grid-cols-3">
             <button
               onClick={onCheckIn}
-              disabled={!accountLinked || attendanceLoading || !canCheckIn || checkInLoading}
+              disabled={!accountLinked || actionsUnavailable || !canCheckIn}
               className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {checkInLoading
@@ -528,7 +531,7 @@ function EmployeeAttendancePanel(props: {
             {breakAction}
             <button
               onClick={onCheckOut}
-              disabled={!accountLinked || attendanceLoading || !hasCheckedIn || hasCheckedOut || checkOutLoading}
+              disabled={!accountLinked || actionsUnavailable || !hasCheckedIn || hasCheckedOut}
               className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {checkOutLoading ? 'Checking Out…' : hasCheckedOut ? 'Already Checked Out' : 'Mark Check Out'}
@@ -538,7 +541,7 @@ function EmployeeAttendancePanel(props: {
           <div className="grid gap-3 sm:grid-cols-3">
             <button
               onClick={onCheckIn}
-              disabled={!accountLinked || attendanceLoading || !canCheckIn || checkInLoading}
+              disabled={!accountLinked || actionsUnavailable || !canCheckIn}
               className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {checkInLoading
@@ -550,7 +553,7 @@ function EmployeeAttendancePanel(props: {
             {breakAction}
             <button
               onClick={onCheckOut}
-              disabled={!accountLinked || attendanceLoading || !hasActiveSession || checkOutLoading}
+              disabled={!accountLinked || actionsUnavailable || !hasActiveSession}
               className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {checkOutLoading ? 'Checking Out…' : 'Check Out'}
@@ -558,6 +561,13 @@ function EmployeeAttendancePanel(props: {
           </div>
         )}
       </div>
+
+      {needsReview && (
+        <p role="alert" className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {props.activeAttendance?.message}
+          {props.activeAttendance?.startedAt && <> Started {new Date(props.activeAttendance.startedAt).toLocaleString()}.</>}
+        </p>
+      )}
 
       {!accountLinked ? (
         <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -1032,6 +1042,9 @@ export default function AttendancePage() {
   const checkOutMutation = useCheckOut();
   const updateAttendanceMutation = useUpdateAttendance();
   const [breakActionLoading, setBreakActionLoading] = useState(false);
+  const attendanceActionInFlight = useRef(false);
+  const [attendanceActionBusy, setAttendanceActionBusy] = useState(false);
+  const [breakActionError, setBreakActionError] = useState<string | null>(null);
   const [workBalances, setWorkBalances] = useState<WorkHourBalances | null>(null);
   const [teamWeeklyHours, setTeamWeeklyHours] = useState<TeamWeeklyWorkHours | null>(null);
 
@@ -1118,6 +1131,13 @@ export default function AttendancePage() {
   const accountLinked = Boolean(resolvedEmployeeId) || (!canViewAdminAttendance && today.error !== 'Your login is not linked to an employee profile yet.');
 
   async function handleEmployeeAction(mode: 'in' | 'out' | 'break') {
+    if (attendanceActionInFlight.current || !mySnapshot.data || mySnapshot.error || mySnapshot.loading) return;
+    if (mySnapshot.data.activeAttendance?.kind === 'REVIEW_REQUIRED') return;
+    attendanceActionInFlight.current = true;
+    setAttendanceActionBusy(true);
+    setBreakActionError(null);
+    checkInMutation.setError(null);
+    checkOutMutation.setError(null);
     try {
       if (mode === 'in') {
         await checkInMutation.mutate({});
@@ -1134,13 +1154,14 @@ export default function AttendancePage() {
 
       await Promise.all([refetch(), today.refetch(), mySnapshot.refetch(), getWorkHourBalances().then(setWorkBalances)]);
       setHistoryRefreshKey((current) => current + 1);
-    } catch {
-      if (mode === 'out') {
-        await Promise.all([refetch(), today.refetch(), mySnapshot.refetch()]);
-      }
+    } catch (error) {
+      if (mode === 'break') setBreakActionError(error instanceof Error ? error.message : 'Unable to update your break. Please refresh attendance.');
+      await Promise.all([refetch(), today.refetch(), mySnapshot.refetch()]);
       // Errors are mapped in the hooks and shown in the UI.
     } finally {
       setBreakActionLoading(false);
+      attendanceActionInFlight.current = false;
+      setAttendanceActionBusy(false);
     }
   }
 
@@ -1530,13 +1551,23 @@ export default function AttendancePage() {
             helperError={
               checkInMutation.error ??
               checkOutMutation.error ??
+              breakActionError ??
               (today.error === 'Your login is not linked to an employee profile yet.'
                 ? null
                 : today.error ?? mySnapshot.error)
             }
-            row={myTodayRow}
+            row={myTodayRow && mySnapshot.data ? {
+              ...myTodayRow,
+              checkIn: mySnapshot.data.checkIn,
+              checkOut: mySnapshot.data.checkOut,
+              onBreak: mySnapshot.data.onBreak,
+              breaks: mySnapshot.data.breaks ?? [],
+              status: mySnapshot.data.status,
+              shiftDetails: mySnapshot.data.shiftDetails,
+            } : myTodayRow}
             activeSession={mySnapshot.data?.activeSession ?? null}
-            attendanceLoading={mySnapshot.loading}
+            activeAttendance={mySnapshot.data?.activeAttendance}
+            attendanceLoading={mySnapshot.loading || !mySnapshot.data || Boolean(mySnapshot.error) || attendanceActionBusy}
             checkInLoading={checkInMutation.loading}
             checkOutLoading={checkOutMutation.loading}
             breakActionLoading={breakActionLoading}

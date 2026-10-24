@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ApiError } from '@/api/apiClient';
 import {
   AttendanceActionPayload,
   AttendanceFilters,
@@ -34,6 +35,7 @@ function getFriendlyLoadError(message?: string) {
 }
 
 function getFriendlyActionError(message: string) {
+  if (message.toLowerCase().includes('open attendance session')) return 'An attendance session is still open. Refreshing your attendance; complete the open session or ask HR to review the earlier record.';
   if (message.toLowerCase().includes('not linked to a user')) return 'Your login is not linked to an employee profile yet.';
   if (message.toLowerCase().includes('already checked in')) return 'You have already checked in for today.';
   if (message.toLowerCase().includes('already checked out')) return 'You have already checked out for today.';
@@ -181,20 +183,26 @@ export function useTodayAttendance(date?: string) {
 }
 
 export function useMyAttendanceSnapshot() {
+  const requestSequence = useRef(0);
   const [data, setData] = useState<MyAttendanceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchSnapshot = useCallback(async (silent = false) => {
+    const requestId = ++requestSequence.current;
     if (!silent) setLoading(true);
     setError(null);
     try {
-      setData(await getMyAttendanceSnapshot());
+      const snapshot = await getMyAttendanceSnapshot();
+      if (requestId === requestSequence.current) setData(snapshot);
     } catch (err) {
       const message = err instanceof Error ? err.message : undefined;
-      setError(getFriendlyLoadError(message));
+      if (requestId === requestSequence.current) {
+        setData(null);
+        setError(getFriendlyLoadError(message));
+      }
     } finally {
-      if (!silent) setLoading(false);
+      if (requestId === requestSequence.current) setLoading(false);
     }
   }, []);
 
@@ -215,6 +223,8 @@ export function useMyAttendanceSnapshot() {
       document.removeEventListener('visibilitychange', refreshSilently);
     };
   }, [fetchSnapshot]);
+
+  useEffect(() => () => { requestSequence.current += 1; }, []);
 
   return { data, loading, error, refetch: fetchSnapshot };
 }
@@ -256,7 +266,11 @@ function useAttendanceAction(action: (payload: AttendanceActionPayload) => Promi
       return await action(payload);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Attendance action failed';
-      setError(getFriendlyActionError(message));
+      const requestId = err instanceof ApiError ? err.requestId : undefined;
+      const reason = err instanceof ApiError && err.code === 'ATTENDANCE_REVIEW_REQUIRED'
+        ? 'An earlier attendance record is still open. Ask HR to review it before starting another session.'
+        : getFriendlyActionError(message);
+      setError(reason + (requestId ? ` Reference: ${requestId}` : ''));
       throw err;
     } finally {
       setLoading(false);

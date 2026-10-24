@@ -123,6 +123,18 @@ function extractMessage(exception: unknown, statusCode: number): string {
 }
 
 function classifyError(exception: unknown, statusCode: number): string {
+  if (statusCode === 409 && exception instanceof HttpException) {
+    const response = exception.getResponse();
+    const code =
+      typeof response === 'object' && response !== null
+        ? (response as { code?: unknown }).code
+        : undefined;
+    if (
+      code === 'ATTENDANCE_OPEN_SESSION' ||
+      code === 'ATTENDANCE_REVIEW_REQUIRED'
+    )
+      return code;
+  }
   if (statusCode === 400 || statusCode === 422) return 'VALIDATION_ERROR';
   if (statusCode === 401) return 'SESSION_EXPIRED';
   if (statusCode === 403) return 'FORBIDDEN';

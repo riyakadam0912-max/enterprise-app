@@ -2,6 +2,25 @@ import { HttpException, HttpStatus } from '@nestjs/common';
 import { HttpExceptionFilter } from './http-exception.filter';
 
 describe('HttpExceptionFilter', () => {
+  it.each([
+    'ATTENDANCE_OPEN_SESSION',
+    'ATTENDANCE_REVIEW_REQUIRED',
+    'UNRECOGNIZED_CODE',
+  ])('preserves only allowlisted attendance conflict codes: %s', (code) => {
+    const json = jest.fn();
+    const status = jest.fn().mockReturnValue({ json });
+    const host = { switchToHttp: () => ({ getResponse: () => ({ status }) }) };
+    new HttpExceptionFilter().catch(
+      new HttpException({ message: 'Attendance state changed', code }, 409),
+      host as any,
+    );
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: code === 'UNRECOGNIZED_CODE' ? 'CONFLICT' : code,
+        message: 'Attendance state changed',
+      }),
+    );
+  });
   const originalNodeEnv = process.env.NODE_ENV;
 
   beforeEach(() => {
