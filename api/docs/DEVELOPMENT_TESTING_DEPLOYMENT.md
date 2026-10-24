@@ -305,8 +305,11 @@ The API has a Vercel config in `api/vercel.json` and a build entry in `api/packa
 
 Important behavior:
 
+- set the Vercel project's Root Directory to `api` so this configuration and its Prisma schema are used
+- `npm ci` runs the API package's `postinstall` script to generate Prisma Client from `prisma/schema.prisma`
 - build command: `npm run build:vercel`
-- build does not connect to the production database or run migrations; run `npm --prefix api run prisma:migrate` as a separate release step
+- the build regenerates Prisma Client before running the migration and Nest build steps
+- the build runs database migrations through `migrate-deploy-with-retry.js`, so the production database connection must be configured for the deployment
 - output directory: `.`
 - dispatches API routes through `api/index.ts`
 - uses a redirect from `/` to `/api/v1/`

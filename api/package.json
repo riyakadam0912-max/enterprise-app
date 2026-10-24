@@ -6,8 +6,9 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
+    "postinstall": "prisma generate --schema prisma/schema.prisma",
     "build": "npx prisma generate && npx nest build",
-    "build:vercel": "node migrate-deploy-with-retry.js && npx prisma generate && npx nest build",
+    "build:vercel": "npx prisma generate --schema prisma/schema.prisma && node migrate-deploy-with-retry.js && npx nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "dev": "node scripts/dev.js",
     "start:dev": "npm run dev",
