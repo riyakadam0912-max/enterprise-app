@@ -1,14 +1,12 @@
+import { ApplicationConfigModule } from './config/application-config.module';
 import { Module } from '@nestjs/common';
 import { MiddlewareConsumer, NestModule, RequestMethod } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
 import { BullModule } from '@nestjs/bullmq';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { ConfigModule } from '@nestjs/config';
 import { AuthThrottlingModule } from './auth/auth-throttling.module';
-import { join } from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { validateServerEnv } from './config/env';
 
 import { CoreModule } from './domains/core.module';
 import { IdentityModule } from './domains/identity.module';
@@ -42,19 +40,10 @@ const queueImports = redisConnection
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-      envFilePath:
-        process.env.NODE_ENV === 'production'
-          ? process.env.VERCEL === '1'
-            ? []
-            : [join(process.cwd(), '.env.production')]
-          : [join(process.cwd(), '.env'), join(process.cwd(), '..', '.env')],
-      validate: validateServerEnv,
-    }),
+    ApplicationConfigModule,
     CacheModule.register({
       isGlobal: true,
-      ttl: 300,
+      ttl: 300_000,
       max: 50,
     }),
     ...queueImports,

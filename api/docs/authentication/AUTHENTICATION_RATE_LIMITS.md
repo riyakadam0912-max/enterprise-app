@@ -18,24 +18,28 @@ Other authenticated profile, registration, password-change, current-user and
 logout-all routes retain their existing guards and have no rate-limit policy.
 The shared default is not a global guard.
 
-## Production configuration
+## Storage and production configuration
 
-Set RATE_LIMIT_REDIS_URL to a Redis connection URL shared by every API instance
-of the deployment. REDIS_URL is used if the dedicated URL is absent. Use separate
-Redis databases or instances for production and preview environments.
-The dedicated URL works with REDIS_ENABLED=false and does not enable queues.
-Production startup refuses to use process-local counters when neither URL is set.
-No new package is needed: the API already depends on ioredis.
+Redis is optional. With no Redis connection, production uses atomic PostgreSQL
+counters in AuthRateLimitBucket, shared across API instances. Development and test
+use memory when Redis is absent. Apply the AuthRateLimitBucket migration before
+deploying the updated API; the existing build:vercel command deploys migrations.
 
-Redis uses atomic fixed-window counters. Excess traffic starts a full one-minute
-block. Keys expire automatically and contain hashed route/client identities.
-Redis failures return HTTP 503; there is no fallback that bypasses limits.
-Development/test without Redis uses Nest's in-memory rolling-window storage.
+A configured RATE_LIMIT_REDIS_URL takes precedence over REDIS_URL. Explicit legacy
+REDIS_ENABLED=true can use REDIS_HOST/REDIS_PORT; production requires an explicit
+host. URLs must use redis:// or rediss://, not HTTPS REST endpoints. The dedicated
+rate-limit URL does not enable queues. Production never uses process-local limits.
 
-Before rollout, configure the Redis URL, allow the API host to reach Redis, and
-check a disposable client IP against the deployed endpoints. Verify that a block
-survives requests reaching different instances. No live deployment was changed
-as part of this implementation.
+Both PostgreSQL and Redis use atomic fixed-window counters and full one-minute
+blocks. PostgreSQL housekeeping removes expired buckets in bounded batches during
+requests; Redis keys expire automatically. Counter keys contain hashed route/client
+identities. A selected backend outage returns HTTP 503 and does not switch stores
+or reset quotas. No extra package or external Redis service is required.
+
+Run npm run redis:status to see configured consumers. --production reads the local
+production configuration; --probe additionally checks a configured Redis connection.
+This command never prints URLs or credentials and does not change deployment env.
+See [Redis runtime audit](./REDIS_RUNTIME_AUDIT.md) for cache, queues and WebSockets.
 
 ## Client IP and proxies
 
@@ -64,3 +68,5 @@ failure handling, connection lifecycle, and production configuration.
 For actual cross-instance Redis verification, set TEST_RATE_LIMIT_REDIS_URL to a
 disposable Redis URL and run npm test -- --runInBand redis-throttler.integration.spec.ts.
 This integration test is skipped when its explicit test URL is absent.
+For PostgreSQL, set TEST_RATE_LIMIT_DATABASE_URL to a disposable migrated database
+and run npm test -- --runInBand postgres-throttler.integration.spec.ts.

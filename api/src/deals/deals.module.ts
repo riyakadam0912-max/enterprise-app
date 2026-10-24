@@ -1,3 +1,4 @@
+import { ApplicationConfigModule } from '../config/application-config.module';
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { DealsService } from './deals.service';
@@ -18,6 +19,7 @@ const queueProviders = redisConfigured ? [DealProcessor] : [];
 
 @Module({
   imports: [
+    ApplicationConfigModule,
     PrismaModule,
     NotificationsModule,
     AuditLogsModule,

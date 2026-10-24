@@ -2453,3 +2453,14 @@ model SystemAuditEvent {
   @@index([reason, createdAt])
   @@index([targetOrganizationId])
 }
+
+// Short-lived shared authentication counters; no tenant data or plaintext IPs.
+model AuthRateLimitBucket {
+  key          String    @id
+  hits         Int
+  expiresAt    DateTime
+  blockedUntil DateTime?
+  updatedAt    DateTime  @default(now())
+
+  @@index([expiresAt])
+}

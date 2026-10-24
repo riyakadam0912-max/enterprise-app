@@ -26,6 +26,8 @@ This guide is for business users, administrators, developers, QA engineers, and 
 
 ### Reference
 
+- [Redis runtime audit](./authentication/REDIS_RUNTIME_AUDIT.md)
+
 - [Audit organization attribution](./authentication/AUDIT_ORGANIZATION_ATTRIBUTION.md)
 
 - [Authentication rate limits](./authentication/AUTHENTICATION_RATE_LIMITS.md)

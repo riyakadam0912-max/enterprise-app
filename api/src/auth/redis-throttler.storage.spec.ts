@@ -7,6 +7,8 @@ import {
   INCREMENT_THROTTLE,
 } from './redis-throttler.storage';
 import { createAuthThrottleStorage } from './auth-throttling.module';
+import { PostgresThrottlerStorage } from './postgres-throttler.storage';
+import type { RateLimitDatabase } from './postgres-throttler.storage';
 
 describe('Shared authentication throttle storage', () => {
   const redis = {
@@ -83,16 +85,19 @@ describe('Shared authentication throttle storage', () => {
     expect(redis.disconnect).toHaveBeenCalledTimes(1);
   });
 
-  it('refuses process-local production limits', () => {
-    expect(() =>
+  it('uses shared PostgreSQL instead of requiring Redis in production', () => {
+    const database = { $queryRaw: jest.fn(), $executeRaw: jest.fn() };
+    expect(
       createAuthThrottleStorage(
         new ConfigService({
           NODE_ENV: 'production',
           RATE_LIMIT_REDIS_URL: '',
           REDIS_URL: '',
+          REDIS_ENABLED: false,
         }),
+        database as RateLimitDatabase,
       ),
-    ).toThrow('Production authentication throttling requires');
+    ).toBeInstanceOf(PostgresThrottlerStorage);
   });
 
   it('supports Redis-free development', () => {

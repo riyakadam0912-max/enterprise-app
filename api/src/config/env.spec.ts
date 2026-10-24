@@ -99,4 +99,34 @@ describe('validateServerEnv', () => {
       /placeholder or example values|localhost or LAN frontend origins/i,
     );
   });
+
+  it('allows Redis-backed limits on Vercel without starting workers or sockets', () => {
+    const config = validateServerEnv({
+      ...validProductionEnv,
+      VERCEL: '1',
+      REDIS_ENABLED: 'true',
+      REDIS_QUEUE_ENABLED: 'true',
+      REDIS_URL: 'rediss://example.invalid:6379',
+      WEBSOCKET_ENABLED: 'true',
+    });
+    expect(config.REDIS_ENABLED).toBe(true);
+    expect(config.REDIS_QUEUE_ENABLED).toBe(false);
+    expect(config.WEBSOCKET_ENABLED).toBe(false);
+  });
+  it('does not require Redis for process-local WebSockets on a persistent host', () => {
+    const config = validateServerEnv({
+      ...validProductionEnv,
+      WEBSOCKET_ENABLED: 'true',
+    });
+    expect(config.WEBSOCKET_ENABLED).toBe(true);
+    expect(config.REDIS_QUEUE_ENABLED).toBe(false);
+  });
+  it('rejects invalid queue enablement flags', () => {
+    expect(() =>
+      validateServerEnv({
+        ...validProductionEnv,
+        REDIS_QUEUE_ENABLED: 'invalid',
+      }),
+    ).toThrow('REDIS_QUEUE_ENABLED');
+  });
 });

@@ -42,6 +42,8 @@ describe('Authentication rate limits', () => {
         ConfigService,
       ],
     })
+      .overrideProvider(PrismaService)
+      .useValue({})
       .overrideProvider(ConfigService)
       .useValue({
         get: (key: string) => (key === 'NODE_ENV' ? 'test' : undefined),
@@ -142,5 +144,53 @@ describe('Authentication rate limits', () => {
       .set('X-Forwarded-For', '198.51.100.99, 203.0.113.10')
       .send({})
       .expect(201);
+  });
+});
+
+describe('Production authentication without Redis', () => {
+  it('uses the database counter and enforces its block through the real HTTP guard', async () => {
+    const database = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          totalHits: 6,
+          timeToExpire: 60,
+          isBlocked: true,
+          timeToBlockExpire: 60,
+        },
+      ]),
+      $executeRaw: jest.fn().mockResolvedValue(0),
+    };
+    const login = jest.fn();
+    const module = await Test.createTestingModule({
+      imports: [AuthThrottlingModule],
+      controllers: [AuthController],
+      providers: [
+        { provide: AuthService, useValue: { login } },
+        ConfigService,
+        { provide: PrismaService, useValue: database },
+      ],
+    })
+      .overrideProvider(PrismaService)
+      .useValue(database)
+      .overrideProvider(ConfigService)
+      .useValue({
+        get: (key: string) => (key === 'NODE_ENV' ? 'production' : undefined),
+      })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
+    const app = module.createNestApplication();
+    try {
+      await app.init();
+      const response = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({})
+        .expect(429);
+      expect(response.headers['retry-after']).toBe('60');
+      expect(database.$queryRaw).toHaveBeenCalledTimes(1);
+      expect(login).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
   });
 });

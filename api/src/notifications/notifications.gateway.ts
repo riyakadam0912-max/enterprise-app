@@ -36,7 +36,7 @@ export class NotificationsGateway
       this.logger.warn(
         '[NotificationsGateway] WebSocket realtime disabled (WEBSOCKET_ENABLED=false). ' +
           'In-app notifications still persist to Postgres and frontend will poll /notifications/live. ' +
-          'To enable realtime on a persistent host, set WEBSOCKET_ENABLED=true and configure REDIS_ENABLED=true.',
+          'On a single persistent host, set WEBSOCKET_ENABLED=true. Broadcasts are process-local; no Redis adapter is installed.',
       );
     }
   }

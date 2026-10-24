@@ -1,8 +1,15 @@
+import {
+  isRedisQueueEnabled,
+  resolveAuthRedisConnection,
+  resolveRedisConnection,
+} from './redis';
+
 type ServerEnv = {
   DATABASE_URL: string;
   FILE_STORAGE_PROVIDER?: 'local' | 's3' | 'cloudinary';
   PORT?: number;
   REDIS_ENABLED: boolean;
+  REDIS_QUEUE_ENABLED: boolean;
   WEBSOCKET_ENABLED: boolean;
   FRONTEND_URL: string;
   FRONTEND_URLS: string;
@@ -359,27 +366,21 @@ export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
     );
   }
 
-  const redisEnabledRaw = readOptionalBoolean(env, 'REDIS_ENABLED', false);
-  const redisEnabled = isVercel ? false : redisEnabledRaw;
-
-  const websocketEnabledRaw = readOptionalBoolean(
+  const redisEnabled = readOptionalBoolean(env, 'REDIS_ENABLED', false);
+  // A Redis TCP connection works on Vercel; persistent workers and sockets do not.
+  resolveAuthRedisConnection(env);
+  resolveRedisConnection(env);
+  const queueRequested = readOptionalBoolean(
     env,
-    'WEBSOCKET_ENABLED',
-    !isProduction,
+    'REDIS_QUEUE_ENABLED',
+    redisEnabled,
   );
-  const websocketEnabledVercelSafe = isVercel ? false : websocketEnabledRaw;
+  const redisQueueEnabled = isRedisQueueEnabled({
+    ...env,
+    REDIS_QUEUE_ENABLED: queueRequested,
+  });
   const websocketEnabled =
-    websocketEnabledVercelSafe && (redisEnabled || !isProduction)
-      ? true
-      : websocketEnabledVercelSafe && isProduction && !redisEnabled
-        ? false
-        : websocketEnabledVercelSafe;
-
-  if (isProduction && !isVercel && websocketEnabledRaw && !redisEnabled) {
-    throw new Error(
-      'Production WEBSOCKET_ENABLED=true requires REDIS_ENABLED=true and a shared Redis adapter. Either disable WebSocket realtime (WEBSOCKET_ENABLED=false) and use polling, or configure Redis + a persistent WebSocket host. On Vercel, WebSocket realtime is automatically disabled in favor of REST polling.',
-    );
-  }
+    !isVercel && readOptionalBoolean(env, 'WEBSOCKET_ENABLED', !isProduction);
 
   return {
     DATABASE_URL: readRequiredString(env, 'DATABASE_URL'),
@@ -390,6 +391,7 @@ export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
       | undefined,
     PORT: readOptionalNumber(env, 'PORT', 3000),
     REDIS_ENABLED: redisEnabled,
+    REDIS_QUEUE_ENABLED: redisQueueEnabled,
     WEBSOCKET_ENABLED: websocketEnabled,
     FRONTEND_URL:
       readOptionalString(
