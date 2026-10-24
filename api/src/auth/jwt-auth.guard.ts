@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import type { AuthUser } from '../common/types/auth';
+import { setAuditContext } from '../audit-logs/audit-context';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
@@ -47,6 +48,16 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       }
     }
 
+    if (canActivate && request.user) {
+      const user = request.user as AuthUser;
+      setAuditContext({
+        userId: user.userId,
+        userName: user.name || user.email,
+        userRole: user.role,
+        organizationId: user.organizationId,
+        isPlatformAdmin: user.isPlatformAdmin === true,
+      });
+    }
     return canActivate;
   }
 

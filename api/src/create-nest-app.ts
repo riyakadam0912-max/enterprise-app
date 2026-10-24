@@ -30,6 +30,17 @@ export async function createNestApp() {
     next();
   });
   const configService = app.get(ConfigService);
+  // Trust only configured proxy networks; Express resolves XFF from right to left.
+  const trustedProxies = (
+    configService.get<string>('TRUSTED_PROXY_CIDRS') ?? ''
+  )
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (trustedProxies.length > 0) {
+    app.getHttpAdapter().getInstance().set('trust proxy', trustedProxies);
+  }
+
   app.setGlobalPrefix('api/v1');
 
   app.use(

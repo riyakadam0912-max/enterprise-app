@@ -39,7 +39,8 @@
     "repair-passwords": "ts-node scripts/repair-passwords.ts",
     "attendance:backfill-late": "ts-node scripts/backfill-attendance-late-minutes.ts",
     "email:render": "ts-node scripts/render-email-template.ts",
-    "email:test": "ts-node scripts/send-test-email.ts"
+    "email:test": "ts-node scripts/send-test-email.ts",
+    "audit:attribution": "ts-node scripts/audit-attribution-review.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

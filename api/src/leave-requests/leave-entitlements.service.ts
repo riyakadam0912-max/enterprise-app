@@ -1,3 +1,4 @@
+import { runWithSystemAuditContext } from '../audit-logs/audit-context';
 import {
   BadRequestException,
   Injectable,
@@ -60,9 +61,7 @@ export class LeaveEntitlementsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private monthStart(date: Date) {
-    return new Date(
-      Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1),
-    );
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
   }
 
   private monthKey(date: Date) {
@@ -79,10 +78,7 @@ export class LeaveEntitlementsService implements OnModuleInit, OnModuleDestroy {
     return this.addMonths(this.monthStart(now), 1);
   }
 
-  private calculateAvailableBalance(
-    rows: LeaveLedgerRow[],
-    asOf = new Date(),
-  ) {
+  private calculateAvailableBalance(rows: LeaveLedgerRow[], asOf = new Date()) {
     const credits: Array<{
       remaining: number;
       expiresAt: Date | null;
@@ -169,10 +165,7 @@ export class LeaveEntitlementsService implements OnModuleInit, OnModuleDestroy {
       totalAllocation,
       daysTaken,
       balance: this.calculateAvailableBalance(paidEntries, asOf),
-      compOffAvailable: this.calculateAvailableBalance(
-        compOffEntries,
-        asOf,
-      ),
+      compOffAvailable: this.calculateAvailableBalance(compOffEntries, asOf),
       year: asOf.getUTCFullYear(),
     };
   }
@@ -331,10 +324,8 @@ export class LeaveEntitlementsService implements OnModuleInit, OnModuleDestroy {
               item.effectiveTo.getTime() > dayStart),
         )
         .at(-1);
-      const workingDays =
-        assignment?.shift.workingDays ??
-        employee.shift?.workingDays ??
-        [1, 2, 3, 4, 5];
+      const workingDays = assignment?.shift.workingDays ??
+        employee.shift?.workingDays ?? [1, 2, 3, 4, 5];
       const isHoliday = holidays.some((holiday) => {
         const holidayStart = Date.UTC(
           holiday.startDate.getUTCFullYear(),
@@ -387,11 +378,7 @@ export class LeaveEntitlementsService implements OnModuleInit, OnModuleDestroy {
         organizationId: id,
         firstAccrualMonth,
         compOffEffectiveFrom: new Date(
-          Date.UTC(
-            now.getUTCFullYear(),
-            now.getUTCMonth(),
-            now.getUTCDate(),
-          ),
+          Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
         ),
       })),
       skipDuplicates: true,
@@ -402,9 +389,7 @@ export class LeaveEntitlementsService implements OnModuleInit, OnModuleDestroy {
     const normalized = status?.trim().toUpperCase();
     return (
       !normalized ||
-      !['INACTIVE', 'TERMINATED', 'RESIGNED', 'OFFBOARDED'].includes(
-        normalized,
-      )
+      !['INACTIVE', 'TERMINATED', 'RESIGNED', 'OFFBOARDED'].includes(normalized)
     );
   }
 
@@ -417,117 +402,133 @@ export class LeaveEntitlementsService implements OnModuleInit, OnModuleDestroy {
       where: { compOffEffectiveFrom: { lt: today } },
     });
     for (const policy of policies) {
-      const scanStart = new Date(
-        Math.max(
-          policy.compOffEffectiveFrom.getTime(),
-          todayStart - 90 * DAY_MS,
-        ),
-      );
-      const attendanceRows = await this.prisma.attendance.findMany({
-        where: {
-          organizationId: policy.organizationId,
-          date: { gte: scanStart, lt: today },
-          status: { not: 'LEAVE' },
-          deletedAt: null,
-          OR: [
-            { checkIn: { not: null } },
-            { workingHours: { gt: 0 } },
-            { taskHours: { gt: 0 } },
-          ],
-        },
-        select: {
-          employeeId: true,
-          organizationId: true,
-          date: true,
-          workingHours: true,
-          taskHours: true,
-          shift: { select: { workingDays: true } },
-          employee: {
-            select: {
-              status: true,
-              deletedAt: true,
-              shift: { select: { workingDays: true } },
-            },
-          },
-        },
-      });
-      if (attendanceRows.length === 0) continue;
-
-      const organizationIds = [
-        ...new Set(attendanceRows.map((row) => row.organizationId)),
-      ];
-      const roots =
-        await this.organizationScopeService.getOrganizationFamilyRootMap(
-          organizationIds,
-        );
-      const rootIds = [...new Set([...roots.values()].filter((id) => id != null))];
-      const holidays = await this.prisma.holiday.findMany({
-        where: {
-          startDate: { lte: today },
-          endDate: { gte: scanStart },
-          OR: [
-            { organizationId: { in: organizationIds }, familyRootOrganizationId: null },
-            ...(rootIds.length > 0
-              ? [{ familyRootOrganizationId: { in: rootIds } }]
-              : []),
-          ],
-        },
-        select: {
-          organizationId: true,
-          familyRootOrganizationId: true,
-          startDate: true,
-          endDate: true,
-        },
-      });
-
-      const claims: Array<{
-        employeeId: number;
-        organizationId: number;
-        workDate: Date;
-        hours: number;
-      }> = [];
-      for (const row of attendanceRows) {
-        if (row.employee.deletedAt || !this.isEmployeeEligible(row.employee.status)) {
-          continue;
-        }
-        const hours = (row.workingHours ?? 0) + row.taskHours;
-        if (hours < policy.compOffMinimumHours) continue;
-        const day = new Date(row.date);
-        const dayKey = day.toISOString().slice(0, 10);
-        const rootId = roots.get(row.organizationId);
-        const isCorporateHoliday = holidays.some((holiday) => {
-          const applies =
-            holiday.familyRootOrganizationId != null
-              ? holiday.familyRootOrganizationId === rootId
-              : holiday.organizationId === row.organizationId;
-          return (
-            applies &&
-            dayKey >= holiday.startDate.toISOString().slice(0, 10) &&
-            dayKey <= holiday.endDate.toISOString().slice(0, 10)
-          );
-        });
-        const workingDays =
-          row.shift?.workingDays ??
-          row.employee.shift?.workingDays ??
-          [1, 2, 3, 4, 5];
-        const isWeeklyOff = !workingDays.includes(day.getUTCDay());
-        if (isCorporateHoliday || isWeeklyOff) {
-          claims.push({
-            employeeId: row.employeeId,
-            organizationId: row.organizationId,
-            workDate: new Date(
-              Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()),
+      await runWithSystemAuditContext(
+        policy.organizationId,
+        'leave.holiday-comp-off',
+        async () => {
+          const scanStart = new Date(
+            Math.max(
+              policy.compOffEffectiveFrom.getTime(),
+              todayStart - 90 * DAY_MS,
             ),
-            hours,
+          );
+          const attendanceRows = await this.prisma.attendance.findMany({
+            where: {
+              organizationId: policy.organizationId,
+              date: { gte: scanStart, lt: today },
+              status: { not: 'LEAVE' },
+              deletedAt: null,
+              OR: [
+                { checkIn: { not: null } },
+                { workingHours: { gt: 0 } },
+                { taskHours: { gt: 0 } },
+              ],
+            },
+            select: {
+              employeeId: true,
+              organizationId: true,
+              date: true,
+              workingHours: true,
+              taskHours: true,
+              shift: { select: { workingDays: true } },
+              employee: {
+                select: {
+                  status: true,
+                  deletedAt: true,
+                  shift: { select: { workingDays: true } },
+                },
+              },
+            },
           });
-        }
-      }
-      if (claims.length > 0) {
-        await this.prisma.leaveCompOffClaim.createMany({
-          data: claims,
-          skipDuplicates: true,
-        });
-      }
+          if (attendanceRows.length === 0) return;
+
+          const organizationIds = [
+            ...new Set(attendanceRows.map((row) => row.organizationId)),
+          ];
+          const roots =
+            await this.organizationScopeService.getOrganizationFamilyRootMap(
+              organizationIds,
+            );
+          const rootIds = [
+            ...new Set([...roots.values()].filter((id) => id != null)),
+          ];
+          const holidays = await this.prisma.holiday.findMany({
+            where: {
+              startDate: { lte: today },
+              endDate: { gte: scanStart },
+              OR: [
+                {
+                  organizationId: { in: organizationIds },
+                  familyRootOrganizationId: null,
+                },
+                ...(rootIds.length > 0
+                  ? [{ familyRootOrganizationId: { in: rootIds } }]
+                  : []),
+              ],
+            },
+            select: {
+              organizationId: true,
+              familyRootOrganizationId: true,
+              startDate: true,
+              endDate: true,
+            },
+          });
+
+          const claims: Array<{
+            employeeId: number;
+            organizationId: number;
+            workDate: Date;
+            hours: number;
+          }> = [];
+          for (const row of attendanceRows) {
+            if (
+              row.employee.deletedAt ||
+              !this.isEmployeeEligible(row.employee.status)
+            ) {
+              continue;
+            }
+            const hours = (row.workingHours ?? 0) + row.taskHours;
+            if (hours < policy.compOffMinimumHours) continue;
+            const day = new Date(row.date);
+            const dayKey = day.toISOString().slice(0, 10);
+            const rootId = roots.get(row.organizationId);
+            const isCorporateHoliday = holidays.some((holiday) => {
+              const applies =
+                holiday.familyRootOrganizationId != null
+                  ? holiday.familyRootOrganizationId === rootId
+                  : holiday.organizationId === row.organizationId;
+              return (
+                applies &&
+                dayKey >= holiday.startDate.toISOString().slice(0, 10) &&
+                dayKey <= holiday.endDate.toISOString().slice(0, 10)
+              );
+            });
+            const workingDays = row.shift?.workingDays ??
+              row.employee.shift?.workingDays ?? [1, 2, 3, 4, 5];
+            const isWeeklyOff = !workingDays.includes(day.getUTCDay());
+            if (isCorporateHoliday || isWeeklyOff) {
+              claims.push({
+                employeeId: row.employeeId,
+                organizationId: row.organizationId,
+                workDate: new Date(
+                  Date.UTC(
+                    day.getUTCFullYear(),
+                    day.getUTCMonth(),
+                    day.getUTCDate(),
+                  ),
+                ),
+                hours,
+              });
+            }
+          }
+          if (claims.length > 0) {
+            await this.prisma.leaveCompOffClaim.createMany({
+              data: claims,
+              skipDuplicates: true,
+            });
+          }
+        },
+      );
     }
   }
 
@@ -540,106 +541,113 @@ export class LeaveEntitlementsService implements OnModuleInit, OnModuleDestroy {
       const completedMonth = this.addMonths(this.monthStart(now), -1);
 
       for (const policy of policies) {
-        for (
-          let periodStart = this.monthStart(policy.firstAccrualMonth);
-          periodStart <= completedMonth;
-          periodStart = this.addMonths(periodStart, 1)
-        ) {
-          const periodEnd = new Date(
-            Date.UTC(
-              periodStart.getUTCFullYear(),
-              periodStart.getUTCMonth() + 1,
-              0,
-            ),
-          );
-          const employees = await this.prisma.employee.findMany({
-            where: {
-              organizationId: policy.organizationId,
-              deletedAt: null,
-              OR: [
-                { hireDate: null },
-                {
-                  hireDate: {
-                    lt: new Date(periodStart.getTime() + DAY_MS),
-                  },
+        await runWithSystemAuditContext(
+          policy.organizationId,
+          'leave.monthly-entitlements',
+          async () => {
+            for (
+              let periodStart = this.monthStart(policy.firstAccrualMonth);
+              periodStart <= completedMonth;
+              periodStart = this.addMonths(periodStart, 1)
+            ) {
+              const periodEnd = new Date(
+                Date.UTC(
+                  periodStart.getUTCFullYear(),
+                  periodStart.getUTCMonth() + 1,
+                  0,
+                ),
+              );
+              const employees = await this.prisma.employee.findMany({
+                where: {
+                  organizationId: policy.organizationId,
+                  deletedAt: null,
+                  OR: [
+                    { hireDate: null },
+                    {
+                      hireDate: {
+                        lt: new Date(periodStart.getTime() + DAY_MS),
+                      },
+                    },
+                  ],
                 },
-              ],
-            },
-            select: { id: true, status: true },
-          });
-          const eligibleEmployees = employees.filter((employee) =>
-            this.isEmployeeEligible(employee.status),
-          );
-          if (eligibleEmployees.length === 0) continue;
-
-          const employeeIds = eligibleEmployees.map((employee) => employee.id);
-          const hoursByEmployee = await this.prisma.timesheet.groupBy({
-            by: ['employeeId'],
-            where: {
-              organizationId: policy.organizationId,
-              employeeId: { in: employeeIds },
-              date: { gte: periodStart, lt: this.addMonths(periodStart, 1) },
-              status: { not: 'REJECTED' },
-              deletedAt: null,
-            },
-            _sum: { hours: true },
-          });
-          const taskHoursByEmployee = new Map(
-            hoursByEmployee.map((row) => [
-              row.employeeId,
-              row._sum.hours ?? 0,
-            ]),
-          );
-          const entries = eligibleEmployees.flatMap((employee) => {
-            const periodKey = this.monthKey(periodStart);
-            const paidLeave = {
-              employeeId: employee.id,
-              organizationId: policy.organizationId,
-              category: 'PAID_LEAVE',
-              entryType: 'MONTHLY_ACCRUAL',
-              amount: policy.monthlyPaidLeave,
-              sourceKey: `monthly-accrual:${employee.id}:${periodKey}`,
-              description: `Monthly paid leave accrual for ${periodKey}`,
-              periodStart,
-              periodEnd,
-            };
-            const taskHours =
-              taskHoursByEmployee.get(employee.id) ?? 0;
-            if (taskHours < policy.taskHoursBonusThreshold) {
-              return [paidLeave];
-            }
-            return [
-              paidLeave,
-              {
-                ...paidLeave,
-                entryType: 'TASK_HOURS_BONUS',
-                amount: 1,
-                sourceKey: `task-hours-bonus:${employee.id}:${periodKey}`,
-                description: `Task-hours bonus for ${periodKey} (${taskHours} hours)`,
-              },
-            ];
-          });
-          await this.prisma.$transaction(async (tx) => {
-            for (const entry of entries) {
-              const created = await tx.leaveBalanceEntry.createMany({
-                data: [entry],
-                skipDuplicates: true,
+                select: { id: true, status: true },
               });
-              if (
-                created.count > 0 &&
-                entry.category === 'PAID_LEAVE'
-              ) {
-                await tx.employee.update({
-                  where: {
-                    id: entry.employeeId,
-                    organizationId: entry.organizationId,
+              const eligibleEmployees = employees.filter((employee) =>
+                this.isEmployeeEligible(employee.status),
+              );
+              if (eligibleEmployees.length === 0) continue;
+
+              const employeeIds = eligibleEmployees.map(
+                (employee) => employee.id,
+              );
+              const hoursByEmployee = await this.prisma.timesheet.groupBy({
+                by: ['employeeId'],
+                where: {
+                  organizationId: policy.organizationId,
+                  employeeId: { in: employeeIds },
+                  date: {
+                    gte: periodStart,
+                    lt: this.addMonths(periodStart, 1),
                   },
-                  data: { leaveBalance: { increment: entry.amount } },
-                });
-              }
+                  status: { not: 'REJECTED' },
+                  deletedAt: null,
+                },
+                _sum: { hours: true },
+              });
+              const taskHoursByEmployee = new Map(
+                hoursByEmployee.map((row) => [
+                  row.employeeId,
+                  row._sum.hours ?? 0,
+                ]),
+              );
+              const entries = eligibleEmployees.flatMap((employee) => {
+                const periodKey = this.monthKey(periodStart);
+                const paidLeave = {
+                  employeeId: employee.id,
+                  organizationId: policy.organizationId,
+                  category: 'PAID_LEAVE',
+                  entryType: 'MONTHLY_ACCRUAL',
+                  amount: policy.monthlyPaidLeave,
+                  sourceKey: `monthly-accrual:${employee.id}:${periodKey}`,
+                  description: `Monthly paid leave accrual for ${periodKey}`,
+                  periodStart,
+                  periodEnd,
+                };
+                const taskHours = taskHoursByEmployee.get(employee.id) ?? 0;
+                if (taskHours < policy.taskHoursBonusThreshold) {
+                  return [paidLeave];
+                }
+                return [
+                  paidLeave,
+                  {
+                    ...paidLeave,
+                    entryType: 'TASK_HOURS_BONUS',
+                    amount: 1,
+                    sourceKey: `task-hours-bonus:${employee.id}:${periodKey}`,
+                    description: `Task-hours bonus for ${periodKey} (${taskHours} hours)`,
+                  },
+                ];
+              });
+              await this.prisma.$transaction(async (tx) => {
+                for (const entry of entries) {
+                  const created = await tx.leaveBalanceEntry.createMany({
+                    data: [entry],
+                    skipDuplicates: true,
+                  });
+                  if (created.count > 0 && entry.category === 'PAID_LEAVE') {
+                    await tx.employee.update({
+                      where: {
+                        id: entry.employeeId,
+                        organizationId: entry.organizationId,
+                      },
+                      data: { leaveBalance: { increment: entry.amount } },
+                    });
+                  }
+                }
+              });
             }
-          });
-        }
+          },
+        );
       }
       await this.scanHolidayCompOffClaims(now);
     } finally {

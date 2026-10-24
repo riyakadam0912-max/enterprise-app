@@ -40,8 +40,10 @@ export class AuditLogsController {
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @ApiBody({ type: CreateAuditLogDto })
   @Post()
-  create(@Body() dto: CreateAuditLogDto, @Req() req: { user: AuthUser }) {
-    return this.auditLogsService.create(dto, req.user);
+  async create(@Body() dto: CreateAuditLogDto, @Req() req: { user: AuthUser }) {
+    const created = await this.auditLogsService.create(dto, req.user);
+    // Never expose system-event ownership metadata through the tenant write API.
+    return 'organizationId' in created ? created : { recorded: true };
   }
 
   @ApiOperation({ summary: 'GET /' })
@@ -135,6 +137,23 @@ export class AuditLogsController {
         search: query.search,
         from: query.from ? new Date(query.from) : undefined,
         to: query.to ? new Date(query.to) : undefined,
+      },
+      req.user,
+    );
+  }
+
+  @Roles(Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'List platform and unresolved audit events' })
+  @Get('system')
+  findSystemEvents(
+    @Query() query: { page?: string; limit?: string; reason?: string },
+    @Req() req: { user: AuthUser },
+  ) {
+    return this.auditLogsService.findSystemEvents(
+      {
+        page: query.page ? Number(query.page) : undefined,
+        limit: query.limit ? Number(query.limit) : undefined,
+        reason: query.reason,
       },
       req.user,
     );

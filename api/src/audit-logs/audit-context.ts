@@ -6,6 +6,8 @@ export type AuditActorContext = {
   userName?: string | null;
   userRole?: Role | string | null;
   organizationId?: number | null;
+  isPlatformAdmin?: boolean;
+  jobName?: string;
 };
 
 export type AuditRequestContext = AuditActorContext & {
@@ -38,5 +40,19 @@ export function setAuditContext(context: AuditRequestContext): void {
     return;
   }
 
-  auditStorage.enterWith({ ...current, ...context });
+  Object.assign(current, context);
+}
+
+// A fresh scope prevents a worker/timer from inheriting the triggering request.
+export function runWithSystemAuditContext<T>(
+  organizationId: number,
+  jobName: string,
+  callback: () => T,
+): T {
+  if (!Number.isSafeInteger(organizationId) || organizationId <= 0)
+    throw new Error('A background audit scope requires an organization');
+  return runWithAuditContext(
+    { organizationId, userName: 'System', userRole: 'SYSTEM', jobName },
+    callback,
+  );
 }

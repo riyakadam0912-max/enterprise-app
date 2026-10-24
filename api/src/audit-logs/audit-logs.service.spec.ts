@@ -38,6 +38,14 @@ describe('AuditLogsService', () => {
 
   beforeEach(async () => {
     mockPrisma = createMockPrismaService();
+    mockPrisma.auditLog.create.mockImplementation(async ({ data }) => ({
+      id: 101,
+      ...data,
+    }));
+    mockPrisma.systemAuditEvent.create.mockImplementation(async ({ data }) => ({
+      id: 102,
+      ...data,
+    }));
     mockEventEmitter = createMockEventEmitter2();
 
     const module: TestingModule = await Test.createTestingModule({
@@ -51,82 +59,145 @@ describe('AuditLogsService', () => {
     service = module.get<AuditLogsService>(AuditLogsService);
   });
 
-  it('stores platform audit logs with a default organizationId', async () => {
-    const auditLogDelegate = getMockPrismaDelegate(mockPrisma, 'auditLog');
-    const userDelegate = getMockPrismaDelegate(mockPrisma, 'user');
-    const organizationDelegate = getMockPrismaDelegate(
-      mockPrisma,
-      'organization',
-    );
-    const platformUser = createAuthUser(null);
-
-    userDelegate.findUnique.mockResolvedValue({ organizationId: null });
-    organizationDelegate.findFirst.mockResolvedValue({ id: 1 });
-    auditLogDelegate.create.mockImplementation(async ({ data }) => ({
+  it('stores platform-user events separately without selecting or creating a tenant', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 1,
+      organizationId: null,
+    });
+    mockPrisma.systemAuditEvent.create.mockImplementation(async ({ data }) => ({
       id: 101,
       ...data,
     }));
-
     await service.create(
       {
-        userId: platformUser.userId,
-        userName: platformUser.name,
-        userRole: platformUser.role,
+        userId: 1,
         module: 'Auth',
         entityType: 'User',
+        entityId: 1,
         action: 'LOGIN_SUCCESS',
-        entityId: platformUser.userId,
-        description: 'Platform login succeeded',
-        status: 'SUCCESS',
       },
-      platformUser,
+      createAuthUser(null),
     );
+    expect(mockPrisma.systemAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ reason: 'PLATFORM_EVENT' }),
+      }),
+    );
+    expect(mockPrisma.auditLog.create).not.toHaveBeenCalled();
+    expect(mockPrisma.organization.findFirst).not.toHaveBeenCalled();
+    expect(mockPrisma.organization.upsert).not.toHaveBeenCalled();
+  });
 
-    expect(auditLogDelegate.create).toHaveBeenCalledWith(
+  it('quarantines an unexplained context mismatch instead of trusting the request tenant', async () => {
+    mockPrisma.task.findUnique.mockResolvedValue({ id: 10, organizationId: 7 });
+    await runWithAuditContext({ organizationId: 55 }, () =>
+      service.create(
+        {
+          userId: 2,
+          module: 'Tasks',
+          entityType: 'Task',
+          entityId: 10,
+          action: 'UPDATE',
+        },
+        createAuthUser(7),
+      ),
+    );
+    expect(mockPrisma.auditLog.create).not.toHaveBeenCalled();
+    expect(mockPrisma.systemAuditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          organizationId: 1,
+          reason: 'CONTEXT_MISMATCH',
+          targetOrganizationId: 7,
+          requestedOrganizationId: 55,
         }),
       }),
     );
   });
 
-  it('prefers request audit context organizationId over the user payload', async () => {
-    const auditLogDelegate = getMockPrismaDelegate(mockPrisma, 'auditLog');
-    const userDelegate = getMockPrismaDelegate(mockPrisma, 'user');
-    const tenantUser = createAuthUser(7);
-
-    auditLogDelegate.create.mockImplementation(async ({ data }) => ({
-      id: 102,
-      ...data,
-    }));
-    userDelegate.findUnique.mockResolvedValue({ organizationId: 7 });
-
-    await runWithAuditContext({ organizationId: 55 }, async () => {
-      await service.create(
-        {
-          userId: tenantUser.userId,
-          userName: tenantUser.name,
-          userRole: tenantUser.role,
-          module: 'Tasks',
-          entityType: 'Task',
-          action: 'UPDATE',
-          entityId: 10,
-          description: 'Task updated',
-          status: 'SUCCESS',
-        },
-        tenantUser,
-      );
-    });
-
-    expect(auditLogDelegate.create).toHaveBeenCalledWith(
+  it('attributes a platform-admin action to the actual target rather than the selected tenant', async () => {
+    mockPrisma.task.findUnique.mockResolvedValue({ id: 10, organizationId: 7 });
+    mockPrisma.organization.findUnique.mockResolvedValue({ id: 7 });
+    await runWithAuditContext(
+      { organizationId: 55, isPlatformAdmin: true },
+      () =>
+        service.create(
+          {
+            userId: 1,
+            module: 'Tasks',
+            entityType: 'Task',
+            entityId: 10,
+            action: 'UPDATE',
+          },
+          createAuthUser(null),
+        ),
+    );
+    expect(mockPrisma.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          organizationId: 55,
-        }),
+        data: expect.objectContaining({ organizationId: 7 }),
       }),
     );
-    expect(userDelegate.findUnique).not.toHaveBeenCalled();
+    expect(mockPrisma.systemAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('preserves unknown-login events without using an actor home organization', async () => {
+    await service.logLogin(
+      {
+        module: 'Auth',
+        entityType: 'User',
+        action: 'LOGIN_FAILURE',
+        success: false,
+      },
+      createAuthUser(7),
+    );
+    expect(mockPrisma.auditLog.create).not.toHaveBeenCalled();
+    expect(mockPrisma.systemAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ reason: 'OWNERSHIP_UNRESOLVED' }),
+      }),
+    );
+    expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
+    expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+  });
+
+  it('propagates explicit audit-write failures instead of creating a default organization', async () => {
+    mockPrisma.systemAuditEvent.create.mockRejectedValue(
+      new Error('audit unavailable'),
+    );
+    await expect(
+      service.logCustomAction({
+        module: 'System',
+        entityType: 'Permission',
+        action: 'UPDATE',
+      }),
+    ).rejects.toThrow('audit unavailable');
+    expect(mockPrisma.organization.upsert).not.toHaveBeenCalled();
+  });
+
+  it('denies system-audit access to tenant administrators and tenant super-admins', async () => {
+    await expect(
+      service.findSystemEvents({}, createAuthUser(7)),
+    ).rejects.toThrow(ForbiddenException);
+    await expect(
+      service.findSystemEvents(
+        {},
+        createAuthUser(7, {
+          role: Role.SUPER_ADMIN,
+          roles: [Role.SUPER_ADMIN],
+        }),
+      ),
+    ).rejects.toThrow(ForbiddenException);
+    expect(mockPrisma.systemAuditEvent.findMany).not.toHaveBeenCalled();
+  });
+
+  it('allows platform readers to inspect the separate system stream', async () => {
+    mockPrisma.$transaction.mockResolvedValue([0, []]);
+    await service.findSystemEvents(
+      { reason: 'CONTEXT_MISMATCH' },
+      createAuthUser(null),
+    );
+    expect(mockPrisma.systemAuditEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { reason: 'CONTEXT_MISMATCH' } }),
+    );
   });
 
   it('keeps tenant-scoped audit log queries filtered by organizationId', async () => {
@@ -209,5 +280,28 @@ describe('AuditLogsService', () => {
       where: { entityType: 'Task', entityId: 10, organizationId: 7 },
       orderBy: { createdAt: 'desc' },
     });
+  });
+
+  it('does not let an explicit event tenant mask conflicting request context', async () => {
+    mockPrisma.task.findUnique.mockResolvedValue({ id: 10, organizationId: 7 });
+    await runWithAuditContext({ organizationId: 55 }, () =>
+      service.logCustomAction({
+        organizationId: 7,
+        module: 'Tasks',
+        entityType: 'Task',
+        entityId: 10,
+        action: 'UPDATE',
+      }),
+    );
+    expect(mockPrisma.auditLog.create).not.toHaveBeenCalled();
+    expect(mockPrisma.systemAuditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          reason: 'CONTEXT_MISMATCH',
+          targetOrganizationId: 7,
+          requestedOrganizationId: 55,
+        }),
+      }),
+    );
   });
 });

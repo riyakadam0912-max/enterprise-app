@@ -26,6 +26,10 @@ This guide is for business users, administrators, developers, QA engineers, and 
 
 ### Reference
 
+- [Audit organization attribution](./authentication/AUDIT_ORGANIZATION_ATTRIBUTION.md)
+
+- [Authentication rate limits](./authentication/AUTHENTICATION_RATE_LIMITS.md)
+
 - [Changelog](./10-Changelog/README.md)
 - [Archive](./Archive/README.md)
 

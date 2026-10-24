@@ -314,6 +314,7 @@ export class NotificationsService {
 
     // Audit log
     await this.auditLogsService.logCustomAction({
+      organizationId,
       userId: payload.createdBy ?? null,
       module: payload.module ?? 'Notifications',
       entityType: 'Notification',

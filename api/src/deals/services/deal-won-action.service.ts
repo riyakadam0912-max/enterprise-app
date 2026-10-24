@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { runWithSystemAuditContext } from '../../audit-logs/audit-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditLogsService } from '../../audit-logs/audit-logs.service';
 import { DealStatusUpdatedEvent } from '../events/deal-status-updated.event';
@@ -86,86 +86,92 @@ export class DealWonActionService {
           : null;
 
       // Execute all operations within a single transaction
-      const result = await this.prisma.$transaction(async (tx) => {
-        // 1. Create Project from Deal
-        const project = await tx.project.create({
-          data: {
-            organizationId: deal.organizationId,
-            projectName: `${deal.title} - Project Implementation`,
-            projectCode: `PRJ-${deal.id}-${Date.now()}`,
-            startDate: new Date(),
-            endDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
-            managerId: assignedManager?.id ?? null,
-            manager: assignedManager ? deal.assignedEmployee?.name : null,
-            managerAssignedById: assignedManager
-              ? (event.triggeredByUserId ?? null)
-              : null,
-            createdById: event.triggeredByUserId ?? null,
-            status: 'PLANNED',
-            budget: deal.value,
-            description: `Project created from won deal: ${deal.title}`,
-            client:
-              deal.linkedContact?.company ||
-              deal.contact ||
-              deal.linkedContact?.contactName ||
-              'Client TBD',
-            projectLead:
-              deal.linkedContact?.contactName ||
-              deal.contact ||
-              'Primary Contact',
-          },
-        });
+      const result = await runWithSystemAuditContext(
+        deal.organizationId,
+        'deal.won',
+        () =>
+          this.prisma.$transaction(async (tx) => {
+            // 1. Create Project from Deal
+            const project = await tx.project.create({
+              data: {
+                organizationId: deal.organizationId,
+                projectName: `${deal.title} - Project Implementation`,
+                projectCode: `PRJ-${deal.id}-${Date.now()}`,
+                startDate: new Date(),
+                endDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
+                managerId: assignedManager?.id ?? null,
+                manager: assignedManager ? deal.assignedEmployee?.name : null,
+                managerAssignedById: assignedManager
+                  ? (event.triggeredByUserId ?? null)
+                  : null,
+                createdById: event.triggeredByUserId ?? null,
+                status: 'PLANNED',
+                budget: deal.value,
+                description: `Project created from won deal: ${deal.title}`,
+                client:
+                  deal.linkedContact?.company ||
+                  deal.contact ||
+                  deal.linkedContact?.contactName ||
+                  'Client TBD',
+                projectLead:
+                  deal.linkedContact?.contactName ||
+                  deal.contact ||
+                  'Primary Contact',
+              },
+            });
 
-        this.logger.debug(
-          `Created project #${project.id} from deal #${event.dealId}`,
-        );
+            this.logger.debug(
+              `Created project #${project.id} from deal #${event.dealId}`,
+            );
 
-        // 2. Create 'Project Kickoff' Task
-        const task = await tx.task.create({
-          data: {
-            organizationId: deal.organizationId,
-            taskName: 'Project Kickoff',
-            project: project.projectName,
-            projectId: project.id,
-            assignee:
-              deal.linkedContact?.contactName || deal.contact || 'Client',
-            assignedToId: deal.assignedToId,
-            status: 'PENDING',
-            priority: 'HIGH',
-            dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Due in 7 days
-            estimatedHours: 8,
-            notes:
-              'Kickoff meeting to align on project scope, timeline, and deliverables. ' +
-              'Includes initial requirements gathering and team introduction.',
-            dealId: event.dealId,
-          },
-        });
+            // 2. Create 'Project Kickoff' Task
+            const task = await tx.task.create({
+              data: {
+                organizationId: deal.organizationId,
+                taskName: 'Project Kickoff',
+                project: project.projectName,
+                projectId: project.id,
+                assignee:
+                  deal.linkedContact?.contactName || deal.contact || 'Client',
+                assignedToId: deal.assignedToId,
+                status: 'PENDING',
+                priority: 'HIGH',
+                dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Due in 7 days
+                estimatedHours: 8,
+                notes:
+                  'Kickoff meeting to align on project scope, timeline, and deliverables. ' +
+                  'Includes initial requirements gathering and team introduction.',
+                dealId: event.dealId,
+              },
+            });
 
-        this.logger.debug(
-          `Created kickoff task #${task.id} for project #${project.id}`,
-        );
+            this.logger.debug(
+              `Created kickoff task #${task.id} for project #${project.id}`,
+            );
 
-        // 3. Create AuditLog entry
-        const auditLog = await tx.auditLog.create({
-          data: {
-            userId: event.triggeredByUserId || 0, // System user if not provided
-            userName: event.triggeredByUserId ? 'System User' : 'System',
-            userRole: 'SYSTEM',
-            module: 'CRM',
-            entityType: 'Deal',
-            entityId: event.dealId,
-            action: 'DEAL_WON_WORKFLOW',
-            description: `Deal #${event.dealId} triggered the won workflow`,
-            status: 'SUCCESS',
-          } as Prisma.AuditLogCreateInput,
-        });
+            // 3. Create AuditLog entry
+            const auditLog = await tx.auditLog.create({
+              data: {
+                organizationId: deal.organizationId,
+                userId: event.triggeredByUserId ?? undefined,
+                userName: event.triggeredByUserId ? 'System User' : 'System',
+                userRole: 'SYSTEM',
+                module: 'CRM',
+                entityType: 'Deal',
+                entityId: event.dealId,
+                action: 'DEAL_WON_WORKFLOW',
+                description: `Deal #${event.dealId} triggered the won workflow`,
+                status: 'SUCCESS',
+              },
+            });
 
-        this.logger.debug(
-          `Created audit log #${auditLog.id} for deal #${event.dealId}`,
-        );
+            this.logger.debug(
+              `Created audit log #${auditLog.id} for deal #${event.dealId}`,
+            );
 
-        return { project, task, auditLog };
-      });
+            return { project, task, auditLog };
+          }),
+      );
 
       return {
         deal,

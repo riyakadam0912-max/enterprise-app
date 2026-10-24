@@ -24,12 +24,7 @@ type AuditRequest = Request & {
 @Injectable()
 export class AuditContextMiddleware implements NestMiddleware {
   use(req: AuditRequest, res: Response, next: NextFunction) {
-    const forwardedFor = req.headers['x-forwarded-for'];
-    const ipAddress = Array.isArray(forwardedFor)
-      ? forwardedFor[0]
-      : typeof forwardedFor === 'string'
-        ? forwardedFor.split(',')[0]?.trim()
-        : (req.ip ?? null);
+    const ipAddress = req.ip ?? req.socket?.remoteAddress ?? null;
 
     const route = req.route as { path?: unknown } | undefined;
     const routePath = typeof route?.path === 'string' ? route.path : null;

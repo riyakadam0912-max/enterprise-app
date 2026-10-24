@@ -1,3 +1,4 @@
+import { runWithSystemAuditContext } from '../audit-logs/audit-context';
 import {
   Inject,
   BadRequestException,
@@ -6564,81 +6565,92 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const now = new Date();
 
     for (const attendance of openAttendances) {
-      if (!attendance.checkIn || !attendance.employee) continue;
-      const shift = attendance.shift ?? attendance.employee.shift;
-      if (shift?.type === 'FLEXIBLE') continue;
-      const timezone = attendance.employee.organization?.timezone ?? 'UTC';
-      const dateKey = new Date(attendance.date).toISOString().slice(0, 10);
-      if (dateKeyInTimezone(now, timezone) <= dateKey) continue;
+      await runWithSystemAuditContext(
+        attendance.organizationId,
+        'attendance.auto-checkout',
+        async () => {
+          if (!attendance.checkIn || !attendance.employee) return;
+          const shift = attendance.shift ?? attendance.employee.shift;
+          if (shift?.type === 'FLEXIBLE') return;
+          const timezone = attendance.employee.organization?.timezone ?? 'UTC';
+          const dateKey = new Date(attendance.date).toISOString().slice(0, 10);
+          if (dateKeyInTimezone(now, timezone) <= dateKey) return;
 
-      const checkOut = localMidnightAfterDateInTimezone(dateKey, timezone);
-      if (!checkOut || checkOut.getTime() < attendance.checkIn.getTime()) {
-        continue;
-      }
-      if (checkOut.getTime() > now.getTime()) continue;
+          const checkOut = localMidnightAfterDateInTimezone(dateKey, timezone);
+          if (!checkOut || checkOut.getTime() < attendance.checkIn.getTime()) {
+            return;
+          }
+          if (checkOut.getTime() > now.getTime()) return;
 
-      const breaks = attendance.breaks ?? [];
-      const openBreak = breaks.find((interval) => interval.endedAt === null);
-      const breakIntervals = breaks.map((interval) => ({
-        startedAt: interval.startedAt,
-        endedAt: interval.endedAt ?? (openBreak ? checkOut : null),
-      }));
-      const workingHours = this.calculateWorkingHours(
-        attendance.checkIn,
-        checkOut,
-        breakIntervals,
-      );
-      const halfDayLeave = await this.findApprovedLeaveForDay(
-        attendance.employeeId,
-        attendance.date,
-        'HALF_DAY',
-      );
-      const overtimeHours = this.calculateOvertimeHours(workingHours, shift);
-      const shortfallHours = this.calculateShortfallHours(
-        workingHours,
-        shift,
-        halfDayLeave ? 5 : undefined,
-      );
-      const lateMinutes = attendance.lateMinutes ?? 0;
-
-      await this.prisma.$transaction(async (tx) => {
-        if (openBreak) {
-          await tx.attendanceBreak.update({
-            where: { id: openBreak.id },
-            data: { endedAt: checkOut },
-          });
-        }
-        if (shift?.type !== 'FLEXIBLE') {
-          await this.tasksService.stopActiveTimerForEmployee(
-            attendance.employeeId,
-            attendance.organizationId,
-            checkOut,
-            tx,
+          const breaks = attendance.breaks ?? [];
+          const openBreak = breaks.find(
+            (interval) => interval.endedAt === null,
           );
-        }
-        await tx.attendance.update({
-          where: { id: attendance.id },
-          data: {
+          const breakIntervals = breaks.map((interval) => ({
+            startedAt: interval.startedAt,
+            endedAt: interval.endedAt ?? (openBreak ? checkOut : null),
+          }));
+          const workingHours = this.calculateWorkingHours(
+            attendance.checkIn,
             checkOut,
-            checkoutSource: AttendanceCheckoutSource.AUTO,
-            checkoutActorId: null,
+            breakIntervals,
+          );
+          const halfDayLeave = await this.findApprovedLeaveForDay(
+            attendance.employeeId,
+            attendance.date,
+            'HALF_DAY',
+          );
+          const overtimeHours = this.calculateOvertimeHours(
             workingHours,
-            overtimeHours,
-            shortfallHours,
-            isAutoClosed: true,
-            status: this.calculateStatus({
-              day: this.startOfDay(new Date(attendance.date)),
-              checkIn: attendance.checkIn,
-              checkOut,
-              workingHours,
-              onLeave: false,
-              shift,
-              lateMinutes,
-              timezone,
-            }),
-          },
-        });
-      });
+            shift,
+          );
+          const shortfallHours = this.calculateShortfallHours(
+            workingHours,
+            shift,
+            halfDayLeave ? 5 : undefined,
+          );
+          const lateMinutes = attendance.lateMinutes ?? 0;
+
+          await this.prisma.$transaction(async (tx) => {
+            if (openBreak) {
+              await tx.attendanceBreak.update({
+                where: { id: openBreak.id },
+                data: { endedAt: checkOut },
+              });
+            }
+            if (shift?.type !== 'FLEXIBLE') {
+              await this.tasksService.stopActiveTimerForEmployee(
+                attendance.employeeId,
+                attendance.organizationId,
+                checkOut,
+                tx,
+              );
+            }
+            await tx.attendance.update({
+              where: { id: attendance.id },
+              data: {
+                checkOut,
+                checkoutSource: AttendanceCheckoutSource.AUTO,
+                checkoutActorId: null,
+                workingHours,
+                overtimeHours,
+                shortfallHours,
+                isAutoClosed: true,
+                status: this.calculateStatus({
+                  day: this.startOfDay(new Date(attendance.date)),
+                  checkIn: attendance.checkIn,
+                  checkOut,
+                  workingHours,
+                  onLeave: false,
+                  shift,
+                  lateMinutes,
+                  timezone,
+                }),
+              },
+            });
+          });
+        },
+      );
     }
   }
 
@@ -6707,128 +6719,136 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       );
 
     for (const employee of employees) {
-      const targetInfo = targetByEmployee.get(employee.id);
-      if (!targetInfo) continue;
-      const target = targetInfo.day;
-      if (
-        this.lastAutomationDateByOrganization.get(employee.organizationId) ===
-        targetInfo.key
-      ) {
-        continue;
-      }
-      if (!this.isAttendanceEligible(target, employee.hireDate)) {
-        continue;
-      }
-      const shift = this.employeeShiftForDay(
-        employee.shiftAssignments,
-        employee.shift,
-        target,
-      );
-      if (!shift) {
-        continue;
-      }
-      const isCorporateHoliday = holidayRows.some(
-        (holiday) =>
-          this.holidayAppliesToOrganization(
-            holiday,
-            employee.organizationId,
-            familyRootByOrganization,
-          ) && this.holidayCoversDay(holiday, target),
-      );
+      await runWithSystemAuditContext(
+        employee.organizationId,
+        'attendance.daily',
+        async () => {
+          const targetInfo = targetByEmployee.get(employee.id);
+          if (!targetInfo) return;
+          const target = targetInfo.day;
+          if (
+            this.lastAutomationDateByOrganization.get(
+              employee.organizationId,
+            ) === targetInfo.key
+          ) {
+            return;
+          }
+          if (!this.isAttendanceEligible(target, employee.hireDate)) {
+            return;
+          }
+          const shift = this.employeeShiftForDay(
+            employee.shiftAssignments,
+            employee.shift,
+            target,
+          );
+          if (!shift) {
+            return;
+          }
+          const isCorporateHoliday = holidayRows.some(
+            (holiday) =>
+              this.holidayAppliesToOrganization(
+                holiday,
+                employee.organizationId,
+                familyRootByOrganization,
+              ) && this.holidayCoversDay(holiday, target),
+          );
 
-      const leave = await this.findApprovedLeaveForDay(employee.id, target);
-      const shootAssignment = await this.prisma.taskCrewAssignment.findFirst({
-        where: {
-          user: { employeeId: employee.id },
-          task: {
-            taskType: 'SHOOT',
-            shootDate: target,
-            deletedAt: null,
-          },
-        },
-        select: { id: true },
-      });
-      const shootCreditEligible = Boolean(
-        shootAssignment &&
-        !leave &&
-        !isCorporateHoliday &&
-        !this.isWeeklyHoliday(target, shift),
-      );
+          const leave = await this.findApprovedLeaveForDay(employee.id, target);
+          const shootAssignment =
+            await this.prisma.taskCrewAssignment.findFirst({
+              where: {
+                user: { employeeId: employee.id },
+                task: {
+                  taskType: 'SHOOT',
+                  shootDate: target,
+                  deletedAt: null,
+                },
+              },
+              select: { id: true },
+            });
+          const shootCreditEligible = Boolean(
+            shootAssignment &&
+            !leave &&
+            !isCorporateHoliday &&
+            !this.isWeeklyHoliday(target, shift),
+          );
 
-      if (shift.type === 'FLEXIBLE') continue;
+          if (shift.type === 'FLEXIBLE') return;
 
-      const existing = await this.prisma.attendance.upsert({
-        where: {
-          employeeId_date: {
-            employeeId: employee.id,
-            date: target,
-          },
-        },
-        create: {
-          organizationId: employee.organizationId,
-          employeeId: employee.id,
-          shiftId: shift.id,
-          date: target,
-          status: leave
-            ? AttendanceStatus.LEAVE
-            : isCorporateHoliday
-              ? AttendanceStatus.HOLIDAY
-              : this.isWeeklyHoliday(target, shift)
-                ? AttendanceStatus.WEEKLY_OFF
-                : shootCreditEligible
-                  ? AttendanceStatus.PRESENT
-                  : AttendanceStatus.ABSENT,
-          requiredHours: shift.requiredHours,
-          isPaidLeave: leave ? Boolean(leave.isPaid ?? true) : null,
-          isShootDay: shootCreditEligible,
-        },
-        update: {},
-        include: { shift: true, breaks: true },
-      });
-
-      if (existing.status === AttendanceStatus.LEAVE || leave) {
-        continue;
-      }
-
-      if (
-        shootCreditEligible &&
-        (existing.status === AttendanceStatus.ABSENT ||
-          existing.status === AttendanceStatus.UPCOMING ||
-          existing.status === AttendanceStatus.NOT_STARTED ||
-          existing.status === AttendanceStatus.NOT_SCHEDULED) &&
-        !existing.checkIn &&
-        !existing.checkOut
-      ) {
-        await this.prisma.attendance.update({
-          where: { id: existing.id },
-          data: {
-            status: AttendanceStatus.PRESENT,
-            isShootDay: true,
-            remarks: existing.remarks ?? 'Shoot day credit',
-          },
-        });
-      }
-
-      if (isCorporateHoliday && !existing.checkIn) {
-        if (existing.status !== AttendanceStatus.HOLIDAY) {
-          await this.prisma.attendance.update({
-            where: { id: existing.id },
-            data: { status: AttendanceStatus.HOLIDAY },
+          const existing = await this.prisma.attendance.upsert({
+            where: {
+              employeeId_date: {
+                employeeId: employee.id,
+                date: target,
+              },
+            },
+            create: {
+              organizationId: employee.organizationId,
+              employeeId: employee.id,
+              shiftId: shift.id,
+              date: target,
+              status: leave
+                ? AttendanceStatus.LEAVE
+                : isCorporateHoliday
+                  ? AttendanceStatus.HOLIDAY
+                  : this.isWeeklyHoliday(target, shift)
+                    ? AttendanceStatus.WEEKLY_OFF
+                    : shootCreditEligible
+                      ? AttendanceStatus.PRESENT
+                      : AttendanceStatus.ABSENT,
+              requiredHours: shift.requiredHours,
+              isPaidLeave: leave ? Boolean(leave.isPaid ?? true) : null,
+              isShootDay: shootCreditEligible,
+            },
+            update: {},
+            include: { shift: true, breaks: true },
           });
-        }
-        continue;
-      }
 
-      if (
-        this.isWeeklyHoliday(target, shift) &&
-        existing.status !== AttendanceStatus.WEEKLY_OFF
-      ) {
-        await this.prisma.attendance.update({
-          where: { id: existing.id },
-          data: { status: AttendanceStatus.WEEKLY_OFF },
-        });
-        continue;
-      }
+          if (existing.status === AttendanceStatus.LEAVE || leave) {
+            return;
+          }
+
+          if (
+            shootCreditEligible &&
+            (existing.status === AttendanceStatus.ABSENT ||
+              existing.status === AttendanceStatus.UPCOMING ||
+              existing.status === AttendanceStatus.NOT_STARTED ||
+              existing.status === AttendanceStatus.NOT_SCHEDULED) &&
+            !existing.checkIn &&
+            !existing.checkOut
+          ) {
+            await this.prisma.attendance.update({
+              where: { id: existing.id },
+              data: {
+                status: AttendanceStatus.PRESENT,
+                isShootDay: true,
+                remarks: existing.remarks ?? 'Shoot day credit',
+              },
+            });
+          }
+
+          if (isCorporateHoliday && !existing.checkIn) {
+            if (existing.status !== AttendanceStatus.HOLIDAY) {
+              await this.prisma.attendance.update({
+                where: { id: existing.id },
+                data: { status: AttendanceStatus.HOLIDAY },
+              });
+            }
+            return;
+          }
+
+          if (
+            this.isWeeklyHoliday(target, shift) &&
+            existing.status !== AttendanceStatus.WEEKLY_OFF
+          ) {
+            await this.prisma.attendance.update({
+              where: { id: existing.id },
+              data: { status: AttendanceStatus.WEEKLY_OFF },
+            });
+            return;
+          }
+        },
+      );
     }
 
     for (const [organizationId, key] of targetByOrganization) {

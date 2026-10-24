@@ -4,7 +4,7 @@ import { CacheModule } from '@nestjs/cache-manager';
 import { BullModule } from '@nestjs/bullmq';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { AuthThrottlingModule } from './auth/auth-throttling.module';
 import { join } from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -59,14 +59,7 @@ const queueImports = redisConnection
     }),
     ...queueImports,
     EventEmitterModule.forRoot(),
-    ThrottlerModule.forRoot({
-      throttlers: [
-        {
-          ttl: 60,
-          limit: 20,
-        },
-      ],
-    }),
+    AuthThrottlingModule,
     CoreModule,
     IdentityModule,
     HrModule,
@@ -90,7 +83,7 @@ const queueImports = redisConnection
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
-      .apply(TenantContextMiddleware, AuditContextMiddleware)
+      .apply(AuditContextMiddleware, TenantContextMiddleware)
       .forRoutes({ path: '*', method: RequestMethod.ALL });
   }
 }

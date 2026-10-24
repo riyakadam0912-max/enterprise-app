@@ -4,12 +4,15 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAuditLogDto } from './dto/create-audit-log.dto';
 import { getAuditContext } from './audit-context';
+import { persistAuditEvent } from './audit-persistence';
+import { getAuditTransaction } from './audit-transaction';
 import type { AuthUser } from '../common/types/auth';
 import { Role } from '../common/enums/role.enum';
 
 type AuditStatus = 'SUCCESS' | 'FAILURE';
 
 type AuditLogInput = {
+  organizationId?: number | null;
   userId?: number | null;
   userName?: string | null;
   userRole?: string | null;
@@ -113,54 +116,6 @@ export class AuditLogsService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  private async resolveOrganizationId(
-    user?: AuthUser,
-    actor?: { userId?: number | null } | null,
-  ): Promise<number> {
-    const contextOrganizationId = getAuditContext().organizationId;
-    if (contextOrganizationId != null) {
-      return contextOrganizationId;
-    }
-
-    if (user?.organizationId != null) {
-      return user.organizationId;
-    }
-
-    const actorUserId = actor?.userId;
-    if (actorUserId != null) {
-      const userRecord = await this.prisma.user.findUnique({
-        where: { id: actorUserId },
-        select: { organizationId: true },
-      });
-      if (userRecord?.organizationId != null) {
-        return userRecord.organizationId;
-      }
-    }
-
-    const defaultOrg = await this.prisma.organization.findFirst({
-      orderBy: { id: 'asc' },
-      select: { id: true },
-    });
-
-    if (defaultOrg) {
-      return defaultOrg.id;
-    }
-
-    const created = await this.prisma.organization.upsert({
-      where: { code: 'DEFAULT' },
-      update: {},
-      create: {
-        name: 'Default Organization',
-        code: 'DEFAULT',
-        slug: 'default',
-        status: 'ACTIVE',
-      },
-      select: { id: true },
-    });
-
-    return created.id;
-  }
-
   private isGlobalAuditReader(user: AuthUser): boolean {
     return (
       user.role === Role.SUPER_ADMIN || user.roles.includes(Role.SUPER_ADMIN)
@@ -180,10 +135,24 @@ export class AuditLogsService {
   }
 
   async create(dto: CreateAuditLogDto, user?: AuthUser) {
-    const organizationId = await this.resolveOrganizationId(user, dto);
-    return this.prisma.auditLog.create({
-      data: this.buildData(dto, organizationId),
-    });
+    return this.writeEvent(dto, user);
+  }
+
+  private writeEvent(input: AuditLogInput, user?: AuthUser) {
+    const context = getAuditContext();
+    return persistAuditEvent(
+      getAuditTransaction(this.prisma) ?? this.prisma,
+      input,
+      {
+        ...context,
+        userId: context.userId ?? user?.userId,
+        userName: context.userName ?? user?.name,
+        userRole: context.userRole ?? user?.role,
+        organizationId: context.organizationId ?? user?.organizationId,
+        isPlatformAdmin:
+          context.isPlatformAdmin === true || user?.isPlatformAdmin === true,
+      },
+    );
   }
 
   async logCreate(input: AuditLogInput, user?: AuthUser) {
@@ -403,50 +372,39 @@ export class AuditLogsService {
   }
 
   private async createRows(rows: AuditLogInput[], user?: AuthUser) {
-    const organizationId = await this.resolveOrganizationId(user, rows[0]);
-    if (rows.length === 1) {
-      const created = await this.prisma.auditLog.create({
-        data: this.buildData(rows[0], organizationId),
-      });
-      this.eventEmitter.emit('audit.log.created', created);
-      return created;
-    }
-
-    const created = await this.prisma.auditLog.createMany({
-      data: rows.map((row) => this.buildData(row, organizationId)),
-    });
-
+    const created: Awaited<ReturnType<typeof persistAuditEvent>>[] = [];
     for (const row of rows) {
-      this.eventEmitter.emit(
-        'audit.log.created',
-        this.buildData(row, organizationId),
-      );
+      const event = await this.writeEvent(row, user);
+      created.push(event);
+      // System events are intentionally excluded from tenant realtime channels.
+      if ('organizationId' in event)
+        this.eventEmitter.emit('audit.log.created', event);
     }
-
-    return created;
+    return created.length === 1 ? created[0] : { count: created.length };
   }
 
-  private buildData(input: AuditLogInput, organizationId: number) {
-    const context = getAuditContext();
-    return {
-      userId: input.userId ?? context.userId ?? undefined,
-      userName: input.userName ?? context.userName ?? undefined,
-      userRole: input.userRole ?? context.userRole ?? undefined,
-      module: input.module,
-      entityType: input.entityType,
-      entityId: input.entityId ?? undefined,
-      action: input.action,
-      fieldName: input.fieldName ?? undefined,
-      oldValue: input.oldValue ?? undefined,
-      newValue: input.newValue ?? undefined,
-      description: input.description ?? undefined,
-      ipAddress: input.ipAddress ?? context.ipAddress ?? undefined,
-      deviceInfo: input.deviceInfo ?? context.deviceInfo ?? undefined,
-      requestMethod: input.requestMethod ?? context.requestMethod ?? undefined,
-      endpoint: input.endpoint ?? context.endpoint ?? undefined,
-      status: input.status ?? 'SUCCESS',
-      organizationId,
-    };
+  async findSystemEvents(
+    query: { page?: number; limit?: number; reason?: string },
+    user: AuthUser,
+  ) {
+    const legacyPlatformAdmin =
+      user.organizationId == null &&
+      (user.role === Role.SUPER_ADMIN || user.roles.includes(Role.SUPER_ADMIN));
+    if (!user.isPlatformAdmin && !legacyPlatformAdmin)
+      throw new ForbiddenException('Platform administrator access required');
+    const page = Math.max(1, Number(query.page ?? 1));
+    const limit = Math.min(200, Math.max(1, Number(query.limit ?? 25)));
+    const where = query.reason ? { reason: query.reason } : {};
+    const [total, items] = await this.prisma.$transaction([
+      this.prisma.systemAuditEvent.count({ where }),
+      this.prisma.systemAuditEvent.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
+    return { items, total, page, limit };
   }
 
   private buildDescription(verb: string, input: AuditLogInput) {

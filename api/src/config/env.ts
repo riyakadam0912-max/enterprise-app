@@ -9,6 +9,8 @@ type ServerEnv = {
   FRONTEND_ORIGIN: string;
   FRONTEND_ORIGINS: string;
   REDIS_URL?: string;
+  RATE_LIMIT_REDIS_URL?: string;
+  TRUSTED_PROXY_CIDRS?: string;
   REDIS_HOST?: string;
   REDIS_PORT?: number;
   JWT_ACCESS_SECRET: string;
@@ -399,6 +401,8 @@ export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
     FRONTEND_ORIGIN: readOptionalString(env, 'FRONTEND_ORIGIN'),
     FRONTEND_ORIGINS: readOptionalString(env, 'FRONTEND_ORIGINS'),
     REDIS_URL: readOptionalString(env, 'REDIS_URL'),
+    RATE_LIMIT_REDIS_URL: readOptionalString(env, 'RATE_LIMIT_REDIS_URL'),
+    TRUSTED_PROXY_CIDRS: readOptionalString(env, 'TRUSTED_PROXY_CIDRS'),
     REDIS_HOST: readOptionalString(env, 'REDIS_HOST'),
     REDIS_PORT: readOptionalNumber(env, 'REDIS_PORT', 6379),
     JWT_ACCESS_SECRET: readRequiredString(env, 'JWT_ACCESS_SECRET'),

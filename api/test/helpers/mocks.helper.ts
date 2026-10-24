@@ -124,6 +124,7 @@ export type MockPrismaService = Partial<
   appRole: DelegateMock;
   organization: DelegateMock;
   auditLog: DelegateMock;
+  systemAuditEvent: DelegateMock;
   expense: DelegateMock;
   userRole: DelegateMock;
   userReportingManager: DelegateMock;
@@ -210,6 +211,7 @@ export const createMockPrismaService = (): MockPrismaService => ({
   appRole: createDelegateMock(),
   organization: createDelegateMock(),
   auditLog: createDelegateMock(),
+  systemAuditEvent: createDelegateMock(),
   expense: createDelegateMock(),
   userRole: createDelegateMock(),
   userReportingManager: createDelegateMock(),
@@ -282,7 +284,8 @@ export const createMockAuditLogsService = (): MockAuditLogsService => ({
 export const createMockThrottlerModuleOptions = () => ({
   throttlers: [
     {
-      ttl: 60,
+      ttl: 60_000,
+      blockDuration: 60_000,
       limit: 10,
     },
   ],

@@ -1,4 +1,10 @@
 import { Prisma } from '@prisma/client';
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+const auditReads = new AsyncLocalStorage<boolean>();
+export function withDeletedRecords<T>(callback: () => T): T {
+  return auditReads.run(true, callback);
+}
 
 const SOFT_DELETE_MODELS = new Set([
   'User',
@@ -94,6 +100,7 @@ export function softDeleteMiddleware(): Prisma.Middleware {
       params.action === 'aggregate' ||
       params.action === 'groupBy'
     ) {
+      if (auditReads.getStore()) return next(params);
       const args = (params.args ?? {}) as Record<string, unknown>;
       const where = args.where as Record<string, unknown> | undefined;
 

@@ -2422,3 +2422,34 @@ model SystemSetting {
 
   @@index([updatedBy])
 }
+
+// Platform and unresolved events have no tenant FK and are never tenant-visible.
+model SystemAuditEvent {
+  id                      Int      @id @default(autoincrement())
+  createdAt               DateTime @default(now())
+  reason                  String
+  targetOrganizationId    Int?
+  requestedOrganizationId Int?
+  userId                  Int?
+  userName                String?
+  userRole                String?
+  module                  String
+  entityType              String
+  entityId                Int?
+  action                  String
+  fieldName               String?
+  oldValue                Json?
+  newValue                Json?
+  description             String?
+  ipAddress               String?
+  deviceInfo              String?
+  requestMethod           String?
+  endpoint                String?
+  status                  String   @default("SUCCESS")
+  correlationId           String?
+  jobName                 String?
+
+  @@index([createdAt])
+  @@index([reason, createdAt])
+  @@index([targetOrganizationId])
+}
