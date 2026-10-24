@@ -441,6 +441,22 @@ export class AttendanceController {
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Create or update attendance for an employee day' })
+  @ApiBody({ type: UpdateAttendanceDto })
+  @Post('employee/:employeeId/record')
+  createAttendanceForEmployeeDate(
+    @Param('employeeId', ParseIntPipe) employeeId: number,
+    @Body() dto: UpdateAttendanceDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.attendanceService.createAttendanceForEmployeeDate(
+      employeeId,
+      dto,
+      this.scopedUser(req),
+    );
+  }
+
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'POST automation/run' })
   @ApiResponse({ status: 201, description: 'POST request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })

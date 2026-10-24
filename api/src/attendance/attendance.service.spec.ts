@@ -187,6 +187,66 @@ describe('AttendanceService', () => {
     jest.clearAllMocks();
   });
 
+  it('creates an admin-edited attendance record for a generated day row', async () => {
+    const employee = {
+      id: 7,
+      name: 'Flexible Employee',
+      organizationId: 1,
+      hireDate: new Date('2025-01-01T00:00:00.000Z'),
+      shift: { id: 2, type: 'FLEXIBLE', requiredHours: 8 },
+      shiftAssignments: [],
+    };
+    prisma.employee.findMany.mockResolvedValue([{ id: 7 }]);
+    prisma.employee.findFirst.mockResolvedValue(employee);
+    prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
+    prisma.attendance.findUnique.mockResolvedValue(null);
+
+    await service.createAttendanceForEmployeeDate(
+      7,
+      { date: '2026-10-23', status: AttendanceStatus.NOT_SCHEDULED },
+      mockUser,
+    );
+
+    expect(prisma.attendance.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          employeeId_date: {
+            employeeId: 7,
+            date: new Date('2026-10-23T00:00:00.000Z'),
+          },
+        },
+        create: expect.objectContaining({
+          employeeId: 7,
+          organizationId: 1,
+          shiftId: 2,
+          status: AttendanceStatus.NOT_SCHEDULED,
+          checkIn: null,
+          checkOut: null,
+        }),
+      }),
+    );
+    expect(prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'ADMIN_EDIT',
+          entityType: 'Attendance',
+          organizationId: 1,
+        }),
+      }),
+    );
+  });
+
+  it('does not allow employees to create attendance records for another employee', async () => {
+    await expect(
+      service.createAttendanceForEmployeeDate(
+        8,
+        { date: '2026-10-23', status: AttendanceStatus.ABSENT },
+        { ...mockUser, role: Role.EMPLOYEE, employeeId: 7 },
+      ),
+    ).rejects.toThrow('Only administrators can create attendance records');
+    expect(prisma.attendance.upsert).not.toHaveBeenCalled();
+  });
+
   it('lists shifts created across the current organization family', async () => {
     mockOrganizationScopeService.getRelatedOrganizationIds.mockResolvedValue([
       1, 2, 3,

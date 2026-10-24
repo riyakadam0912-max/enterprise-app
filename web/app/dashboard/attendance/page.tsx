@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArrowRight, CalendarDays, CalendarRange, Clock3, Pencil, Plus, Trash2, UsersRound, X } from 'lucide-react';
-import { assignShift, AttendanceRecord, AttendanceStatus, createHoliday, createShift, DailyTaskWorkSummary, deleteHoliday, deleteShift, getHolidays, getMonthlyAttendanceReport, getMyAttendanceHistory, getMyTaskWorkSummary, getShifts, getTeamWeeklyWorkHours, getWorkHourBalances, HolidayRecord, ShiftRecord, startAttendanceBreak, stopAttendanceBreak, TeamWeeklyWorkHours, updateHoliday, updateShift, WorkHourBalances } from '@/api/attendanceApi';
-import { useAttendance, useCheckIn, useCheckOut, useTodayAttendance, useUpdateAttendance } from '@/hooks/useAttendance';
+import { assignShift, AttendanceRecord, AttendanceStatus, createAttendanceForEmployeeDate, createHoliday, createShift, DailyTaskWorkSummary, deleteHoliday, deleteShift, getHolidays, getMonthlyAttendanceReport, getMyAttendanceHistory, getMyTaskWorkSummary, getShifts, getTeamWeeklyWorkHours, getWorkHourBalances, HolidayRecord, MyAttendanceResponse, ShiftRecord, startAttendanceBreak, stopAttendanceBreak, TeamWeeklyWorkHours, updateHoliday, updateShift, WorkHourBalances } from '@/api/attendanceApi';
+import { useAttendance, useCheckIn, useCheckOut, useMyAttendanceSnapshot, useTodayAttendance, useUpdateAttendance } from '@/hooks/useAttendance';
 import { useEmployees } from '@/hooks/useEmployees';
 import TableActions from '@/components/common/TableActions';
 import { reportError } from '@/lib/error-handling';
@@ -443,6 +443,8 @@ function EmployeeAttendancePanel(props: {
   accountLinked: boolean;
   helperError: string | null;
   row: AttendanceRecord | null;
+  activeSession: MyAttendanceResponse['activeSession'];
+  attendanceLoading: boolean;
   checkInLoading: boolean;
   checkOutLoading: boolean;
   breakActionLoading: boolean;
@@ -450,18 +452,31 @@ function EmployeeAttendancePanel(props: {
   onCheckOut: () => void;
   onBreakAction: () => void;
 }) {
-  const { name, employeeId, accountLinked, helperError, row, checkInLoading, checkOutLoading, breakActionLoading, onCheckIn, onCheckOut, onBreakAction } = props;
-  const hasCheckedIn = Boolean(row?.checkIn);
-  const hasCheckedOut = Boolean(row?.checkOut);
-  const isFlexible = row?.shiftDetails?.type === 'FLEXIBLE';
-  const canCheckIn =
-    !hasCheckedIn || (isFlexible && hasCheckedOut);
+  const { name, employeeId, accountLinked, helperError, row, activeSession, attendanceLoading, checkInLoading, checkOutLoading, breakActionLoading, onCheckIn, onCheckOut, onBreakAction } = props;
+  const hasActiveSession = Boolean(activeSession);
+  const hasCheckedIn = Boolean(activeSession?.startedAt ?? row?.checkIn);
+  const hasCheckedOut = !hasActiveSession && Boolean(row?.checkOut);
+  const isFlexible =
+    Boolean(activeSession) ||
+    (activeSession?.shiftDetails ?? row?.shiftDetails)?.type === 'FLEXIBLE';
+  const checkInTime = activeSession?.startedAt ?? row?.checkIn ?? null;
+  const checkOutTime = hasActiveSession ? null : row?.checkOut ?? null;
+  const breaks = activeSession?.breaks ?? row?.breaks ?? [];
+  const onBreak = activeSession
+    ? activeSession.breaks.some((interval) => interval.endedAt === null)
+    : row?.onBreak;
+  const canCheckIn = isFlexible
+    ? !hasActiveSession && (!hasCheckedIn || hasCheckedOut)
+    : !hasCheckedIn;
   const breakAction = (
     <button
       onClick={onBreakAction}
       disabled={
         !accountLinked ||
-        (!isFlexible && (!hasCheckedIn || hasCheckedOut)) ||
+        attendanceLoading ||
+        (isFlexible
+          ? !hasActiveSession
+          : !hasCheckedIn || hasCheckedOut) ||
         breakActionLoading
       }
       className={`rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm disabled:cursor-not-allowed disabled:opacity-50 ${
@@ -472,7 +487,7 @@ function EmployeeAttendancePanel(props: {
     >
       {breakActionLoading
         ? 'Updating…'
-        : row?.onBreak
+        : onBreak
           ? 'End Break'
           : 'Start Break'}
     </button>
@@ -492,7 +507,7 @@ function EmployeeAttendancePanel(props: {
           <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-900">Good day, {name}</h2>
           <p className="mt-1 text-sm text-slate-500">
             {isFlexible
-              ? 'Focus on task time. Attendance markers are optional.'
+              ? 'Check in when you start, track breaks, and check out when your session is complete.'
               : 'Your attendance follows your scheduled shift.'}
           </p>
         </div>
@@ -501,7 +516,7 @@ function EmployeeAttendancePanel(props: {
           <div className="grid gap-3 sm:grid-cols-3">
             <button
               onClick={onCheckIn}
-              disabled={!accountLinked || !canCheckIn || checkInLoading}
+              disabled={!accountLinked || attendanceLoading || !canCheckIn || checkInLoading}
               className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {checkInLoading
@@ -513,40 +528,33 @@ function EmployeeAttendancePanel(props: {
             {breakAction}
             <button
               onClick={onCheckOut}
-              disabled={!accountLinked || !hasCheckedIn || hasCheckedOut || checkOutLoading}
+              disabled={!accountLinked || attendanceLoading || !hasCheckedIn || hasCheckedOut || checkOutLoading}
               className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {checkOutLoading ? 'Checking Out…' : hasCheckedOut ? 'Already Checked Out' : 'Mark Check Out'}
             </button>
           </div>
         ) : (
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <button
+              onClick={onCheckIn}
+              disabled={!accountLinked || attendanceLoading || !canCheckIn || checkInLoading}
+              className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {checkInLoading
+                ? 'Checking In…'
+                : hasCheckedIn && !hasCheckedOut
+                  ? 'Checked In'
+                  : 'Check In'}
+            </button>
             {breakAction}
-            <details className="relative">
-              <summary className="cursor-pointer list-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50">
-                Optional attendance markers
-              </summary>
-              <div className="absolute left-0 z-10 mt-2 grid w-56 gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
-                <button
-                  onClick={onCheckIn}
-                  disabled={!accountLinked || !canCheckIn || checkInLoading}
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-left text-sm font-medium text-slate-700 disabled:opacity-40"
-                >
-                  {hasCheckedIn && !canCheckIn
-                    ? 'Checked in'
-                    : hasCheckedOut
-                      ? 'Start another session'
-                      : 'Mark check in'}
-                </button>
-                <button
-                  onClick={onCheckOut}
-                  disabled={!accountLinked || !hasCheckedIn || hasCheckedOut || checkOutLoading}
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-left text-sm font-medium text-slate-700 disabled:opacity-40"
-                >
-                  {hasCheckedOut ? 'Checked out' : 'Mark check out'}
-                </button>
-              </div>
-            </details>
+            <button
+              onClick={onCheckOut}
+              disabled={!accountLinked || attendanceLoading || !hasActiveSession || checkOutLoading}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {checkOutLoading ? 'Checking Out…' : 'Check Out'}
+            </button>
           </div>
         )}
       </div>
@@ -562,21 +570,30 @@ function EmployeeAttendancePanel(props: {
             <p className="mt-1 text-sm font-semibold text-slate-800">{new Date().toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}</p>
           </div>
           <div>
-            <p className="text-xs font-medium text-slate-400">{isFlexible ? 'Check-in · optional' : 'Check-in'}</p>
-            <p className="mt-1 text-sm font-semibold text-slate-800">{formatTime(row?.checkIn ?? null)}</p>
+            <p className="text-xs font-medium text-slate-400">{activeSession ? 'Session started' : 'Check-in'}</p>
+            <p className="mt-1 text-sm font-semibold text-slate-800">
+              {activeSession
+                ? new Date(activeSession.startedAt).toLocaleString([], {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })
+                : formatTime(checkInTime)}
+            </p>
           </div>
           <div>
-            <p className="text-xs font-medium text-slate-400">{isFlexible ? 'Check-out · optional' : 'Check-out'}</p>
-            <p className="mt-1 text-sm font-semibold text-slate-800">{formatTime(row?.checkOut ?? null)}</p>
+            <p className="text-xs font-medium text-slate-400">Check-out</p>
+            <p className="mt-1 text-sm font-semibold text-slate-800">{formatTime(checkOutTime)}</p>
           </div>
         </div>
       )}
 
-      {row?.breaks && row.breaks.length > 0 && (
+      {breaks.length > 0 && (
         <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">Today&apos;s breaks</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">{activeSession ? 'Session breaks' : 'Today’s breaks'}</p>
           <ul className="mt-2 space-y-1 text-sm text-amber-900">
-            {row.breaks.map((interval) => {
+            {breaks.map((interval) => {
               const start = new Date(interval.startedAt);
               const end = interval.endedAt ? new Date(interval.endedAt) : null;
               const durationHours = end ? Math.max(0, end.getTime() - start.getTime()) / 3600000 : null;
@@ -658,7 +675,7 @@ function EditAttendanceModal(props: {
   }, [record]);
 
   if (!record) return null;
-  const canEditBreaks = Boolean(record.checkIn && date === formatDateInput(record.date));
+  const canEditBreaks = Boolean(checkIn && date === formatDateInput(record.date));
 
   function submitChanges() {
     let normalizedBreaks: { startedAt: string; endedAt: string | null }[] | undefined;
@@ -720,6 +737,9 @@ function EditAttendanceModal(props: {
               <option value="LEAVE">Leave</option>
               <option value="HOLIDAY">Corporate Holiday</option>
               <option value="WEEKLY_OFF">Weekly Holiday</option>
+              <option value="UPCOMING">Upcoming</option>
+              <option value="NOT_STARTED">Not Started</option>
+              <option value="NOT_SCHEDULED">Not Scheduled</option>
             </select>
           </div>
           <div>
@@ -868,6 +888,8 @@ export default function AttendancePage() {
   >();
   const [overviewOrganizationId, setOverviewOrganizationId] = useState('');
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
+  const [createAttendanceLoading, setCreateAttendanceLoading] = useState(false);
+  const [createAttendanceError, setCreateAttendanceError] = useState<string | null>(null);
   const [shifts, setShifts] = useState<ShiftRecord[]>([]);
   const [holidays, setHolidays] = useState<HolidayRecord[]>([]);
   const [holidayStartDate, setHolidayStartDate] = useState('');
@@ -914,6 +936,7 @@ export default function AttendancePage() {
     canViewAdminAttendance ? 'all' : 'me',
   );
   const today = useTodayAttendance();
+  const mySnapshot = useMyAttendanceSnapshot();
   const todayRows = useMemo(() => today.data?.rows ?? [], [today.data?.rows]);
   const overviewUnavailable = today.loading || Boolean(today.error);
   const overviewOrganizations = useMemo(() => {
@@ -1102,15 +1125,18 @@ export default function AttendancePage() {
         await checkOutMutation.mutate({});
       } else {
         setBreakActionLoading(true);
-        if (myTodayRow?.onBreak) await stopAttendanceBreak();
-        else await startAttendanceBreak();
+        if (mySnapshot.data?.onBreak ?? myTodayRow?.onBreak) {
+          await stopAttendanceBreak();
+        } else {
+          await startAttendanceBreak();
+        }
       }
 
-      await Promise.all([refetch(), today.refetch(), getWorkHourBalances().then(setWorkBalances)]);
+      await Promise.all([refetch(), today.refetch(), mySnapshot.refetch(), getWorkHourBalances().then(setWorkBalances)]);
       setHistoryRefreshKey((current) => current + 1);
     } catch {
       if (mode === 'out') {
-        await Promise.all([refetch(), today.refetch()]);
+        await Promise.all([refetch(), today.refetch(), mySnapshot.refetch()]);
       }
       // Errors are mapped in the hooks and shown in the UI.
     } finally {
@@ -1127,10 +1153,12 @@ export default function AttendancePage() {
     status: AttendanceStatus;
     breaks?: { startedAt: string; endedAt: string | null }[];
   }) {
-    if (!editingRecord?.id) return;
+    if (!editingRecord) return;
 
     try {
+      setCreateAttendanceError(null);
       if (payload.reopenAsWorking) {
+        if (!editingRecord.id) return;
         const confirmed = window.confirm(
           `Reopen attendance for ${editingRecord.employee.name}? This clears the checkout, leaves attendance open, and requires the employee to start a new task timer and check out when finished.`,
         );
@@ -1138,7 +1166,7 @@ export default function AttendancePage() {
         await updateAttendanceMutation.reopen(editingRecord.id, {
           reason: payload.reopenReason,
         });
-      } else {
+      } else if (editingRecord.id) {
         await updateAttendanceMutation.mutate(editingRecord.id, {
           date: payload.date,
           checkIn: payload.checkIn
@@ -1150,8 +1178,34 @@ export default function AttendancePage() {
           status: payload.status,
           breaks: payload.breaks,
         });
+      } else {
+        setCreateAttendanceLoading(true);
+        try {
+          await createAttendanceForEmployeeDate(editingRecord.employeeId, {
+            date: payload.date,
+            checkIn: payload.checkIn
+              ? toIsoFromParts(payload.date, payload.checkIn)
+              : undefined,
+            checkOut: payload.checkOut
+              ? toIsoFromParts(payload.date, payload.checkOut)
+              : undefined,
+            status: payload.status,
+            breaks: payload.breaks,
+          });
+        } catch (error) {
+          setCreateAttendanceError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to create attendance record.',
+          );
+          throw error;
+        } finally {
+          setCreateAttendanceLoading(false);
+        }
       }
       await Promise.all([refetch(), today.refetch()]);
+      setHistoryRefreshKey((current) => current + 1);
+      setReportRefreshKey((current) => current + 1);
       setEditingRecord(null);
     } catch {
       // Errors are mapped in the hooks and shown in the UI.
@@ -1473,8 +1527,16 @@ export default function AttendancePage() {
             name={session.name}
             employeeId={resolvedEmployeeId}
             accountLinked={accountLinked}
-            helperError={today.error === 'Your login is not linked to an employee profile yet.' ? null : today.error}
+            helperError={
+              checkInMutation.error ??
+              checkOutMutation.error ??
+              (today.error === 'Your login is not linked to an employee profile yet.'
+                ? null
+                : today.error ?? mySnapshot.error)
+            }
             row={myTodayRow}
+            activeSession={mySnapshot.data?.activeSession ?? null}
+            attendanceLoading={mySnapshot.loading}
             checkInLoading={checkInMutation.loading}
             checkOutLoading={checkOutMutation.loading}
             breakActionLoading={breakActionLoading}
@@ -2560,19 +2622,16 @@ export default function AttendancePage() {
                   </td>}
                   {canViewAdminAttendance && (
                     <td className="px-5 py-4 text-right">
-                      {row.id ? (
-                        <button
-                          onClick={() => {
-                            updateAttendanceMutation.setError(null);
-                            setEditingRecord(row);
-                          }}
-                          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                        >
-                          Edit
-                        </button>
-                      ) : (
-                        <span className="text-xs text-slate-300">—</span>
-                      )}
+                      <button
+                        onClick={() => {
+                          updateAttendanceMutation.setError(null);
+                          setCreateAttendanceError(null);
+                          setEditingRecord(row);
+                        }}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        Edit
+                      </button>
                     </td>
                   )}
                 </tr>
@@ -2593,8 +2652,8 @@ export default function AttendancePage() {
       {canViewAdminAttendance && (
         <EditAttendanceModal
           record={editingRecord}
-          loading={updateAttendanceMutation.loading}
-          error={updateAttendanceMutation.error}
+          loading={updateAttendanceMutation.loading || createAttendanceLoading}
+          error={createAttendanceError ?? updateAttendanceMutation.error}
           onClose={() => setEditingRecord(null)}
           onSubmit={handleAttendanceUpdate}
         />

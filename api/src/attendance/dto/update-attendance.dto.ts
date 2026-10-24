@@ -16,6 +16,9 @@ const STATUSES = [
   'LEAVE',
   'HOLIDAY',
   'WEEKLY_OFF',
+  'UPCOMING',
+  'NOT_STARTED',
+  'NOT_SCHEDULED',
 ] as const;
 
 class UpdateAttendanceBreakDto {

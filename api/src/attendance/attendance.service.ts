@@ -11,8 +11,11 @@ import {
 } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
-import { AttendanceCheckoutSource, AttendanceStatus } from '@prisma/client';
-import type { Prisma } from '@prisma/client';
+import {
+  AttendanceCheckoutSource,
+  AttendanceStatus,
+  Prisma,
+} from '@prisma/client';
 import { Role } from '../common/enums/role.enum';
 import { DASHBOARD_CACHE_KEY } from '../common/utils/cache-keys';
 import { PrismaService } from '../prisma/prisma.service';
@@ -1246,32 +1249,34 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         day,
       ) ??
       null;
-    const computedStatus = onLeave
-      ? AttendanceStatus.LEAVE
-      : holidayName && !attendance?.checkIn
-        ? AttendanceStatus.HOLIDAY
-        : shift?.type === 'FLEXIBLE' && !attendance?.checkIn
-          ? AttendanceStatus.NOT_SCHEDULED
-          : (attendance?.status ??
-            this.calculateStatus({
-              day,
-              checkIn: null,
-              checkOut: null,
-              workingHours: null,
-              onLeave,
-              shift,
-              timezone: employee.organization?.timezone ?? 'UTC',
-            }));
+    const computedStatus =
+      attendance?.status ??
+      (onLeave
+        ? AttendanceStatus.LEAVE
+        : holidayName && !attendance?.checkIn
+          ? AttendanceStatus.HOLIDAY
+          : shift?.type === 'FLEXIBLE' && !attendance?.checkIn
+            ? AttendanceStatus.NOT_SCHEDULED
+            : this.calculateStatus({
+                day,
+                checkIn: null,
+                checkOut: null,
+                workingHours: null,
+                onLeave,
+                shift,
+                timezone: employee.organization?.timezone ?? 'UTC',
+              }));
     const shortfallHours =
       (attendance as { shortfallHours?: number })?.shortfallHours ??
       this.calculateShortfallHours(attendance?.workingHours ?? null, shift);
 
     const status =
-      workFromHomeCredit === undefined
+      attendance?.status ??
+      (workFromHomeCredit === undefined
         ? computedStatus
         : workFromHomeCredit === 1
           ? AttendanceStatus.PRESENT
-          : AttendanceStatus.HALF_DAY;
+          : AttendanceStatus.HALF_DAY);
     return {
       id: attendance?.id ?? null,
       employeeId: employee.id,
@@ -3088,8 +3093,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       overtimeHours: row.overtimeHours,
       status: activeSessionDetails ? AttendanceStatus.PRESENT : row.status,
       isShootDay: row.isShootDay,
-      shiftDetails:
-        activeSessionDetails?.shiftDetails ?? row.shiftDetails,
+      shiftDetails: activeSessionDetails?.shiftDetails ?? row.shiftDetails,
       activeSession: activeSessionDetails,
     };
   }
@@ -5942,6 +5946,227 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
   async update(id: number, dto: UpdateAttendanceDto, user: AttendanceUser) {
     return this.updateAttendance(id, dto, user, false);
+  }
+
+  async createAttendanceForEmployeeDate(
+    employeeId: number,
+    dto: UpdateAttendanceDto,
+    user: AttendanceUser,
+  ) {
+    if (
+      user.role !== Role.ADMIN &&
+      user.role !== Role.HR &&
+      user.role !== Role.SUPER_ADMIN
+    ) {
+      throw new ForbiddenException(
+        'Only administrators can create attendance records',
+      );
+    }
+    if (!dto.date) {
+      throw new BadRequestException('Attendance date is required');
+    }
+    const scopedEmployeeIds = await this.getScopedEmployeeFilter(
+      user,
+      employeeId,
+    );
+    if (!scopedEmployeeIds?.includes(employeeId)) {
+      throw new ForbiddenException(
+        'You can only manage attendance for employees in your scope',
+      );
+    }
+
+    const employee = await this.ensureEmployee(employeeId, user);
+    const dateKey = dto.date.slice(0, 10);
+    const day = attendanceDateFromKey(dateKey);
+    this.assertAttendanceEligible(day, employee.hireDate);
+    const existing = await this.prisma.attendance.findUnique({
+      where: { employeeId_date: { employeeId, date: day } },
+      select: { id: true },
+    });
+    if (existing) {
+      return this.updateAttendance(existing.id, dto, user, false);
+    }
+
+    const organizationId = employee.organizationId;
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { timezone: true },
+    });
+    const timezone = organization?.timezone ?? 'UTC';
+    const shift = this.employeeShiftForDay(
+      employee.shiftAssignments,
+      employee.shift,
+      day,
+    ) as ShiftLite | null;
+    const checkIn = dto.checkIn ? new Date(dto.checkIn) : null;
+    const checkOut = dto.checkOut ? new Date(dto.checkOut) : null;
+    if (
+      (checkIn && Number.isNaN(checkIn.getTime())) ||
+      (checkOut && Number.isNaN(checkOut.getTime()))
+    ) {
+      throw new BadRequestException(
+        'Check-in and check-out times must be valid',
+      );
+    }
+    if (checkOut && !checkIn) {
+      throw new BadRequestException('Check-in is required before check-out');
+    }
+    if (checkIn && checkOut && checkOut.getTime() < checkIn.getTime()) {
+      throw new BadRequestException(
+        'Check-out time cannot be earlier than check-in time',
+      );
+    }
+    const breaks = (dto.breaks ?? []).map((interval) => ({
+      startedAt: new Date(interval.startedAt),
+      endedAt: interval.endedAt ? new Date(interval.endedAt) : null,
+    }));
+    const orderedBreaks = [...breaks].sort(
+      (left, right) => left.startedAt.getTime() - right.startedAt.getTime(),
+    );
+    let previousBreakEnd = checkIn?.getTime() ?? Number.NEGATIVE_INFINITY;
+    for (const [index, interval] of orderedBreaks.entries()) {
+      const start = interval.startedAt.getTime();
+      const end = interval.endedAt?.getTime() ?? null;
+      if (!Number.isFinite(start) || (end !== null && !Number.isFinite(end))) {
+        throw new BadRequestException('Break times must be valid dates');
+      }
+      if (!checkIn || start < checkIn.getTime()) {
+        throw new BadRequestException('Breaks must start at or after check-in');
+      }
+      if (end !== null && end <= start) {
+        throw new BadRequestException('Break end must be after its start');
+      }
+      if (start < previousBreakEnd) {
+        throw new BadRequestException('Break intervals cannot overlap');
+      }
+      if (
+        checkOut &&
+        (start >= checkOut.getTime() ||
+          (end !== null && end > checkOut.getTime()))
+      ) {
+        throw new BadRequestException(
+          'Breaks must fall within check-in and check-out',
+        );
+      }
+      if (end === null) {
+        if (checkOut || index !== orderedBreaks.length - 1) {
+          throw new BadRequestException(
+            'Only the latest active attendance may have an open break',
+          );
+        }
+        previousBreakEnd = Number.POSITIVE_INFINITY;
+      } else {
+        previousBreakEnd = end;
+      }
+    }
+
+    const workingHours =
+      checkIn && checkOut
+        ? this.calculateWorkingHours(checkIn, checkOut, orderedBreaks)
+        : null;
+    const leave = await this.findApprovedLeaveForDay(employeeId, day);
+    const halfDayLeave = await this.findApprovedLeaveForDay(
+      employeeId,
+      day,
+      'HALF_DAY',
+    );
+    const lateMinutes = checkIn
+      ? this.calculateLateMinutes(checkIn, dateKey, shift, timezone)
+      : 0;
+    const status =
+      dto.status ??
+      this.calculateStatus({
+        day,
+        checkIn,
+        checkOut,
+        workingHours,
+        onLeave: Boolean(leave),
+        shift,
+        lateMinutes,
+        timezone,
+      });
+    const requiredHours = shift?.requiredHours ?? null;
+    const overtimeHours = workingHours
+      ? this.calculateOvertimeHours(workingHours, shift)
+      : 0;
+    const shortfallHours = this.calculateShortfallHours(
+      workingHours,
+      shift,
+      halfDayLeave ? 5 : undefined,
+    );
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const attendance = await tx.attendance.upsert({
+        where: { employeeId_date: { employeeId, date: day } },
+        create: {
+          employeeId,
+          organizationId,
+          shiftId: shift?.id ?? null,
+          date: day,
+          checkIn,
+          checkOut,
+          workingHours,
+          requiredHours,
+          overtimeHours,
+          shortfallHours,
+          lateMinutes,
+          status,
+          isPaidLeave: leave ? Boolean(leave.isPaid ?? true) : null,
+          ...(checkOut
+            ? {
+                checkoutSource: AttendanceCheckoutSource.ADMIN_EDIT,
+                checkoutActorId: user.userId,
+              }
+            : {}),
+          breaks: { create: orderedBreaks },
+        },
+        update: {
+          shiftId: shift?.id ?? null,
+          checkIn,
+          checkOut,
+          workingHours,
+          requiredHours,
+          overtimeHours,
+          shortfallHours,
+          lateMinutes,
+          status,
+          isPaidLeave: leave ? Boolean(leave.isPaid ?? true) : null,
+          checkoutSource: checkOut ? AttendanceCheckoutSource.ADMIN_EDIT : null,
+          checkoutActorId: checkOut ? user.userId : null,
+          isAutoClosed: false,
+          breaks: {
+            deleteMany: {},
+            create: orderedBreaks,
+          },
+        },
+        include: { employee: true, shift: true, breaks: true },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: user.userId,
+          userRole: user.role,
+          module: 'ATTENDANCE',
+          entityType: 'Attendance',
+          entityId: attendance.id,
+          action: 'ADMIN_EDIT',
+          fieldName: 'attendance',
+          oldValue: Prisma.DbNull,
+          newValue: {
+            employeeId,
+            date: day.toISOString(),
+            checkIn: checkIn?.toISOString() ?? null,
+            checkOut: checkOut?.toISOString() ?? null,
+            status,
+          },
+          description: `Created attendance record for ${employee.name}`,
+          status: 'SUCCESS',
+          organizationId,
+        },
+      });
+      return attendance;
+    });
+    await this.invalidateDashboardCache();
+    return result;
   }
 
   async reopenAttendance(

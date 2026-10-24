@@ -122,6 +122,11 @@ export interface MyAttendanceResponse {
   date: string;
   checkIn: string | null;
   checkOut: string | null;
+  activeSession: {
+    startedAt: string;
+    breaks: { startedAt: string; endedAt: string | null }[];
+    shiftDetails: ShiftDetails | null;
+  } | null;
   lateMinutes: number;
   overtimeHours: number;
   shortfallHours?: number;
@@ -511,6 +516,16 @@ export function checkOut(data: AttendanceActionPayload): Promise<AttendanceRecor
 export function updateAttendance(id: number, data: UpdateAttendancePayload): Promise<AttendanceRecord> {
   return apiClient<AttendanceRecord>(`/attendance/${id}`, {
     method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export function createAttendanceForEmployeeDate(
+  employeeId: number,
+  data: UpdateAttendancePayload,
+): Promise<AttendanceRecord> {
+  return apiClient<AttendanceRecord>(`/attendance/employee/${employeeId}/record`, {
+    method: 'POST',
     body: JSON.stringify(data),
   });
 }

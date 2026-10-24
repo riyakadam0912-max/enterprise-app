@@ -14,7 +14,9 @@ import {
   getAttendanceSummary,
   getEmployeeAttendance,
   getMyAttendance,
+  getMyAttendanceSnapshot,
   getTodayAttendance,
+  MyAttendanceResponse,
   reopenAttendance,
   updateAttendance,
   UpdateAttendancePayload,
@@ -176,6 +178,45 @@ export function useTodayAttendance(date?: string) {
   }, [fetchToday]);
 
   return { data, loading, error, refetch: fetchToday };
+}
+
+export function useMyAttendanceSnapshot() {
+  const [data, setData] = useState<MyAttendanceResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchSnapshot = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    setError(null);
+    try {
+      setData(await getMyAttendanceSnapshot());
+    } catch (err) {
+      const message = err instanceof Error ? err.message : undefined;
+      setError(getFriendlyLoadError(message));
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchSnapshot();
+    const refreshSilently = () => {
+      if (document.visibilityState === 'visible') {
+        void fetchSnapshot(true);
+      }
+    };
+    const interval = window.setInterval(refreshSilently, 30_000);
+    window.addEventListener('focus', refreshSilently);
+    document.addEventListener('visibilitychange', refreshSilently);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshSilently);
+      document.removeEventListener('visibilitychange', refreshSilently);
+    };
+  }, [fetchSnapshot]);
+
+  return { data, loading, error, refetch: fetchSnapshot };
 }
 
 export function useEmployeeAttendance(employeeId: number, month?: string) {
