@@ -44,4 +44,32 @@ describe('soft-delete middleware', () => {
       }),
     );
   });
+
+  it('keeps composite-key attendance lookups as unique reads while filtering deleted rows', async () => {
+    const middleware = softDeleteMiddleware() as any;
+    const next = jest.fn(async (params) => params.args);
+    const params = {
+      model: 'Attendance',
+      action: 'findUnique',
+      args: {
+        where: {
+          employeeId_date: { employeeId: 7, date: new Date() },
+        },
+      },
+    };
+
+    await middleware(params, next);
+
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'findUnique',
+        args: {
+          where: {
+            employeeId_date: params.args.where.employeeId_date,
+            deletedAt: null,
+          },
+        },
+      }),
+    );
+  });
 });

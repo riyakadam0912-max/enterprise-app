@@ -114,14 +114,6 @@ export function softDeleteMiddleware(): Prisma.Middleware {
         where: mergeWhere(where, null),
       };
 
-      if (
-        params.action === 'findUnique' ||
-        params.action === 'findUniqueOrThrow'
-      ) {
-        params.action =
-          params.action === 'findUnique' ? 'findFirst' : 'findFirstOrThrow';
-      }
-
       return await next(params);
     }
 
