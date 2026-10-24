@@ -140,6 +140,25 @@ export function shiftEndInTimezone(
   return end;
 }
 
+export function autoCheckoutDeadlineInTimezone(
+  dateKey: string,
+  shift: {
+    type: string;
+    startTime: string | null;
+    endTime: string | null;
+  } | null,
+  timezone?: string | null,
+) {
+  if (shift?.type === 'FLEXIBLE') return null;
+  const midnight = localMidnightAfterDateInTimezone(dateKey, timezone);
+  if (!midnight) return null;
+  if (!shift?.startTime || !shift.endTime) return midnight;
+  const scheduledEnd = shiftEndInTimezone(dateKey, shift, timezone);
+  // Do not close early when the configured local shift end cannot be resolved.
+  if (!scheduledEnd) return null;
+  return scheduledEnd > midnight ? scheduledEnd : midnight;
+}
+
 export function calculateLateMinutesInTimezone(
   checkIn: Date,
   dateKey: string,

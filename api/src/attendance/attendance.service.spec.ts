@@ -919,6 +919,21 @@ describe('AttendanceService', () => {
     );
   });
 
+  it('rejects clearing checkout through ordinary PATCH before any mutation', async () => {
+    prisma.attendance.findFirst.mockResolvedValue({
+      id: 49,
+      organizationId: 1,
+      employeeId: 7,
+      checkIn: new Date('2026-10-22T09:00:00Z'),
+      checkOut: new Date('2026-10-22T18:00:00Z'),
+    });
+    await expect(
+      service.update(49, { checkOut: null } as any, mockUser),
+    ).rejects.toThrow('Use the reopen attendance action');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.attendance.update).not.toHaveBeenCalled();
+  });
+
   it('reopens a fixed-shift attendance record and audits the correction', async () => {
     const checkIn = new Date('2026-10-22T09:00:00.000Z');
     const checkOut = new Date('2026-10-22T18:00:00.000Z');
@@ -4324,7 +4339,10 @@ describe('AttendanceService', () => {
 
     expect(prisma.employee.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { organizationId: { in: [1] } },
+        where: {
+          organizationId: { in: [1] },
+          AND: [{ organizationId: 1, deletedAt: null }],
+        },
       }),
     );
     expect(prisma.attendance.findMany).toHaveBeenCalledWith(
@@ -4334,6 +4352,49 @@ describe('AttendanceService', () => {
         }),
       }),
     );
+  });
+
+  it('applies business-unit scope to manual reconciliation and overdue closure', async () => {
+    const employeeScope = {
+      organizationId: 1,
+      deletedAt: null,
+      businessUnitId: { in: [2] },
+    };
+    mockBusinessUnitsService.buildEmployeeBUWhere.mockReturnValue(
+      employeeScope,
+    );
+    prisma.attendance.findMany.mockResolvedValue([]);
+    prisma.employee.findMany.mockResolvedValue([]);
+
+    await service.runDailyAutomation(mockUser);
+
+    expect(prisma.employee.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { organizationId: { in: [1] }, AND: [employeeScope] },
+      }),
+    );
+    expect(prisma.attendance.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ employee: employeeScope }),
+      }),
+    );
+    expect((service as any).lastAutomationDateByOrganization.size).toBe(0);
+  });
+
+  it('does not mark an organization complete after a manual partial run', async () => {
+    prisma.attendance.findMany.mockResolvedValue([]);
+    prisma.employee.findMany.mockResolvedValue([
+      {
+        id: 7,
+        organizationId: 1,
+        shift: null,
+        organization: { timezone: 'UTC' },
+      },
+    ]);
+    await service.runDailyAutomation(mockUser);
+    expect((service as any).lastAutomationDateByOrganization.size).toBe(0);
+    await service.runDailyAutomation();
+    expect((service as any).lastAutomationDateByOrganization.size).toBe(1);
   });
 
   it('credits an assigned shoot day instead of creating an absence', async () => {
@@ -4485,7 +4546,27 @@ describe('AttendanceService', () => {
     expect(prisma.attendance.findUnique).not.toHaveBeenCalled();
   });
 
-  it('auto-closes missed checkout and its timer at local midnight, closing an open break', async () => {
+  it('keeps an overnight shift and its timer open before scheduled end', async () => {
+    jest.setSystemTime(new Date('2026-03-14T02:00:00.000Z'));
+    prisma.attendance.findMany.mockResolvedValue([
+      {
+        id: 88,
+        employeeId: 7,
+        organizationId: 1,
+        date: new Date('2026-03-13T00:00:00Z'),
+        checkIn: new Date('2026-03-13T21:00:00Z'),
+        checkOut: null,
+        shift: { type: 'FIXED', startTime: '21:00', endTime: '05:00' },
+        employee: { organization: { timezone: 'UTC' } },
+        breaks: [],
+      },
+    ]);
+    await service.runAutoCheckoutAutomation();
+    expect(prisma.attendance.update).not.toHaveBeenCalled();
+    expect(mockTasksService.stopActiveTimerForEmployee).not.toHaveBeenCalled();
+  });
+
+  it('auto-closes an overnight shift at scheduled end, closing its timer and open break', async () => {
     const now = new Date('2026-03-14T12:00:00.000Z');
     jest.setSystemTime(now);
     const shift = {
@@ -4536,7 +4617,7 @@ describe('AttendanceService', () => {
 
     await service.runDailyAutomation();
 
-    const autoCheckOut = new Date('2026-03-14T00:00:00.000Z');
+    const autoCheckOut = new Date('2026-03-14T05:00:00.000Z');
     expect(mockTasksService.stopActiveTimerForEmployee).toHaveBeenCalledWith(
       7,
       1,

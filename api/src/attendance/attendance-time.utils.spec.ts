@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 import {
   attendanceDateFromKey,
+  autoCheckoutDeadlineInTimezone,
   attendanceStatusForWorkedHours,
   calculateLateMinutesInTimezone,
   dateKeyInTimezone,
@@ -9,6 +10,56 @@ import {
 } from './attendance-time.utils';
 
 describe('attendance time utilities', () => {
+  it.each([
+    ['2026-03-13', '09:00', '17:00', 'UTC', '2026-03-14T00:00:00.000Z'],
+    [
+      '2026-10-31',
+      '22:00',
+      '06:00',
+      'Asia/Kolkata',
+      '2026-11-01T00:30:00.000Z',
+    ],
+    [
+      '2026-03-07',
+      '22:00',
+      '06:00',
+      'America/New_York',
+      '2026-03-08T10:00:00.000Z',
+    ],
+    [
+      '2026-10-31',
+      '22:00',
+      '06:00',
+      'America/New_York',
+      '2026-11-01T11:00:00.000Z',
+    ],
+  ])(
+    'uses the later of midnight and shift end for %s %s in %s',
+    (date, startTime, endTime, zone, expected) => {
+      expect(
+        autoCheckoutDeadlineInTimezone(
+          date,
+          { type: 'FIXED', startTime, endTime },
+          zone,
+        )?.toISOString(),
+      ).toBe(expected);
+    },
+  );
+
+  it('does not auto-close flexible shifts', () => {
+    expect(
+      autoCheckoutDeadlineInTimezone(
+        '2026-10-24',
+        {
+          type: 'FLEXIBLE',
+          startTime: null,
+          endTime: null,
+        },
+        'UTC',
+      ),
+    ).toBeNull();
+  });
+
   it('uses the organization timezone and applies the grace period at the boundary', () => {
     const shift = {
       type: 'FIXED',

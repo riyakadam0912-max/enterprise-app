@@ -26,6 +26,9 @@ This guide is for business users, administrators, developers, QA engineers, and 
 
 ### Reference
 
+- [Current attendance audit and implementation progress](./ATTENDANCE_AUDIT_CURRENT.md)
+- [Earlier attendance audit and fix plan](./ATTENDANCE_AUDIT_FIX_PLAN.md)
+
 - [Redis runtime audit](./authentication/REDIS_RUNTIME_AUDIT.md)
 
 - [Audit organization attribution](./authentication/AUDIT_ORGANIZATION_ATTRIBUTION.md)

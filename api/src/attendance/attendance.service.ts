@@ -35,6 +35,7 @@ import { UpdateShiftDto } from './dto/update-shift.dto';
 import { UpdateHolidayDto } from './dto/update-holiday.dto';
 import {
   attendanceDateFromKey,
+  autoCheckoutDeadlineInTimezone,
   attendanceStatusForWorkedHours,
   calculateLateMinutesInTimezone,
   dateKeyInTimezone,
@@ -6366,6 +6367,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         'Use the reopen attendance action to clear a checkout',
       );
     }
+    if (!reopening && record.checkOut && dto.checkOut === null) {
+      throw new BadRequestException(
+        'Use the reopen attendance action to clear a checkout',
+      );
+    }
     if (
       reopening &&
       user.role !== Role.ADMIN &&
@@ -6675,6 +6681,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
   private async closeOverdueAttendances(
     organizationIds: number[] | null = null,
+    employeeScope?: Prisma.EmployeeWhereInput,
   ) {
     const openAttendances =
       (await this.prisma.attendance.findMany({
@@ -6682,6 +6689,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           checkIn: { not: null },
           checkOut: null,
           deletedAt: null,
+          ...(employeeScope ? { employee: employeeScope } : {}),
           ...(organizationIds === null
             ? {}
             : { organizationId: { in: organizationIds } }),
@@ -6711,7 +6719,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           const dateKey = new Date(attendance.date).toISOString().slice(0, 10);
           if (dateKeyInTimezone(now, timezone) <= dateKey) return;
 
-          const checkOut = localMidnightAfterDateInTimezone(dateKey, timezone);
+          const checkOut = autoCheckoutDeadlineInTimezone(
+            dateKey,
+            shift,
+            timezone,
+          );
           if (!checkOut || checkOut.getTime() < attendance.checkIn.getTime()) {
             return;
           }
@@ -6802,12 +6814,36 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     if (scopedOrganizationIds?.length === 0) {
       return { processedDate: null, alreadyProcessed: true };
     }
-    await this.closeOverdueAttendances(scopedOrganizationIds);
+    // Match ordinary attendance editing: BU restrictions apply in the selected
+    // organization; authorized descendants retain their existing access policy.
+    let employeeScope: Prisma.EmployeeWhereInput | undefined;
+    if (user) {
+      const buScope = await this.businessUnitsService.resolveScope(user as any);
+      const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
+      const descendants = scopedOrganizationIds?.filter(
+        (id) => id !== buScope.organizationId,
+      );
+      employeeScope =
+        scopedOrganizationIds === null
+          ? { deletedAt: null }
+          : descendants?.length
+            ? {
+                OR: [
+                  buWhere,
+                  { organizationId: { in: descendants }, deletedAt: null },
+                ],
+              }
+            : buWhere;
+    }
+    await this.closeOverdueAttendances(scopedOrganizationIds, employeeScope);
     const now = new Date();
     const employees = await this.prisma.employee.findMany({
-      ...(scopedOrganizationIds === null
-        ? {}
-        : { where: { organizationId: { in: scopedOrganizationIds } } }),
+      where: {
+        ...(scopedOrganizationIds === null
+          ? {}
+          : { organizationId: { in: scopedOrganizationIds } }),
+        ...(employeeScope ? { AND: [employeeScope] } : {}),
+      },
       include: {
         shift: true,
         shiftAssignments: { include: { shift: true } },
@@ -6831,6 +6867,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       if (target) targetByOrganization.set(employee.organizationId, target.key);
     }
     if (
+      !user &&
       targetByOrganization.size > 0 &&
       [...targetByOrganization].every(
         ([organizationId, key]) =>
@@ -6871,6 +6908,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           if (!targetInfo) return;
           const target = targetInfo.day;
           if (
+            !user &&
             this.lastAutomationDateByOrganization.get(
               employee.organizationId,
             ) === targetInfo.key
@@ -6995,8 +7033,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    for (const [organizationId, key] of targetByOrganization) {
-      this.lastAutomationDateByOrganization.set(organizationId, key);
+    if (!user) {
+      for (const [organizationId, key] of targetByOrganization) {
+        this.lastAutomationDateByOrganization.set(organizationId, key);
+      }
     }
     await this.invalidateDashboardCache();
     return {
