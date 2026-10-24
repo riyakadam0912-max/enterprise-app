@@ -223,6 +223,7 @@ describe('AttendanceService', () => {
           checkIn: null,
           checkOut: null,
         }),
+        update: expect.objectContaining({ deletedAt: null }),
       }),
     );
     expect(prisma.auditLog.create).toHaveBeenCalledWith(
@@ -245,6 +246,77 @@ describe('AttendanceService', () => {
       ),
     ).rejects.toThrow('Only administrators can create attendance records');
     expect(prisma.attendance.upsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects fixed shifts with missing or malformed clock times', async () => {
+    await expect(
+      service.createShift(
+        { name: 'Invalid fixed shift', type: 'FIXED' },
+        mockUser,
+      ),
+    ).rejects.toThrow('Fixed shifts require both a start time and an end time');
+    await expect(
+      service.createShift(
+        {
+          name: 'Invalid time shift',
+          type: 'FIXED',
+          startTime: '9:00',
+          endTime: '17:00',
+        },
+        mockUser,
+      ),
+    ).rejects.toThrow('Shift times must use HH:mm or HH:mm:ss format');
+    expect(prisma.shift.create).not.toHaveBeenCalled();
+  });
+
+  it('allows flexible shifts without clock times and rejects invalid hour totals', async () => {
+    prisma.shift.create.mockResolvedValue({ id: 3 });
+
+    await service.createShift({ name: 'Flexible', type: 'FLEXIBLE' }, mockUser);
+    await expect(
+      service.createShift(
+        {
+          name: 'Too long',
+          type: 'FLEXIBLE',
+          requiredHours: 25,
+        },
+        mockUser,
+      ),
+    ).rejects.toThrow(
+      'Required hours must be at least 0.01 and no more than 24',
+    );
+    await expect(
+      service.createShift(
+        {
+          name: 'Invalid minimum',
+          type: 'FLEXIBLE',
+          requiredHours: 8,
+          minPresentHours: 9,
+        },
+        mockUser,
+      ),
+    ).rejects.toThrow(
+      'Minimum present hours must be between 0 and the required hours',
+    );
+
+    expect(prisma.shift.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('validates merged fields when changing a flexible shift to fixed', async () => {
+    prisma.shift.findFirst.mockResolvedValue({
+      id: 3,
+      organizationId: 1,
+      type: 'FLEXIBLE',
+      startTime: null,
+      endTime: null,
+      requiredHours: 8,
+      minPresentHours: 5,
+    });
+
+    await expect(
+      service.updateShift(3, { type: 'FIXED' }, mockUser),
+    ).rejects.toThrow('Fixed shifts require both a start time and an end time');
+    expect(prisma.shift.update).not.toHaveBeenCalled();
   });
 
   it('lists shifts created across the current organization family', async () => {
@@ -4236,6 +4308,29 @@ describe('AttendanceService', () => {
       expect.objectContaining({
         create: expect.objectContaining({
           status: AttendanceStatus.WEEKLY_OFF,
+        }),
+      }),
+    );
+  });
+
+  it('limits manually triggered attendance automation to authorized organizations', async () => {
+    mockOrganizationScopeService.getDescendantOrganizationIds.mockResolvedValue(
+      [1],
+    );
+    prisma.employee.findMany.mockResolvedValue([]);
+    prisma.attendance.findMany.mockResolvedValue([]);
+
+    await service.runDailyAutomation(mockUser);
+
+    expect(prisma.employee.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { organizationId: { in: [1] } },
+      }),
+    );
+    expect(prisma.attendance.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId: { in: [1] },
         }),
       }),
     );

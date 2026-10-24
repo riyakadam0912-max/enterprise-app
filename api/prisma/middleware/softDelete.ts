@@ -9,6 +9,7 @@ export function withDeletedRecords<T>(callback: () => T): T {
 const SOFT_DELETE_MODELS = new Set([
   'User',
   'Employee',
+  'Attendance',
   'Lead',
   'Deal',
   'Task',

@@ -463,7 +463,7 @@ export class AttendanceController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Post('automation/run')
-  runAutomation() {
-    return this.attendanceService.runDailyAutomation();
+  runAutomation(@Req() req: AuthenticatedRequest) {
+    return this.attendanceService.runDailyAutomation(this.scopedUser(req));
   }
 }

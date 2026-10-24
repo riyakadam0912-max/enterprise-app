@@ -54,6 +54,7 @@ import {
 import type { WorkdayShift } from './workday-schedule.utils';
 import { buildApprovedWorkFromHomeCredits } from './work-from-home.utils';
 import { TasksService } from '../tasks/tasks.service';
+import { withDeletedRecords } from '../../prisma/middleware/softDelete';
 
 type AttendanceUser = {
   userId: number;
@@ -731,10 +732,17 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           checkInActorId: user.userId,
         },
       });
-      const existingAttendance = await tx.attendance.findUnique({
-        where: { employeeId_date: { employeeId: employee.id, date } },
-        select: { checkIn: true },
-      });
+      const existingAttendance = await withDeletedRecords(() =>
+        tx.attendance.findUnique({
+          where: { employeeId_date: { employeeId: employee.id, date } },
+          select: { id: true, checkIn: true, deletedAt: true },
+        }),
+      );
+      if (existingAttendance?.deletedAt) {
+        await tx.attendanceBreak.deleteMany({
+          where: { attendanceId: existingAttendance.id },
+        });
+      }
       return tx.attendance
         .upsert({
           where: {
@@ -755,6 +763,15 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             status: AttendanceStatus.PRESENT,
           },
           update: {
+            deletedAt: null,
+            ...(existingAttendance?.deletedAt
+              ? {
+                  workingHours: 0,
+                  lateMinutes: 0,
+                  overtimeHours: 0,
+                  shortfallHours: shift.requiredHours,
+                }
+              : {}),
             checkIn:
               existingAttendance?.checkIn &&
               existingAttendance.checkIn.getTime() < startedAt.getTime()
@@ -926,6 +943,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             organizationId,
             shiftId: session.shiftId,
             date: summary.date,
+            deletedAt: null,
             checkIn: summary.start,
             checkOut: summary.end,
             workingHours,
@@ -940,6 +958,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             checkoutActorId: user.userId,
           },
           update: {
+            deletedAt: null,
             checkIn:
               existing?.checkIn &&
               existing.checkIn.getTime() < summary.start.getTime()
@@ -1010,6 +1029,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             checkoutActorId: user.userId,
           },
           update: {
+            deletedAt: null,
             checkOut: checkOutTime,
             checkoutSource: AttendanceCheckoutSource.USER,
             checkoutActorId: user.userId,
@@ -1356,8 +1376,16 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   }
 
   async createShift(dto: CreateShiftDto, user: AttendanceUser) {
+    this.validateShiftDefinition(
+      dto.type,
+      dto.startTime,
+      dto.endTime,
+      dto.requiredHours === undefined ? 8 : dto.requiredHours,
+      dto.minPresentHours,
+    );
     const organizationId = await this.resolveOrganizationId(user);
-    const requiredHours = dto.requiredHours ?? 8;
+    const requiredHours =
+      dto.requiredHours === undefined ? 8 : dto.requiredHours;
     const minPresentHours = dto.minPresentHours ?? Math.min(5, requiredHours);
     const result = await this.prisma.shift.create({
       data: {
@@ -1382,6 +1410,49 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     await this.invalidateDashboardCache();
     return result;
+  }
+
+  private validateShiftDefinition(
+    type: string,
+    startTime: string | null | undefined,
+    endTime: string | null | undefined,
+    requiredHours: number,
+    minPresentHours?: number,
+  ) {
+    if (type !== 'FIXED' && type !== 'FLEXIBLE') {
+      throw new BadRequestException('Shift type must be FIXED or FLEXIBLE');
+    }
+    const validTime = (value: string | null | undefined) =>
+      value == null || /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(value);
+    if (
+      !Number.isFinite(requiredHours) ||
+      requiredHours < 0.01 ||
+      requiredHours > 24
+    ) {
+      throw new BadRequestException(
+        'Required hours must be at least 0.01 and no more than 24',
+      );
+    }
+    if (
+      minPresentHours !== undefined &&
+      (!Number.isFinite(minPresentHours) ||
+        minPresentHours < 0 ||
+        minPresentHours > requiredHours)
+    ) {
+      throw new BadRequestException(
+        'Minimum present hours must be between 0 and the required hours',
+      );
+    }
+    if (!validTime(startTime) || !validTime(endTime)) {
+      throw new BadRequestException(
+        'Shift times must use HH:mm or HH:mm:ss format',
+      );
+    }
+    if (type === 'FIXED' && (!startTime || !endTime)) {
+      throw new BadRequestException(
+        'Fixed shifts require both a start time and an end time',
+      );
+    }
   }
 
   private parseHolidayDate(value: string) {
@@ -1840,6 +1911,24 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException('Shift not found');
     }
 
+    const type = dto.type !== undefined ? dto.type : shift.type;
+    const startTime =
+      dto.startTime !== undefined ? dto.startTime : shift.startTime;
+    const endTime = dto.endTime !== undefined ? dto.endTime : shift.endTime;
+    const requiredHours =
+      dto.requiredHours !== undefined ? dto.requiredHours : shift.requiredHours;
+    const minPresentHours =
+      dto.minPresentHours !== undefined
+        ? dto.minPresentHours
+        : shift.minPresentHours;
+    this.validateShiftDefinition(
+      type,
+      startTime,
+      endTime,
+      requiredHours,
+      minPresentHours,
+    );
+
     // Prepare update data, filtering out undefined values
     const updateData: any = {};
     if (dto.name !== undefined) updateData.name = dto.name;
@@ -1936,12 +2025,18 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const day = attendanceDateFromKey(requestedDateKey);
     this.assertAttendanceEligible(day, employee.hireDate);
 
-    const existing = await this.prisma.attendance.findUnique({
-      where: { employeeId_date: { employeeId, date: day } },
-      include: { shift: true },
-    });
+    const existing = await withDeletedRecords(() =>
+      this.prisma.attendance.findUnique({
+        where: { employeeId_date: { employeeId, date: day } },
+        include: { shift: true },
+      }),
+    );
 
-    if (existing?.checkIn && employee.shift.type !== 'FLEXIBLE') {
+    if (
+      existing?.deletedAt == null &&
+      existing?.checkIn &&
+      employee.shift.type !== 'FLEXIBLE'
+    ) {
       throw new ConflictException('Employee has already checked in today');
     }
 
@@ -1997,6 +2092,36 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     // Calculate status based on late check-in
     const status = AttendanceStatus.PRESENT;
+
+    if (existing?.deletedAt != null) {
+      const result = await this.prisma.$transaction(async (tx) => {
+        await tx.attendanceBreak.deleteMany({
+          where: { attendanceId: existing.id },
+        });
+        return tx.attendance.update({
+          where: { id: existing.id },
+          data: {
+            deletedAt: null,
+            shiftId: employee.shift!.id,
+            checkIn: checkInTime,
+            checkOut: null,
+            workingHours: null,
+            lateMinutes,
+            overtimeHours: 0,
+            shortfallHours: 0,
+            requiredHours: employee.shift!.requiredHours,
+            status,
+            isPaidLeave: null,
+            checkoutSource: null,
+            checkoutActorId: null,
+            isAutoClosed: false,
+          },
+          include: { employee: true, shift: true },
+        });
+      });
+      await this.invalidateDashboardCache();
+      return result;
+    }
 
     if (existing) {
       const result = await this.prisma.attendance.update({
@@ -6122,6 +6247,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           breaks: { create: orderedBreaks },
         },
         update: {
+          deletedAt: null,
           shiftId: shift?.id ?? null,
           checkIn,
           checkOut,
@@ -6547,10 +6673,19 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     return updated;
   }
 
-  private async closeOverdueAttendances() {
+  private async closeOverdueAttendances(
+    organizationIds: number[] | null = null,
+  ) {
     const openAttendances =
       (await this.prisma.attendance.findMany({
-        where: { checkIn: { not: null }, checkOut: null, deletedAt: null },
+        where: {
+          checkIn: { not: null },
+          checkOut: null,
+          deletedAt: null,
+          ...(organizationIds === null
+            ? {}
+            : { organizationId: { in: organizationIds } }),
+        },
         include: {
           breaks: true,
           shift: true,
@@ -6660,10 +6795,19 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     return { processedAt: new Date().toISOString() };
   }
 
-  async runDailyAutomation() {
-    await this.closeOverdueAttendances();
+  async runDailyAutomation(user?: AttendanceUser) {
+    const scopedOrganizationIds = user
+      ? await this.getAttendanceOrganizationIds(user)
+      : null;
+    if (scopedOrganizationIds?.length === 0) {
+      return { processedDate: null, alreadyProcessed: true };
+    }
+    await this.closeOverdueAttendances(scopedOrganizationIds);
     const now = new Date();
     const employees = await this.prisma.employee.findMany({
+      ...(scopedOrganizationIds === null
+        ? {}
+        : { where: { organizationId: { in: scopedOrganizationIds } } }),
       include: {
         shift: true,
         shiftAssignments: { include: { shift: true } },
