@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { parse } from 'dotenv';
 import Redis from 'ioredis';
+import { redisConnectionOptions } from '../src/config/redis-options';
 import { serverEnvironmentFiles } from '../src/config/environment-files';
 import {
   redisRuntimeSummary,
@@ -44,10 +45,10 @@ async function main() {
     maxRetriesPerRequest: 1,
     retryStrategy: () => null,
   };
-  const redis =
-    'url' in connection
-      ? new Redis(connection.url, options)
-      : new Redis({ ...connection, ...options });
+  const redis = new Redis({
+    ...redisConnectionOptions(connection),
+    ...options,
+  });
   redis.on('error', () => undefined);
   try {
     await redis.connect();

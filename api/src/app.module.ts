@@ -24,6 +24,7 @@ import { BusinessUnitsModule } from './business-units/business-units.module';
 import { AuditContextMiddleware } from './audit-logs/audit-context.middleware';
 import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware';
 import { resolveRedisConnection } from './config/redis';
+import { redisConnectionOptions } from './config/redis-options';
 import { EmailModule } from './email/email.module';
 import { ClientPortalModule } from './client-portal/client-portal.module';
 import { CustomersModule } from './customers/customers.module';
@@ -33,7 +34,7 @@ const redisConnection = resolveRedisConnection(process.env);
 const queueImports = redisConnection
   ? [
       BullModule.forRoot({
-        connection: redisConnection,
+        connection: redisConnectionOptions(redisConnection),
       }),
     ]
   : [];

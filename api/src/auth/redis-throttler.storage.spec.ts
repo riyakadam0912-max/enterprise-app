@@ -123,4 +123,25 @@ describe('Shared authentication throttle storage', () => {
     expect(shared).toBeInstanceOf(RedisThrottlerStorage);
     (shared as RedisThrottlerStorage).onModuleDestroy();
   });
+
+  it('does not call legacy url.parse when initializing the production shared store', () => {
+    const legacyUrl = require('node:url') as typeof import('node:url');
+    const parse = jest.spyOn(legacyUrl, 'parse').mockImplementation(() => {
+      throw new Error('Legacy URL parser must not be called');
+    });
+    let shared: ThrottlerStorageService | RedisThrottlerStorage | undefined;
+    try {
+      shared = createAuthThrottleStorage(
+        new ConfigService({
+          NODE_ENV: 'production',
+          RATE_LIMIT_REDIS_URL: 'rediss://user:secret@example.invalid:6380/2',
+        }),
+      ) as RedisThrottlerStorage;
+      expect(shared).toBeInstanceOf(RedisThrottlerStorage);
+      expect(parse).not.toHaveBeenCalled();
+    } finally {
+      if (shared instanceof RedisThrottlerStorage) shared.onModuleDestroy();
+      parse.mockRestore();
+    }
+  });
 });

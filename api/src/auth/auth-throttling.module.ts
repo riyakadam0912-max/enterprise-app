@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerStorageService } from '@nestjs/throttler';
 import type { ThrottlerStorage } from '@nestjs/throttler';
 import Redis from 'ioredis';
+import { redisConnectionOptions } from '../config/redis-options';
 import { AUTH_THROTTLE_DEFAULT } from './auth-throttle.config';
 import { RedisThrottlerStorage } from './redis-throttler.storage';
 import { PostgresThrottlerStorage } from './postgres-throttler.storage';
@@ -49,10 +50,10 @@ export function createAuthThrottleStorage(
     commandTimeout: 2000,
     retryStrategy: () => null,
   };
-  const redis =
-    'url' in connection
-      ? new Redis(connection.url, options)
-      : new Redis({ ...connection, ...options });
+  const redis = new Redis({
+    ...redisConnectionOptions(connection),
+    ...options,
+  });
   redis.on('error', () => undefined);
   return new RedisThrottlerStorage(redis);
 }
