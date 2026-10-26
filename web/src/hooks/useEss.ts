@@ -1,3 +1,4 @@
+import { canLoadPersonalAttendance } from '@/utils/auth/personal-attendance';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuthSession } from '@/stores/auth-store';
 import * as essApi from '../api/essApi';
@@ -65,6 +66,7 @@ export function useCheckOut() {
 
 export function useAttendanceToday() {
   const scope = useAuthSession();
+  const enabled = canLoadPersonalAttendance(scope);
   const scopeKey = `${scope.user?.id}:${scope.organizationId}:${scope.activeBusinessUnitId}`;
   const [dataScope, setDataScope] = useState('');
   const sequence = useRef(0);
@@ -74,6 +76,8 @@ export function useAttendanceToday() {
 
   const fetch = useCallback(async () => {
     const requestId = ++sequence.current;
+    if (!enabled) { setData(null); setError(null); setLoading(false); setDataScope(scopeKey); return; }
+
     setLoading(true);
     setError(null);
     try {
@@ -84,11 +88,11 @@ export function useAttendanceToday() {
     } finally {
       if (requestId === sequence.current) setLoading(false);
     }
-  }, [scopeKey]);
+  }, [scopeKey, enabled]);
 
   useEffect(() => { void fetch(); return () => { sequence.current++; }; }, [fetch]);
 
-  return { data: dataScope === scopeKey ? data : null, loading: loading || dataScope !== scopeKey && !error, error, refetch: fetch };
+  return { data: enabled && dataScope === scopeKey ? data : null, loading: enabled && (loading || dataScope !== scopeKey && !error), error: enabled ? error : null, refetch: fetch };
 }
 
 export function useAttendanceHistory() {

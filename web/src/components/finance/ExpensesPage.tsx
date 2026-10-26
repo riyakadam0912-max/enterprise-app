@@ -7,14 +7,14 @@ import { getExpenses, getExpenseReceipt, createExpense, updateExpense, deleteExp
 import { uploadFile } from '@/api/filesApi';
 import { ImageCropDialog } from '@/components/common/ImageCropDialog';
 import { UserAvatar } from '@/components/common/UserAvatar';
-import { useAuthSession } from '@/stores/auth-store';
+import { isSuperAdminSession, useAuthSession } from '@/stores/auth-store';
 import { formatDate, formatInr } from '@/utils/finance';
 
 type DashboardRole = 'SUPER_ADMIN' | 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
 type SessionState = DashboardRole | 'UNAUTHENTICATED' | null;
 type ExpenseUiStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 type ExpenseFormState = {
-  category: (typeof CATEGORY_OPTIONS)[number];
+  category: string;
   amount: string;
   date: string;
   description: string;
@@ -91,9 +91,14 @@ function EmployeeAvatar({ userId, name }: { userId?: number | null; name?: strin
   return <UserAvatar userId={userId} name={name} size="md" className="bg-slate-900" />;
 }
 
-export default function ExpensesPage() {
+export default function ScopedExpensesPage() {
   const auth = useAuthSession();
-  const sessionRole: SessionState = auth.user || auth.employeeId != null ? auth.role : 'UNAUTHENTICATED';
+  return <ExpensesPage key={`${auth.user?.id}:${auth.organizationId}:${auth.activeBusinessUnitId}`} />;
+}
+
+function ExpensesPage() {
+  const auth = useAuthSession();
+  const sessionRole: SessionState = auth.user || auth.employeeId != null ? (isSuperAdminSession(auth) ? 'SUPER_ADMIN' : auth.role) : 'UNAUTHENTICATED';
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
@@ -103,6 +108,7 @@ export default function ExpensesPage() {
   const [selectedExpenseId, setSelectedExpenseId] = useState<number | null>(null);
   const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
   const [receiptPreviewLoading, setReceiptPreviewLoading] = useState(false);
+  const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
   const [showSubmitDrawer, setShowSubmitDrawer] = useState(false);
   const [rejectingExpenseId, setRejectingExpenseId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -143,7 +149,8 @@ export default function ExpensesPage() {
     };
   }, [sessionRole]);
 
-  const canSubmitExpense = sessionRole === 'EMPLOYEE' || sessionRole === 'MANAGER';
+  const formCurrency = editingExpenseId ? expenses.find(item => item.id === editingExpenseId)?.currency ?? 'INR' : 'INR';
+  const canSubmitExpense = sessionRole === 'SUPER_ADMIN' || sessionRole === 'EMPLOYEE' || sessionRole === 'MANAGER';
   const selectedExpense = useMemo(() => expenses.find((expense) => expense.id === selectedExpenseId) ?? null, [expenses, selectedExpenseId]);
   const selectedStatus = selectedExpense ? normalizedExpenseStatus(selectedExpense.status) : null;
 
@@ -211,13 +218,14 @@ export default function ExpensesPage() {
       setMessage(null);
       setError(null);
 
-      const created = await createExpense({
+      const payload = {
         expenseDate: form.date,
         category: form.category,
         description: form.description.trim(),
         amount: Number(form.amount),
-        currency: 'INR',
-      });
+        currency: formCurrency,
+      };
+      const created = editingExpenseId ? await updateExpense(editingExpenseId, payload) : await createExpense(payload);
 
       let finalExpense = created;
       if (form.receiptFile) {
@@ -234,7 +242,7 @@ export default function ExpensesPage() {
         });
       }
 
-      setExpenses((prev) => [finalExpense, ...prev]);
+      setExpenses((prev) => editingExpenseId ? prev.map(item => item.id === editingExpenseId ? finalExpense : item) : [finalExpense, ...prev]);
       setForm({
         category: CATEGORY_OPTIONS[0],
         amount: '',
@@ -243,7 +251,8 @@ export default function ExpensesPage() {
         receiptFile: null,
       });
       setShowSubmitDrawer(false);
-      setMessage('Expense submitted successfully');
+      setMessage(editingExpenseId ? 'Expense updated successfully' : 'Expense submitted successfully');
+      setEditingExpenseId(null);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Failed to submit expense');
     } finally {
@@ -313,8 +322,8 @@ export default function ExpensesPage() {
 
   function canActOnExpense(expense: Expense) {
     const status = (expense.status ?? '').toUpperCase();
-    if (status === 'PENDING_MANAGER') return sessionRole === 'ADMIN' || sessionRole === 'MANAGER';
-    if (status === 'PENDING_HR') return sessionRole === 'ADMIN';
+    if (status === 'PENDING_MANAGER') return sessionRole === 'SUPER_ADMIN' || sessionRole === 'ADMIN' || sessionRole === 'MANAGER';
+    if (status === 'PENDING_HR') return sessionRole === 'SUPER_ADMIN' || sessionRole === 'ADMIN';
     return false;
   }
 
@@ -350,7 +359,7 @@ export default function ExpensesPage() {
           {canSubmitExpense ? (
             <button
               type="button"
-              onClick={() => setShowSubmitDrawer(true)}
+              onClick={() => { setEditingExpenseId(null); setForm({ category: CATEGORY_OPTIONS[0], amount: '', date: todayInputValue(), description: '', receiptFile: null }); setShowSubmitDrawer(true); }}
               className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600"
             >
               <span className="text-base leading-none"><PlusIcon /></span>
@@ -548,6 +557,12 @@ export default function ExpensesPage() {
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Expense detail</p>
               <h2 className="mt-1 text-xl font-semibold text-slate-900">Expense #{selectedExpense.id}</h2>
+              {sessionRole === 'SUPER_ADMIN' && !['APPROVED', 'REJECTED'].includes(selectedExpense.status.toUpperCase()) && <button type="button" className="mt-2 text-sm font-semibold text-orange-700" onClick={() => {
+                setEditingExpenseId(selectedExpense.id);
+                setForm({ category: selectedExpense.category ?? 'Other', amount: String(selectedExpense.amount ?? ''), date: selectedExpense.expenseDate?.slice(0, 10) ?? todayInputValue(), description: selectedExpense.description ?? '', receiptFile: null });
+                setSelectedExpenseId(null); setShowSubmitDrawer(true);
+              }}>Edit expense</button>}
+
             </div>
             <button type="button" onClick={() => setSelectedExpenseId(null)} className="rounded-full border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50" aria-label="Close expense details">
               {closeIcon()}
@@ -666,7 +681,7 @@ export default function ExpensesPage() {
           <div className="flex items-start justify-between border-b border-slate-200 bg-linear-to-r from-white to-slate-50 px-5 py-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Submit expense</p>
-              <h2 className="mt-1 text-xl font-semibold text-slate-900">New expense</h2>
+              <h2 className="mt-1 text-xl font-semibold text-slate-900">{editingExpenseId ? `Edit expense #${editingExpenseId}` : 'New expense'}</h2>
             </div>
             <button type="button" onClick={() => setShowSubmitDrawer(false)} className="rounded-full border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50" aria-label="Close expense drawer">
               {closeIcon()}
@@ -681,13 +696,14 @@ export default function ExpensesPage() {
                   onChange={(event) => setForm((current) => ({ ...current, category: event.target.value as ExpenseFormState['category'] }))}
                   className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400"
                 >
+                  {!CATEGORY_OPTIONS.some(option => option === form.category) && <option value={form.category}>{form.category}</option>}
                   {CATEGORY_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
                 </select>
               </label>
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-slate-700">Amount</span>
                 <div className="flex items-center rounded-xl border border-slate-200 px-3 py-2.5 focus-within:border-orange-400">
-                  <span className="text-sm text-slate-400">₹</span>
+                  <span className="text-sm text-slate-400">{formCurrency}</span>
                   <input
                     type="number"
                     min="0"
@@ -709,8 +725,9 @@ export default function ExpensesPage() {
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block text-sm font-medium text-slate-700">Description</span>
+                <span id="expense-description-label" className="mb-1 block text-sm font-medium text-slate-700">Description</span>
                 <textarea
+                  aria-labelledby="expense-description-label"
                   value={form.description}
                   onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
                   rows={5}
@@ -756,7 +773,7 @@ export default function ExpensesPage() {
               disabled={actionLoadingId === -1 || !form.description.trim() || !form.amount}
               className="w-full rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50"
             >
-              Submit expense
+              {editingExpenseId ? 'Save changes' : 'Submit expense'}
             </button>
           </div>
         </DrawerShell>

@@ -1,5 +1,8 @@
 'use client';
 
+import { useAuthSession } from '@/stores/auth-store';
+import { canLoadPersonalAttendance } from '@/utils/auth/personal-attendance';
+
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMyProfile, useAttendanceToday, useLeaveBalance, useMyPayslips, useCheckIn, useCheckOut } from '@/hooks/useEss';
@@ -8,6 +11,12 @@ import { formatHoursDuration } from '@/lib/time-format';
 import { AlertCircle, Clock, Briefcase, FileText, Receipt, ChevronRight } from 'lucide-react';
 
 export default function ESSDashboardPage() {
+  const session = useAuthSession();
+  if (!canLoadPersonalAttendance(session)) return <p className="p-6 text-sm text-slate-600">This account has no personal employee profile. <a className="underline" href="/dashboard/attendance">Manage organization attendance</a></p>;
+  return <EmployeeESSDashboardPage key={`${session.user?.id}:${session.organizationId}`} />;
+}
+
+function EmployeeESSDashboardPage() {
   const router = useRouter();
   const { data: profile, loading: profileLoading } = useMyProfile();
   const { data: attendance, loading: attendanceLoading, refetch: refetchAttendance } = useAttendanceToday();

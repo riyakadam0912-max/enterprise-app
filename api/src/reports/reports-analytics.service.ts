@@ -1,3 +1,4 @@
+import { isPlatformAdministrator } from '../common/utils/platform-admin';
 import {
   Inject,
   BadRequestException,
@@ -12,7 +13,10 @@ import { PrismaService } from '../prisma/prisma.service';
 
 export interface ReportsUserContext {
   userId: number;
-  role: 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
+  role: 'SUPER_ADMIN' | 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE';
+  roles?: string[];
+  isSuperAdmin?: boolean;
+  isPlatformAdmin?: boolean;
   employeeId?: number | null;
   organizationId?: number | null;
 }
@@ -586,7 +590,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
     filters: ReportsQueryFilters,
   ): Promise<DashboardSummaryPayload> {
     const dateRange = this.resolveDateRange(filters);
-    const cacheKey = `dashboard-summary:${user.userId}:${dateRange.start.toISOString()}:${dateRange.end.toISOString()}`;
+    const cacheKey = `dashboard-summary:${user.userId}:${user.organizationId ?? 'ALL'}:${dateRange.start.toISOString()}:${dateRange.end.toISOString()}`;
     const cached = await this.cacheManager.get<{
       cachedAt: number;
       payload: unknown;
@@ -818,7 +822,11 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('Invalid employeeId');
     }
 
-    if (user.role === 'ADMIN' || user.role === 'HR') {
+    if (
+      isPlatformAdministrator(user) ||
+      user.role === 'ADMIN' ||
+      user.role === 'HR'
+    ) {
       if (requestedEmployeeId) {
         return {
           role: user.role,

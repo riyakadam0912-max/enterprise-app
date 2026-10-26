@@ -23,10 +23,11 @@ export default function ExpenseDetail() {
   if (query.isLoading) return <View style={styles.page}><Text>Loading expense...</Text></View>;
   if (query.isError || !query.data) return <View style={styles.page}><Text style={styles.error}>{apiError(query.error)}</Text><Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={styles.back}>Go back</Text></Pressable></View>;
   const current = query.data;
-  const canManagerApprove = session?.role === 'MANAGER' || session?.role === 'ADMIN';
-  const canHrApprove = session?.role === 'HR' || session?.role === 'ADMIN';
-  const canEdit = session?.role === 'EMPLOYEE' && current.status !== 'APPROVED' && current.status !== 'REJECTED';
-  const canDelete = session?.role === 'ADMIN' || session?.role === 'HR';
+  const isSuperAdmin = session?.role === 'SUPER_ADMIN' || session?.isSuperAdmin === true || session?.isPlatformAdmin === true;
+  const canManagerApprove = isSuperAdmin || session?.role === 'MANAGER' || session?.role === 'ADMIN';
+  const canHrApprove = isSuperAdmin || session?.role === 'HR' || session?.role === 'ADMIN';
+  const canEdit = (isSuperAdmin || session?.role === 'EMPLOYEE') && current.status !== 'APPROVED' && current.status !== 'REJECTED';
+  const canDelete = isSuperAdmin || session?.role === 'ADMIN' || session?.role === 'HR';
   return <ScrollView contentContainerStyle={styles.page}>
     <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={styles.back}>Back to expenses</Text></Pressable>
     <Text style={styles.title}>{String(current.description ?? 'Expense claim')}</Text>

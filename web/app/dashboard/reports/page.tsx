@@ -1,5 +1,7 @@
 'use client';
 
+import { isSuperAdminSession, useAuthSession } from '@/stores/auth-store';
+
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { formatDate } from '@/utils/dateUtils';
@@ -80,15 +82,14 @@ function SkeletonGrid() {
   );
 }
 
-export default function ReportsPage() {
-  const [role] = useState<UserRole>(() => {
-    if (typeof window === 'undefined') return 'ADMIN';
-    const storedRole = localStorage.getItem('role');
-    if (storedRole === 'EMPLOYEE' || storedRole === 'MANAGER' || storedRole === 'HR') {
-      return storedRole;
-    }
-    return 'ADMIN';
-  });
+export default function ScopedReportsPage() {
+  const session = useAuthSession();
+  return <ReportsPage key={`${session.user?.id}:${session.organizationId}:${session.activeBusinessUnitId}`} />;
+}
+
+function ReportsPage() {
+  const session = useAuthSession();
+  const role = isSuperAdminSession(session) ? 'SUPER_ADMIN' : session.role;
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [data, setData] = useState<ReportsDashboard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -111,7 +112,7 @@ export default function ReportsPage() {
 
   useEffect(() => {
     async function loadEmployees() {
-      if (role !== 'ADMIN' && role !== 'HR' && role !== 'MANAGER') {
+      if (role !== 'SUPER_ADMIN' && role !== 'ADMIN' && role !== 'HR' && role !== 'MANAGER') {
         return;
       }
 
@@ -176,9 +177,9 @@ export default function ReportsPage() {
     };
   }, [filters]);
 
-  const canUseOrgFilters = role === 'ADMIN' || role === 'HR' || role === 'MANAGER';
-  const canFilterRole = role === 'ADMIN' || role === 'HR';
-  const canSeeTalentTables = role === 'ADMIN' || role === 'HR' || role === 'MANAGER';
+  const canUseOrgFilters = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'HR' || role === 'MANAGER';
+  const canFilterRole = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'HR';
+  const canSeeTalentTables = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'HR' || role === 'MANAGER';
 
   const currentUserId = useMemo(() => {
     if (typeof window === 'undefined') return null;

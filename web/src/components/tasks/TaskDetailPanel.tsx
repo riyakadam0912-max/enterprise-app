@@ -194,12 +194,12 @@ function TaskDetailPanelBody({
   const [chatTab, setChatTab] = useState(false);
 
   const isEmployee = role === 'EMPLOYEE';
-  const isManagerOrAdmin = role === 'ADMIN' || role === 'MANAGER';
+  const isManagerOrAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER';
   const isAssignee = Boolean(currentUserId != null && task.assignedToUserId === currentUserId);
   const canEmployeeAct = isEmployee && isAssignee;
   const canReview = isManagerOrAdmin && taskStatus === 'SUBMITTED';
   const canEdit =
-    Boolean(onEditTask) && (isManagerOrAdmin || role === 'SUPER_ADMIN');
+    Boolean(onEditTask) && isManagerOrAdmin;
   const isAssignedShootAdmin = Boolean(
     task.taskType === 'SHOOT' &&
       (role === 'ADMIN' || role === 'SUPER_ADMIN') &&

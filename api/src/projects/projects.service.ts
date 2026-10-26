@@ -9,6 +9,7 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
+import { isPlatformAdministrator } from '../common/utils/platform-admin';
 import { Role } from '../common/enums/role.enum';
 import { CreateProjectLinkDto } from './dto/create-project-link.dto';
 import { AuthUser } from '../common/types/auth';
@@ -48,12 +49,7 @@ export class ProjectsService {
   }
 
   private isPlatformAdmin(user: AuthUser): boolean {
-    return (
-      user.role === Role.SUPER_ADMIN ||
-      user.isPlatformAdmin === true ||
-      user.isSuperAdmin === true ||
-      user.roles.includes(Role.SUPER_ADMIN)
-    );
+    return isPlatformAdministrator(user);
   }
 
   private async notifyProjectChange(
@@ -168,9 +164,9 @@ export class ProjectsService {
     let managerProjectWhere: Prisma.ProjectWhereInput | null = null;
 
     if (
+      isPlatformAdministrator(user) ||
       user.role === Role.ADMIN ||
-      user.role === Role.HR ||
-      user.role === Role.SUPER_ADMIN
+      user.role === Role.HR
     ) {
       roleWhere = baseWhere;
     } else if (user.role === Role.MANAGER) {
@@ -337,6 +333,9 @@ export class ProjectsService {
   ): Promise<number[] | null> {
     if (this.isPlatformAdmin(user) && user.organizationId == null) return null;
     const organizationId = this.validateOrganization(user);
+    if (this.isPlatformAdmin(user)) {
+      return this.organizationScopeService.getOrganizationIds(user);
+    }
     const isHierarchyAdmin =
       user.role === Role.ADMIN ||
       user.role === Role.HR ||

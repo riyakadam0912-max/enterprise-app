@@ -24,7 +24,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/providers/toast-provider';
-import { getActiveOrganizationId, useAuthSession } from '@/stores/auth-store';
+import { getActiveOrganizationId, isSuperAdminSession, useAuthSession } from '@/stores/auth-store';
 
 const emptyUnitForm: BusinessUnitPayload = {
   name: '',
@@ -44,11 +44,16 @@ const operationalLinks = [
   { label: 'Tasks', href: '/dashboard/tasks' },
 ];
 
-export default function BusinessUnitAdminPage() {
+export default function ScopedBusinessUnitAdminPage() {
+  const session = useAuthSession();
+  return <BusinessUnitAdminPage key={`${session.user?.id}:${session.organizationId}:${session.activeBusinessUnitId}`} />;
+}
+
+function BusinessUnitAdminPage() {
   const session = useAuthSession();
   const organizationId = getActiveOrganizationId() ?? session.organizationId;
   const canManageAssignments =
-    session.role === 'ADMIN' || session.isBusinessUnitAdmin;
+    isSuperAdminSession(session) || session.role === 'ADMIN' || session.isBusinessUnitAdmin;
   const [units, setUnits] = useState<BusinessUnit[]>([]);
   const [selectedUnitId, setSelectedUnitId] = useState<number | null>(null);
   const [administrators, setAdministrators] = useState<BusinessUnitAdministrator[]>([]);

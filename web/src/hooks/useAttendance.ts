@@ -1,5 +1,7 @@
 'use client';
 
+import { canLoadPersonalAttendance } from '@/utils/auth/personal-attendance';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuthSession } from '@/stores/auth-store';
 import { ApiError } from '@/api/apiClient';
@@ -185,6 +187,7 @@ export function useTodayAttendance(date?: string) {
 
 export function useMyAttendanceSnapshot() {
   const scope = useAuthSession();
+  const enabled = canLoadPersonalAttendance(scope);
   const scopeKey = `${scope.user?.id}:${scope.organizationId}:${scope.activeBusinessUnitId}`;
   const [dataScope, setDataScope] = useState('');
   const requestSequence = useRef(0);
@@ -194,6 +197,8 @@ export function useMyAttendanceSnapshot() {
 
   const fetchSnapshot = useCallback(async (silent = false) => {
     const requestId = ++requestSequence.current;
+    if (!enabled) { setData(null); setError(null); setLoading(false); setDataScope(scopeKey); return; }
+
     if (!silent) setLoading(true);
     setError(null);
     try {
@@ -208,9 +213,10 @@ export function useMyAttendanceSnapshot() {
     } finally {
       if (requestId === requestSequence.current) setLoading(false);
     }
-  }, [scopeKey]);
+  }, [scopeKey, enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     void fetchSnapshot();
     const refreshSilently = () => {
       if (document.visibilityState === 'visible') {
@@ -226,11 +232,11 @@ export function useMyAttendanceSnapshot() {
       window.removeEventListener('focus', refreshSilently);
       document.removeEventListener('visibilitychange', refreshSilently);
     };
-  }, [fetchSnapshot]);
+  }, [fetchSnapshot, enabled]);
 
   useEffect(() => () => { requestSequence.current += 1; }, []);
 
-  return { data: dataScope === scopeKey ? data : null, loading: loading || dataScope !== scopeKey && !error, error, refetch: fetchSnapshot };
+  return { data: enabled && dataScope === scopeKey ? data : null, loading: enabled && (loading || dataScope !== scopeKey && !error), error: enabled ? error : null, refetch: fetchSnapshot };
 }
 
 export function useEmployeeAttendance(employeeId: number, month?: string) {

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { Cache } from 'cache-manager';
+import { isPlatformAdministrator } from '../common/utils/platform-admin';
 import { Role } from '../common/enums/role.enum';
 import { AuthUser } from '../common/types/auth';
 import { PrismaService } from '../prisma/prisma.service';
@@ -87,11 +88,17 @@ export class ExpensesService {
   ): Promise<Prisma.ExpenseWhereInput> {
     const organizationId = this.validateOrganization(user);
     const organizationIds =
-      user.role === Role.ADMIN || user.role === Role.HR
+      isPlatformAdministrator(user) ||
+      user.role === Role.ADMIN ||
+      user.role === Role.HR
         ? await this.organizationScopeService.getOrganizationIds(user)
         : [organizationId];
     let baseWhere: Prisma.ExpenseWhereInput;
-    if (user.role === Role.ADMIN || user.role === Role.HR) {
+    if (
+      isPlatformAdministrator(user) ||
+      user.role === Role.ADMIN ||
+      user.role === Role.HR
+    ) {
       baseWhere =
         organizationIds === null
           ? {}
@@ -115,7 +122,9 @@ export class ExpensesService {
     const descendantOrganizationIds =
       organizationIds?.filter((id) => id !== organizationId) ?? [];
     if (
-      (user.role === Role.ADMIN || user.role === Role.HR) &&
+      (isPlatformAdministrator(user) ||
+        user.role === Role.ADMIN ||
+        user.role === Role.HR) &&
       descendantOrganizationIds.length > 0
     ) {
       return {
@@ -151,7 +160,7 @@ export class ExpensesService {
     const currentEmployeeId = user.employeeId ?? null;
     const employeeId = dto.employeeId ?? currentEmployeeId;
 
-    if (user.role === Role.EMPLOYEE) {
+    if (user.role === Role.EMPLOYEE && !isPlatformAdministrator(user)) {
       const ownEmployeeId =
         currentEmployeeId ?? (await this.resolveCurrentEmployeeId(user));
       if (dto.employeeId !== undefined && dto.employeeId !== ownEmployeeId) {
@@ -164,7 +173,7 @@ export class ExpensesService {
     // Managers and HR can create expenses for their team/organization
     // If no employeeId provided and user is not an employee, that's OK for manager/admin
     if (employeeId === null || employeeId === undefined) {
-      if (user.role === Role.EMPLOYEE) {
+      if (user.role === Role.EMPLOYEE && !isPlatformAdministrator(user)) {
         throw new ForbiddenException(
           'Employee identifier is required to create an expense',
         );
@@ -176,7 +185,9 @@ export class ExpensesService {
     if (employeeId != null) {
       const scope = await this.businessUnitsService.resolveScope(user as any);
       const organizationIds =
-        user.role === Role.ADMIN || user.role === Role.HR
+        isPlatformAdministrator(user) ||
+        user.role === Role.ADMIN ||
+        user.role === Role.HR
           ? await this.organizationScopeService.getOrganizationIds(user)
           : [organizationId];
       const employee = await this.prisma.employee.findFirst({
@@ -288,6 +299,7 @@ export class ExpensesService {
     const expense = await this.findOne(id, user);
     if (
       user.role === Role.EMPLOYEE &&
+      !isPlatformAdministrator(user) &&
       (expense.status === 'APPROVED' || expense.status === 'REJECTED')
     ) {
       throw new ForbiddenException(
@@ -297,6 +309,7 @@ export class ExpensesService {
 
     if (
       user.role === Role.EMPLOYEE &&
+      !isPlatformAdministrator(user) &&
       dto.employeeId !== undefined &&
       dto.employeeId !== expense.employeeId
     ) {
@@ -308,7 +321,9 @@ export class ExpensesService {
     if (dto.employeeId !== undefined && dto.employeeId !== null) {
       const scope = await this.businessUnitsService.resolveScope(user as any);
       const organizationIds =
-        user.role === Role.ADMIN || user.role === Role.HR
+        isPlatformAdministrator(user) ||
+        user.role === Role.ADMIN ||
+        user.role === Role.HR
           ? await this.organizationScopeService.getOrganizationIds(user)
           : [user.organizationId!];
       const employee = await this.prisma.employee.findFirst({

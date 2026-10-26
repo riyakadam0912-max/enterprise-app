@@ -1,5 +1,7 @@
 'use client';
 
+import { isSuperAdminSession } from '@/stores/auth-store';
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -302,8 +304,8 @@ function TaskDetailModal({
   const showApproved = taskStatus === 'APPROVED';
   const canEditTasks = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER';
   const canDeleteTasks = role === 'SUPER_ADMIN' || role === 'ADMIN';
-  const canReview = (role === 'ADMIN' || role === 'MANAGER') && taskStatus === 'SUBMITTED';
-  const canChangeStatus = role === 'ADMIN' || role === 'MANAGER';
+  const canReview = (role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER') && taskStatus === 'SUBMITTED';
+  const canChangeStatus = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER';
   const submissionDate = activeTask.updatedAt ?? activeTask.createdAt;
 
   async function handleSubmitForm() {
@@ -744,11 +746,16 @@ function TaskDetailModal({
   );
 }
 
-export default function AllTasksPage() {
+export default function ScopedAllTasksPage() {
+  const session = useAuthSession();
+  return <AllTasksPage key={`${session.user?.id}:${session.organizationId}:${session.activeBusinessUnitId}`} />;
+}
+
+function AllTasksPage() {
   const authSession = useAuthSession();
   const { session: _session } = useAuth();
   
-  const role = authSession.role;
+  const role = isSuperAdminSession(authSession) ? 'SUPER_ADMIN' : authSession.role;
   const currentUserId = authSession.user?.id ?? null;
   
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -764,7 +771,7 @@ export default function AllTasksPage() {
   const [isTaskFilterOpen, setIsTaskFilterOpen] = useState(false);
   const [visibleTaskColumns, setVisibleTaskColumns] = useState<Record<string, boolean>>(() => Object.fromEntries(TASK_GRID_COLUMNS.map((column) => [column.key, true])));
 
-  const isManagerOrAdmin = role === 'ADMIN' || role === 'MANAGER';
+  const isManagerOrAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER';
   const canDeleteTasks = role === 'SUPER_ADMIN' || role === 'ADMIN';
   const visibleTaskColumnList = useMemo(
     () => TASK_GRID_COLUMNS.filter((column) => visibleTaskColumns[column.key] !== false),
