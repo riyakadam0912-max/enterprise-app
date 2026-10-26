@@ -18,6 +18,7 @@ import {
   getActiveOrganizationId,
   getAuthSessionSnapshot,
   setAuthSession,
+  setActiveOrganization,
   useAuthSession,
 } from '@/stores/auth-store';
 
@@ -105,6 +106,8 @@ export function AuthProvider({
     let mounted = true;
 
     async function bootstrapAuth() {
+      const priorUserId = getAuthSessionSnapshot().user?.id;
+      const selectedOrganizationId = getActiveOrganizationId();
       try {
         const current = await getCurrentUser();
 
@@ -119,6 +122,7 @@ export function AuthProvider({
           permissions: current.permissions,
 
           employeeId: current.employeeId,
+          employeeOrganizationId: current.employeeId != null ? current.organizationId : null,
           organizationId: current.organizationId,
           organizationSlug: current.organizationSlug,
           organizationName: current.organizationName,
@@ -127,6 +131,11 @@ export function AuthProvider({
           isPlatformAdmin: current.isPlatformAdmin,
 
         });
+
+        if (selectedOrganizationId != null && current.user.id === priorUserId) {
+          // Restore management context while retaining the employee's home organization.
+          setActiveOrganization(selectedOrganizationId);
+        }
 
         await hydrateBusinessUnitAccess();
 
@@ -203,6 +212,7 @@ export function AuthProvider({
 
         employeeId:
           data.employeeId,
+        employeeOrganizationId: data.employeeId != null ? data.organizationId : null,
         organizationId:
           data.organizationId,
         organizationSlug:

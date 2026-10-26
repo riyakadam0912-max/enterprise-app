@@ -4899,4 +4899,72 @@ describe('AttendanceService', () => {
       }),
     );
   });
+  it.each([Role.ADMIN, Role.SUPER_ADMIN])(
+    'assigns a shift to an authorized child employee from a parent context (%s)',
+    async (role) => {
+      const user = { ...mockUser, role, organizationId: 1 };
+      jest
+        .spyOn(service as any, 'getScopedEmployeeFilter')
+        .mockResolvedValue([25]);
+      mockBusinessUnitsService.buildEmployeeBUWhere.mockReturnValue({
+        organizationId: 1,
+        deletedAt: null,
+      });
+      mockOrganizationScopeService.getRelatedOrganizationIds.mockResolvedValue([
+        1, 2,
+      ]);
+      mockOrganizationScopeService.getOrganizationFamilyRootId.mockResolvedValue(
+        1,
+      );
+      prisma.shift.findFirst.mockResolvedValue({
+        id: 12,
+        organizationId: 1,
+        type: 'FIXED',
+        requiredHours: 8,
+        isActive: true,
+      });
+      prisma.employee.findFirst.mockImplementation(async (args: any) =>
+        args.where.organizationId === 1 ? null : { id: 25, organizationId: 2 },
+      );
+      prisma.employee.update.mockResolvedValue({ id: 25, shiftId: 12 });
+      await expect(
+        service.assignShift({ employeeId: 25, shiftId: 12 }, user),
+      ).resolves.toEqual({ id: 25, shiftId: 12 });
+      expect(prisma.employee.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: 25,
+            AND: [{ id: { in: [25] } }],
+          }),
+        }),
+      );
+      expect(prisma.employee.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 25, organizationId: 2 } }),
+      );
+    },
+  );
+
+  it('does not bypass an empty authorized employee scope during shift assignment', async () => {
+    jest.spyOn(service as any, 'getScopedEmployeeFilter').mockResolvedValue([]);
+    mockOrganizationScopeService.getRelatedOrganizationIds.mockResolvedValue([
+      1, 2,
+    ]);
+    prisma.shift.findFirst.mockResolvedValue({
+      id: 12,
+      organizationId: 1,
+      isActive: true,
+    });
+    prisma.employee.findFirst.mockImplementation(async (args: any) =>
+      args.where.AND?.[0]?.id.in.length === 0
+        ? null
+        : { id: 25, organizationId: 2 },
+    );
+    await expect(
+      service.assignShift(
+        { employeeId: 25, shiftId: 12 },
+        { ...mockUser, role: Role.ADMIN },
+      ),
+    ).rejects.toThrow('Employee not found');
+    expect(prisma.employee.update).not.toHaveBeenCalled();
+  });
 });

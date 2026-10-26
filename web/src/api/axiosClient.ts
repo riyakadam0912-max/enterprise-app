@@ -79,6 +79,11 @@ export const axiosClient = axios.create({
 axiosClient.interceptors.request.use(
   (config) => {
     if (typeof window !== 'undefined') {
+      // Attendance is protected; do not restart its requests after session loss.
+      const attendanceRequest = /(?:^|\/)attendance(?:\/|$)/.test((config.url ?? '').split('?')[0]);
+      if (attendanceRequest && !getAuthSessionSnapshot().user) {
+        throw new axios.CanceledError('Authentication is required');
+      }
       try {
         const session = getAuthSessionSnapshot();
         const isPrivilegedTenantContext =
@@ -193,6 +198,8 @@ axiosClient.interceptors.response.use(
       !isAuthEndpoint
     ) {
 
+      originalRequest._retry = true;
+
       if (isRefreshing) {
 
         return new Promise((resolve, reject) => {
@@ -212,7 +219,7 @@ axiosClient.interceptors.response.use(
 
 
 
-      originalRequest._retry = true;
+
 
       isRefreshing = true;
 
@@ -225,7 +232,7 @@ axiosClient.interceptors.response.use(
             success: boolean;
             message: string;
             data: AuthRefreshPayload;
-          }>('/auth/refresh', { _skipAuthRefresh: true } as never),
+          }>('/auth/refresh', undefined, { _skipAuthRefresh: true } as never),
         );
 
         const payload = response.data?.data;
@@ -245,6 +252,7 @@ axiosClient.interceptors.response.use(
             permissions: payload.permissions,
 
             employeeId: payload.employeeId,
+            employeeOrganizationId: payload.employeeId != null ? payload.organizationId : null,
 
             organizationId: payload.organizationId,
             organizationSlug: payload.organizationSlug ?? null,

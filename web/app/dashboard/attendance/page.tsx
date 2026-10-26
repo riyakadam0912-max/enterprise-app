@@ -13,6 +13,8 @@ import { useAttendance, useCheckIn, useCheckOut, useMyAttendanceSnapshot, useTod
 import { useEmployees } from '@/hooks/useEmployees';
 import TableActions from '@/components/common/TableActions';
 import { reportError } from '@/lib/error-handling';
+import { useAuth } from '@/providers/AuthProvider';
+import { canLoadPersonalAttendance } from '@/utils/auth/personal-attendance';
 import { useAuthSession } from '@/stores/auth-store';
 import { formatHoursDuration, formatTime, formatShiftTime, formatShiftRange } from '@/lib/time-format';
 
@@ -909,12 +911,16 @@ function EditAttendanceModal(props: {
 }
 
 export default function AttendancePage() {
+  const { loading, authenticated } = useAuth();
   const scope = useAuthSession();
+  if (loading) return <p className="p-6 text-sm text-slate-600">Loading attendance...</p>;
+  if (!authenticated) return <p className="p-6 text-sm text-slate-600">Please sign in to view attendance.</p>;
   return <AttendancePageContent key={`${scope.user?.id}:${scope.organizationId}:${scope.activeBusinessUnitId}`} />;
 }
 function AttendancePageContent() {
   const searchParams = useSearchParams();
   const authSession = useAuthSession();
+  const personalAttendanceEnabled = canLoadPersonalAttendance(authSession);
   const session = {
     role: (authSession.role as 'SUPER_ADMIN' | 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE') ?? 'EMPLOYEE',
     employeeId: authSession.employeeId ?? null,
@@ -1160,13 +1166,13 @@ function AttendancePageContent() {
   }, []);
 
   useEffect(() => {
-    if (!session.employeeId) return;
+    if (!personalAttendanceEnabled) return;
     let cancelled = false;
     getWorkHourBalances()
       .then((balances) => { if (!cancelled) setWorkBalances(balances); })
       .catch(() => { if (!cancelled) setWorkBalances(null); });
     return () => { cancelled = true; };
-  }, [session.employeeId]);
+  }, [session.employeeId, authSession.organizationId, personalAttendanceEnabled]);
 
   useEffect(() => {
     if (!canViewAdminAttendance) return;
@@ -1189,7 +1195,7 @@ function AttendancePageContent() {
     return today.data?.rows.find((row) => row.employeeId === session.employeeId) ?? null;
   }, [session.employeeId, today.data]);
   const resolvedEmployeeId = myTodayRow?.employeeId ?? session.employeeId;
-  const accountLinked = Boolean(resolvedEmployeeId) || (!canViewAdminAttendance && today.error !== 'Your login is not linked to an employee profile yet.');
+  const accountLinked = canLoadPersonalAttendance(authSession) && (Boolean(resolvedEmployeeId) || (!canViewAdminAttendance && today.error !== 'Your login is not linked to an employee profile yet.'));
 
   async function handleEmployeeAction(mode: 'in' | 'out' | 'break') {
     if (attendanceActionInFlight.current || !mySnapshot.data || mySnapshot.error || mySnapshot.loading) return;

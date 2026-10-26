@@ -30,6 +30,7 @@ export type AuthSession = {
   permissions: string[];
   user: AuthUser | null;
   employeeId: number | null;
+  employeeOrganizationId?: number | null;
   organizationId: number | null;
   organizationSlug: string | null;
   organizationName: string | null;
@@ -49,6 +50,7 @@ type AuthSessionInput = {
   permissions?: string[];
   user?: AuthUser | null;
   employeeId?: number | string | null;
+  employeeOrganizationId?: number | null;
   organizationId?: number | string | null;
   organizationSlug?: string | null;
   organizationName?: string | null;
@@ -72,6 +74,7 @@ const SERVER_AUTH_SESSION: AuthSession = Object.freeze({
   permissions: [],
   user: null,
   employeeId: null,
+  employeeOrganizationId: null,
   organizationId: null,
   organizationSlug: null,
   organizationName: null,
@@ -321,6 +324,9 @@ export function setAuthSession(session: AuthSessionInput): void {
     permissions: session.permissions ?? [],
     user: session.user ?? null,
     employeeId: parseEmployeeId(session.employeeId == null ? null : String(session.employeeId)),
+    employeeOrganizationId: session.employeeId == null ? null :
+      session.employeeOrganizationId !== undefined ? session.employeeOrganizationId :
+      parseOrganizationId(session.organizationId == null ? null : String(session.organizationId)),
     organizationId: parseOrganizationId(session.organizationId == null ? null : String(session.organizationId)),
     organizationSlug: session.organizationSlug ?? null,
     organizationName: session.organizationName ?? null,

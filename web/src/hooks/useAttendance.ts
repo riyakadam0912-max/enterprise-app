@@ -147,11 +147,14 @@ export function useAttendance(filters: AttendanceFilters, scope: 'all' | 'me' = 
 }
 
 export function useTodayAttendance(date?: string) {
+  const auth = useAuthSession();
+  const enabled = Boolean(auth.user);
   const [data, setData] = useState<TodayAttendanceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchToday = useCallback(async (silent = false) => {
+    if (!enabled) return;
     if (!silent) setLoading(true);
     setError(null);
     try {
@@ -162,9 +165,10 @@ export function useTodayAttendance(date?: string) {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [date]);
+  }, [date, enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     fetchToday();
     const refreshSilently = () => {
       if (document.visibilityState === 'visible') {
@@ -180,9 +184,9 @@ export function useTodayAttendance(date?: string) {
       window.removeEventListener('focus', refreshSilently);
       document.removeEventListener('visibilitychange', refreshSilently);
     };
-  }, [fetchToday]);
+  }, [fetchToday, enabled]);
 
-  return { data, loading, error, refetch: fetchToday };
+  return { data: enabled ? data : null, loading: enabled && loading, error: enabled ? error : null, refetch: fetchToday };
 }
 
 export function useMyAttendanceSnapshot() {

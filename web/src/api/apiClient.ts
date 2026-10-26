@@ -160,6 +160,7 @@ export async function apiClient<T>(
 
     return unwrapEnvelope<T>(payload);
   } catch (error: unknown) {
+    if (axios.isCancel(error)) throw error;
     if (axios.isAxiosError(error)) {
       const status = error.response?.status;
 

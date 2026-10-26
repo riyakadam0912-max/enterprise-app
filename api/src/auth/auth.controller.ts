@@ -1,5 +1,6 @@
 import {
   Controller,
+  UnauthorizedException,
   Post,
   Body,
   UseGuards,
@@ -428,7 +429,16 @@ export class AuthController {
       };
       return { success: true, data };
     } catch (error) {
-      this.clearAuthCookies(res, req);
+      if (error instanceof UnauthorizedException) {
+        this.logger.warn({
+          event: 'auth_refresh_rejected',
+          reason: refreshToken
+            ? 'INVALID_OR_EXPIRED_SESSION'
+            : 'MISSING_REFRESH_CREDENTIAL',
+          requestId: req.headers['x-request-id'],
+        });
+        this.clearAuthCookies(res, req);
+      }
       throw error;
     }
   }

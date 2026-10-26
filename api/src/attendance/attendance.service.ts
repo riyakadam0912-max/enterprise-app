@@ -1855,11 +1855,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const employee = await this.prisma.employee.findFirst({
       where: {
         id: dto.employeeId,
+        // The scoped IDs already include hierarchy and BU authorization.
+        // Reapplying the selected parent's BU filter would exclude child employees.
         ...(scopedEmployeeIds === null
-          ? {}
-          : { id: { in: scopedEmployeeIds } }),
+          ? buWhere
+          : { AND: [{ id: { in: scopedEmployeeIds } }] }),
         deletedAt: null,
-        ...buWhere,
       },
       select: { id: true, organizationId: true },
     });
