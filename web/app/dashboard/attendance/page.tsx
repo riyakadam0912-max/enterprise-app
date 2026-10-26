@@ -8,6 +8,7 @@ import { changedInstant, dateTimeInZone, instantFromZone, csvCell, shiftNumber }
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArrowRight, CalendarDays, CalendarRange, Clock3, Pencil, Plus, Trash2, UsersRound, X } from 'lucide-react';
+import { refreshAttendanceViews } from '@/lib/attendance-refresh';
 import { recoverAttendanceSession, getAttendanceJobStatus, AttendanceJobStatus, getAttendanceSessions, correctAttendanceSession, AttendanceSessionRecord, assignShift, AttendanceRecord, AttendanceStatus, createAttendanceForEmployeeDate, createHoliday, createShift, DailyTaskWorkSummary, deleteHoliday, deleteShift, getHolidays, getMonthlyAttendanceReport, getMyAttendanceHistory, getMyTaskWorkSummary, getShifts, getTeamWeeklyWorkHours, getWorkHourBalances, HolidayRecord, MyAttendanceResponse, ShiftRecord, startAttendanceBreak, stopAttendanceBreak, TeamWeeklyWorkHours, updateHoliday, updateShift, WorkHourBalances } from '@/api/attendanceApi';
 import { useAttendance, useCheckIn, useCheckOut, useMyAttendanceSnapshot, useTodayAttendance, useUpdateAttendance } from '@/hooks/useAttendance';
 import { useEmployees } from '@/hooks/useEmployees';
@@ -977,8 +978,9 @@ function AttendancePageContent() {
   const shiftInFlight = useRef(false);
   const [shiftBusy, setShiftBusy] = useState(false);
   const [shiftSuccess, setShiftSuccess] = useState<string | null>(null);
+  const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
   const canViewAdminAttendance = session.role === 'SUPER_ADMIN' || session.role === 'ADMIN' || session.role === 'HR';
-  const { employees } = useEmployees(canViewAdminAttendance);
+  const { employees, error: employeesError, refetch: refetchEmployees } = useEmployees(canViewAdminAttendance);
   const [jobStatus, setJobStatus] = useState<AttendanceJobStatus[] | null>(null);
   const [jobError, setJobError] = useState<string | null>(null);
   useEffect(() => {
@@ -1219,7 +1221,7 @@ function AttendancePageContent() {
         }
       }
 
-      await Promise.all([refetch(), today.refetch(), mySnapshot.refetch(), getWorkHourBalances().then(setWorkBalances)]);
+      await refreshAfterAttendanceChange();
       setHistoryRefreshKey((current) => current + 1);
     } catch (error) {
       if (mode === 'break') setBreakActionError(error instanceof Error ? error.message : 'Unable to update your break. Please refresh attendance.');
@@ -1298,7 +1300,7 @@ function AttendancePageContent() {
           setCreateAttendanceLoading(false);
         }
       }
-      await Promise.all([refetch(), today.refetch(), mySnapshot.refetch(), getWorkHourBalances().then(setWorkBalances)]);
+      await refreshAfterAttendanceChange();
       setHistoryRefreshKey((current) => current + 1);
       setReportRefreshKey((current) => current + 1);
       setEditingRecord(null);
@@ -1452,12 +1454,24 @@ function AttendancePageContent() {
   );
   const showEmptyState = !tableLoading && (attendanceRows.length === 0 || Boolean(tableError));
 
+  async function refreshAfterAttendanceChange(refreshShiftDirectory = false) {
+    const refreshed = await refreshAttendanceViews({
+      shared: [refetch, ...(refreshShiftDirectory
+        ? [refetchEmployees, async () => setShifts(await getShifts())]
+        : [])],
+      personalEnabled: personalAttendanceEnabled,
+      personal: [today.refetch, mySnapshot.refetch, async () => setWorkBalances(await getWorkHourBalances())],
+    });
+    setRefreshWarning(refreshed ? null : 'Changes were saved, but some attendance data could not be refreshed. Reload the page before making another change.');
+  }
+
   async function handleCreateShift() {
     if (shiftInFlight.current) return;
     shiftInFlight.current = true; setShiftBusy(true);
     try {
       setShiftError(null);
       setShiftSuccess(null);
+      setRefreshWarning(null);
       await createShift({
         name: newShift.name,
         type: newShift.type,
@@ -1468,9 +1482,7 @@ function AttendancePageContent() {
         gracePeriodMinutes: shiftNumber(newShift.gracePeriodMinutes, 15, 0, 1440),
         workingDays: newShift.workingDays,
       });
-      const rows = await getShifts();
-      setShifts(rows);
-      await Promise.all([refetch(), today.refetch(), mySnapshot.refetch(), getWorkHourBalances().then(setWorkBalances)]);
+      await refreshAfterAttendanceChange(true);
       setReportRefreshKey(current => current + 1);
       setHistoryRefreshKey(current => current + 1);
       setShiftSuccess('Shift created successfully.');
@@ -1487,9 +1499,11 @@ function AttendancePageContent() {
     try {
       setShiftError(null);
       setShiftSuccess(null);
+      setRefreshWarning(null);
       await assignShift(Number(assignEmployeeId), Number(assignShiftId));
-      await Promise.all([refetch(), today.refetch(), mySnapshot.refetch(), getWorkHourBalances().then(setWorkBalances)]);
+      await refreshAfterAttendanceChange(true);
       setReportRefreshKey(current => current + 1);
+      setHistoryRefreshKey(current => current + 1);
       setShiftSuccess('Shift assigned successfully.');
     } catch (err) {
       setShiftError(err instanceof Error ? err.message : 'Unable to assign shift.');
@@ -1504,6 +1518,7 @@ function AttendancePageContent() {
     try {
       setShiftError(null);
       setShiftSuccess(null);
+      setRefreshWarning(null);
       await updateShift(editingShift.id, {
         name: editingShift.name,
         ...(editingShift.type !== 'ROTATIONAL'
@@ -1516,9 +1531,7 @@ function AttendancePageContent() {
         gracePeriodMinutes: editingShift.gracePeriodMinutes,
         workingDays: workingDaysForShift(editingShift),
       });
-      const rows = await getShifts();
-      setShifts(rows);
-      await Promise.all([refetch(), today.refetch(), mySnapshot.refetch(), getWorkHourBalances().then(setWorkBalances)]);
+      await refreshAfterAttendanceChange(true);
       setReportRefreshKey(current => current + 1);
       setHistoryRefreshKey(current => current + 1);
       setShiftSuccess('Shift updated successfully.');
@@ -1540,10 +1553,9 @@ function AttendancePageContent() {
     try {
       setShiftError(null);
       setShiftSuccess(null);
+      setRefreshWarning(null);
       await deleteShift(shiftId);
-      const rows = await getShifts();
-      setShifts(rows);
-      await Promise.all([refetch(), today.refetch(), mySnapshot.refetch(), getWorkHourBalances().then(setWorkBalances)]);
+      await refreshAfterAttendanceChange(true);
       setReportRefreshKey(current => current + 1);
       setHistoryRefreshKey(current => current + 1);
       setShiftSuccess('Shift deleted successfully.');
@@ -1632,6 +1644,7 @@ function AttendancePageContent() {
 
   return (
     <div className="p-6 space-y-6">
+      {refreshWarning && <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{refreshWarning}</p>}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">{canViewAdminAttendance ? 'Employee Attendance' : 'My Attendance'}</h1>
@@ -2128,6 +2141,7 @@ function AttendancePageContent() {
             </div>
           </div>
 
+          {employeesError && <p role="alert" className="mt-2 text-sm text-rose-600">Employee list could not be refreshed: {employeesError}</p>}
           {shiftError && <p id="shift-error" className="mt-2 text-sm text-red-600">{shiftError}</p>}
           {shiftSuccess && <p className="mt-2 text-sm text-emerald-600">{shiftSuccess}</p>}
         </div>
