@@ -55,10 +55,14 @@ const nextConfig: NextConfig = {
         source: '/@vite/client',
         destination: '/@vite/client.js',
       },
-      {
-        source: '/api/v1/:path*',
-        destination: `${apiProxyTarget}/api/v1/:path*`,
-      },
+      // Vercel uses web/vercel.json to avoid Next's legacy Node proxy.
+      // API_PROXY_TARGET applies to local and self-hosted deployments.
+      ...(process.env.VERCEL === '1'
+        ? []
+        : [{
+            source: '/api/v1/:path*',
+            destination: `${apiProxyTarget}/api/v1/:path*`,
+          }]),
     ];
   },
 };

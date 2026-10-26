@@ -1,6 +1,7 @@
 import { Injectable, NestMiddleware } from '@nestjs/common';
 import type { NextFunction, Request, Response } from 'express';
 import { runWithAuditContext } from './audit-context';
+import { requestIp } from '../common/request-ip';
 
 type AuditRequest = Request & {
   user?: {
@@ -24,7 +25,7 @@ type AuditRequest = Request & {
 @Injectable()
 export class AuditContextMiddleware implements NestMiddleware {
   use(req: AuditRequest, res: Response, next: NextFunction) {
-    const ipAddress = req.ip ?? req.socket?.remoteAddress ?? null;
+    const ipAddress = requestIp(req);
 
     const route = req.route as { path?: unknown } | undefined;
     const routePath = typeof route?.path === 'string' ? route.path : null;

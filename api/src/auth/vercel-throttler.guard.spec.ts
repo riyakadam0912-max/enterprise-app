@@ -75,4 +75,16 @@ describe('Authentication client identity', () => {
       }),
     ).resolves.toBe('203.0.113.9');
   });
+  it('handles an Express IP getter that throws after socket detachment', async () => {
+    process.env.VERCEL = '0';
+    await expect(
+      guard.tracker({
+        headers: { 'x-forwarded-for': '198.51.100.1' },
+        socket: null,
+        get ip() {
+          throw new TypeError('detached socket');
+        },
+      }),
+    ).resolves.toBe('unknown-client');
+  });
 });
