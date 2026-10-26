@@ -54,6 +54,16 @@ export class LeaveRequestsService {
     await this.cacheManager.del(DASHBOARD_CACHE_KEY);
   }
 
+  private isOrganizationAdministrator(user: AuthUser): boolean {
+    return (
+      user.isPlatformAdmin === true ||
+      user.isSuperAdmin === true ||
+      [Role.SUPER_ADMIN, Role.ADMIN, Role.HR].some(
+        (role) => user.role === role || user.roles?.includes(role),
+      )
+    );
+  }
+
   private getOrganizationId(user: AuthUser): number {
     if (user.organizationId === null) {
       throw new ForbiddenException('User has no associated organization');
@@ -103,7 +113,7 @@ export class LeaveRequestsService {
     const organizationId = this.getOrganizationId(user);
     const buScope = await this.businessUnitsService.resolveScope(user as any);
     const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
-    const isHierarchyAdmin = user.role === Role.ADMIN || user.role === Role.HR;
+    const isHierarchyAdmin = this.isOrganizationAdministrator(user);
     const organizationIds = isHierarchyAdmin
       ? ((await this.organizationScopeService.getOrganizationIds(user)) ?? [
           organizationId,
@@ -189,9 +199,8 @@ export class LeaveRequestsService {
     const startDate = new Date(dto.startDate);
     const endDate = new Date(dto.endDate);
     const requestType = dto.requestType ?? 'LEAVE';
-    const leaveType = requestType === 'WORK_FROM_HOME'
-      ? 'OTHER'
-      : dto.leaveType;
+    const leaveType =
+      requestType === 'WORK_FROM_HOME' ? 'OTHER' : dto.leaveType;
     if (requestType === 'LEAVE' && !leaveType) {
       throw new BadRequestException('Leave type is required');
     }
@@ -220,10 +229,9 @@ export class LeaveRequestsService {
 
     const buScope = await this.businessUnitsService.resolveScope(user as any);
     const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
-    const organizationIds =
-      user.role === Role.ADMIN || user.role === Role.HR
-        ? await this.organizationScopeService.getOrganizationIds(user)
-        : [organizationId];
+    const organizationIds = this.isOrganizationAdministrator(user)
+      ? await this.organizationScopeService.getOrganizationIds(user)
+      : [organizationId];
     const descendantIds =
       organizationIds?.filter((id) => id !== organizationId) ?? [];
     const employee = await this.prisma.employee.findFirst({
@@ -231,7 +239,7 @@ export class LeaveRequestsService {
         id: employeeId,
         ...(user.role === Role.EMPLOYEE || user.role === Role.MANAGER
           ? { organizationId, deletedAt: null }
-          : user.role === Role.ADMIN || user.role === Role.HR
+          : this.isOrganizationAdministrator(user)
             ? descendantIds.length > 0
               ? {
                   OR: [
@@ -277,10 +285,7 @@ export class LeaveRequestsService {
         status: {
           in: ['PENDING', 'PENDING_MANAGER', 'PENDING_HR', 'APPROVED'],
         },
-        AND: [
-          { startDate: { lte: endDate } },
-          { endDate: { gte: startDate } },
-        ],
+        AND: [{ startDate: { lte: endDate } }, { endDate: { gte: startDate } }],
       },
       select: { id: true },
     });
@@ -435,10 +440,9 @@ export class LeaveRequestsService {
     // Validate new employeeId is within user's BU scope if provided
     if (dto.employeeId !== undefined && dto.employeeId !== null) {
       const buScope = await this.businessUnitsService.resolveScope(user as any);
-      const organizationIds =
-        user.role === Role.ADMIN || user.role === Role.HR
-          ? await this.organizationScopeService.getOrganizationIds(user)
-          : [this.getOrganizationId(user)];
+      const organizationIds = this.isOrganizationAdministrator(user)
+        ? await this.organizationScopeService.getOrganizationIds(user)
+        : [this.getOrganizationId(user)];
       const targetEmployee = await this.prisma.employee.findFirst({
         where: {
           id: dto.employeeId,
@@ -560,7 +564,8 @@ export class LeaveRequestsService {
     }
 
     const canFinalizeFromManagerStage =
-      (user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN) &&
+      this.isOrganizationAdministrator(user) &&
+      user.role !== Role.HR &&
       request.status === 'PENDING_MANAGER';
     if (request.status !== 'PENDING_HR' && !canFinalizeFromManagerStage) {
       throw new ForbiddenException('Leave request is not pending HR approval');
@@ -616,40 +621,16 @@ export class LeaveRequestsService {
       );
     }
 
-    if (
-      !isWorkFromHome &&
-      request.employeeId &&
-      !isUnpaid &&
-      leaveDays > 0 &&
-      normalizedLeaveType !== 'COMP_OFF'
-    ) {
-      const available = await this.leaveEntitlementsService.getAvailableBalance(
-        request.employeeId,
-        organizationId,
-        'PAID_LEAVE',
-      );
-      if (available < leaveDays) {
-        throw new BadRequestException(
-          `Insufficient paid leave balance. Available: ${available} day(s).`,
-        );
-      }
-    }
-    if (
-      !isWorkFromHome &&
-      request.employeeId &&
-      normalizedLeaveType === 'COMP_OFF' &&
-      leaveDays > 0
-    ) {
+    if (!isWorkFromHome && request.employeeId && leaveCategory === 'COMP_OFF') {
       const available = await this.leaveEntitlementsService.getAvailableBalance(
         request.employeeId,
         organizationId,
         'COMP_OFF',
       );
-      if (available < leaveDays) {
+      if (available < leaveDays)
         throw new BadRequestException(
           `Insufficient comp-off balance. Available: ${available} day(s).`,
         );
-      }
     }
 
     const result = await this.workflowEngine.approveWorkflow({
@@ -665,6 +646,31 @@ export class LeaveRequestsService {
     });
 
     const approved = await this.prisma.$transaction(async (tx) => {
+      let approvedAsPaid = isWorkFromHome || !isUnpaid;
+      if (!isWorkFromHome && request.employeeId && !isUnpaid && leaveDays > 0) {
+        // Serialize the balance decision with ledger usage across concurrent approvals.
+        const lockCategory = leaveCategory === 'PAID_LEAVE' ? 1 : 2;
+        await tx.$queryRaw`
+          WITH lock_result AS MATERIALIZED (
+            SELECT pg_advisory_xact_lock(${request.employeeId}::integer, ${lockCategory}::integer)
+          ) SELECT 1 AS locked FROM lock_result
+        `;
+        const available =
+          await this.leaveEntitlementsService.getAvailableBalance(
+            request.employeeId,
+            organizationId,
+            leaveCategory,
+            tx,
+          );
+        if (leaveCategory === 'COMP_OFF' && available < leaveDays) {
+          throw new BadRequestException(
+            `Insufficient comp-off balance. Available: ${available} day(s).`,
+          );
+        }
+        // An ordinary request is entirely unpaid when its full cost is unavailable.
+        approvedAsPaid = available >= leaveDays;
+      }
+
       const employee = request.employeeId
         ? await tx.employee.findFirst({
             where: {
@@ -675,12 +681,7 @@ export class LeaveRequestsService {
           })
         : null;
 
-      if (
-        !isWorkFromHome &&
-        employee &&
-        leaveDays > 0 &&
-        !isUnpaid
-      ) {
+      if (!isWorkFromHome && employee && leaveDays > 0 && approvedAsPaid) {
         for (const [year, usage] of leaveUsageByYear) {
           await this.leaveEntitlementsService.recordUsage(tx, {
             employeeId: employee.id,
@@ -701,7 +702,7 @@ export class LeaveRequestsService {
         data: {
           ...createHrApprovalState(request.approvalTrail, user.userId),
           approvalTrail: result.legacyState.approvalTrail,
-          isPaid: isWorkFromHome || !isUnpaid,
+          isPaid: approvedAsPaid,
         },
       });
 
@@ -723,7 +724,7 @@ export class LeaveRequestsService {
               organizationId,
               shiftId: employee?.shiftId ?? undefined,
               status: 'LEAVE',
-              isPaidLeave: !isUnpaid,
+              isPaidLeave: approvedAsPaid,
               checkIn: null,
               checkOut: null,
               workingHours: null,
@@ -737,7 +738,7 @@ export class LeaveRequestsService {
               shiftId: employee?.shiftId ?? undefined,
               date: leaveDay,
               status: 'LEAVE',
-              isPaidLeave: !isUnpaid,
+              isPaidLeave: approvedAsPaid,
               requiredHours: employee?.shift?.requiredHours ?? 8,
               remarks: 'On Leave',
             },
@@ -757,7 +758,7 @@ export class LeaveRequestsService {
     user: AuthUser,
   ): Promise<Prisma.LeaveCompOffClaimWhereInput> {
     const organizationId = this.getOrganizationId(user);
-    const isHierarchyAdmin = user.role === Role.ADMIN || user.role === Role.HR;
+    const isHierarchyAdmin = this.isOrganizationAdministrator(user);
     const organizationIds = isHierarchyAdmin
       ? ((await this.organizationScopeService.getOrganizationIds(user)) ?? [
           organizationId,
@@ -795,7 +796,9 @@ export class LeaveRequestsService {
         OR: [
           buWhere,
           {
-            organizationId: { in: organizationIds.filter((id) => id !== organizationId) },
+            organizationId: {
+              in: organizationIds.filter((id) => id !== organizationId),
+            },
             deletedAt: null,
           },
         ],

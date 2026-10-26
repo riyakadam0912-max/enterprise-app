@@ -91,10 +91,12 @@ describe('LeaveRequestsService', () => {
     };
     mockLeaveEntitlementsService = {
       countScheduledLeaveDays: jest.fn().mockResolvedValue(2),
-      getScheduledLeaveDates: jest.fn().mockResolvedValue([
-        new Date('2026-01-01T00:00:00.000Z'),
-        new Date('2026-01-02T00:00:00.000Z'),
-      ]),
+      getScheduledLeaveDates: jest
+        .fn()
+        .mockResolvedValue([
+          new Date('2026-01-01T00:00:00.000Z'),
+          new Date('2026-01-02T00:00:00.000Z'),
+        ]),
       getAvailableBalance: jest.fn().mockResolvedValue(10),
       recordUsage: jest.fn().mockResolvedValue(undefined),
     };
@@ -904,9 +906,9 @@ describe('LeaveRequestsService', () => {
         employee: { user: { id: mockManagerUser.userId } },
       });
 
-      await expect(
-        service.managerApprove(1, mockManagerUser),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.managerApprove(1, mockManagerUser)).rejects.toThrow(
+        ForbiddenException,
+      );
       expect(mockWorkflowEngine.approveWorkflow).not.toHaveBeenCalled();
     });
   });
@@ -1134,14 +1136,8 @@ describe('LeaveRequestsService', () => {
       [7.99, 0.5],
       [8, 1],
     ])('grants %s work hours as %s comp-off day(s)', async (hours, days) => {
-      const claimDelegate = getPrismaDelegate(
-        mockPrisma,
-        'leaveCompOffClaim',
-      );
-      const ledgerDelegate = getPrismaDelegate(
-        mockPrisma,
-        'leaveBalanceEntry',
-      );
+      const claimDelegate = getPrismaDelegate(mockPrisma, 'leaveCompOffClaim');
+      const ledgerDelegate = getPrismaDelegate(mockPrisma, 'leaveBalanceEntry');
       const claim = {
         id: 17,
         employeeId: 101,
@@ -1218,5 +1214,223 @@ describe('LeaveRequestsService', () => {
       expect(result).toEqual({ id: 1, status: 'REJECTED' });
       expect(mockWorkflowEngine.rejectWorkflow).toHaveBeenCalledTimes(1);
     });
+  });
+  describe('paid balance fallback', () => {
+    function prepareApproval(
+      balance: number,
+      leaveType = 'CASUAL',
+      duration = 'FULL_DAY',
+    ) {
+      const leave = getPrismaDelegate(mockPrisma, 'leaveRequest');
+      leave.findFirst.mockResolvedValueOnce({
+        id: 91,
+        organizationId: 1,
+        employeeId: 101,
+        status: 'PENDING_HR',
+        requestType: 'LEAVE',
+        startDate: new Date('2026-01-01'),
+        endDate: new Date('2026-01-02'),
+        approvalTrail: null,
+        leaveType,
+        duration,
+      });
+      (mockWorkflowEngine.approveWorkflow as jest.Mock).mockResolvedValue({
+        legacyState: { approvalTrail: [] },
+      });
+      (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn) =>
+        fn(mockPrisma),
+      );
+      getPrismaDelegate(mockPrisma, 'employee').findFirst.mockResolvedValue({
+        id: 101,
+        organizationId: 1,
+        shiftId: 1,
+      });
+      mockLeaveEntitlementsService.getAvailableBalance.mockResolvedValue(
+        balance,
+      );
+      leave.update.mockImplementation(async (args) => ({
+        id: 91,
+        ...args.data,
+      }));
+      return leave;
+    }
+
+    it.each([0, 1, 1.5])(
+      'approves the entire ordinary request unpaid when only %s days remain',
+      async (balance) => {
+        prepareApproval(balance);
+        const result = await service.hrApprove(91, mockHRUser);
+        expect(result).toMatchObject({ status: 'APPROVED', isPaid: false });
+        expect(mockLeaveEntitlementsService.recordUsage).not.toHaveBeenCalled();
+        expect(
+          getPrismaDelegate(mockPrisma, 'employee').update,
+        ).not.toHaveBeenCalled();
+        expect(
+          getPrismaDelegate(mockPrisma, 'attendance').upsert,
+        ).toHaveBeenCalledTimes(2);
+        expect(
+          getPrismaDelegate(mockPrisma, 'attendance').upsert,
+        ).toHaveBeenCalledWith(
+          expect.objectContaining({
+            create: expect.objectContaining({
+              status: 'LEAVE',
+              isPaidLeave: false,
+            }),
+            update: expect.objectContaining({ isPaidLeave: false }),
+          }),
+        );
+        expect(
+          mockLeaveEntitlementsService.getAvailableBalance,
+        ).toHaveBeenCalledWith(101, 1, 'PAID_LEAVE', mockPrisma);
+        expect(mockPrisma.$queryRaw).toHaveBeenCalled();
+      },
+    );
+
+    it('allows super-admin HR approval in the selected organization', async () => {
+      prepareApproval(0);
+      const user = createMockAuthUser(Role.SUPER_ADMIN, {
+        organizationId: 1,
+        homeOrganizationId: 9,
+      });
+      await expect(service.hrApprove(91, user)).resolves.toMatchObject({
+        status: 'APPROVED',
+        isPaid: false,
+      });
+      expect(mockWorkflowEngine.approveWorkflow).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: 1, userId: user.userId }),
+      );
+    });
+
+    it('keeps a fully covered request paid and debits its full cost', async () => {
+      prepareApproval(2);
+      expect(await service.hrApprove(91, mockHRUser)).toMatchObject({
+        isPaid: true,
+      });
+      expect(mockLeaveEntitlementsService.recordUsage).toHaveBeenCalledWith(
+        mockPrisma,
+        expect.objectContaining({ category: 'PAID_LEAVE', amount: 2 }),
+      );
+    });
+
+    it('approves half-day leave unpaid without a full-day attendance override', async () => {
+      prepareApproval(0.5, 'CASUAL', 'HALF_DAY');
+      expect(await service.hrApprove(91, mockHRUser)).toMatchObject({
+        isPaid: false,
+      });
+      expect(mockLeaveEntitlementsService.recordUsage).not.toHaveBeenCalled();
+      expect(
+        getPrismaDelegate(mockPrisma, 'attendance').upsert,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('keeps explicitly unpaid requests unpaid even with paid credit available', async () => {
+      prepareApproval(10, 'UNPAID');
+      expect(await service.hrApprove(91, mockHRUser)).toMatchObject({
+        isPaid: false,
+      });
+      expect(
+        mockLeaveEntitlementsService.getAvailableBalance,
+      ).not.toHaveBeenCalled();
+      expect(mockLeaveEntitlementsService.recordUsage).not.toHaveBeenCalled();
+    });
+
+    it('continues to reject insufficient comp-off before advancing the workflow', async () => {
+      prepareApproval(0, 'COMP_OFF');
+      await expect(service.hrApprove(91, mockHRUser)).rejects.toThrow(
+        'Insufficient comp-off balance',
+      );
+      expect(mockWorkflowEngine.approveWorkflow).not.toHaveBeenCalled();
+    });
+  });
+
+  it('allows a super admin to reject a request within the selected hierarchy', async () => {
+    const scope = jest
+      .spyOn(service['organizationScopeService'], 'getOrganizationIds')
+      .mockResolvedValue([2, 3]);
+    mockBusinessUnitsService.resolveScope.mockResolvedValue({
+      organizationId: 2,
+      allUnits: true,
+      unitIds: [],
+    });
+    mockBusinessUnitsService.buildEmployeeBUWhere.mockReturnValue({
+      organizationId: 2,
+      deletedAt: null,
+    });
+    const leave = getPrismaDelegate(mockPrisma, 'leaveRequest');
+    leave.findFirst.mockResolvedValue({
+      id: 92,
+      organizationId: 3,
+      approvalTrail: [],
+    });
+    leave.update.mockResolvedValue({ id: 92, status: 'REJECTED' });
+    (mockWorkflowEngine.rejectWorkflow as jest.Mock).mockResolvedValue({
+      legacyState: { approvalTrail: [] },
+    });
+    const user = createMockAuthUser(Role.SUPER_ADMIN, {
+      organizationId: 2,
+      homeOrganizationId: 1,
+    });
+    await expect(
+      service.reject(92, user, 'Not available'),
+    ).resolves.toMatchObject({ status: 'REJECTED' });
+    expect(scope).toHaveBeenCalledWith(user);
+    expect(leave.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ organizationId: { in: [2, 3] } }),
+      }),
+    );
+    expect(leave.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 92, organizationId: 3 } }),
+    );
+  });
+
+  it('lets a super admin create a request for an employee in the selected hierarchy', async () => {
+    jest
+      .spyOn(service['organizationScopeService'], 'getOrganizationIds')
+      .mockResolvedValue([2, 3]);
+    mockBusinessUnitsService.buildEmployeeBUWhere.mockReturnValue({
+      organizationId: 2,
+    });
+    const employee = getPrismaDelegate(mockPrisma, 'employee');
+    employee.findFirst.mockResolvedValueOnce({
+      id: 101,
+      organizationId: 3,
+      user: null,
+    });
+    const leave = getPrismaDelegate(mockPrisma, 'leaveRequest');
+    leave.create.mockResolvedValue({
+      id: 93,
+      employeeId: 101,
+      organizationId: 3,
+      startDate: new Date('2026-01-01'),
+      endDate: new Date('2026-01-02'),
+    });
+    const user = createMockAuthUser(Role.SUPER_ADMIN, {
+      organizationId: 2,
+      homeOrganizationId: 1,
+    });
+    await service.create(
+      {
+        employeeId: 101,
+        leaveType: 'CASUAL',
+        startDate: '2026-01-01',
+        endDate: '2026-01-02',
+      } as CreateLeaveRequestDto,
+      user,
+    );
+    expect(employee.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            { organizationId: { in: [3] }, deletedAt: null },
+          ]),
+        }),
+      }),
+    );
+    expect(leave.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ organizationId: 3, employeeId: 101 }),
+      }),
+    );
   });
 });

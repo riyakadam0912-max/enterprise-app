@@ -87,3 +87,20 @@ export function shiftNumber(
     throw new Error(`Enter a number between ${min} and ${max}.`);
   return number;
 }
+
+export function splitTwelveHourDateTime(value: string) {
+  const [date = '', time = '00:00'] = value.split('T');
+  const [hour24, minute = '00'] = time.split(':');
+  const hour = Number(hour24);
+  return { date, hour: String(hour % 12 || 12).padStart(2, '0'), minute,
+    period: hour >= 12 ? 'PM' : 'AM' };
+}
+
+export function joinTwelveHourDateTime(parts: {
+  date: string; hour: string; minute: string; period: string;
+}, original = '', dateOnly = false) {
+  if (!parts.date) return '';
+  const hour = Number(parts.hour) % 12 + (parts.period === 'PM' ? 12 : 0);
+  const seconds = dateOnly ? (original.split('T')[1]?.split(':').slice(2).join(':') || '00.000') : '00.000';
+  return `${parts.date}T${String(hour).padStart(2, '0')}:${parts.minute}:${seconds}`;
+}

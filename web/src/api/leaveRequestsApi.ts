@@ -15,6 +15,7 @@ export interface LeaveCompOffClaim {
 export type LeaveDuration = 'FULL_DAY' | 'HALF_DAY';
 
 export interface LeaveRequest {
+  isPaid?: boolean;
   id:         number;
   requestType?: LeaveRequestType;
   startDate:  string;

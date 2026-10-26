@@ -87,4 +87,23 @@ describe('OrganizationScopeService', () => {
       } as any),
     ).resolves.toBeNull();
   });
+  it('uses the selected organization subtree for a super admin with a different home', async () => {
+    const organization = {
+      findMany: jest.fn().mockResolvedValue([
+        { id: 1, parentId: null },
+        { id: 2, parentId: null },
+        { id: 3, parentId: 2 },
+        { id: 4, parentId: 1 },
+      ]),
+    };
+    const service = new OrganizationScopeService({ organization } as any);
+    await expect(
+      service.getOrganizationIds({
+        role: Role.SUPER_ADMIN,
+        roles: [Role.SUPER_ADMIN],
+        organizationId: 2,
+        homeOrganizationId: 1,
+      } as any),
+    ).resolves.toEqual([2, 3]);
+  });
 });

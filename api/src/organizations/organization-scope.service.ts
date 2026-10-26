@@ -143,7 +143,11 @@ export class OrganizationScopeService {
       return null;
     }
 
-    const rootOrganizationId = user.homeOrganizationId ?? user.organizationId;
+    // Platform administrators act within the selected tenant, independently
+    // of the organization their account was originally linked to.
+    const rootOrganizationId = isPlatformAdmin
+      ? user.organizationId
+      : (user.homeOrganizationId ?? user.organizationId);
     if (rootOrganizationId == null) {
       return [];
     }

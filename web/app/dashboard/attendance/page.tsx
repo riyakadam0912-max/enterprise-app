@@ -1,5 +1,7 @@
 'use client';
 
+import { AttendanceDateTimeInput } from '@/components/common/AttendanceDateTimeInput';
+
 import Link from 'next/link';
 import AttendanceDialog from '@/components/common/AttendanceDialog';
 import { changedInstant, dateTimeInZone, instantFromZone, csvCell, shiftNumber } from '@/lib/attendance-format';
@@ -806,12 +808,10 @@ function EditAttendanceModal(props: {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2" htmlFor="attendance-checkIn">Check In</label>
-            <input type="datetime-local" step="0.001" id="attendance-checkIn" value={checkIn} disabled={reopenAsWorking} onChange={(event) => setCheckIn(event.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-slate-100 disabled:text-slate-500" />
+            <AttendanceDateTimeInput id="attendance-checkIn" label="Check In" value={checkIn} disabled={reopenAsWorking} onChange={setCheckIn} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2" htmlFor="attendance-checkOut">Check Out</label>
-            <input type="datetime-local" step="0.001" id="attendance-checkOut" value={checkOut} disabled={reopenAsWorking} onChange={(event) => setCheckOut(event.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-slate-100 disabled:text-slate-500" />
+            <AttendanceDateTimeInput id="attendance-checkOut" label="Check Out" value={checkOut} disabled={reopenAsWorking} onChange={setCheckOut} />
           </div>
 
           {record.checkOut && (
@@ -868,24 +868,8 @@ function EditAttendanceModal(props: {
                 <div className="mt-3 space-y-2">
                   {breaks.map((interval, index) => (
                     <div key={index} className="grid min-w-0 grid-cols-1 gap-2 rounded-xl bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2rem] sm:items-end">
-                      <label className="block min-w-0 text-xs font-medium text-slate-600">
-                        Break {index + 1} start
-                        <input
-                          type="datetime-local"
-                          aria-label={`Break ${index + 1} start`} value={interval.startedAt}
-                          onChange={(event) => setBreaks((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, startedAt: event.target.value } : item))}
-                          className="mt-1 block min-w-0 w-full max-w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs text-slate-800"
-                        />
-                      </label>
-                      <label className="block min-w-0 text-xs font-medium text-slate-600">
-                        Break {index + 1} end
-                        <input
-                          type="datetime-local"
-                          aria-label={`Break ${index + 1} end`} value={interval.endedAt}
-                          onChange={(event) => setBreaks((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, endedAt: event.target.value } : item))}
-                          className="mt-1 block min-w-0 w-full max-w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs text-slate-800"
-                        />
-                      </label>
+                      <AttendanceDateTimeInput id={`break-${index}-start`} label={`Break ${index + 1} start`} value={interval.startedAt} onChange={(value) => setBreaks((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, startedAt: value } : item))} />
+                      <AttendanceDateTimeInput id={`break-${index}-end`} label={`Break ${index + 1} end`} value={interval.endedAt} onChange={(value) => setBreaks((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, endedAt: value } : item))} />
                       <button
                         type="button"
                         onClick={() => setBreaks((current) => current.filter((_, itemIndex) => itemIndex !== index))}

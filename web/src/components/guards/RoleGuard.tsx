@@ -1,7 +1,7 @@
 'use client';
 
 import { normalizeRole, type AppRole } from '@/utils/auth/permissions';
-import { useAuthSession } from '@/stores/auth-store';
+import { isSuperAdminSession, useAuthSession } from '@/stores/auth-store';
 
 const permissionMatrix: Record<string, AppRole[]> = {
   'employee.create': ['SUPER_ADMIN', 'ADMIN', 'COMPLIANCE_MANAGER', 'HR', 'MANAGER'],
@@ -30,7 +30,7 @@ export function RoleGuard({
   const session = useAuthSession();
   const currentRole = normalizeRole(role ?? session.role);
 
-  const allowed = Boolean(currentRole) && (
+  const allowed = (role == null && isSuperAdminSession(session)) || currentRole === 'SUPER_ADMIN' || Boolean(currentRole) && (
     (roles?.length ? roles.includes(currentRole as AppRole) : true) &&
     (permissions?.length ? permissions.some((permission) => (permissionMatrix[permission] ?? ['SUPER_ADMIN', 'ADMIN', 'COMPLIANCE_MANAGER']).includes(currentRole as AppRole)) : true)
   );

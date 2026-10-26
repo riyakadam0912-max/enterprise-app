@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { CheckCircle2, Plus, XCircle } from 'lucide-react';
+import { getEmployees, type Employee } from '@/api/employeesApi';
 import { ModuleTemplate } from '@/components/ModuleTemplate';
 import { DataTable } from '@/components/tables/DataTable';
 import { Button } from '@/components/ui/button';
@@ -18,7 +19,7 @@ import { FormTextarea } from '@/components/forms/FormTextarea';
 import { SearchBar } from '@/components/navigation/SearchBar';
 import { FilterPanel } from '@/components/navigation/FilterPanel';
 import { toast } from '@/providers/toast-provider';
-import { useAuthSession } from '@/stores/auth-store';
+import { isSuperAdminSession, useAuthSession } from '@/stores/auth-store';
 import {
   createLeaveRequest,
   getLeaveRequests,
@@ -35,6 +36,7 @@ import {
 } from '@/api/leaveRequestsApi';
 
 const leaveSchema = z.object({
+  employeeId: z.string().optional(),
   requestType: z.enum(['LEAVE', 'WORK_FROM_HOME']),
   leaveType: z.enum(['SICK', 'CASUAL', 'PAID', 'UNPAID', 'MATERNITY', 'PATERNITY', 'MEDICAL', 'OTHER', 'COMP_OFF']).optional(),
   startDate: z.string().min(1, 'Start date is required'),
@@ -79,8 +81,15 @@ function formatDate(value?: string | null) {
   return new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-export default function LeavePage() {
+export default function ScopedLeavePage() {
   const session = useAuthSession();
+  return <LeavePage key={`${session.user?.id}:${session.organizationId}:${session.activeBusinessUnitId}`} />;
+}
+
+function LeavePage() {
+  const session = useAuthSession();
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [directoryError, setDirectoryError] = useState<string | null>(null);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [compOffClaims, setCompOffClaims] = useState<LeaveCompOffClaim[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,10 +99,11 @@ export default function LeavePage() {
   const [rejectTarget, setRejectTarget] = useState<LeaveRequest | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
-  const role = session.role ?? '';
+  const role = isSuperAdminSession(session) ? 'SUPER_ADMIN' : session.role ?? '';
   const employeeId = session.employeeId;
   const isEmployee = role.toUpperCase() === 'EMPLOYEE';
-  const canCreateOwnRequest = isEmployee || role.toUpperCase() === 'MANAGER';
+  const canCreateForEmployee = ['SUPER_ADMIN', 'ADMIN', 'HR'].includes(role.toUpperCase());
+  const canCreateOwnRequest = isEmployee || role.toUpperCase() === 'MANAGER' || canCreateForEmployee;
   const isManager = ['MANAGER', 'ADMIN', 'HR', 'SUPER_ADMIN'].includes(role.toUpperCase());
 
   const form = useForm<LeaveFormValues>({
@@ -129,7 +139,17 @@ export default function LeavePage() {
     if (role) {
       void load();
     }
-  }, [role]);
+  }, [role, session.organizationId, session.activeBusinessUnitId]);
+
+  useEffect(() => {
+    let active = true;
+    setEmployees([]); setDirectoryError(null);
+    if (canCreateForEmployee) {
+      getEmployees().then(rows => { if (active) setEmployees(rows); })
+        .catch(error => { if (active) setDirectoryError(error instanceof Error ? error.message : 'Unable to load employees.'); });
+    }
+    return () => { active = false; };
+  }, [canCreateForEmployee, session.organizationId, session.activeBusinessUnitId]);
 
   const filteredRequests = useMemo(() => {
     return requests.filter((request) => {
@@ -163,7 +183,9 @@ export default function LeavePage() {
     {
       accessorKey: 'requestType',
       header: 'Type',
-      cell: ({ row }) => row.original.requestType === 'WORK_FROM_HOME'
+      cell: ({ row }) => row.original.status === 'APPROVED' && row.original.requestType !== 'WORK_FROM_HOME'
+        ? `${leaveTypeOptions.find(option => option.value === row.original.leaveType)?.label ?? row.original.leaveType} (${row.original.isPaid === false ? 'Unpaid' : 'Paid'})`
+        : row.original.requestType === 'WORK_FROM_HOME'
         ? 'Work from home'
         : leaveTypeOptions.find((option) => option.value === row.original.leaveType)?.label ?? row.original.leaveType,
     },
@@ -225,9 +247,9 @@ export default function LeavePage() {
                       ? await hrApproveLeaveRequest(request.id)
                       : await managerApproveLeaveRequest(request.id);
                     setRequests((current) => current.map((item) => (item.id === request.id ? updated : item)));
-                    toast.success('Leave approved');
-                  } catch {
-                    toast.error('Action failed', 'Unable to approve leave request.');
+                    toast.success(updated.status === 'APPROVED' ? `Leave approved${updated.requestType === 'WORK_FROM_HOME' ? '' : updated.isPaid === false ? ' as unpaid' : ' as paid'}` : 'Manager approval recorded; awaiting HR approval');
+                  } catch (error) {
+                    toast.error('Action failed', error instanceof Error ? error.message : 'Unable to approve leave request.');
                   }
                 }}
               >
@@ -245,7 +267,7 @@ export default function LeavePage() {
         );
       },
     },
-  ], [employeeId, isManager, role]);
+  ], [employeeId, role]);
 
   const totalDays = filteredRequests.reduce((total, request) => {
     const days = Math.max(1, Math.floor((new Date(request.endDate).getTime() - new Date(request.startDate).getTime()) / 86400000) + 1);
@@ -253,6 +275,7 @@ export default function LeavePage() {
   }, 0);
 
   async function onCreate(values: LeaveFormValues) {
+    if (canCreateForEmployee && !values.employeeId) { form.setError('employeeId', { message: 'Select an employee' }); return; }
     try {
       const created = await createLeaveRequest({
         requestType: values.requestType,
@@ -265,7 +288,7 @@ export default function LeavePage() {
               duration: values.duration,
             }
           : {}),
-        employeeId: employeeId ?? undefined,
+        employeeId: canCreateForEmployee ? Number(values.employeeId) : employeeId ?? undefined,
       });
       setRequests((current) => [created, ...current]);
       setCreateOpen(false);
@@ -435,6 +458,11 @@ export default function LeavePage() {
           }
         >
           <div className="grid gap-4 md:grid-cols-2">
+            {canCreateForEmployee && <div className="md:col-span-2">
+              <FormSelect name="employeeId" label="Employee" options={employees.map(employee => ({ value: String(employee.id), label: `${employee.name}${employee.organization?.name ? ` - ${employee.organization.name}` : ''}` }))} />
+              {directoryError && <p role="alert" className="text-sm text-rose-600">{directoryError}</p>}
+            </div>}
+            {form.watch('requestType') === 'LEAVE' && form.watch('leaveType') !== 'COMP_OFF' && <p className="text-sm text-slate-600 md:col-span-2">If the paid balance cannot cover the full request, the entire request is approved as unpaid. The remaining paid balance is preserved.</p>}
             <FormSelect
               name="requestType"
               label="Request type"

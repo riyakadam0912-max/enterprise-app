@@ -6,6 +6,8 @@ import {
   instantFromZone,
   changedInstant,
   shiftNumber,
+  splitTwelveHourDateTime,
+  joinTwelveHourDateTime,
 } from "./attendance-format.ts";
 
 test("overnight timestamps keep their distinct dates and milliseconds", () => {
@@ -74,3 +76,17 @@ test("spreadsheet cells escape structure and neutralize formulas and controls", 
 });
 
 test('fractional seconds are normalized without losing the instant', () => { assert.equal(instantFromZone('2026-10-24T06:00:00.1', 'Asia/Kolkata'), '2026-10-24T00:30:00.100Z'); });
+
+test("12-hour editing distinguishes midnight, noon, and overnight dates", () => {
+  for (const [value, hour, period] of [
+    ['2026-10-26T00:15:13.573', '12', 'AM'],
+    ['2026-10-26T12:15:13.573', '12', 'PM'],
+    ['2026-10-26T23:15:13.573', '11', 'PM'],
+  ]) {
+    const parts = splitTwelveHourDateTime(value);
+    assert.equal(parts.hour, hour); assert.equal(parts.period, period);
+    assert.equal(joinTwelveHourDateTime(parts, value, true), value);
+  }
+  assert.equal(joinTwelveHourDateTime({ date: '2026-10-27', hour: '01', minute: '30', period: 'AM' }), '2026-10-27T01:30:00.000');
+  assert.equal(joinTwelveHourDateTime({ date: '', hour: '12', minute: '00', period: 'PM' }), '');
+});
