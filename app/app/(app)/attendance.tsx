@@ -512,8 +512,10 @@ export default function Attendance() {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["attendance"] });
     },
-    onError: (error) =>
-      Alert.alert("Unable to update attendance", apiError(error)),
+    onError: (error) => {
+      void client.invalidateQueries({ queryKey: ["attendance"] });
+      Alert.alert("Unable to update attendance", apiError(error));
+    },
   });
   const status = today.data?.status ?? "ABSENT";
   const hasCheckedIn = Boolean(today.data?.checkIn);
@@ -522,6 +524,9 @@ export default function Attendance() {
   const isFlexible = today.data?.shift?.type === "FLEXIBLE";
   const hasActiveFlexibleSession = Boolean(today.data?.activeSession);
   const canCheckIn =
+    !today.isError &&
+    !today.isPending &&
+    (today.data?.capabilities?.canCheckIn ?? true) &&
     hasActiveShift &&
     (isFlexible
       ? !hasActiveFlexibleSession
@@ -529,14 +534,16 @@ export default function Attendance() {
     status !== "LEAVE" &&
     !mutation.isPending;
   const canCheckOut =
-    (isFlexible
-      ? hasActiveFlexibleSession
-      : hasCheckedIn && !hasCheckedOut) &&
+    !today.isError &&
+    !today.isPending &&
+    (today.data?.capabilities?.canCheckOut ?? true) &&
+    (isFlexible ? hasActiveFlexibleSession : hasCheckedIn && !hasCheckedOut) &&
     !mutation.isPending;
   const canBreak =
-    (isFlexible
-      ? hasActiveFlexibleSession
-      : hasCheckedIn && !hasCheckedOut) &&
+    !today.isError &&
+    !today.isPending &&
+    (today.data?.capabilities?.canBreak ?? true) &&
+    (isFlexible ? hasActiveFlexibleSession : hasCheckedIn && !hasCheckedOut) &&
     !mutation.isPending;
 
   return (
@@ -602,6 +609,11 @@ export default function Attendance() {
           message={apiError(today.error)}
           onRetry={() => void today.refetch()}
         />
+      ) : null}
+      {today.data?.activeAttendance?.message ? (
+        <Text accessibilityRole="alert">
+          {today.data.activeAttendance.message}
+        </Text>
       ) : null}
       <View style={styles.todayCard}>
         <CalendarCheck color="#059669" size={42} />

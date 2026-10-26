@@ -1,5 +1,6 @@
 import {
   Body,
+  BadRequestException,
   Controller,
   Delete,
   Get,
@@ -437,7 +438,45 @@ export class AttendanceController {
     @Body() dto: UpdateAttendanceDto,
     @Req() req: AuthenticatedRequest,
   ) {
+    if (dto.expectedVersion == null)
+      throw new BadRequestException(
+        'Refresh attendance before saving; expectedVersion is required',
+      );
     return this.attendanceService.update(id, dto, this.scopedUser(req));
+  }
+
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
+  @Get('employee/:employeeId/sessions')
+  sessions(
+    @Param('employeeId', ParseIntPipe) employeeId: number,
+    @Query('date') date: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.attendanceService.getEmployeeSessions(
+      employeeId,
+      date,
+      this.scopedUser(req),
+    );
+  }
+
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
+  @Post(':id/recover-session')
+  recoverSession(@Param('id', ParseIntPipe) id: number, @Req() req: AuthenticatedRequest) {
+    return this.attendanceService.recoverLegacySession(id, this.scopedUser(req));
+  }
+
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
+  @Patch('sessions/:sessionId')
+  correctSession(
+    @Param('sessionId', ParseIntPipe) sessionId: number,
+    @Body() dto: UpdateAttendanceDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.attendanceService.correctSession(
+      sessionId,
+      dto,
+      this.scopedUser(req),
+    );
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
@@ -465,5 +504,11 @@ export class AttendanceController {
   @Post('automation/run')
   runAutomation(@Req() req: AuthenticatedRequest) {
     return this.attendanceService.runDailyAutomation(this.scopedUser(req));
+  }
+
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
+  @Get('automation/status')
+  automationStatus(@Req() req: AuthenticatedRequest) {
+    return this.attendanceService.getAutomationStatus(this.scopedUser(req));
   }
 }

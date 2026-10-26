@@ -4,13 +4,24 @@
   "installCommand": "npm ci",
   "framework": null,
   "redirects": [
-    { "source": "/", "destination": "/api/v1/", "permanent": false }
+    {
+      "source": "/",
+      "destination": "/api/v1/",
+      "permanent": false
+    }
   ],
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index"
+    }
   ],
   "functions": {
     "api/index.ts": {
+      "includeFiles": "{dist/**,node_modules/pdfkit/js/standard-fonts/**}"
+    },
+    "api/attendance-cron.ts": {
+      "maxDuration": 60,
       "includeFiles": "{dist/**,node_modules/pdfkit/js/standard-fonts/**}"
     }
   }

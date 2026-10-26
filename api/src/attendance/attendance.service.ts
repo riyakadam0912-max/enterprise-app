@@ -1,4 +1,9 @@
-import { runWithSystemAuditContext } from '../audit-logs/audit-context';
+import { randomUUID } from 'node:crypto';
+import {
+  getAuditContext,
+  runWithAuditContext,
+  runWithSystemAuditContext,
+} from '../audit-logs/audit-context';
 import {
   Inject,
   BadRequestException,
@@ -84,6 +89,7 @@ type ShiftLite = {
 };
 
 type DailyAttendanceRow = {
+  version?: number;
   id: number | null;
   employeeId: number;
   employee: {
@@ -191,12 +197,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     this.flexibleTaskTimeCutoverDate();
     if (process.env.VERCEL === '1') return;
 
-    this.runDailyAutomation().catch((error: unknown) => {
+    this.runScheduledAutomation().catch((error: unknown) => {
       this.logger.error('Initial attendance automation failed', error);
     });
     this.automationTimer = setInterval(
       () => {
-        this.runDailyAutomation().catch((error: unknown) => {
+        this.runScheduledAutomation().catch((error: unknown) => {
           this.logger.error('Scheduled attendance automation failed', error);
         });
       },
@@ -366,7 +372,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     return isShiftScheduledWorkday(day, shift);
   }
 
-  private buildSummary(rows: DailyAttendanceRow[]) {
+  private buildSummary(rows: DailyAttendanceRow[], round = true) {
     const summary = rows.reduce(
       (acc, row) => {
         if (row.status === AttendanceStatus.PRESENT) acc.present += 1;
@@ -417,11 +423,21 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       totalWorkingDays: rows.filter((row) =>
         this.isScheduledAttendanceStatus(row.status),
       ).length,
-      overtimeHours: Number(summary.overtimeHours.toFixed(2)),
-      shortfallHours: Number(summary.shortfallHours.toFixed(2)),
-      totalWorkedHours: Number(summary.totalWorkedHours.toFixed(2)),
-      totalTaskHours: Number(summary.totalTaskHours.toFixed(2)),
-      totalExpectedHours: Number(summary.totalExpectedHours.toFixed(2)),
+      overtimeHours: round
+        ? Number(summary.overtimeHours.toFixed(2))
+        : summary.overtimeHours,
+      shortfallHours: round
+        ? Number(summary.shortfallHours.toFixed(2))
+        : summary.shortfallHours,
+      totalWorkedHours: round
+        ? Number(summary.totalWorkedHours.toFixed(2))
+        : summary.totalWorkedHours,
+      totalTaskHours: round
+        ? Number(summary.totalTaskHours.toFixed(2))
+        : summary.totalTaskHours,
+      totalExpectedHours: round
+        ? Number(summary.totalExpectedHours.toFixed(2))
+        : summary.totalExpectedHours,
     };
   }
 
@@ -1259,6 +1275,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     attendance:
       | ({
           id: number;
+          version?: number;
           checkIn: Date | null;
           checkOut: Date | null;
           workingHours: number | null;
@@ -1318,6 +1335,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           : AttendanceStatus.HALF_DAY);
     return {
       id: attendance?.id ?? null,
+      version: attendance?.version,
       employeeId: employee.id,
       employee: {
         id: employee.id,
@@ -1824,7 +1842,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       },
       include: { organization: { select: { name: true } } },
     });
-    if (!shift || !shift.isActive) {
+    if (!shift || shift.isActive === false) {
       throw new NotFoundException('Shift not found');
     }
 
@@ -1873,6 +1891,20 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       dateKeyInTimezone(new Date(), employeeOrganization?.timezone ?? 'UTC'),
     );
     const result = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`WITH locked AS MATERIALIZED (SELECT pg_advisory_xact_lock(137703::integer, ${dto.shiftId}::integer)) SELECT 1 FROM locked`;
+      await this.lockFlexibleAttendanceForEmployee(
+        dto.employeeId,
+        employee.organizationId,
+        tx,
+        user.userId,
+      );
+      const currentShift = await tx.shift.findFirst({
+        where: { id: dto.shiftId, isActive: true },
+      });
+      if (!currentShift)
+        throw new ConflictException(
+          'Shift policy changed; refresh available shifts before assigning',
+        );
       const activeAssignment = await tx.employeeShiftAssignment.findFirst({
         where: { employeeId: dto.employeeId, effectiveTo: null },
         orderBy: { effectiveFrom: 'desc' },
@@ -1921,61 +1953,151 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
   async updateShift(id: number, dto: UpdateShiftDto, user: AttendanceUser) {
     const organizationId = await this.resolveOrganizationId(user);
-    const shift = await this.prisma.shift.findFirst({
-      where: { id, organizationId },
-    });
+    const result = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`WITH locked AS MATERIALIZED (SELECT pg_advisory_xact_lock(137703::integer, ${id}::integer)) SELECT 1 FROM locked`;
+      const shift = await tx.shift.findFirst({
+        where: { id, organizationId },
+      });
 
-    if (!shift) {
-      throw new NotFoundException('Shift not found');
-    }
+      if (!shift) throw new NotFoundException('Shift not found');
+      if (!shift.isActive)
+        throw new ConflictException(
+          'Shift policy changed; refresh available shifts before editing',
+        );
 
-    const type = dto.type !== undefined ? dto.type : shift.type;
-    const startTime =
-      dto.startTime !== undefined ? dto.startTime : shift.startTime;
-    const endTime = dto.endTime !== undefined ? dto.endTime : shift.endTime;
-    const requiredHours =
-      dto.requiredHours !== undefined ? dto.requiredHours : shift.requiredHours;
-    const minPresentHours =
-      dto.minPresentHours !== undefined
-        ? dto.minPresentHours
-        : shift.minPresentHours;
-    this.validateShiftDefinition(
-      type,
-      startTime,
-      endTime,
-      requiredHours,
-      minPresentHours,
-    );
-
-    // Prepare update data, filtering out undefined values
-    const updateData: any = {};
-    if (dto.name !== undefined) updateData.name = dto.name;
-    if (dto.type !== undefined) updateData.type = dto.type;
-    if (dto.startTime !== undefined) updateData.startTime = dto.startTime;
-    if (dto.endTime !== undefined) updateData.endTime = dto.endTime;
-    if (dto.requiredHours !== undefined)
-      updateData.requiredHours = dto.requiredHours;
-    if (dto.minPresentHours !== undefined) {
-      updateData.minPresentHours = Math.min(
-        dto.minPresentHours,
-        updateData.requiredHours ?? shift.requiredHours,
+      const type = dto.type !== undefined ? dto.type : shift.type;
+      const startTime =
+        dto.startTime !== undefined ? dto.startTime : shift.startTime;
+      const endTime = dto.endTime !== undefined ? dto.endTime : shift.endTime;
+      const requiredHours =
+        dto.requiredHours !== undefined
+          ? dto.requiredHours
+          : shift.requiredHours;
+      const minPresentHours =
+        dto.minPresentHours !== undefined
+          ? dto.minPresentHours
+          : shift.minPresentHours;
+      this.validateShiftDefinition(
+        type,
+        startTime,
+        endTime,
+        requiredHours,
+        minPresentHours,
       );
-    }
-    if (dto.gracePeriodMinutes !== undefined)
-      updateData.gracePeriodMinutes = dto.gracePeriodMinutes;
-    if (dto.weeklyHolidayDay !== undefined)
-      updateData.weeklyHolidayDay = dto.weeklyHolidayDay;
-    if (dto.workingDays !== undefined) {
-      updateData.workingDays = dto.workingDays;
-    } else if (dto.weeklyHolidayDay !== undefined) {
-      updateData.workingDays = [0, 1, 2, 3, 4, 5, 6].filter(
-        (weekday) => weekday !== dto.weeklyHolidayDay,
-      );
-    }
 
-    const result = await this.prisma.shift.update({
-      where: { id },
-      data: updateData,
+      // Prepare update data, filtering out undefined values
+      const updateData: any = {};
+      if (dto.name !== undefined) updateData.name = dto.name;
+      if (dto.type !== undefined) updateData.type = dto.type;
+      if (dto.startTime !== undefined) updateData.startTime = dto.startTime;
+      if (dto.endTime !== undefined) updateData.endTime = dto.endTime;
+      if (dto.requiredHours !== undefined)
+        updateData.requiredHours = dto.requiredHours;
+      if (dto.minPresentHours !== undefined) {
+        updateData.minPresentHours = Math.min(
+          dto.minPresentHours,
+          updateData.requiredHours ?? shift.requiredHours,
+        );
+      }
+      if (dto.gracePeriodMinutes !== undefined)
+        updateData.gracePeriodMinutes = dto.gracePeriodMinutes;
+      if (dto.weeklyHolidayDay !== undefined)
+        updateData.weeklyHolidayDay = dto.weeklyHolidayDay;
+      if (dto.workingDays !== undefined) {
+        updateData.workingDays = dto.workingDays;
+      } else if (dto.weeklyHolidayDay !== undefined) {
+        updateData.workingDays = [0, 1, 2, 3, 4, 5, 6].filter(
+          (weekday) => weekday !== dto.weeklyHolidayDay,
+        );
+      }
+
+      const revision = await tx.shift.create({
+        data: {
+          name: shift.name,
+          type: shift.type,
+          startTime: shift.startTime,
+          endTime: shift.endTime,
+          requiredHours: shift.requiredHours,
+          minPresentHours: shift.minPresentHours,
+          gracePeriodMinutes: shift.gracePeriodMinutes,
+          rotationPattern: shift.rotationPattern,
+          weeklyHolidayDay: shift.weeklyHolidayDay,
+          workingDays: shift.workingDays,
+          organizationId: shift.organizationId,
+          ...updateData,
+          policyRootId: shift.policyRootId ?? shift.id,
+          revision: shift.revision + 1,
+        },
+      });
+      const employees = await tx.employee.findMany({
+        where: { shiftId: shift.id, deletedAt: null },
+        include: { organization: { select: { timezone: true } } },
+        orderBy: { id: 'asc' },
+      });
+      for (const employee of employees) {
+        await this.lockFlexibleAttendanceForEmployee(
+          employee.id,
+          employee.organizationId,
+          tx,
+          user.userId,
+        );
+        const currentEmployee = await tx.employee.findUnique({
+          where: { id: employee.id },
+          select: { shiftId: true },
+        });
+        if (currentEmployee?.shiftId !== shift.id) continue;
+        const date = attendanceDateFromKey(
+          dateKeyInTimezone(new Date(), employee.organization.timezone),
+        );
+        const assignment = await tx.employeeShiftAssignment.findFirst({
+          where: { employeeId: employee.id, effectiveTo: null },
+          orderBy: { effectiveFrom: 'desc' },
+        });
+        if (assignment && assignment.effectiveFrom >= date) {
+          await tx.employeeShiftAssignment.update({
+            where: { id: assignment.id },
+            data: { shiftId: revision.id },
+          });
+        } else {
+          if (assignment)
+            await tx.employeeShiftAssignment.update({
+              where: { id: assignment.id },
+              data: { effectiveTo: date },
+            });
+          else {
+            // Preserve the known prior policy from employee creation; do not invent an earlier hire policy.
+            const from = attendanceDateFromKey(
+              dateKeyInTimezone(
+                employee.createdAt,
+                employee.organization.timezone,
+              ),
+            );
+            if (from < date)
+              await tx.employeeShiftAssignment.create({
+                data: {
+                  employeeId: employee.id,
+                  shiftId: shift.id,
+                  effectiveFrom: from,
+                  effectiveTo: date,
+                  policyInferred: true,
+                },
+              });
+          }
+          await tx.employeeShiftAssignment.create({
+            data: {
+              employeeId: employee.id,
+              shiftId: revision.id,
+              effectiveFrom: date,
+            },
+          });
+        }
+        await tx.employee.update({
+          where: { id: employee.id },
+          data: { shiftId: revision.id },
+        });
+      }
+      await tx.shift.update({ where: { id }, data: { isActive: false } });
+      return revision;
     });
 
     await this.invalidateDashboardCache();
@@ -2108,74 +2230,89 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       return result;
     }
 
-    // Calculate status based on late check-in
-    const status = AttendanceStatus.PRESENT;
+    const transactionResult = await this.prisma.$transaction(async (tx) => {
+      await this.lockFlexibleAttendanceForEmployee(
+        employeeId,
+        organizationId,
+        tx,
+        user.userId,
+      );
+      const existing = await withDeletedRecords(() =>
+        tx.attendance.findUnique({
+          where: { employeeId_date: { employeeId, date: day } },
+          include: { shift: true },
+        }),
+      );
+      if (existing?.checkIn && !existing.deletedAt)
+        throw new ConflictException('Employee has already checked in today');
+      // Calculate status based on late check-in
+      const status = AttendanceStatus.PRESENT;
 
-    if (existing?.deletedAt != null) {
-      const result = await this.prisma.$transaction(async (tx) => {
-        await tx.attendanceBreak.deleteMany({
-          where: { attendanceId: existing.id },
-        });
-        return tx.attendance.update({
+      if (existing?.deletedAt != null) {
+        const result = await (async (tx: Prisma.TransactionClient) => {
+          await tx.attendanceBreak.deleteMany({
+            where: { attendanceId: existing.id },
+          });
+          return tx.attendance.update({
+            where: { id: existing.id },
+            data: {
+              deletedAt: null,
+              shiftId: employee.shift!.id,
+              checkIn: checkInTime,
+              checkOut: null,
+              workingHours: null,
+              lateMinutes,
+              overtimeHours: 0,
+              shortfallHours: 0,
+              requiredHours: employee.shift!.requiredHours,
+              status,
+              isPaidLeave: null,
+              checkoutSource: null,
+              checkoutActorId: null,
+              isAutoClosed: false,
+            },
+            include: { employee: true, shift: true },
+          });
+        })(tx);
+        return result;
+      }
+
+      if (existing) {
+        const result = await tx.attendance.update({
           where: { id: existing.id },
           data: {
-            deletedAt: null,
             shiftId: employee.shift!.id,
             checkIn: checkInTime,
-            checkOut: null,
-            workingHours: null,
             lateMinutes,
-            overtimeHours: 0,
-            shortfallHours: 0,
             requiredHours: employee.shift!.requiredHours,
             status,
             isPaidLeave: null,
-            checkoutSource: null,
-            checkoutActorId: null,
-            isAutoClosed: false,
           },
           include: { employee: true, shift: true },
         });
-      });
-      await this.invalidateDashboardCache();
-      return result;
-    }
 
-    if (existing) {
-      const result = await this.prisma.attendance.update({
-        where: { id: existing.id },
+        return result;
+      }
+
+      const result = await tx.attendance.create({
         data: {
-          shiftId: employee.shift.id,
+          employeeId,
+          shiftId: employee.shift!.id,
+          organizationId,
+          date: day,
           checkIn: checkInTime,
           lateMinutes,
-          requiredHours: employee.shift.requiredHours,
+          overtimeHours: 0,
+          requiredHours: employee.shift!.requiredHours,
           status,
-          isPaidLeave: null,
         },
         include: { employee: true, shift: true },
       });
 
-      await this.invalidateDashboardCache();
       return result;
-    }
-
-    const result = await this.prisma.attendance.create({
-      data: {
-        employeeId,
-        shiftId: employee.shift.id,
-        organizationId,
-        date: day,
-        checkIn: checkInTime,
-        lateMinutes,
-        overtimeHours: 0,
-        requiredHours: employee.shift.requiredHours,
-        status,
-      },
-      include: { employee: true, shift: true },
     });
-
     await this.invalidateDashboardCache();
-    return result;
+    return transactionResult;
   }
 
   async checkOut(dto: CheckOutDto, user: AttendanceUser) {
@@ -2217,132 +2354,152 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       return result;
     }
 
-    let record: {
-      id: number;
-      checkIn: Date | null;
-      checkOut: Date | null;
-      date: Date;
-      employeeId: number;
-      shift: ShiftLite | null;
-      breaks: { id: number; startedAt: Date; endedAt: Date | null }[];
-    } | null = null;
-
-    if (dto.date) {
-      const day = attendanceDateFromKey(dto.date.slice(0, 10));
-      record = await this.prisma.attendance.findUnique({
-        where: { employeeId_date: { employeeId, date: day } },
-        include: {
-          shift: true,
-          breaks: true,
-          checkoutActor: { select: { name: true } },
-        },
-      });
-    } else {
-      // Supports night shifts: close the latest open attendance row.
-      record = await this.prisma.attendance.findFirst({
+    const transactionResult = await this.prisma.$transaction(async (tx) => {
+      await this.lockFlexibleAttendanceForEmployee(
+        employeeId,
+        employee.organizationId ?? user.organizationId,
+        tx,
+        user.userId,
+      );
+      const racedSession = await tx.attendanceSession.findFirst({
         where: {
           employeeId,
-          checkIn: { not: null },
-          checkOut: null,
+          organizationId: employee.organizationId ?? user.organizationId,
+          endedAt: null,
         },
-        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-        include: { shift: true, breaks: true },
       });
-      if (!record) {
-        const latestAttendance = await this.prisma.attendance.findFirst({
-          where: { employeeId, checkIn: { not: null } },
+      if (racedSession)
+        throw new ConflictException(
+          'Attendance session changed; refresh and try again',
+        );
+      let record: {
+        id: number;
+        checkIn: Date | null;
+        checkOut: Date | null;
+        date: Date;
+        employeeId: number;
+        shift: ShiftLite | null;
+        breaks: { id: number; startedAt: Date; endedAt: Date | null }[];
+      } | null = null;
+
+      if (dto.date) {
+        const day = attendanceDateFromKey(dto.date.slice(0, 10));
+        record = await tx.attendance.findUnique({
+          where: { employeeId_date: { employeeId, date: day } },
+          include: {
+            shift: true,
+            breaks: true,
+            checkoutActor: { select: { name: true } },
+          },
+        });
+      } else {
+        // Supports night shifts: close the latest open attendance row.
+        record = await tx.attendance.findFirst({
+          where: {
+            employeeId,
+            checkIn: { not: null },
+            checkOut: null,
+          },
           orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
           include: { shift: true, breaks: true },
         });
-        if (
-          latestAttendance?.checkOut &&
-          dateKeyInTimezone(latestAttendance.checkOut, timezone) ===
-            dateKeyInTimezone(checkOutTime, timezone)
-        ) {
-          throw new ConflictException('Employee has already checked out');
+        if (!record) {
+          const latestAttendance = await tx.attendance.findFirst({
+            where: { employeeId, checkIn: { not: null } },
+            orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+            include: { shift: true, breaks: true },
+          });
+          if (
+            latestAttendance?.checkOut &&
+            dateKeyInTimezone(latestAttendance.checkOut, timezone) ===
+              dateKeyInTimezone(checkOutTime, timezone)
+          ) {
+            throw new ConflictException('Employee has already checked out');
+          }
         }
       }
-    }
 
-    if (!record || !record.checkIn) {
-      throw new NotFoundException('No check-in record found');
-    }
-
-    if (record.checkOut) {
-      throw new ConflictException('Employee has already checked out');
-    }
-
-    if (checkOutTime.getTime() < new Date(record.checkIn).getTime()) {
-      throw new BadRequestException(
-        'Check-out time cannot be earlier than check-in time',
-      );
-    }
-
-    const shift = record.shift ?? employee.shift ?? null;
-    const breakIntervals = record.breaks ?? [];
-    const openBreak = breakIntervals.find((item) => item.endedAt === null);
-    if (openBreak) {
-      openBreak.endedAt = checkOutTime;
-    }
-    const workingHours = calculateNetWorkingHours(
-      new Date(record.checkIn),
-      checkOutTime,
-      breakIntervals,
-    );
-    const overtimeHours = this.calculateOvertimeHours(workingHours, shift);
-    const halfDayLeave = await this.findApprovedLeaveForDay(
-      employeeId,
-      new Date(record.date),
-      'HALF_DAY',
-    );
-    const shortfallHours = this.calculateShortfallHours(
-      workingHours,
-      shift,
-      halfDayLeave ? 5 : undefined,
-    );
-    const lateMinutes = (record as any).lateMinutes ?? 0;
-
-    const status = this.calculateStatus({
-      day: this.startOfDay(new Date(record.date)),
-      checkIn: new Date(record.checkIn),
-      checkOut: checkOutTime,
-      workingHours,
-      onLeave: false,
-      shift,
-      lateMinutes,
-      timezone,
-    });
-
-    const result = await this.prisma.$transaction(async (tx) => {
-      if (openBreak) {
-        await tx.attendanceBreak.update({
-          where: { id: openBreak.id },
-          data: { endedAt: checkOutTime },
-        });
+      if (!record || !record.checkIn) {
+        throw new NotFoundException('No check-in record found');
       }
-      await this.tasksService.stopActiveTimerForEmployee(
-        employeeId,
-        employee.organizationId ?? user.organizationId,
-        checkOutTime,
-        tx,
-      );
-      return tx.attendance.update({
-        where: { id: record.id },
-        data: {
-          checkOut: checkOutTime,
-          checkoutSource: AttendanceCheckoutSource.USER,
-          checkoutActorId: user.userId,
-          workingHours,
-          overtimeHours,
-          shortfallHours,
-          status,
-        },
-        include: { employee: true, shift: true },
-      });
-    });
 
+      if (record.checkOut) {
+        throw new ConflictException('Employee has already checked out');
+      }
+
+      if (checkOutTime.getTime() < new Date(record.checkIn).getTime()) {
+        throw new BadRequestException(
+          'Check-out time cannot be earlier than check-in time',
+        );
+      }
+
+      const shift = record.shift ?? employee.shift ?? null;
+      const breakIntervals = record.breaks ?? [];
+      const openBreak = breakIntervals.find((item) => item.endedAt === null);
+      if (openBreak) {
+        openBreak.endedAt = checkOutTime;
+      }
+      const workingHours = calculateNetWorkingHours(
+        new Date(record.checkIn),
+        checkOutTime,
+        breakIntervals,
+      );
+      const overtimeHours = this.calculateOvertimeHours(workingHours, shift);
+      const halfDayLeave = await this.findApprovedLeaveForDay(
+        employeeId,
+        new Date(record.date),
+        'HALF_DAY',
+      );
+      const shortfallHours = this.calculateShortfallHours(
+        workingHours,
+        shift,
+        halfDayLeave ? 5 : undefined,
+      );
+      const lateMinutes = (record as any).lateMinutes ?? 0;
+
+      const status = this.calculateStatus({
+        day: this.startOfDay(new Date(record.date)),
+        checkIn: new Date(record.checkIn),
+        checkOut: checkOutTime,
+        workingHours,
+        onLeave: false,
+        shift,
+        lateMinutes,
+        timezone,
+      });
+
+      const result = await (async (tx: Prisma.TransactionClient) => {
+        if (openBreak) {
+          await tx.attendanceBreak.update({
+            where: { id: openBreak.id },
+            data: { endedAt: checkOutTime },
+          });
+        }
+        await this.tasksService.stopActiveTimerForEmployee(
+          employeeId,
+          employee.organizationId ?? user.organizationId,
+          checkOutTime,
+          tx,
+        );
+        return tx.attendance.update({
+          where: { id: record.id },
+          data: {
+            checkOut: checkOutTime,
+            checkoutSource: AttendanceCheckoutSource.USER,
+            checkoutActorId: user.userId,
+            workingHours,
+            overtimeHours,
+            shortfallHours,
+            status,
+          },
+          include: { employee: true, shift: true },
+        });
+      })(tx);
+
+      return result;
+    });
     await this.invalidateDashboardCache();
-    return result;
+    return transactionResult;
   }
 
   private resolveAttendanceActionTime(
@@ -2399,7 +2556,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     timezone: string,
     user: AttendanceUser,
   ) {
-    if (!record.checkIn || record.checkOut) {
+    if (!record.checkIn || record.checkOut || record.checkIn > new Date()) {
       throw new BadRequestException(
         'No active flexible check-in was found. Refresh attendance and try again.',
       );
@@ -2413,11 +2570,30 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         'Could not determine the flexible attendance day boundary',
       );
     }
+    let previousEnd = record.checkIn.getTime();
+    const orderedLegacyBreaks = [...record.breaks].sort(
+      (a, b) => a.startedAt.getTime() - b.startedAt.getTime(),
+    );
+    for (const [index, interval] of orderedLegacyBreaks.entries()) {
+      if (
+        interval.startedAt.getTime() < previousEnd ||
+        interval.startedAt > new Date() ||
+        (interval.endedAt
+          ? interval.endedAt <= interval.startedAt ||
+            interval.endedAt > new Date()
+          : index !== orderedLegacyBreaks.length - 1)
+      ) {
+        throw new ConflictException(
+          'Legacy break history is inconsistent and needs review before recovery',
+        );
+      }
+      previousEnd = interval.endedAt?.getTime() ?? Number.POSITIVE_INFINITY;
+    }
     const priorSession = await tx.attendanceSession.findFirst({
       where: {
         employeeId: employee.id,
         organizationId,
-        startedAt: { lt: dayEnd },
+        startedAt: { lt: new Date() },
         OR: [{ endedAt: null }, { endedAt: { gt: dayStart } }],
       },
       select: { id: true },
@@ -2663,11 +2839,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     return result;
   }
 
-  private async buildDailySnapshot(
+  private async dailyEmployeeWhere(
     day: Date,
     employeeIds: number[] | null,
     user: AttendanceUser,
-  ) {
+    selection?: { department?: string; organizationId?: number },
+  ): Promise<Prisma.EmployeeWhereInput> {
     const buScope = await this.businessUnitsService.resolveScope(user as any);
     const buWhere = this.businessUnitsService.buildEmployeeBUWhere(buScope);
     const organizationIds = await this.getAttendanceOrganizationIds(user);
@@ -2691,12 +2868,61 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
               ...this.buildOrganizationScope(user),
               ...buWhere,
             };
+    const filters: Prisma.EmployeeWhereInput[] = [
+      { OR: [{ hireDate: null }, { hireDate: { lte: this.endOfDay(day) } }] },
+    ];
+    if (selection?.organizationId)
+      filters.push({ organizationId: selection.organizationId });
+    if (selection?.department)
+      filters.push({
+        OR: [
+          {
+            department: { contains: selection.department, mode: 'insensitive' },
+          },
+          ...('unassigned'.includes(selection.department.toLowerCase())
+            ? [{ department: null }]
+            : []),
+        ],
+      });
+    return {
+      ...employeeWhere,
+      ...(employeeIds ? { id: { in: employeeIds } } : {}),
+      AND: filters,
+    };
+  }
+
+  private async buildDailySnapshot(
+    day: Date,
+    employeeIds: number[] | null,
+    user: AttendanceUser,
+    selection?: {
+      department?: string;
+      organizationId?: number;
+      cursor?: number;
+      offset?: number;
+      limit?: number;
+    },
+  ) {
+    const employeeWhere = await this.dailyEmployeeWhere(
+      day,
+      employeeIds,
+      user,
+      selection,
+    );
     const employees = await this.prisma.employee.findMany({
-      where: {
-        ...employeeWhere,
-        ...(employeeIds ? { id: { in: employeeIds } } : {}),
-      },
-      orderBy: { name: 'asc' },
+      where: employeeWhere,
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      ...(selection
+        ? {
+            take: selection.limit ?? 100,
+            ...(selection.offset !== undefined
+              ? { skip: selection.offset }
+              : {}),
+            ...(selection.cursor
+              ? { cursor: { id: selection.cursor }, skip: 1 }
+              : {}),
+          }
+        : {}),
       include: {
         shift: true,
         shiftAssignments: { include: { shift: true } },
@@ -2722,7 +2948,14 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         overtimeHours: 0,
         totalWorkingDays: 0,
       };
-      return { rows: [] as DailyAttendanceRow[], summary: emptySummary };
+      return {
+        rows: [] as DailyAttendanceRow[],
+        summary: emptySummary,
+        nextCursor:
+          selection && employees.length === 100
+            ? employees[employees.length - 1].id
+            : undefined,
+      };
     }
 
     const ids = eligibleEmployees.map((employee) => employee.id);
@@ -2890,7 +3123,14 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       ),
     );
 
-    return { rows, summary: this.buildSummary(rows) };
+    return {
+      rows,
+      summary: this.buildSummary(rows),
+      nextCursor:
+        selection && employees.length === 100
+          ? employees[employees.length - 1].id
+          : undefined,
+    };
   }
 
   async findAll(query: QueryAttendanceDto, user: AttendanceUser) {
@@ -2921,47 +3161,99 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         );
       }
     }
-    const { rows } = await this.buildDailySnapshot(day, scopedIds, user);
-    const filteredRows = rows.filter((row) => {
-      if (
-        query.organizationId != null &&
-        row.employee.organization?.id !== query.organizationId
-      ) {
-        return false;
-      }
-      if (query.status && row.status !== query.status) return false;
-      if (
-        query.department &&
-        !(row.employee.department ?? 'Unassigned')
-          .toLowerCase()
-          .includes(query.department.toLowerCase())
-      ) {
-        return false;
-      }
-      switch (query.attentionFilter) {
-        case 'WORKING':
-          return Boolean(row.checkIn && !row.checkOut);
-        case 'NOT_CHECKED_IN':
-          return row.status === AttendanceStatus.ABSENT;
-        case 'LATE':
-          return row.lateMinutes > 0;
-        case 'FOLLOW_UP':
-          return row.status === AttendanceStatus.ABSENT || row.lateMinutes > 0;
-        default:
-          return true;
-      }
-    });
-
+    if (
+      query.summaryMode === 'none' &&
+      !query.status &&
+      !query.attentionFilter
+    ) {
+      const selection = {
+        department: query.department,
+        organizationId: query.organizationId,
+        offset: (page - 1) * limit,
+        limit,
+      };
+      const where = await this.dailyEmployeeWhere(
+        day,
+        scopedIds,
+        user,
+        selection,
+      );
+      const [total, snapshot] = await Promise.all([
+        this.prisma.employee.count({ where }),
+        this.buildDailySnapshot(day, scopedIds, user, selection),
+      ]);
+      return {
+        data: snapshot.rows,
+        total,
+        page,
+        limit,
+        date: day.toISOString(),
+        summary: undefined,
+      };
+    }
     const start = (page - 1) * limit;
-    const data = filteredRows.slice(start, start + limit);
+    const data: DailyAttendanceRow[] = [];
+    let total = 0;
+    let cursor: number | undefined;
+    const summary = this.buildSummary([]);
+    do {
+      const batch = await this.buildDailySnapshot(day, scopedIds, user, {
+        department: query.department,
+        organizationId: query.organizationId,
+        cursor,
+      });
+      const { rows } = batch;
+      const filteredRows = rows.filter((row) => {
+        if (
+          query.organizationId != null &&
+          row.employee.organization?.id !== query.organizationId
+        ) {
+          return false;
+        }
+        if (query.status && row.status !== query.status) return false;
+        if (
+          query.department &&
+          !(row.employee.department ?? 'Unassigned')
+            .toLowerCase()
+            .includes(query.department.toLowerCase())
+        ) {
+          return false;
+        }
+        switch (query.attentionFilter) {
+          case 'WORKING':
+            return Boolean(row.checkIn && !row.checkOut);
+          case 'NOT_CHECKED_IN':
+            return row.status === AttendanceStatus.ABSENT;
+          case 'LATE':
+            return row.lateMinutes > 0;
+          case 'FOLLOW_UP':
+            return (
+              row.status === AttendanceStatus.ABSENT || row.lateMinutes > 0
+            );
+          default:
+            return true;
+        }
+      });
+
+      for (const row of filteredRows) {
+        if (total >= start && data.length < limit) data.push(row);
+        total++;
+      }
+      const chunk = this.buildSummary(filteredRows, false);
+      for (const key of Object.keys(summary) as Array<keyof typeof summary>)
+        summary[key] += chunk[key];
+      cursor = batch.nextCursor;
+    } while (cursor !== undefined);
+    for (const key of Object.keys(summary) as Array<keyof typeof summary>)
+      summary[key] = Number(summary[key].toFixed(2));
 
     return {
       data,
-      total: filteredRows.length,
+      total,
       page,
       limit,
       date: day.toISOString(),
-      summary: this.buildSummary(filteredRows),
+      summary: query.summaryMode === 'none' ? undefined : summary,
     };
   }
 
@@ -3136,6 +3428,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const today = await this.getToday(
       {
         ...user,
+        role: Role.EMPLOYEE,
         employeeId,
       },
       undefined,
@@ -3184,6 +3477,21 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     const row =
       today.rows.find((item) => item.employeeId === employeeId) ?? null;
+    const flexible =
+      Boolean(activeSession) || employee.shift?.type === 'FLEXIBLE';
+    const blocked = activeAttendance.kind === 'REVIEW_REQUIRED';
+    const working =
+      Boolean(activeSession) ||
+      (!flexible && Boolean(row?.checkIn && !row.checkOut));
+    const capabilities = {
+      canCheckIn:
+        !blocked &&
+        Boolean(employee.shift) &&
+        row?.status !== AttendanceStatus.LEAVE &&
+        (flexible ? !activeSession && !legacyAttendance : !row?.checkIn),
+      canCheckOut: !blocked && working,
+      canBreak: !blocked && working,
+    };
     if (!row) {
       return {
         date: today.date,
@@ -3202,9 +3510,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           ? AttendanceStatus.PRESENT
           : AttendanceStatus.NOT_SCHEDULED,
         isShootDay: false,
-        shiftDetails: activeSessionDetails?.shiftDetails ?? null,
+        shiftDetails:
+          activeSessionDetails?.shiftDetails ?? employee.shift ?? null,
         activeSession: activeSessionDetails,
         activeAttendance,
+        capabilities,
       };
     }
 
@@ -3226,6 +3536,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       shiftDetails: activeSessionDetails?.shiftDetails ?? row.shiftDetails,
       activeSession: activeSessionDetails,
       activeAttendance,
+      capabilities,
     };
   }
 
@@ -4395,7 +4706,17 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     user.organizationId = await this.resolveOrganizationId(user);
     const targetMonth = query.month
       ? new Date(`${query.month}-01T00:00:00.000Z`)
-      : new Date();
+      : attendanceDateFromKey(
+          dateKeyInTimezone(
+            new Date(),
+            (
+              await this.prisma.organization.findUnique({
+                where: { id: user.organizationId },
+                select: { timezone: true },
+              })
+            )?.timezone,
+          ),
+        );
 
     const monthStart = new Date(
       Date.UTC(targetMonth.getUTCFullYear(), targetMonth.getUTCMonth(), 1),
@@ -4971,10 +5292,18 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getMonthlyReport(query: QueryAttendanceDto, user: AttendanceUser) {
-    const targetYear = query.year ?? new Date().getUTCFullYear();
+    const reportOrganizationId = await this.resolveOrganizationId(user);
+    const reportOrganization = await this.prisma.organization.findUnique({
+      where: { id: reportOrganizationId },
+      select: { timezone: true },
+    });
+    const localToday = attendanceDateFromKey(
+      dateKeyInTimezone(new Date(), reportOrganization?.timezone),
+    );
+    const targetYear = query.year ?? localToday.getUTCFullYear();
     const targetMonth = query.month
       ? Number(query.month)
-      : new Date().getUTCMonth() + 1;
+      : localToday.getUTCMonth() + 1;
     const monthStart = new Date(Date.UTC(targetYear, targetMonth - 1, 1));
     const monthEnd = new Date(
       Date.UTC(targetYear, targetMonth, 0, 23, 59, 59, 999),
@@ -5071,9 +5400,14 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         date: { gte: monthStart, lte: monthEnd },
         deletedAt: null,
       },
+      take: 1001,
       include: { shift: true, breaks: true },
       orderBy: [{ employeeId: 'asc' }, { date: 'asc' }],
     });
+    if (employees.length > 1000)
+      throw new BadRequestException(
+        'Monthly reports support up to 1000 employees. Narrow the employee or department filter before exporting.',
+      );
     const leaveRequestRows = await this.prisma.leaveRequest.findMany({
       where: {
         employeeId: { in: employeeIds },
@@ -5672,9 +6006,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     firstDate: Date,
     timezone: string,
     now: Date,
+    lastDate?: Date,
+    clearEmptyDays = false,
   ) {
     const firstKey = dateKeyInTimezone(firstDate, timezone);
-    const lastKey = dateKeyInTimezone(now, timezone);
+    const lastKey = dateKeyInTimezone(lastDate ?? now, timezone);
     const firstDay = attendanceDateFromKey(firstKey);
     const lastDay = attendanceDateFromKey(lastKey);
     const dates: Date[] = [];
@@ -5734,7 +6070,33 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           });
         }
       }
-      if (daySessions.length === 0) continue;
+      if (daySessions.length === 0) {
+        if (clearEmptyDays) {
+          const empty = await tx.attendance.findUnique({
+            where: { employeeId_date: { employeeId, date } },
+            select: { id: true },
+          });
+          if (empty) {
+            await tx.attendanceBreak.deleteMany({
+              where: { attendanceId: empty.id },
+            });
+            await tx.attendance.update({
+              where: { id: empty.id },
+              data: {
+                checkIn: null,
+                checkOut: null,
+                workingHours: 0,
+                overtimeHours: 0,
+                shortfallHours: 0,
+                lateMinutes: 0,
+                status: AttendanceStatus.NOT_STARTED,
+                checkoutSource: AttendanceCheckoutSource.ADMIN_EDIT,
+              },
+            });
+          }
+        }
+        continue;
+      }
 
       const workingHours = Number(
         daySessions
@@ -6115,6 +6477,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       select: { id: true },
     });
     if (existing) {
+      if (dto.expectedVersion == null)
+        throw new ConflictException(
+          'Attendance already exists. Refresh it before saving a correction',
+        );
       return this.updateAttendance(existing.id, dto, user, false);
     }
 
@@ -6227,9 +6593,88 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     );
 
     const result = await this.prisma.$transaction(async (tx) => {
+      await this.lockFlexibleAttendanceForEmployee(
+        employeeId,
+        organizationId,
+        tx,
+        user.userId,
+      );
+      const racedRecord = await tx.attendance.findUnique({
+        where: { employeeId_date: { employeeId, date: day } },
+        select: { id: true },
+      });
+      if (racedRecord)
+        throw new ConflictException(
+          'Attendance was created by another action; refresh before correcting it',
+        );
+      if (shift?.type === 'FLEXIBLE' && checkIn) {
+        if (
+          !checkOut ||
+          checkOut > new Date() ||
+          dateKeyInTimezone(checkIn, timezone) !== dateKey ||
+          checkOut.getTime() - checkIn.getTime() > 31 * 86400000
+        )
+          throw new BadRequestException(
+            'Enter a complete closed session beginning on this local day, within 31 days',
+          );
+        const overlap = await tx.attendanceSession.findFirst({
+          where: {
+            employeeId,
+            organizationId,
+            startedAt: { lt: checkOut },
+            OR: [{ endedAt: null }, { endedAt: { gt: checkIn } }],
+          },
+        });
+        if (overlap)
+          throw new ConflictException(
+            'This time overlaps an existing source session. Select and correct that session instead',
+          );
+        const session = await tx.attendanceSession.create({
+          data: {
+            employeeId,
+            organizationId,
+            shiftId: shift.id,
+            startedAt: checkIn,
+            endedAt: checkOut,
+            checkInSource: AttendanceCheckoutSource.ADMIN_EDIT,
+            checkInActorId: user.userId,
+            checkoutSource: AttendanceCheckoutSource.ADMIN_EDIT,
+            checkoutActorId: user.userId,
+            breaks: { create: orderedBreaks },
+          },
+        });
+        await this.rebuildFlexibleAttendanceAfterReopen(
+          tx,
+          employeeId,
+          organizationId,
+          checkIn,
+          timezone,
+          new Date(),
+          new Date(checkOut.getTime() - 1),
+        );
+        await tx.auditLog.create({
+          data: {
+            userId: user.userId,
+            userRole: user.role,
+            organizationId,
+            module: 'ATTENDANCE',
+            entityType: 'AttendanceSession',
+            entityId: session.id,
+            action: 'CREATE_SESSION',
+            status: 'SUCCESS',
+            description:
+              'Created an audited historical flexible session and its daily projections',
+          },
+        });
+        return tx.attendance.findUnique({
+          where: { employeeId_date: { employeeId, date: day } },
+          include: { employee: true, shift: true, breaks: true },
+        });
+      }
       const attendance = await tx.attendance.upsert({
         where: { employeeId_date: { employeeId, date: day } },
         create: {
+          manuallyCorrected: true,
           employeeId,
           organizationId,
           shiftId: shift?.id ?? null,
@@ -6252,6 +6697,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           breaks: { create: orderedBreaks },
         },
         update: {
+          manuallyCorrected: true,
           deletedAt: null,
           shiftId: shift?.id ?? null,
           checkIn,
@@ -6314,6 +6760,246 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  async recoverLegacySession(id: number, user: AttendanceUser) {
+    const identity = await this.prisma.attendance.findUnique({ where: { id } });
+    if (!identity) throw new NotFoundException('Attendance not found');
+    const employee = await this.ensureEmployee(identity.employeeId, user);
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: identity.organizationId },
+      select: { timezone: true },
+    });
+    const result = await this.prisma.$transaction(async (tx) => {
+      await this.lockFlexibleAttendanceForEmployee(
+        identity.employeeId,
+        identity.organizationId,
+        tx,
+        user.userId,
+      );
+      const record = await tx.attendance.findUnique({
+        where: { id },
+        include: { shift: true, breaks: true },
+      });
+      if (!record || record.organizationId !== employee.organizationId)
+        throw new NotFoundException('Attendance not found');
+      const shift = record.shift ?? employee.shift;
+      if (shift?.type !== 'FLEXIBLE')
+        throw new BadRequestException(
+          'Only flexible attendance can recover a source session',
+        );
+      const other = await tx.attendance.findFirst({
+        where: {
+          id: { not: id },
+          employeeId: record.employeeId,
+          organizationId: record.organizationId,
+          checkIn: { not: null },
+          checkOut: null,
+        },
+      });
+      if (other)
+        throw new ConflictException(
+          'Multiple legacy records are open. Review their history before recovering a source session',
+        );
+      return this.recoverFlexibleAttendanceSession(
+        tx,
+        employee,
+        record.organizationId,
+        record,
+        shift,
+        organization?.timezone ?? 'UTC',
+        user,
+      );
+    });
+    await this.invalidateDashboardCache();
+    return result;
+  }
+
+  async getEmployeeSessions(
+    employeeId: number,
+    dateKey: string,
+    user: AttendanceUser,
+  ) {
+    const employee = await this.ensureEmployee(employeeId, user);
+    const date = attendanceDateFromKey(dateKey);
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: employee.organizationId },
+      select: { timezone: true },
+    });
+    const timezone = organization?.timezone ?? 'UTC';
+    const start = this.localDateStart(this.dateKey(date), timezone);
+    const end = localMidnightAfterDateInTimezone(this.dateKey(date), timezone);
+    if (!end) throw new BadRequestException('Unable to resolve the local day');
+    return this.prisma.attendanceSession.findMany({
+      where: {
+        employeeId,
+        organizationId: employee.organizationId,
+        startedAt: { lt: end },
+        OR: [{ endedAt: null }, { endedAt: { gt: start } }],
+      },
+      include: { breaks: true },
+      orderBy: { startedAt: 'asc' },
+      take: 100,
+    });
+  }
+
+  async correctSession(
+    id: number,
+    dto: UpdateAttendanceDto,
+    user: AttendanceUser,
+  ) {
+    const identity = await this.prisma.attendanceSession.findUnique({
+      where: { id },
+    });
+    if (!identity) throw new NotFoundException('Session not found');
+    await this.ensureEmployee(identity.employeeId, user);
+    if (!dto.expectedSessionUpdatedAt)
+      throw new BadRequestException(
+        'Refresh the session before making a correction',
+      );
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: identity.organizationId },
+      select: { timezone: true },
+    });
+    const timezone = organization?.timezone ?? 'UTC';
+    const result = await this.prisma.$transaction(async (tx) => {
+      await this.lockFlexibleAttendanceForEmployee(
+        identity.employeeId,
+        identity.organizationId,
+        tx,
+        user.userId,
+      );
+      const session = await tx.attendanceSession.findUnique({
+        where: { id },
+        include: { breaks: true },
+      });
+      if (
+        !session ||
+        session.updatedAt.toISOString() !==
+          new Date(dto.expectedSessionUpdatedAt!).toISOString()
+      )
+        throw new ConflictException('Session changed; refresh before saving');
+      if (!session.endedAt)
+        throw new ConflictException(
+          'Check out the active session before correcting its recorded times',
+        );
+      const start = dto.checkIn ? new Date(dto.checkIn) : session.startedAt;
+      const end = dto.checkOut ? new Date(dto.checkOut) : session.endedAt;
+      if (
+        dto.checkOut === null ||
+        end <= start ||
+        end > new Date() ||
+        end.getTime() - start.getTime() > 31 * 86400000
+      )
+        throw new BadRequestException(
+          'A closed session must have a valid end after its start, within 31 days, and not in the future',
+        );
+      const overlap = await tx.attendanceSession.findFirst({
+        where: {
+          id: { not: id },
+          employeeId: session.employeeId,
+          organizationId: session.organizationId,
+          startedAt: { lt: end },
+          OR: [{ endedAt: null }, { endedAt: { gt: start } }],
+        },
+      });
+      if (overlap)
+        throw new ConflictException(
+          'The correction overlaps another attendance session',
+        );
+      const breaks = (
+        dto.breaks
+          ? dto.breaks.map((interval) => ({
+              startedAt: new Date(interval.startedAt),
+              endedAt: interval.endedAt ? new Date(interval.endedAt) : null,
+            }))
+          : session.breaks
+      )
+        .slice()
+        .sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime());
+      let previous = start;
+      for (const interval of breaks) {
+        if (
+          !interval.endedAt ||
+          interval.startedAt < previous ||
+          interval.endedAt <= interval.startedAt ||
+          interval.endedAt > end
+        )
+          throw new BadRequestException(
+            'Closed-session breaks must be ordered, non-overlapping and inside the session',
+          );
+        previous = interval.endedAt;
+      }
+      const changed = await tx.attendanceSession.updateMany({
+        where: { id, updatedAt: session.updatedAt },
+        data: {
+          startedAt: start,
+          endedAt: end,
+          checkoutSource: AttendanceCheckoutSource.ADMIN_EDIT,
+          checkoutActorId: user.userId,
+        },
+      });
+      if (changed.count !== 1)
+        throw new ConflictException('Session changed; refresh before saving');
+      await tx.attendanceSessionBreak.deleteMany({
+        where: { attendanceSessionId: id },
+      });
+      if (breaks.length)
+        await tx.attendanceSessionBreak.createMany({
+          data: breaks.map((interval) => ({
+            attendanceSessionId: id,
+            startedAt: interval.startedAt,
+            endedAt: interval.endedAt,
+          })),
+        });
+      const first = new Date(
+        Math.min(start.getTime(), session.startedAt.getTime()),
+      );
+      const last = new Date(
+        Math.max(end.getTime(), session.endedAt.getTime()) - 1,
+      );
+      if (last.getTime() - first.getTime() > 62 * 86400000)
+        throw new BadRequestException(
+          'Move this historical session in smaller, reviewed corrections',
+        );
+      await this.rebuildFlexibleAttendanceAfterReopen(
+        tx,
+        session.employeeId,
+        session.organizationId,
+        first,
+        timezone,
+        new Date(),
+        last,
+        true,
+      );
+      await tx.auditLog.create({
+        data: {
+          userId: user.userId,
+          userRole: user.role,
+          organizationId: session.organizationId,
+          module: 'ATTENDANCE',
+          entityType: 'AttendanceSession',
+          entityId: id,
+          action: 'CORRECT_SESSION',
+          status: 'SUCCESS',
+          description: 'Corrected session and rebuilt all affected local days',
+          oldValue: {
+            startedAt: session.startedAt.toISOString(),
+            endedAt: session.endedAt.toISOString(),
+          },
+          newValue: {
+            startedAt: start.toISOString(),
+            endedAt: end.toISOString(),
+          },
+        },
+      });
+      return tx.attendanceSession.findUnique({
+        where: { id },
+        include: { breaks: true },
+      });
+    });
+    await this.invalidateDashboardCache();
+    return result;
+  }
+
   private async updateAttendance(
     id: number,
     dto: UpdateAttendanceDto & {
@@ -6347,7 +7033,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
               ...this.buildOrganizationScope(user),
               ...buWhere,
             };
-    const record = await this.prisma.attendance.findFirst({
+    const identity = await this.prisma.attendance.findFirst({
       where: {
         id,
         ...(organizationIds === null
@@ -6355,337 +7041,488 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           : { organizationId: { in: organizationIds } }),
         employee: employeeScope,
       },
-      include: {
-        employee: { include: { shift: true } },
-        shift: true,
-        breaks: true,
-      },
+      select: { employeeId: true, organizationId: true },
     });
-
-    if (!record) {
-      throw new NotFoundException(`Attendance #${id} not found`);
-    }
-    const reopening = dto.reopenAsWorking === true;
-    if (reopening && !allowReopen) {
-      throw new BadRequestException(
-        'Use the reopen attendance action to clear a checkout',
+    if (!identity) throw new NotFoundException('Attendance not found');
+    const transactionResult = await this.prisma.$transaction(async (tx) => {
+      await this.lockFlexibleAttendanceForEmployee(
+        identity.employeeId,
+        identity.organizationId,
+        tx,
+        user.userId,
       );
-    }
-    if (!reopening && record.checkOut && dto.checkOut === null) {
-      throw new BadRequestException(
-        'Use the reopen attendance action to clear a checkout',
-      );
-    }
-    if (
-      reopening &&
-      user.role !== Role.ADMIN &&
-      user.role !== Role.HR &&
-      user.role !== Role.SUPER_ADMIN
-    ) {
-      throw new ForbiddenException(
-        'Only administrators can reopen checked-out attendance',
-      );
-    }
-    if (reopening && (!record.checkIn || !record.checkOut)) {
-      throw new ConflictException(
-        'Only a checked-out attendance record can be reopened',
-      );
-    }
-    const nextDate = dto.date
-      ? attendanceDateFromKey(dto.date.slice(0, 10))
-      : new Date(record.date);
-    if (reopening && nextDate.getTime() !== new Date(record.date).getTime()) {
-      throw new BadRequestException(
-        'Attendance date cannot be changed while reopening a session',
-      );
-    }
-    const attendanceDateShiftMs =
-      nextDate.getTime() - new Date(record.date).getTime();
-    this.assertAttendanceEligible(nextDate, record.employee.hireDate);
-
-    if (nextDate.getTime() !== new Date(record.date).getTime()) {
-      const duplicate = await this.prisma.attendance.findUnique({
+      const record = await tx.attendance.findFirst({
         where: {
-          employeeId_date: {
-            employeeId: record.employeeId,
-            date: nextDate,
-          },
+          id,
+          ...(organizationIds === null
+            ? {}
+            : { organizationId: { in: organizationIds } }),
+          employee: employeeScope,
+        },
+        include: {
+          employee: { include: { shift: true } },
+          shift: true,
+          breaks: true,
         },
       });
 
-      if (duplicate && duplicate.id !== id) {
-        throw new ConflictException(
-          'Attendance already exists for this employee on the selected date',
-        );
-      }
-    }
-
-    const checkIn = reopening
-      ? record.checkIn
-      : dto.checkIn !== undefined
-        ? dto.checkIn
-          ? new Date(dto.checkIn)
-          : null
-        : record.checkIn;
-    const checkOut = reopening
-      ? null
-      : dto.checkOut !== undefined
-        ? dto.checkOut
-          ? new Date(dto.checkOut)
-          : null
-        : record.checkOut;
-    const checkoutChanged =
-      reopening ||
-      (dto.checkOut !== undefined &&
-        checkOut?.getTime() !== record.checkOut?.getTime());
-
-    if (checkOut && !checkIn) {
-      throw new BadRequestException('Check-in is required before check-out');
-    }
-
-    if (checkIn && checkOut && checkOut.getTime() < checkIn.getTime()) {
-      throw new BadRequestException(
-        'Check-out time cannot be earlier than check-in time',
-      );
-    }
-
-    const breaks =
-      dto.breaks !== undefined
-        ? dto.breaks.map((interval) => ({
-            startedAt: new Date(interval.startedAt),
-            endedAt: interval.endedAt ? new Date(interval.endedAt) : null,
-          }))
-        : attendanceDateShiftMs !== 0
-          ? record.breaks.map((interval) => ({
-              startedAt: new Date(
-                interval.startedAt.getTime() + attendanceDateShiftMs,
-              ),
-              endedAt: interval.endedAt
-                ? new Date(interval.endedAt.getTime() + attendanceDateShiftMs)
-                : null,
-            }))
-          : record.breaks;
-    const orderedBreaks = [...breaks].sort(
-      (left, right) => left.startedAt.getTime() - right.startedAt.getTime(),
-    );
-    let previousBreakEnd = checkIn?.getTime() ?? Number.NEGATIVE_INFINITY;
-    let hasOpenBreak = false;
-
-    for (const [index, interval] of orderedBreaks.entries()) {
-      const start = interval.startedAt.getTime();
-      const end = interval.endedAt?.getTime() ?? null;
-      if (!Number.isFinite(start) || (end !== null && !Number.isFinite(end))) {
-        throw new BadRequestException('Break times must be valid dates');
-      }
-      if (!checkIn || start < checkIn.getTime()) {
-        throw new BadRequestException('Breaks must start at or after check-in');
-      }
-      if (end !== null && end <= start) {
-        throw new BadRequestException('Break end must be after its start');
-      }
-      if (start < previousBreakEnd) {
-        throw new BadRequestException('Break intervals cannot overlap');
+      if (!record) {
+        throw new NotFoundException(`Attendance #${id} not found`);
       }
       if (
-        checkOut &&
-        (start >= checkOut.getTime() ||
-          (end !== null && end > checkOut.getTime()))
+        dto.expectedVersion !== undefined &&
+        dto.expectedVersion !== record.version
+      )
+        throw new ConflictException(
+          'Attendance changed; refresh before saving this correction',
+        );
+      const reopening = dto.reopenAsWorking === true;
+      if (reopening && !allowReopen) {
+        throw new BadRequestException(
+          'Use the reopen attendance action to clear a checkout',
+        );
+      }
+      if (!reopening && record.checkOut && dto.checkOut === null) {
+        throw new BadRequestException(
+          'Use the reopen attendance action to clear a checkout',
+        );
+      }
+      if (
+        reopening &&
+        user.role !== Role.ADMIN &&
+        user.role !== Role.HR &&
+        user.role !== Role.SUPER_ADMIN
+      ) {
+        throw new ForbiddenException(
+          'Only administrators can reopen checked-out attendance',
+        );
+      }
+      if (reopening && (!record.checkIn || !record.checkOut)) {
+        throw new ConflictException(
+          'Only a checked-out attendance record can be reopened',
+        );
+      }
+      const nextDate = dto.date
+        ? attendanceDateFromKey(dto.date.slice(0, 10))
+        : new Date(record.date);
+      if (reopening && nextDate.getTime() !== new Date(record.date).getTime()) {
+        throw new BadRequestException(
+          'Attendance date cannot be changed while reopening a session',
+        );
+      }
+      const attendanceDateShiftMs =
+        nextDate.getTime() - new Date(record.date).getTime();
+      this.assertAttendanceEligible(nextDate, record.employee.hireDate);
+
+      if (nextDate.getTime() !== new Date(record.date).getTime()) {
+        const duplicate = await tx.attendance.findUnique({
+          where: {
+            employeeId_date: {
+              employeeId: record.employeeId,
+              date: nextDate,
+            },
+          },
+        });
+
+        if (duplicate && duplicate.id !== id) {
+          throw new ConflictException(
+            'Attendance already exists for this employee on the selected date',
+          );
+        }
+      }
+
+      const checkIn = reopening
+        ? record.checkIn
+        : dto.checkIn !== undefined
+          ? dto.checkIn
+            ? new Date(dto.checkIn)
+            : null
+          : record.checkIn;
+      const checkOut = reopening
+        ? null
+        : dto.checkOut !== undefined
+          ? dto.checkOut
+            ? new Date(dto.checkOut)
+            : null
+          : record.checkOut;
+      const checkoutChanged =
+        reopening ||
+        (dto.checkOut !== undefined &&
+          checkOut?.getTime() !== record.checkOut?.getTime());
+
+      if (checkOut && !checkIn) {
+        throw new BadRequestException('Check-in is required before check-out');
+      }
+
+      if (checkIn && checkOut && checkOut.getTime() < checkIn.getTime()) {
+        throw new BadRequestException(
+          'Check-out time cannot be earlier than check-in time',
+        );
+      }
+
+      const breaks =
+        dto.breaks !== undefined
+          ? dto.breaks.map((interval) => ({
+              startedAt: new Date(interval.startedAt),
+              endedAt: interval.endedAt ? new Date(interval.endedAt) : null,
+            }))
+          : attendanceDateShiftMs !== 0
+            ? record.breaks.map((interval) => ({
+                startedAt: new Date(
+                  interval.startedAt.getTime() + attendanceDateShiftMs,
+                ),
+                endedAt: interval.endedAt
+                  ? new Date(interval.endedAt.getTime() + attendanceDateShiftMs)
+                  : null,
+              }))
+            : record.breaks;
+      const orderedBreaks = [...breaks].sort(
+        (left, right) => left.startedAt.getTime() - right.startedAt.getTime(),
+      );
+      let previousBreakEnd = checkIn?.getTime() ?? Number.NEGATIVE_INFINITY;
+      let hasOpenBreak = false;
+
+      for (const [index, interval] of orderedBreaks.entries()) {
+        const start = interval.startedAt.getTime();
+        const end = interval.endedAt?.getTime() ?? null;
+        if (
+          !Number.isFinite(start) ||
+          (end !== null && !Number.isFinite(end))
+        ) {
+          throw new BadRequestException('Break times must be valid dates');
+        }
+        if (!checkIn || start < checkIn.getTime()) {
+          throw new BadRequestException(
+            'Breaks must start at or after check-in',
+          );
+        }
+        if (end !== null && end <= start) {
+          throw new BadRequestException('Break end must be after its start');
+        }
+        if (start < previousBreakEnd) {
+          throw new BadRequestException('Break intervals cannot overlap');
+        }
+        if (
+          checkOut &&
+          (start >= checkOut.getTime() ||
+            (end !== null && end > checkOut.getTime()))
+        ) {
+          throw new BadRequestException(
+            'Breaks must fall within check-in and check-out',
+          );
+        }
+        if (end === null) {
+          if (checkOut || hasOpenBreak || index !== orderedBreaks.length - 1) {
+            throw new BadRequestException(
+              'Only the latest active attendance may have an open break',
+            );
+          }
+          hasOpenBreak = true;
+          previousBreakEnd = Number.POSITIVE_INFINITY;
+        } else {
+          previousBreakEnd = end;
+        }
+      }
+
+      const shift = (record.shift ??
+        record.employee?.shift ??
+        null) as ShiftLite | null;
+      const organization = await tx.organization.findUnique({
+        where: { id: record.organizationId },
+        select: { timezone: true },
+      });
+      const timezone = organization?.timezone ?? 'UTC';
+
+      if (
+        !reopening &&
+        shift?.type === 'FLEXIBLE' &&
+        record.checkIn &&
+        dto.status &&
+        dto.status !== record.status
       ) {
         throw new BadRequestException(
-          'Breaks must fall within check-in and check-out',
+          'Flexible session status is derived from its source sessions. Correct session times or breaks instead.',
         );
       }
-      if (end === null) {
-        if (checkOut || hasOpenBreak || index !== orderedBreaks.length - 1) {
-          throw new BadRequestException(
-            'Only the latest active attendance may have an open break',
-          );
-        }
-        hasOpenBreak = true;
-        previousBreakEnd = Number.POSITIVE_INFINITY;
-      } else {
-        previousBreakEnd = end;
-      }
-    }
-
-    const shift = (record.shift ??
-      record.employee?.shift ??
-      null) as ShiftLite | null;
-    const organization = await this.prisma.organization.findUnique({
-      where: { id: record.organizationId },
-      select: { timezone: true },
-    });
-    const timezone = organization?.timezone ?? 'UTC';
-
-    const workingHours =
-      checkIn && checkOut
-        ? this.calculateWorkingHours(checkIn, checkOut, orderedBreaks)
-        : null;
-    const halfDayLeave = await this.findApprovedLeaveForDay(
-      record.employeeId,
-      nextDate,
-      'HALF_DAY',
-    );
-    const overtimeHours =
-      workingHours != null
-        ? this.calculateOvertimeHours(workingHours, shift)
+      const workingHours =
+        checkIn && checkOut
+          ? this.calculateWorkingHours(checkIn, checkOut, orderedBreaks)
+          : null;
+      const halfDayLeave = await this.findApprovedLeaveForDay(
+        record.employeeId,
+        nextDate,
+        'HALF_DAY',
+      );
+      const overtimeHours =
+        workingHours != null
+          ? this.calculateOvertimeHours(workingHours, shift)
+          : 0;
+      const shortfallHours = this.calculateShortfallHours(
+        workingHours,
+        shift,
+        halfDayLeave ? 5 : undefined,
+      );
+      const lateMinutes = checkIn
+        ? this.calculateLateMinutes(
+            checkIn,
+            dto.date?.slice(0, 10) ?? nextDate.toISOString().slice(0, 10),
+            shift,
+            timezone,
+          )
         : 0;
-    const shortfallHours = this.calculateShortfallHours(
-      workingHours,
-      shift,
-      halfDayLeave ? 5 : undefined,
-    );
-    const lateMinutes = checkIn
-      ? this.calculateLateMinutes(
-          checkIn,
-          dto.date?.slice(0, 10) ?? nextDate.toISOString().slice(0, 10),
-          shift,
-          timezone,
-        )
-      : 0;
 
-    const leave = await this.findApprovedLeaveForDay(
-      record.employeeId,
-      nextDate,
-    );
-    const status = reopening
-      ? AttendanceStatus.PRESENT
-      : (dto.status ??
-        this.calculateStatus({
-          day: nextDate,
-          checkIn,
-          checkOut,
-          workingHours,
-          onLeave: Boolean(leave),
-          shift,
-          lateMinutes,
-          timezone,
-        }));
+      const leave = await this.findApprovedLeaveForDay(
+        record.employeeId,
+        nextDate,
+      );
+      const status = reopening
+        ? AttendanceStatus.PRESENT
+        : (dto.status ??
+          this.calculateStatus({
+            day: nextDate,
+            checkIn,
+            checkOut,
+            workingHours,
+            onLeave: Boolean(leave),
+            shift,
+            lateMinutes,
+            timezone,
+          }));
 
-    const updated = await this.prisma.$transaction(async (tx) => {
-      if (reopening && dto.breaks !== undefined) {
-        throw new BadRequestException(
-          'Breaks cannot be edited in the same action as reopening attendance',
-        );
-      }
-      if (reopening) {
-        await this.lockFlexibleAttendanceForEmployee(
-          record.employeeId,
-          record.organizationId,
-          tx,
-          user.userId,
-        );
-        const currentAttendance = await tx.attendance.findUnique({
-          where: { id },
-          select: { checkOut: true },
-        });
+      const updated = await (async (tx: Prisma.TransactionClient) => {
         if (
-          !currentAttendance?.checkOut ||
-          currentAttendance.checkOut.getTime() !== record.checkOut?.getTime()
+          !reopening &&
+          shift?.type === 'FLEXIBLE' &&
+          (dto.breaks !== undefined ||
+            checkoutChanged ||
+            checkIn?.getTime() !== record.checkIn?.getTime() ||
+            attendanceDateShiftMs !== 0)
         ) {
-          throw new ConflictException(
-            'Attendance record changed; refresh and try again',
+          const key = this.dateKey(record.date);
+          const start = this.localDateStart(key, timezone);
+          const end = localMidnightAfterDateInTimezone(key, timezone);
+          if (!end)
+            throw new BadRequestException('Unable to resolve the local day');
+          const sessions = await tx.attendanceSession.findMany({
+            where: {
+              employeeId: record.employeeId,
+              organizationId: record.organizationId,
+              startedAt: { lt: end },
+              OR: [{ endedAt: null }, { endedAt: { gt: start } }],
+            },
+            include: { breaks: true, shift: true },
+          });
+          if (
+            sessions.length !== 1 ||
+            !sessions[0].endedAt ||
+            sessions[0].startedAt < start ||
+            sessions[0].endedAt > end ||
+            attendanceDateShiftMs !== 0 ||
+            !checkIn ||
+            !checkOut ||
+            checkIn < start ||
+            checkOut > end
+          ) {
+            throw new ConflictException(
+              'This correction spans legacy, open or multiple sessions. Use an explicit session correction instead of editing a daily total.',
+            );
+          }
+          const session = sessions[0];
+          await tx.attendanceSession.updateMany({
+            where: { id: session.id, endedAt: session.endedAt },
+            data: {
+              startedAt: checkIn,
+              endedAt: checkOut,
+              checkoutSource: AttendanceCheckoutSource.ADMIN_EDIT,
+              checkoutActorId: user.userId,
+            },
+          });
+          await tx.attendanceSessionBreak.deleteMany({
+            where: { attendanceSessionId: session.id },
+          });
+          if (orderedBreaks.length)
+            await tx.attendanceSessionBreak.createMany({
+              data: orderedBreaks.map((interval) => ({
+                attendanceSessionId: session.id,
+                ...interval,
+              })),
+            });
+          await this.rebuildFlexibleAttendanceAfterReopen(
+            tx,
+            record.employeeId,
+            record.organizationId,
+            start,
+            timezone,
+            new Date(),
+            start,
           );
-        }
-      }
-      if (reopening && shift?.type === 'FLEXIBLE') {
-        return this.reopenFlexibleAttendanceSession(
-          tx,
-          record,
-          nextDate,
-          timezone,
-          user,
-          dto.reopenReason,
-        );
-      }
-      if (reopening) {
-        const otherOpenAttendance = await tx.attendance.findFirst({
-          where: {
-            employeeId: record.employeeId,
-            organizationId: record.organizationId,
-            id: { not: id },
-            checkIn: { not: null },
-            checkOut: null,
-          },
-          select: { id: true },
-        });
-        if (otherOpenAttendance) {
-          throw new ConflictException(
-            'Employee already has another open attendance record',
-          );
-        }
-      }
-      if (dto.breaks !== undefined || attendanceDateShiftMs !== 0) {
-        await tx.attendanceBreak.deleteMany({ where: { attendanceId: id } });
-        if (orderedBreaks.length > 0) {
-          await tx.attendanceBreak.createMany({
-            data: orderedBreaks.map((interval) => ({
-              attendanceId: id,
-              startedAt: interval.startedAt,
-              endedAt: interval.endedAt,
-            })),
+          await tx.auditLog.create({
+            data: {
+              userId: user.userId,
+              userRole: user.role,
+              organizationId: record.organizationId,
+              module: 'ATTENDANCE',
+              entityType: 'AttendanceSession',
+              entityId: session.id,
+              action: 'CORRECT_SESSION',
+              status: 'SUCCESS',
+              description:
+                'Corrected flexible session and rebuilt its daily projection',
+            },
+          });
+          return tx.attendance.findUnique({
+            where: { id },
+            include: { employee: true, shift: true, breaks: true },
           });
         }
-      }
 
-      const updatedAttendance = await tx.attendance.update({
-        where: { id, organizationId: record.organizationId },
-        data: {
-          date: nextDate,
-          checkIn,
-          checkOut,
-          ...(checkoutChanged
-            ? {
-                checkoutSource: checkOut
-                  ? AttendanceCheckoutSource.ADMIN_EDIT
-                  : null,
-                checkoutActorId: checkOut ? user.userId : null,
-                isAutoClosed: false,
-              }
-            : {}),
-          workingHours,
-          overtimeHours,
-          shortfallHours,
-          lateMinutes,
-          status,
-          isPaidLeave: leave ? Boolean(leave.isPaid ?? true) : null,
-        },
-        include: { employee: true, shift: true, breaks: true },
-      });
-      if (reopening) {
-        await tx.auditLog.create({
-          data: {
-            userId: user.userId,
-            userRole: user.role,
-            module: 'ATTENDANCE',
-            entityType: 'Attendance',
-            entityId: id,
-            action: 'REOPEN_ATTENDANCE',
-            fieldName: 'checkOut',
-            oldValue: {
-              checkOut: record.checkOut?.toISOString() ?? null,
-            },
-            newValue: {
+        if (reopening && dto.breaks !== undefined) {
+          throw new BadRequestException(
+            'Breaks cannot be edited in the same action as reopening attendance',
+          );
+        }
+        if (reopening) {
+          await this.lockFlexibleAttendanceForEmployee(
+            record.employeeId,
+            record.organizationId,
+            tx,
+            user.userId,
+          );
+          const currentAttendance = await tx.attendance.findUnique({
+            where: { id },
+            select: { checkOut: true },
+          });
+          if (
+            !currentAttendance?.checkOut ||
+            currentAttendance.checkOut.getTime() !== record.checkOut?.getTime()
+          ) {
+            throw new ConflictException(
+              'Attendance record changed; refresh and try again',
+            );
+          }
+        }
+        if (reopening && shift?.type === 'FLEXIBLE') {
+          return this.reopenFlexibleAttendanceSession(
+            tx,
+            record,
+            nextDate,
+            timezone,
+            user,
+            dto.reopenReason,
+          );
+        }
+        if (reopening) {
+          const otherOpenAttendance = await tx.attendance.findFirst({
+            where: {
+              employeeId: record.employeeId,
+              organizationId: record.organizationId,
+              id: { not: id },
+              checkIn: { not: null },
               checkOut: null,
-              reopenedAt: new Date().toISOString(),
-              shiftType: shift?.type ?? null,
-              reason: dto.reopenReason?.trim() || null,
             },
-            description: `Reopened attendance for ${record.employee.name}${dto.reopenReason?.trim() ? `: ${dto.reopenReason.trim()}` : ''}`,
-            status: 'SUCCESS',
-            organizationId: record.organizationId,
+            select: { id: true },
+          });
+          if (otherOpenAttendance) {
+            throw new ConflictException(
+              'Employee already has another open attendance record',
+            );
+          }
+        }
+        if (dto.breaks !== undefined || attendanceDateShiftMs !== 0) {
+          await tx.attendanceBreak.deleteMany({ where: { attendanceId: id } });
+          if (orderedBreaks.length > 0) {
+            await tx.attendanceBreak.createMany({
+              data: orderedBreaks.map((interval) => ({
+                attendanceId: id,
+                startedAt: interval.startedAt,
+                endedAt: interval.endedAt,
+              })),
+            });
+          }
+        }
+
+        const updatedAttendance = await tx.attendance.update({
+          where: { id, organizationId: record.organizationId },
+          data: {
+            manuallyCorrected: true,
+            date: nextDate,
+            checkIn,
+            checkOut,
+            ...(checkoutChanged
+              ? {
+                  checkoutSource: checkOut
+                    ? AttendanceCheckoutSource.ADMIN_EDIT
+                    : null,
+                  checkoutActorId: checkOut ? user.userId : null,
+                  isAutoClosed: false,
+                }
+              : {}),
+            workingHours,
+            overtimeHours,
+            shortfallHours,
+            lateMinutes,
+            status,
+            isPaidLeave: leave ? Boolean(leave.isPaid ?? true) : null,
           },
+          include: { employee: true, shift: true, breaks: true },
         });
-      }
-      return updatedAttendance;
+        if (reopening) {
+          await tx.auditLog.create({
+            data: {
+              userId: user.userId,
+              userRole: user.role,
+              module: 'ATTENDANCE',
+              entityType: 'Attendance',
+              entityId: id,
+              action: 'REOPEN_ATTENDANCE',
+              fieldName: 'checkOut',
+              oldValue: {
+                checkOut: record.checkOut?.toISOString() ?? null,
+              },
+              newValue: {
+                checkOut: null,
+                reopenedAt: new Date().toISOString(),
+                shiftType: shift?.type ?? null,
+                reason: dto.reopenReason?.trim() || null,
+              },
+              description: `Reopened attendance for ${record.employee.name}${dto.reopenReason?.trim() ? `: ${dto.reopenReason.trim()}` : ''}`,
+              status: 'SUCCESS',
+              organizationId: record.organizationId,
+            },
+          });
+        }
+        return updatedAttendance;
+      })(tx);
+      return updated;
     });
     await this.invalidateDashboardCache();
-    return updated;
+    return transactionResult;
+  }
+
+  private automationAudit<T>(
+    organizationId: number,
+    jobName: string,
+    actor: AttendanceUser | undefined,
+    work: () => Promise<T>,
+  ) {
+    return actor
+      ? runWithAuditContext(
+          {
+            ...getAuditContext(),
+            organizationId,
+            userId: actor.userId,
+            userRole: actor.role,
+            jobName,
+          },
+          work,
+        )
+      : runWithSystemAuditContext(organizationId, jobName, work);
   }
 
   private async closeOverdueAttendances(
     organizationIds: number[] | null = null,
     employeeScope?: Prisma.EmployeeWhereInput,
+    actor?: AttendanceUser,
   ) {
     const openAttendances =
       (await this.prisma.attendance.findMany({
@@ -6693,11 +7530,19 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           checkIn: { not: null },
           checkOut: null,
           deletedAt: null,
+          NOT: {
+            OR: [
+              { shift: { type: 'FLEXIBLE' } },
+              { shiftId: null, employee: { shift: { type: 'FLEXIBLE' } } },
+            ],
+          },
           ...(employeeScope ? { employee: employeeScope } : {}),
           ...(organizationIds === null
             ? {}
             : { organizationId: { in: organizationIds } }),
         },
+        take: 200,
+        orderBy: [{ date: 'asc' }, { id: 'asc' }],
         include: {
           breaks: true,
           shift: true,
@@ -6711,96 +7556,124 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       })) ?? [];
     const now = new Date();
 
-    for (const attendance of openAttendances) {
-      await runWithSystemAuditContext(
+    for (let attendance of openAttendances) {
+      await this.automationAudit(
         attendance.organizationId,
         'attendance.auto-checkout',
-        async () => {
-          if (!attendance.checkIn || !attendance.employee) return;
-          const shift = attendance.shift ?? attendance.employee.shift;
-          if (shift?.type === 'FLEXIBLE') return;
-          const timezone = attendance.employee.organization?.timezone ?? 'UTC';
-          const dateKey = new Date(attendance.date).toISOString().slice(0, 10);
-          if (dateKeyInTimezone(now, timezone) <= dateKey) return;
-
-          const checkOut = autoCheckoutDeadlineInTimezone(
-            dateKey,
-            shift,
-            timezone,
-          );
-          if (!checkOut || checkOut.getTime() < attendance.checkIn.getTime()) {
-            return;
-          }
-          if (checkOut.getTime() > now.getTime()) return;
-
-          const breaks = attendance.breaks ?? [];
-          const openBreak = breaks.find(
-            (interval) => interval.endedAt === null,
-          );
-          const breakIntervals = breaks.map((interval) => ({
-            startedAt: interval.startedAt,
-            endedAt: interval.endedAt ?? (openBreak ? checkOut : null),
-          }));
-          const workingHours = this.calculateWorkingHours(
-            attendance.checkIn,
-            checkOut,
-            breakIntervals,
-          );
-          const halfDayLeave = await this.findApprovedLeaveForDay(
-            attendance.employeeId,
-            attendance.date,
-            'HALF_DAY',
-          );
-          const overtimeHours = this.calculateOvertimeHours(
-            workingHours,
-            shift,
-          );
-          const shortfallHours = this.calculateShortfallHours(
-            workingHours,
-            shift,
-            halfDayLeave ? 5 : undefined,
-          );
-          const lateMinutes = attendance.lateMinutes ?? 0;
-
-          await this.prisma.$transaction(async (tx) => {
-            if (openBreak) {
-              await tx.attendanceBreak.update({
-                where: { id: openBreak.id },
-                data: { endedAt: checkOut },
-              });
-            }
-            if (shift?.type !== 'FLEXIBLE') {
-              await this.tasksService.stopActiveTimerForEmployee(
-                attendance.employeeId,
-                attendance.organizationId,
-                checkOut,
-                tx,
-              );
-            }
-            await tx.attendance.update({
+        actor,
+        async () =>
+          this.prisma.$transaction(async (tx) => {
+            await this.lockFlexibleAttendanceForEmployee(
+              attendance.employeeId,
+              attendance.organizationId,
+              tx,
+            );
+            const current = await tx.attendance.findUnique({
               where: { id: attendance.id },
-              data: {
-                checkOut,
-                checkoutSource: AttendanceCheckoutSource.AUTO,
-                checkoutActorId: null,
-                workingHours,
-                overtimeHours,
-                shortfallHours,
-                isAutoClosed: true,
-                status: this.calculateStatus({
-                  day: this.startOfDay(new Date(attendance.date)),
-                  checkIn: attendance.checkIn,
-                  checkOut,
-                  workingHours,
-                  onLeave: false,
-                  shift,
-                  lateMinutes,
-                  timezone,
-                }),
+              include: {
+                breaks: true,
+                shift: true,
+                employee: {
+                  include: {
+                    shift: true,
+                    organization: { select: { timezone: true } },
+                  },
+                },
               },
             });
-          });
-        },
+            if (!current || current.checkOut || !current.checkIn) return;
+            attendance = current;
+            if (!attendance.checkIn || !attendance.employee) return;
+            const shift = attendance.shift ?? attendance.employee.shift;
+            if (shift?.type === 'FLEXIBLE') return;
+            const timezone =
+              attendance.employee.organization?.timezone ?? 'UTC';
+            const dateKey = new Date(attendance.date)
+              .toISOString()
+              .slice(0, 10);
+            if (dateKeyInTimezone(now, timezone) <= dateKey) return;
+
+            const checkOut = autoCheckoutDeadlineInTimezone(
+              dateKey,
+              shift,
+              timezone,
+            );
+            if (
+              !checkOut ||
+              checkOut.getTime() < attendance.checkIn.getTime()
+            ) {
+              return;
+            }
+            if (checkOut.getTime() > now.getTime()) return;
+
+            const breaks = attendance.breaks ?? [];
+            const openBreak = breaks.find(
+              (interval) => interval.endedAt === null,
+            );
+            const breakIntervals = breaks.map((interval) => ({
+              startedAt: interval.startedAt,
+              endedAt: interval.endedAt ?? (openBreak ? checkOut : null),
+            }));
+            const workingHours = this.calculateWorkingHours(
+              attendance.checkIn,
+              checkOut,
+              breakIntervals,
+            );
+            const halfDayLeave = await this.findApprovedLeaveForDay(
+              attendance.employeeId,
+              attendance.date,
+              'HALF_DAY',
+            );
+            const overtimeHours = this.calculateOvertimeHours(
+              workingHours,
+              shift,
+            );
+            const shortfallHours = this.calculateShortfallHours(
+              workingHours,
+              shift,
+              halfDayLeave ? 5 : undefined,
+            );
+            const lateMinutes = attendance.lateMinutes ?? 0;
+
+            await (async (tx: Prisma.TransactionClient) => {
+              if (openBreak) {
+                await tx.attendanceBreak.update({
+                  where: { id: openBreak.id },
+                  data: { endedAt: checkOut },
+                });
+              }
+              if (shift?.type !== 'FLEXIBLE') {
+                await this.tasksService.stopActiveTimerForEmployee(
+                  attendance.employeeId,
+                  attendance.organizationId,
+                  checkOut,
+                  tx,
+                );
+              }
+              await tx.attendance.update({
+                where: { id: attendance.id },
+                data: {
+                  checkOut,
+                  checkoutSource: AttendanceCheckoutSource.AUTO,
+                  checkoutActorId: null,
+                  workingHours,
+                  overtimeHours,
+                  shortfallHours,
+                  isAutoClosed: true,
+                  status: this.calculateStatus({
+                    day: this.startOfDay(new Date(attendance.date)),
+                    checkIn: attendance.checkIn,
+                    checkOut,
+                    workingHours,
+                    onLeave: false,
+                    shift,
+                    lateMinutes,
+                    timezone,
+                  }),
+                },
+              });
+            })(tx);
+          }),
       );
     }
   }
@@ -6811,12 +7684,186 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     return { processedAt: new Date().toISOString() };
   }
 
-  async runDailyAutomation(user?: AttendanceUser) {
-    const scopedOrganizationIds = user
-      ? await this.getAttendanceOrganizationIds(user)
-      : null;
+  async getAutomationStatus(user: AttendanceUser) {
+    const organizations = await this.getAttendanceOrganizationIds(user);
+    return this.prisma.attendanceReconciliationJob.findMany({
+      where:
+        organizations === null ? {} : { organizationId: { in: organizations } },
+      orderBy: { updatedAt: 'desc' },
+      take: 50,
+      select: {
+        organizationId: true,
+        date: true,
+        cursor: true,
+        attempts: true,
+        completedAt: true,
+        updatedAt: true,
+        lastError: true,
+        leaseUntil: true,
+      },
+    });
+  }
+
+  async runScheduledAutomation(
+    options: { dryRun?: boolean; organizationId?: number } = {},
+  ) {
+    if (
+      options.organizationId !== undefined &&
+      (!Number.isInteger(options.organizationId) || options.organizationId < 1)
+    )
+      throw new BadRequestException('A positive organization ID is required');
+    const closure = options.dryRun
+      ? { processedAt: new Date().toISOString(), dryRun: true }
+      : options.organizationId
+        ? (await this.closeOverdueAttendances([options.organizationId]),
+          { processedAt: new Date().toISOString() })
+        : await this.runAutoCheckoutAutomation();
+    const organizations = await this.prisma.organization.findMany({
+      where: {
+        deletedAt: null,
+        ...(options.organizationId ? { id: options.organizationId } : {}),
+      },
+      select: { id: true, timezone: true },
+      orderBy: { id: 'asc' },
+    });
+    const pendingJobs = await this.prisma.attendanceReconciliationJob.findMany({
+      where: { completedAt: null },
+      select: { organizationId: true, updatedAt: true },
+    });
+    const lastAttempt = new Map(
+      pendingJobs.map((job) => [job.organizationId, job.updatedAt.getTime()]),
+    );
+    organizations.sort(
+      (a, b) => (lastAttempt.get(a.id) ?? 0) - (lastAttempt.get(b.id) ?? 0),
+    );
+    const started = Date.now();
+    const results: Array<{
+      organizationId: number;
+      date: string;
+      status: string;
+    }> = [];
+    for (const organization of organizations) {
+      if (Date.now() - started > 20_000 || results.length >= 10) break;
+      const yesterday = attendanceDateFromKey(
+        dateKeyInTimezone(new Date(), organization.timezone),
+      );
+      yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+      const unfinished =
+        await this.prisma.attendanceReconciliationJob.findFirst({
+          where: { organizationId: organization.id, completedAt: null },
+          orderBy: { date: 'asc' },
+        });
+      const latest = unfinished
+        ? null
+        : await this.prisma.attendanceReconciliationJob.findFirst({
+            where: {
+              organizationId: organization.id,
+              completedAt: { not: null },
+            },
+            orderBy: { date: 'desc' },
+          });
+      const date =
+        unfinished?.date ??
+        (latest
+          ? new Date(latest.date.getTime() + 86_400_000)
+          : new Date(yesterday.getTime() - 6 * 86_400_000));
+      if (date > yesterday) continue;
+      const dateKey = this.dateKey(date);
+      if (options.dryRun) {
+        results.push({
+          organizationId: organization.id,
+          date: dateKey,
+          status: 'DRY_RUN',
+        });
+        continue;
+      }
+      const job = await this.prisma.attendanceReconciliationJob.upsert({
+        where: {
+          organizationId_date: { organizationId: organization.id, date },
+        },
+        create: { organizationId: organization.id, date },
+        update: {},
+      });
+      const owner = randomUUID();
+      const claim = await this.prisma.attendanceReconciliationJob.updateMany({
+        where: {
+          id: job.id,
+          completedAt: null,
+          OR: [{ leaseUntil: null }, { leaseUntil: { lt: new Date() } }],
+        },
+        data: {
+          leaseOwner: owner,
+          leaseUntil: new Date(Date.now() + 120_000),
+          attempts: { increment: 1 },
+        },
+      });
+      if (!claim.count) continue;
+      try {
+        const batch = await this.runDailyAutomation(undefined, {
+          organizationId: organization.id,
+          dateKey,
+          afterEmployeeId: job.cursor,
+          limit: 50,
+        });
+        await this.prisma.attendanceReconciliationJob.updateMany({
+          where: { id: job.id, leaseOwner: owner },
+          data: {
+            cursor: batch.cursor,
+            completedAt: batch.hasMore ? null : new Date(),
+            lastError: null,
+            leaseOwner: null,
+            leaseUntil: null,
+          },
+        });
+        results.push({
+          organizationId: organization.id,
+          date: dateKey,
+          status: batch.hasMore ? 'PARTIAL' : 'COMPLETED',
+        });
+      } catch {
+        await this.prisma.attendanceReconciliationJob.updateMany({
+          where: { id: job.id, leaseOwner: owner },
+          data: {
+            lastError: 'Reconciliation failed; retry required',
+            leaseUntil: null,
+            leaseOwner: null,
+          },
+        });
+        results.push({
+          organizationId: organization.id,
+          date: dateKey,
+          status: 'FAILED',
+        });
+      }
+    }
+    return {
+      closure,
+      reconciliation: results,
+      dryRun: Boolean(options.dryRun),
+    };
+  }
+
+  async runDailyAutomation(
+    user?: AttendanceUser,
+    batch?: {
+      organizationId: number;
+      dateKey: string;
+      afterEmployeeId: number;
+      limit: number;
+    },
+  ) {
+    const scopedOrganizationIds = batch
+      ? [batch.organizationId]
+      : user
+        ? await this.getAttendanceOrganizationIds(user)
+        : null;
     if (scopedOrganizationIds?.length === 0) {
-      return { processedDate: null, alreadyProcessed: true };
+      return {
+        processedDate: null,
+        alreadyProcessed: true,
+        cursor: batch?.afterEmployeeId ?? 0,
+        hasMore: false,
+      };
     }
     // Match ordinary attendance editing: BU restrictions apply in the selected
     // organization; authorized descendants retain their existing access policy.
@@ -6839,7 +7886,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
               }
             : buWhere;
     }
-    await this.closeOverdueAttendances(scopedOrganizationIds, employeeScope);
+    if (!batch)
+      await this.closeOverdueAttendances(
+        scopedOrganizationIds,
+        employeeScope,
+        user,
+      );
     const now = new Date();
     const employees = await this.prisma.employee.findMany({
       where: {
@@ -6847,19 +7899,29 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           ? {}
           : { organizationId: { in: scopedOrganizationIds } }),
         ...(employeeScope ? { AND: [employeeScope] } : {}),
+        ...(batch
+          ? { id: { gt: batch.afterEmployeeId }, deletedAt: null }
+          : {}),
       },
+      take: batch?.limit ?? 1001,
+      orderBy: { id: 'asc' },
       include: {
         shift: true,
         shiftAssignments: { include: { shift: true } },
         organization: { select: { timezone: true } },
       },
     });
+    if (!batch && employees.length > 1000)
+      throw new BadRequestException(
+        'Use scheduled reconciliation for more than 1000 employees',
+      );
     const targetByEmployee = new Map<number, { day: Date; key: string }>();
     for (const employee of employees) {
       const timezone = employee.organization?.timezone ?? 'UTC';
       const today = attendanceDateFromKey(dateKeyInTimezone(now, timezone));
       today.setUTCDate(today.getUTCDate() - 1);
-      const key = today.toISOString().slice(0, 10);
+      const key = batch?.dateKey ?? today.toISOString().slice(0, 10);
+      if (batch) today.setTime(attendanceDateFromKey(key).getTime());
       targetByEmployee.set(employee.id, {
         day: today,
         key,
@@ -6872,6 +7934,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     }
     if (
       !user &&
+      !batch &&
       targetByOrganization.size > 0 &&
       [...targetByOrganization].every(
         ([organizationId, key]) =>
@@ -6894,7 +7957,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const startKey = targetKeys[0];
     const endKey = targetKeys[targetKeys.length - 1];
     if (!startKey || !endKey) {
-      return { processedDate: null, alreadyProcessed: true };
+      return {
+        processedDate: null,
+        alreadyProcessed: true,
+        cursor: batch?.afterEmployeeId ?? 0,
+        hasMore: false,
+      };
     }
     const { holidays: holidayRows, familyRootByOrganization } =
       await this.findApplicableHolidays(
@@ -6904,44 +7972,54 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       );
 
     for (const employee of employees) {
-      await runWithSystemAuditContext(
+      await this.automationAudit(
         employee.organizationId,
         'attendance.daily',
-        async () => {
-          const targetInfo = targetByEmployee.get(employee.id);
-          if (!targetInfo) return;
-          const target = targetInfo.day;
-          if (
-            !user &&
-            this.lastAutomationDateByOrganization.get(
+        user,
+        async () =>
+          this.prisma.$transaction(async (tx) => {
+            await this.lockFlexibleAttendanceForEmployee(
+              employee.id,
               employee.organizationId,
-            ) === targetInfo.key
-          ) {
-            return;
-          }
-          if (!this.isAttendanceEligible(target, employee.hireDate)) {
-            return;
-          }
-          const shift = this.employeeShiftForDay(
-            employee.shiftAssignments,
-            employee.shift,
-            target,
-          );
-          if (!shift) {
-            return;
-          }
-          const isCorporateHoliday = holidayRows.some(
-            (holiday) =>
-              this.holidayAppliesToOrganization(
-                holiday,
+              tx,
+            );
+            const targetInfo = targetByEmployee.get(employee.id);
+            if (!targetInfo) return;
+            const target = targetInfo.day;
+            if (
+              !user &&
+              !batch &&
+              this.lastAutomationDateByOrganization.get(
                 employee.organizationId,
-                familyRootByOrganization,
-              ) && this.holidayCoversDay(holiday, target),
-          );
+              ) === targetInfo.key
+            ) {
+              return;
+            }
+            if (!this.isAttendanceEligible(target, employee.hireDate)) {
+              return;
+            }
+            const shift = this.employeeShiftForDay(
+              employee.shiftAssignments,
+              employee.shift,
+              target,
+            );
+            if (!shift) {
+              return;
+            }
+            const isCorporateHoliday = holidayRows.some(
+              (holiday) =>
+                this.holidayAppliesToOrganization(
+                  holiday,
+                  employee.organizationId,
+                  familyRootByOrganization,
+                ) && this.holidayCoversDay(holiday, target),
+            );
 
-          const leave = await this.findApprovedLeaveForDay(employee.id, target);
-          const shootAssignment =
-            await this.prisma.taskCrewAssignment.findFirst({
+            const leave = await this.findApprovedLeaveForDay(
+              employee.id,
+              target,
+            );
+            const shootAssignment = await tx.taskCrewAssignment.findFirst({
               where: {
                 user: { employeeId: employee.id },
                 task: {
@@ -6952,98 +8030,107 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
               },
               select: { id: true },
             });
-          const shootCreditEligible = Boolean(
-            shootAssignment &&
-            !leave &&
-            !isCorporateHoliday &&
-            !this.isWeeklyHoliday(target, shift),
-          );
+            const shootCreditEligible = Boolean(
+              shootAssignment &&
+              !leave &&
+              !isCorporateHoliday &&
+              !this.isWeeklyHoliday(target, shift),
+            );
 
-          if (shift.type === 'FLEXIBLE') return;
+            if (shift.type === 'FLEXIBLE') return;
 
-          const existing = await this.prisma.attendance.upsert({
-            where: {
-              employeeId_date: {
+            const existing = await tx.attendance.upsert({
+              where: {
+                employeeId_date: {
+                  employeeId: employee.id,
+                  date: target,
+                },
+              },
+              create: {
+                organizationId: employee.organizationId,
                 employeeId: employee.id,
+                shiftId: shift.id,
                 date: target,
+                status: leave
+                  ? AttendanceStatus.LEAVE
+                  : isCorporateHoliday
+                    ? AttendanceStatus.HOLIDAY
+                    : this.isWeeklyHoliday(target, shift)
+                      ? AttendanceStatus.WEEKLY_OFF
+                      : shootCreditEligible
+                        ? AttendanceStatus.PRESENT
+                        : AttendanceStatus.ABSENT,
+                requiredHours: shift.requiredHours,
+                isPaidLeave: leave ? Boolean(leave.isPaid ?? true) : null,
+                isShootDay: shootCreditEligible,
               },
-            },
-            create: {
-              organizationId: employee.organizationId,
-              employeeId: employee.id,
-              shiftId: shift.id,
-              date: target,
-              status: leave
-                ? AttendanceStatus.LEAVE
-                : isCorporateHoliday
-                  ? AttendanceStatus.HOLIDAY
-                  : this.isWeeklyHoliday(target, shift)
-                    ? AttendanceStatus.WEEKLY_OFF
-                    : shootCreditEligible
-                      ? AttendanceStatus.PRESENT
-                      : AttendanceStatus.ABSENT,
-              requiredHours: shift.requiredHours,
-              isPaidLeave: leave ? Boolean(leave.isPaid ?? true) : null,
-              isShootDay: shootCreditEligible,
-            },
-            update: {},
-            include: { shift: true, breaks: true },
-          });
-
-          if (existing.status === AttendanceStatus.LEAVE || leave) {
-            return;
-          }
-
-          if (
-            shootCreditEligible &&
-            (existing.status === AttendanceStatus.ABSENT ||
-              existing.status === AttendanceStatus.UPCOMING ||
-              existing.status === AttendanceStatus.NOT_STARTED ||
-              existing.status === AttendanceStatus.NOT_SCHEDULED) &&
-            !existing.checkIn &&
-            !existing.checkOut
-          ) {
-            await this.prisma.attendance.update({
-              where: { id: existing.id },
-              data: {
-                status: AttendanceStatus.PRESENT,
-                isShootDay: true,
-                remarks: existing.remarks ?? 'Shoot day credit',
-              },
+              update: {},
+              include: { shift: true, breaks: true },
             });
-          }
 
-          if (isCorporateHoliday && !existing.checkIn) {
-            if (existing.status !== AttendanceStatus.HOLIDAY) {
-              await this.prisma.attendance.update({
+            if (
+              existing.manuallyCorrected ||
+              existing.checkoutSource === AttendanceCheckoutSource.ADMIN_EDIT ||
+              existing.remarks?.startsWith('Admin')
+            )
+              return;
+            if (existing.status === AttendanceStatus.LEAVE || leave) {
+              return;
+            }
+
+            if (
+              shootCreditEligible &&
+              (existing.status === AttendanceStatus.ABSENT ||
+                existing.status === AttendanceStatus.UPCOMING ||
+                existing.status === AttendanceStatus.NOT_STARTED ||
+                existing.status === AttendanceStatus.NOT_SCHEDULED) &&
+              !existing.checkIn &&
+              !existing.checkOut
+            ) {
+              await tx.attendance.update({
                 where: { id: existing.id },
-                data: { status: AttendanceStatus.HOLIDAY },
+                data: {
+                  status: AttendanceStatus.PRESENT,
+                  isShootDay: true,
+                  remarks: existing.remarks ?? 'Shoot day credit',
+                },
               });
             }
-            return;
-          }
 
-          if (
-            this.isWeeklyHoliday(target, shift) &&
-            existing.status !== AttendanceStatus.WEEKLY_OFF
-          ) {
-            await this.prisma.attendance.update({
-              where: { id: existing.id },
-              data: { status: AttendanceStatus.WEEKLY_OFF },
-            });
-            return;
-          }
-        },
+            if (isCorporateHoliday && !existing.checkIn) {
+              if (existing.status !== AttendanceStatus.HOLIDAY) {
+                await tx.attendance.update({
+                  where: { id: existing.id },
+                  data: { status: AttendanceStatus.HOLIDAY },
+                });
+              }
+              return;
+            }
+
+            if (
+              this.isWeeklyHoliday(target, shift) &&
+              existing.status !== AttendanceStatus.WEEKLY_OFF
+            ) {
+              await tx.attendance.update({
+                where: { id: existing.id },
+                data: { status: AttendanceStatus.WEEKLY_OFF },
+              });
+              return;
+            }
+          }),
       );
     }
 
-    if (!user) {
+    if (!user && !batch) {
       for (const [organizationId, key] of targetByOrganization) {
         this.lastAutomationDateByOrganization.set(organizationId, key);
       }
     }
     await this.invalidateDashboardCache();
     return {
+      cursor:
+        employees[employees.length - 1]?.id ?? batch?.afterEmployeeId ?? 0,
+      hasMore: batch ? employees.length === batch.limit : false,
       processedDate: endKey,
       alreadyProcessed: false,
     };

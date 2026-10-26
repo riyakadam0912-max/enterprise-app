@@ -35,6 +35,7 @@ export default function ESSDashboardPage() {
     } catch (err: unknown) {
       setCheckInErrorMsg(getErrorMessage(err));
       setShowCheckInError(true);
+      await refetchAttendance();
     }
   };
 
@@ -46,6 +47,7 @@ export default function ESSDashboardPage() {
     } catch (err: unknown) {
       setCheckInErrorMsg(getErrorMessage(err));
       setShowCheckInError(true);
+      await refetchAttendance();
     }
   };
 
@@ -147,14 +149,14 @@ export default function ESSDashboardPage() {
               <div className="flex gap-2 pt-2">
                 <button
                   onClick={handleCheckIn}
-                  disabled={isCheckedIn || checkInLoading}
+                  disabled={attendanceLoading || !attendance || checkInLoading || checkOutLoading || !(attendance?.capabilities?.canCheckIn ?? !isCheckedIn)}
                   className="flex-1 bg-green-600 text-white py-2 px-3 rounded text-sm font-medium disabled:bg-gray-300 hover:bg-green-700"
                 >
                   {checkInLoading ? 'Checking...' : 'Check In'}
                 </button>
                 <button
                   onClick={handleCheckOut}
-                  disabled={!isCheckedIn || checkOutLoading}
+                  disabled={attendanceLoading || !attendance || checkInLoading || checkOutLoading || !(attendance?.capabilities?.canCheckOut ?? isCheckedIn)}
                   className="flex-1 bg-red-600 text-white py-2 px-3 rounded text-sm font-medium disabled:bg-gray-300 hover:bg-red-700"
                 >
                   {checkOutLoading ? 'Checking...' : 'Check Out'}

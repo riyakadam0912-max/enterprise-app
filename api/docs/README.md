@@ -26,6 +26,9 @@ This guide is for business users, administrators, developers, QA engineers, and 
 
 ### Reference
 
+- [Attendance module and UI/UX audit](./ATTENDANCE_FULL_UI_UX_AUDIT.md)
+- [Attendance fixes: implementation, validation and rollout](./ATTENDANCE_FIX_IMPLEMENTATION.md)
+
 - [Current attendance audit and implementation progress](./ATTENDANCE_AUDIT_CURRENT.md)
 - [Earlier attendance audit and fix plan](./ATTENDANCE_AUDIT_FIX_PLAN.md)
 

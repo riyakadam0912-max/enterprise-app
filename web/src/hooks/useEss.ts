@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { useAuthSession } from '@/stores/auth-store';
 import * as essApi from '../api/essApi';
 
 type CheckInData = essApi.CheckInResponse;
@@ -63,31 +64,31 @@ export function useCheckOut() {
 }
 
 export function useAttendanceToday() {
+  const scope = useAuthSession();
+  const scopeKey = `${scope.user?.id}:${scope.organizationId}:${scope.activeBusinessUnitId}`;
+  const [dataScope, setDataScope] = useState('');
+  const sequence = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<essApi.AttendanceStatus | null>(null);
 
   const fetch = useCallback(async () => {
+    const requestId = ++sequence.current;
     setLoading(true);
     setError(null);
     try {
       const result = await essApi.getAttendanceToday();
-      setData(result);
+      if (requestId === sequence.current) { setData(result); setDataScope(scopeKey); }
     } catch (err: unknown) {
-      setError(getErrorMessage(err));
+      if (requestId === sequence.current) { setData(null); setError(getErrorMessage(err)); }
     } finally {
-      setLoading(false);
+      if (requestId === sequence.current) setLoading(false);
     }
-  }, []);
+  }, [scopeKey]);
 
-  // Auto-fetch on mount
-  const [fetched, setFetched] = useState(false);
-  if (!fetched) {
-    fetch();
-    setFetched(true);
-  }
+  useEffect(() => { void fetch(); return () => { sequence.current++; }; }, [fetch]);
 
-  return { data, loading, error, refetch: fetch };
+  return { data: dataScope === scopeKey ? data : null, loading: loading || dataScope !== scopeKey && !error, error, refetch: fetch };
 }
 
 export function useAttendanceHistory() {

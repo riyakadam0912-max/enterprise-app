@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 type ShiftTimeFields = {
   type: string;
   startTime: string | null;
@@ -44,12 +45,13 @@ export function dateKeyInTimezone(date: Date, timezone?: string | null) {
 
 export function attendanceDateFromKey(dateKey: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
-  if (!match) throw new Error(`Invalid attendance date: ${dateKey}`);
+  if (!match)
+    throw new BadRequestException(`Invalid attendance date: ${dateKey}`);
   const date = new Date(
     Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
   );
   if (date.toISOString().slice(0, 10) !== dateKey) {
-    throw new Error(`Invalid attendance date: ${dateKey}`);
+    throw new BadRequestException(`Invalid attendance date: ${dateKey}`);
   }
   return date;
 }

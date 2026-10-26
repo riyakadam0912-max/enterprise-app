@@ -173,6 +173,9 @@ export async function attendanceToday(): Promise<AttendanceToday> {
   if (!payload || typeof payload !== "object") return emptyToday;
   const value = payload as Record<string, unknown>;
   return {
+    capabilities: value.capabilities as AttendanceToday["capabilities"],
+    activeAttendance:
+      value.activeAttendance as AttendanceToday["activeAttendance"],
     date: typeof value.date === "string" ? value.date : emptyToday.date,
     activeSession:
       value.activeSession &&
@@ -180,8 +183,7 @@ export async function attendanceToday(): Promise<AttendanceToday> {
       typeof (value.activeSession as { startedAt?: unknown }).startedAt ===
         "string"
         ? {
-            startedAt: (value.activeSession as { startedAt: string })
-              .startedAt,
+            startedAt: (value.activeSession as { startedAt: string }).startedAt,
           }
         : null,
     status:

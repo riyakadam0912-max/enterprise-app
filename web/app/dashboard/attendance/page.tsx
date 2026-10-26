@@ -1,10 +1,12 @@
 'use client';
 
 import Link from 'next/link';
+import AttendanceDialog from '@/components/common/AttendanceDialog';
+import { changedInstant, dateTimeInZone, instantFromZone, csvCell, shiftNumber } from '@/lib/attendance-format';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArrowRight, CalendarDays, CalendarRange, Clock3, Pencil, Plus, Trash2, UsersRound, X } from 'lucide-react';
-import { assignShift, AttendanceRecord, AttendanceStatus, createAttendanceForEmployeeDate, createHoliday, createShift, DailyTaskWorkSummary, deleteHoliday, deleteShift, getHolidays, getMonthlyAttendanceReport, getMyAttendanceHistory, getMyTaskWorkSummary, getShifts, getTeamWeeklyWorkHours, getWorkHourBalances, HolidayRecord, MyAttendanceResponse, ShiftRecord, startAttendanceBreak, stopAttendanceBreak, TeamWeeklyWorkHours, updateHoliday, updateShift, WorkHourBalances } from '@/api/attendanceApi';
+import { recoverAttendanceSession, getAttendanceJobStatus, AttendanceJobStatus, getAttendanceSessions, correctAttendanceSession, AttendanceSessionRecord, assignShift, AttendanceRecord, AttendanceStatus, createAttendanceForEmployeeDate, createHoliday, createShift, DailyTaskWorkSummary, deleteHoliday, deleteShift, getHolidays, getMonthlyAttendanceReport, getMyAttendanceHistory, getMyTaskWorkSummary, getShifts, getTeamWeeklyWorkHours, getWorkHourBalances, HolidayRecord, MyAttendanceResponse, ShiftRecord, startAttendanceBreak, stopAttendanceBreak, TeamWeeklyWorkHours, updateHoliday, updateShift, WorkHourBalances } from '@/api/attendanceApi';
 import { useAttendance, useCheckIn, useCheckOut, useMyAttendanceSnapshot, useTodayAttendance, useUpdateAttendance } from '@/hooks/useAttendance';
 import { useEmployees } from '@/hooks/useEmployees';
 import TableActions from '@/components/common/TableActions';
@@ -91,8 +93,8 @@ function formatLateDuration(totalMinutes: number) {
   return `${hours}h ${minutes}m`;
 }
 
-function isShiftFormComplete(shift: { name: string; startTime: string; endTime: string }) {
-  return Boolean(shift.name.trim() && shift.startTime && shift.endTime);
+function isShiftFormComplete(shift: { name: string; startTime: string; endTime: string; type?: string }) {
+  return Boolean(shift.name.trim() && (shift.type === 'FLEXIBLE' || (shift.startTime && shift.endTime)));
 }
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -445,10 +447,14 @@ function EmployeeAttendancePanel(props: {
   row: AttendanceRecord | null;
   activeSession: MyAttendanceResponse['activeSession'];
   activeAttendance: MyAttendanceResponse['activeAttendance'];
+  capabilities: MyAttendanceResponse['capabilities'];
+  reviewHref?: string;
+  calendarDate?: string;
   attendanceLoading: boolean;
   checkInLoading: boolean;
   checkOutLoading: boolean;
   breakActionLoading: boolean;
+  onRefresh: () => void;
   onCheckIn: () => void;
   onCheckOut: () => void;
   onBreakAction: () => void;
@@ -468,15 +474,16 @@ function EmployeeAttendancePanel(props: {
   const onBreak = activeSession
     ? activeSession.breaks.some((interval) => interval.endedAt === null)
     : row?.onBreak;
-  const canCheckIn = isFlexible
+  const canCheckIn = props.capabilities?.canCheckIn ?? (isFlexible
     ? !hasActiveSession && (!hasCheckedIn || hasCheckedOut)
-    : !hasCheckedIn;
+    : !hasCheckedIn);
   const breakAction = (
     <button
       onClick={onBreakAction}
       disabled={
         !accountLinked ||
         actionsUnavailable ||
+        props.capabilities?.canBreak === false ||
         (isFlexible
           ? !hasActiveSession
           : !hasCheckedIn || hasCheckedOut) ||
@@ -531,7 +538,7 @@ function EmployeeAttendancePanel(props: {
             {breakAction}
             <button
               onClick={onCheckOut}
-              disabled={!accountLinked || actionsUnavailable || !hasCheckedIn || hasCheckedOut}
+              disabled={!accountLinked || actionsUnavailable || props.capabilities?.canCheckOut === false || !hasCheckedIn || hasCheckedOut}
               className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {checkOutLoading ? 'Checking Out…' : hasCheckedOut ? 'Already Checked Out' : 'Mark Check Out'}
@@ -553,7 +560,7 @@ function EmployeeAttendancePanel(props: {
             {breakAction}
             <button
               onClick={onCheckOut}
-              disabled={!accountLinked || actionsUnavailable || !hasActiveSession}
+              disabled={!accountLinked || actionsUnavailable || props.capabilities?.canCheckOut === false || !hasActiveSession}
               className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {checkOutLoading ? 'Checking Out…' : 'Check Out'}
@@ -562,9 +569,12 @@ function EmployeeAttendancePanel(props: {
         )}
       </div>
 
+      {helperError && <button onClick={props.onRefresh} className="mt-3 rounded-lg border px-3 py-2">Refresh attendance</button>}
+      <p className="mt-3 text-xs text-slate-500">Session controls show whether you are working now. Daily credited hours and task time are shown separately below. Times use your device timezone; attendance dates follow the organization calendar.</p>
       {needsReview && (
         <p role="alert" className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           {props.activeAttendance?.message}
+          {props.reviewHref && <Link href={props.reviewHref} className="ml-2 underline">Review earlier attendance</Link>}
           {props.activeAttendance?.startedAt && <> Started {new Date(props.activeAttendance.startedAt).toLocaleString()}.</>}
         </p>
       )}
@@ -577,7 +587,7 @@ function EmployeeAttendancePanel(props: {
         <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-3">
           <div>
             <p className="text-xs font-medium text-slate-400">Today</p>
-            <p className="mt-1 text-sm font-semibold text-slate-800">{new Date().toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}</p>
+            <p className="mt-1 text-sm font-semibold text-slate-800">{new Date(`${(props.calendarDate ?? row?.date ?? todayString()).slice(0, 10)}T12:00:00Z`).toLocaleDateString([], { timeZone: 'UTC', weekday: 'long', month: 'short', day: 'numeric' })}</p>
           </div>
           <div>
             <p className="text-xs font-medium text-slate-400">{activeSession ? 'Session started' : 'Check-in'}</p>
@@ -642,10 +652,13 @@ function EditAttendanceModal(props: {
   loading: boolean;
   error: string | null;
   onClose: () => void;
+  onRecover: () => void;
   onSubmit: (payload: {
     date: string;
     checkIn: string;
     checkOut: string;
+    sessionId?: number;
+    expectedSessionUpdatedAt?: string;
     reopenAsWorking: boolean;
     reopenReason?: string;
     status: AttendanceStatus;
@@ -653,6 +666,11 @@ function EditAttendanceModal(props: {
   }) => void;
 }) {
   const { record, loading, error, onClose, onSubmit } = props;
+  const timeZone = record?.employee.organization?.timezone ?? 'UTC';
+  const [sessions, setSessions] = useState<AttendanceSessionRecord[]>([]);
+  const [selectedSession, setSelectedSession] = useState<AttendanceSessionRecord | null>(null);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
   const [date, setDate] = useState('');
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
@@ -668,32 +686,54 @@ function EditAttendanceModal(props: {
 
     const timeout = window.setTimeout(() => {
       setDate(formatDateInput(record.date));
-      setCheckIn(formatTimeInput(record.checkIn));
-      setCheckOut(formatTimeInput(record.checkOut));
+      setCheckIn(dateTimeInZone(record.checkIn, timeZone));
+      setCheckOut(dateTimeInZone(record.checkOut, timeZone));
       setReopenAsWorking(false);
       setReopenReason('');
       setStatus(record.status);
       setBreaks((record.breaks ?? []).map((interval) => ({
-        startedAt: formatDateTimeLocal(interval.startedAt),
-        endedAt: interval.endedAt ? formatDateTimeLocal(interval.endedAt) : '',
+        startedAt: dateTimeInZone(interval.startedAt, timeZone),
+        endedAt: interval.endedAt ? dateTimeInZone(interval.endedAt, timeZone) : '',
       })));
       setEditingBreaks(false);
       setFormError(null);
     }, 0);
 
     return () => window.clearTimeout(timeout);
-  }, [record]);
+  }, [record, timeZone]);
 
+  useEffect(() => {
+    setSessions([]); setSelectedSession(null); setSessionsError(null); setSessionsLoading(false);
+    if (!record || record.shiftDetails?.type !== 'FLEXIBLE' || !record.id) return;
+    let cancelled = false;
+    setSessionsLoading(true);
+    getAttendanceSessions(record.employeeId, record.date).then(value => { if (!cancelled) setSessions(value); })
+      .catch(reason => { if (!cancelled) setSessionsError(reason instanceof Error ? reason.message : 'Unable to load sessions'); })
+      .finally(() => { if (!cancelled) setSessionsLoading(false); });
+    return () => { cancelled = true; };
+  }, [record]);
+  function selectSession(value: string) {
+    const source = sessions.find(item => item.id === Number(value)) ?? null;
+    setSelectedSession(source); setFormError(null);
+    if (source) {
+      setCheckIn(dateTimeInZone(source.startedAt, timeZone)); setCheckOut(dateTimeInZone(source.endedAt, timeZone));
+      setBreaks(source.breaks.map(interval => ({ startedAt: dateTimeInZone(interval.startedAt, timeZone), endedAt: dateTimeInZone(interval.endedAt, timeZone) })));
+    }
+  }
   if (!record) return null;
   const canEditBreaks = Boolean(checkIn && date === formatDateInput(record.date));
 
   function submitChanges() {
+    try {
+      const start = changedInstant(checkIn, selectedSession?.startedAt ?? record!.checkIn, timeZone) ?? selectedSession?.startedAt ?? record!.checkIn;
+      const end = changedInstant(checkOut, selectedSession?.endedAt ?? record!.checkOut, timeZone) ?? selectedSession?.endedAt ?? record!.checkOut;
+      if (start && end && end < start && !reopenAsWorking) throw new Error('Check-out must be after check-in. Include the next date for overnight work.');
     let normalizedBreaks: { startedAt: string; endedAt: string | null }[] | undefined;
     if (canEditBreaks && editingBreaks) {
       normalizedBreaks = [];
       for (const [index, interval] of breaks.entries()) {
-        const startedAt = toIsoFromDateTimeLocal(interval.startedAt);
-        const endedAt = interval.endedAt ? toIsoFromDateTimeLocal(interval.endedAt) : null;
+        const startedAt = instantFromZone(interval.startedAt, timeZone);
+        const endedAt = interval.endedAt ? instantFromZone(interval.endedAt, timeZone) : null;
         if (!startedAt || endedAt === undefined) {
           setFormError(`Enter valid start and end times for break ${index + 1}.`);
           return;
@@ -708,24 +748,27 @@ function EditAttendanceModal(props: {
     setFormError(null);
     onSubmit({
       date,
-      checkIn,
-      checkOut: reopenAsWorking ? '' : checkOut,
+      sessionId: selectedSession?.id,
+      expectedSessionUpdatedAt: selectedSession?.updatedAt,
+      checkIn: changedInstant(checkIn, selectedSession?.startedAt ?? record!.checkIn, timeZone) ?? '',
+      checkOut: reopenAsWorking ? '' : changedInstant(checkOut, selectedSession?.endedAt ?? record!.checkOut, timeZone) ?? '',
       reopenAsWorking,
       reopenReason: reopenReason.trim() || undefined,
       status,
       breaks: reopenAsWorking ? undefined : normalizedBreaks,
     });
+    } catch (reason) { setFormError(reason instanceof Error ? reason.message : 'Check the entered dates and times.'); }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4">
+    <AttendanceDialog label="Edit attendance" onClose={onClose} busy={loading}>
       <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Edit Attendance</h2>
-            <p className="text-xs text-slate-500 mt-1">Update check-in, check-out, and status for this record.</p>
+            <p className="text-xs text-slate-500 mt-1">Dates and times use {timeZone}. Include the checkout date for overnight work.</p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+          <button aria-label="Close attendance editor" disabled={loading} onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
         </div>
 
         <div className="grid grid-cols-1 gap-4 overflow-y-auto px-5 py-5 md:grid-cols-2">
@@ -734,13 +777,23 @@ function EditAttendanceModal(props: {
             <p className="text-xs text-slate-500 mt-1">{record.employee.designation ?? record.employee.department ?? 'Employee'}</p>
           </div>
 
+          {record.shiftDetails?.type === 'FLEXIBLE' && <div className="md:col-span-2">
+            <label htmlFor="attendance-session" className="block text-sm font-medium">Source session for time corrections</label>
+            <select id="attendance-session" value={selectedSession?.id ?? ''} onChange={event => selectSession(event.target.value)} className="w-full rounded-lg border p-2">
+              <option value="">Daily record (select a session for multi-day or multiple-session corrections)</option>
+              {sessions.map(source => <option key={source.id} value={source.id}>{dateTimeInZone(source.startedAt, timeZone)} to {source.endedAt ? dateTimeInZone(source.endedAt, timeZone) : 'Still open'}</option>)}
+            </select>
+            {sessionsError && <p role="alert">{sessionsError}</p>}
+            {record.id && record.checkIn && !record.checkOut && sessions.length === 0 && !sessionsLoading && !sessionsError && <button disabled={loading} onClick={props.onRecover} className="mt-2 rounded-lg border px-3 py-2">Recover unambiguous legacy session</button>}
+            <p className="mt-1 text-xs text-slate-500">Recovery preserves the original check-in. The employee can then resume or check out. Overlapping histories require review.</p>
+          </div>}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Date</label>
-            <input type="date" value={date} disabled={reopenAsWorking} onChange={(event) => setDate(event.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-slate-100 disabled:text-slate-500" />
+            <label className="block text-sm font-medium text-slate-700 mb-2" htmlFor="attendance-date">Date</label>
+            <input type="date" id="attendance-date" value={date} disabled={reopenAsWorking || Boolean(selectedSession)} onChange={(event) => setDate(event.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-slate-100 disabled:text-slate-500" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Status</label>
-            <select value={status} disabled={reopenAsWorking} onChange={(event) => setStatus(event.target.value as AttendanceStatus)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-slate-100 disabled:text-slate-500">
+            <label className="block text-sm font-medium text-slate-700 mb-2" htmlFor="attendance-status">Status</label>
+            <select id="attendance-status" value={status} disabled={reopenAsWorking || Boolean(selectedSession) || (record.shiftDetails?.type === 'FLEXIBLE' && Boolean(record.checkIn))} onChange={(event) => setStatus(event.target.value as AttendanceStatus)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-slate-100 disabled:text-slate-500">
               <option value="PRESENT">Present</option>
               <option value="ABSENT">Absent</option>
               <option value="HALF_DAY">Half Day</option>
@@ -753,12 +806,12 @@ function EditAttendanceModal(props: {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Check In</label>
-            <input type="time" value={checkIn} disabled={reopenAsWorking} onChange={(event) => setCheckIn(event.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-slate-100 disabled:text-slate-500" />
+            <label className="block text-sm font-medium text-slate-700 mb-2" htmlFor="attendance-checkIn">Check In</label>
+            <input type="datetime-local" step="0.001" id="attendance-checkIn" value={checkIn} disabled={reopenAsWorking} onChange={(event) => setCheckIn(event.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-slate-100 disabled:text-slate-500" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Check Out</label>
-            <input type="time" value={checkOut} disabled={reopenAsWorking} onChange={(event) => setCheckOut(event.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-slate-100 disabled:text-slate-500" />
+            <label className="block text-sm font-medium text-slate-700 mb-2" htmlFor="attendance-checkOut">Check Out</label>
+            <input type="datetime-local" step="0.001" id="attendance-checkOut" value={checkOut} disabled={reopenAsWorking} onChange={(event) => setCheckOut(event.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-slate-100 disabled:text-slate-500" />
           </div>
 
           {record.checkOut && (
@@ -819,7 +872,7 @@ function EditAttendanceModal(props: {
                         Break {index + 1} start
                         <input
                           type="datetime-local"
-                          value={interval.startedAt}
+                          aria-label={`Break ${index + 1} start`} value={interval.startedAt}
                           onChange={(event) => setBreaks((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, startedAt: event.target.value } : item))}
                           className="mt-1 block min-w-0 w-full max-w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs text-slate-800"
                         />
@@ -828,7 +881,7 @@ function EditAttendanceModal(props: {
                         Break {index + 1} end
                         <input
                           type="datetime-local"
-                          value={interval.endedAt}
+                          aria-label={`Break ${index + 1} end`} value={interval.endedAt}
                           onChange={(event) => setBreaks((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, endedAt: event.target.value } : item))}
                           className="mt-1 block min-w-0 w-full max-w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs text-slate-800"
                         />
@@ -861,17 +914,21 @@ function EditAttendanceModal(props: {
         </div>
 
         <div className="flex justify-end gap-3 border-t border-slate-100 bg-slate-50 px-5 py-4">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
+          <button aria-label="Close attendance editor" disabled={loading} onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
           <button onClick={submitChanges} disabled={loading} className="px-4 py-2 rounded-lg bg-orange-500 text-sm font-medium text-white hover:bg-orange-600 disabled:opacity-50">
             {loading ? (reopenAsWorking ? 'Reopening…' : 'Saving…') : reopenAsWorking ? 'Reopen Attendance' : 'Save Changes'}
           </button>
         </div>
       </div>
-    </div>
+    </AttendanceDialog>
   );
 }
 
 export default function AttendancePage() {
+  const scope = useAuthSession();
+  return <AttendancePageContent key={`${scope.user?.id}:${scope.organizationId}:${scope.activeBusinessUnitId}`} />;
+}
+function AttendancePageContent() {
   const searchParams = useSearchParams();
   const authSession = useAuthSession();
   const session = {
@@ -898,6 +955,7 @@ export default function AttendancePage() {
   >();
   const [overviewOrganizationId, setOverviewOrganizationId] = useState('');
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
+  const attendanceEditInFlight = useRef(false);
   const [createAttendanceLoading, setCreateAttendanceLoading] = useState(false);
   const [createAttendanceError, setCreateAttendanceError] = useState<string | null>(null);
   const [shifts, setShifts] = useState<ShiftRecord[]>([]);
@@ -926,9 +984,19 @@ export default function AttendancePage() {
   const [assignEmployeeId, setAssignEmployeeId] = useState('');
   const [assignShiftId, setAssignShiftId] = useState('');
   const [shiftError, setShiftError] = useState<string | null>(null);
+  const shiftInFlight = useRef(false);
+  const [shiftBusy, setShiftBusy] = useState(false);
   const [shiftSuccess, setShiftSuccess] = useState<string | null>(null);
   const canViewAdminAttendance = session.role === 'SUPER_ADMIN' || session.role === 'ADMIN' || session.role === 'HR';
   const { employees } = useEmployees(canViewAdminAttendance);
+  const [jobStatus, setJobStatus] = useState<AttendanceJobStatus[] | null>(null);
+  const [jobError, setJobError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!canViewAdminAttendance) return;
+    let cancelled = false;
+    getAttendanceJobStatus().then(value => { if (!cancelled) setJobStatus(value); }).catch(() => { if (!cancelled) setJobError('Reconciliation status unavailable.'); });
+    return () => { cancelled = true; };
+  }, [canViewAdminAttendance]);
   const { data, loading, error, refetch } = useAttendance(
     {
       page,
@@ -947,6 +1015,15 @@ export default function AttendancePage() {
   );
   const today = useTodayAttendance();
   const mySnapshot = useMyAttendanceSnapshot();
+  const calendarInitialized = useRef(false);
+  const reportSelectionTouched = useRef(false);
+  useEffect(() => {
+    if (today.data?.date && !calendarInitialized.current) {
+      if (!searchParams.get('date')) setDate(today.data.date.slice(0, 10));
+      if (!reportSelectionTouched.current) { setReportMonth(today.data.date.slice(5, 7)); setReportYear(today.data.date.slice(0, 4)); }
+      calendarInitialized.current = true;
+    }
+  }, [today.data?.date, searchParams]);
   const todayRows = useMemo(() => today.data?.rows ?? [], [today.data?.rows]);
   const overviewUnavailable = today.loading || Boolean(today.error);
   const overviewOrganizations = useMemo(() => {
@@ -1169,12 +1246,15 @@ export default function AttendancePage() {
     date: string;
     checkIn: string;
     checkOut: string;
+    sessionId?: number;
+    expectedSessionUpdatedAt?: string;
     reopenAsWorking: boolean;
     reopenReason?: string;
     status: AttendanceStatus;
     breaks?: { startedAt: string; endedAt: string | null }[];
   }) {
-    if (!editingRecord) return;
+    if (!editingRecord || attendanceEditInFlight.current) return;
+    attendanceEditInFlight.current = true; setCreateAttendanceLoading(true);
 
     try {
       setCreateAttendanceError(null);
@@ -1187,16 +1267,20 @@ export default function AttendancePage() {
         await updateAttendanceMutation.reopen(editingRecord.id, {
           reason: payload.reopenReason,
         });
+      } else if (payload.sessionId) {
+        await correctAttendanceSession(payload.sessionId, { checkIn: payload.checkIn || undefined, checkOut: payload.checkOut || undefined,
+          breaks: payload.breaks, expectedSessionUpdatedAt: payload.expectedSessionUpdatedAt });
       } else if (editingRecord.id) {
         await updateAttendanceMutation.mutate(editingRecord.id, {
           date: payload.date,
+          expectedVersion: editingRecord.version,
           checkIn: payload.checkIn
-            ? toIsoFromParts(payload.date, payload.checkIn)
+            ? payload.checkIn
             : undefined,
           checkOut: payload.checkOut
-            ? toIsoFromParts(payload.date, payload.checkOut)
+            ? payload.checkOut
             : undefined,
-          status: payload.status,
+          status: payload.status !== editingRecord.status ? payload.status : undefined,
           breaks: payload.breaks,
         });
       } else {
@@ -1205,10 +1289,10 @@ export default function AttendancePage() {
           await createAttendanceForEmployeeDate(editingRecord.employeeId, {
             date: payload.date,
             checkIn: payload.checkIn
-              ? toIsoFromParts(payload.date, payload.checkIn)
+              ? payload.checkIn
               : undefined,
             checkOut: payload.checkOut
-              ? toIsoFromParts(payload.date, payload.checkOut)
+              ? payload.checkOut
               : undefined,
             status: payload.status,
             breaks: payload.breaks,
@@ -1224,13 +1308,25 @@ export default function AttendancePage() {
           setCreateAttendanceLoading(false);
         }
       }
-      await Promise.all([refetch(), today.refetch()]);
+      await Promise.all([refetch(), today.refetch(), mySnapshot.refetch(), getWorkHourBalances().then(setWorkBalances)]);
       setHistoryRefreshKey((current) => current + 1);
       setReportRefreshKey((current) => current + 1);
       setEditingRecord(null);
-    } catch {
-      // Errors are mapped in the hooks and shown in the UI.
-    }
+    } catch (error) {
+      setCreateAttendanceError(error instanceof Error ? error.message : 'Unable to save attendance correction.');
+    } finally { attendanceEditInFlight.current = false; setCreateAttendanceLoading(false); }
+  }
+
+  async function handleLegacyRecovery() {
+    if (!editingRecord?.id || attendanceEditInFlight.current) return;
+    if (!window.confirm('Recover the original source session without inventing a checkout time? The employee can resume or check out afterward.')) return;
+    attendanceEditInFlight.current = true; setCreateAttendanceLoading(true); setCreateAttendanceError(null);
+    try {
+      await recoverAttendanceSession(editingRecord.id);
+      await Promise.all([refetch(), today.refetch(), mySnapshot.refetch()]);
+      setEditingRecord(null);
+    } catch (error) { setCreateAttendanceError(error instanceof Error ? error.message : 'Legacy recovery requires review.'); }
+    finally { attendanceEditInFlight.current = false; setCreateAttendanceLoading(false); }
   }
 
   function handleResetFilters() {
@@ -1275,6 +1371,9 @@ export default function AttendancePage() {
   const [reportDepartment, setReportDepartment] = useState('');
   const [reportStatus, setReportStatus] = useState<MonthlyReportStatus>('');
   const [reportRefreshKey, setReportRefreshKey] = useState(0);
+  const reportQueryKey = JSON.stringify([reportYear, reportMonth, reportEmployeeId, reportDepartment, reportStatus, authSession.organizationId, authSession.activeBusinessUnitId, reportRefreshKey]);
+  const [reportResultKey, setReportResultKey] = useState('');
+  const [reportGeneratedAt, setReportGeneratedAt] = useState('');
 
   useEffect(() => {
     if (!canViewAdminAttendance) {
@@ -1296,6 +1395,8 @@ export default function AttendancePage() {
         });
         if (!cancelled) {
           setMonthlyReport(response);
+          setReportResultKey(reportQueryKey);
+          setReportGeneratedAt(new Date().toISOString());
         }
       } catch (err) {
         if (!cancelled) {
@@ -1313,13 +1414,13 @@ export default function AttendancePage() {
     return () => {
       cancelled = true;
     };
-  }, [canViewAdminAttendance, reportDepartment, reportEmployeeId, reportMonth, reportRefreshKey, reportStatus, reportYear]);
+  }, [canViewAdminAttendance, reportDepartment, reportEmployeeId, reportMonth, reportRefreshKey, reportStatus, reportYear, reportQueryKey]);
 
   function exportMonthlyReport() {
     const rows = monthlyReport?.rows ?? [];
-    if (rows.length === 0) return;
+    if (rows.length === 0 || monthlyReportLoading || monthlyReportError || reportResultKey !== reportQueryKey) return;
 
-    const headers = ['Employee Name', 'Organization', 'Employee ID', 'Department', 'Role', 'Total Present', 'Total Absent', 'Late Count', 'Half Days', 'Leaves', 'Holidays', 'Working Days', 'Attendance %', 'Overtime (hrs)', 'Worked (hrs)', 'Expected (hrs)', 'Shortfall (hrs)'];
+    const headers = ['Employee Name', 'Organization', 'Employee ID', 'Department', 'Role', 'Total Present', 'Total Absent', 'Late Count', 'Half Days', 'Leaves', 'Holidays', 'Working Days', 'Attendance %', 'Overtime (hrs)', 'Worked (hrs)', 'Expected (hrs)', 'Shortfall (hrs)', 'Generated at (UTC)', 'Applied month', 'Applied department', 'Selected organization'];
     const body = rows.map((row) => [
       row.employeeName,
       row.organization?.name ?? '',
@@ -1338,7 +1439,8 @@ export default function AttendancePage() {
       row.totalWorkedHours?.toFixed(2) ?? '0.00',
       row.totalExpectedHours?.toFixed(2) ?? '0.00',
       row.shortfallHours?.toFixed(2) ?? '0.00',
-    ].map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','));
+      reportGeneratedAt, `${reportYear}-${reportMonth}`, reportDepartment || 'All', authSession.organizationId ?? 'All',
+    ].map(csvCell).join(','));
 
     const csv = [headers.join(','), ...body].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -1361,44 +1463,54 @@ export default function AttendancePage() {
   const showEmptyState = !tableLoading && (attendanceRows.length === 0 || Boolean(tableError));
 
   async function handleCreateShift() {
+    if (shiftInFlight.current) return;
+    shiftInFlight.current = true; setShiftBusy(true);
     try {
       setShiftError(null);
       setShiftSuccess(null);
       await createShift({
         name: newShift.name,
         type: newShift.type,
-        startTime: newShift.startTime,
-        endTime: newShift.endTime,
-        requiredHours: Number(newShift.requiredHours) || 8,
-        minPresentHours: Number(newShift.minPresentHours) || 5,
-        gracePeriodMinutes: Number(newShift.gracePeriodMinutes) || 15,
+        startTime: newShift.startTime || undefined,
+        endTime: newShift.endTime || undefined,
+        requiredHours: shiftNumber(newShift.requiredHours, 8, 0.01, 24),
+        minPresentHours: shiftNumber(newShift.minPresentHours, 5, 0, 24),
+        gracePeriodMinutes: shiftNumber(newShift.gracePeriodMinutes, 15, 0, 1440),
         workingDays: newShift.workingDays,
       });
       const rows = await getShifts();
       setShifts(rows);
+      await Promise.all([refetch(), today.refetch(), mySnapshot.refetch(), getWorkHourBalances().then(setWorkBalances)]);
+      setReportRefreshKey(current => current + 1);
+      setHistoryRefreshKey(current => current + 1);
       setShiftSuccess('Shift created successfully.');
       setNewShift((prev) => ({ ...prev, name: '' }));
       setShowCreateShift(false);
     } catch (err) {
       setShiftError(err instanceof Error ? err.message : 'Unable to create shift.');
-    }
+    } finally { shiftInFlight.current = false; setShiftBusy(false); }
   }
 
   async function handleAssignShift() {
+    if (shiftInFlight.current) return;
+    shiftInFlight.current = true; setShiftBusy(true);
     try {
       setShiftError(null);
       setShiftSuccess(null);
       await assignShift(Number(assignEmployeeId), Number(assignShiftId));
-      await Promise.all([refetch(), today.refetch()]);
+      await Promise.all([refetch(), today.refetch(), mySnapshot.refetch(), getWorkHourBalances().then(setWorkBalances)]);
+      setReportRefreshKey(current => current + 1);
       setShiftSuccess('Shift assigned successfully.');
     } catch (err) {
       setShiftError(err instanceof Error ? err.message : 'Unable to assign shift.');
-    }
+    } finally { shiftInFlight.current = false; setShiftBusy(false); }
   }
 
   async function handleUpdateShift() {
     if (!editingShift) return;
 
+    if (shiftInFlight.current) return;
+    shiftInFlight.current = true; setShiftBusy(true);
     try {
       setShiftError(null);
       setShiftSuccess(null);
@@ -1416,11 +1528,14 @@ export default function AttendancePage() {
       });
       const rows = await getShifts();
       setShifts(rows);
+      await Promise.all([refetch(), today.refetch(), mySnapshot.refetch(), getWorkHourBalances().then(setWorkBalances)]);
+      setReportRefreshKey(current => current + 1);
+      setHistoryRefreshKey(current => current + 1);
       setShiftSuccess('Shift updated successfully.');
       setEditingShift(null);
     } catch (err) {
       setShiftError(err instanceof Error ? err.message : 'Unable to update shift.');
-    }
+    } finally { shiftInFlight.current = false; setShiftBusy(false); }
   }
 
   async function handleDeleteShift(shiftId: number) {
@@ -1430,16 +1545,21 @@ export default function AttendancePage() {
     const confirmed = window.confirm(`Delete the "${shift.name}" shift? This action cannot be undone.`);
     if (!confirmed) return;
 
+    if (shiftInFlight.current) return;
+    shiftInFlight.current = true; setShiftBusy(true);
     try {
       setShiftError(null);
       setShiftSuccess(null);
       await deleteShift(shiftId);
       const rows = await getShifts();
       setShifts(rows);
+      await Promise.all([refetch(), today.refetch(), mySnapshot.refetch(), getWorkHourBalances().then(setWorkBalances)]);
+      setReportRefreshKey(current => current + 1);
+      setHistoryRefreshKey(current => current + 1);
       setShiftSuccess('Shift deleted successfully.');
     } catch (err) {
       setShiftError(err instanceof Error ? err.message : 'Unable to delete shift.');
-    }
+    } finally { shiftInFlight.current = false; setShiftBusy(false); }
   }
 
   function resetHolidayForm() {
@@ -1535,13 +1655,18 @@ export default function AttendancePage() {
         <div className="flex flex-wrap items-center gap-3">
           {canViewAdminAttendance && <TableActions moduleKey="attendance" rows={attendanceRows} onRefresh={refetch} />}
           {canViewAdminAttendance ? (
-            <button onClick={exportMonthlyReport} disabled={monthlyReport?.rows.length === 0} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
+            <button onClick={exportMonthlyReport} disabled={!monthlyReport?.rows.length || monthlyReportLoading || Boolean(monthlyReportError) || reportResultKey !== reportQueryKey} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
               Export CSV
             </button>
           ) : null}
         </div>
       </div>
 
+      {canViewAdminAttendance && <section aria-label="Attendance reconciliation health" className="my-3 rounded-xl border bg-white p-3 text-sm text-slate-600">
+        {jobError ?? (jobStatus === null ? 'Loading reconciliation status...' : jobStatus.length === 0 ? 'No completed scheduled reconciliation is recorded yet.' :
+          `Recent reconciliation: ${jobStatus.filter(job => job.completedAt).length} completed, ${jobStatus.filter(job => !job.completedAt).length} pending, ${jobStatus.filter(job => job.lastError).length} need retry.`)}
+        {jobStatus?.find(job => job.completedAt)?.completedAt && <span className="ml-2">Last completion: {new Date(jobStatus.find(job => job.completedAt)!.completedAt!).toLocaleString()}</span>}
+      </section>}
       {(!canViewAdminAttendance || session.role === 'HR') && (
         <div className="grid items-stretch gap-4 xl:grid-cols-[0.9fr_1.1fr]">
           <EmployeeAttendancePanel
@@ -1556,8 +1681,11 @@ export default function AttendancePage() {
                 ? null
                 : today.error ?? mySnapshot.error)
             }
-            row={myTodayRow && mySnapshot.data ? {
-              ...myTodayRow,
+            row={mySnapshot.data && resolvedEmployeeId ? {
+              ...(myTodayRow ?? { id: null, employeeId: resolvedEmployeeId,
+                employee: { id: resolvedEmployeeId, name: session.name, department: null, designation: null },
+                date: mySnapshot.data.date, workingHours: mySnapshot.data.workingHours ?? null,
+                lateMinutes: mySnapshot.data.lateMinutes, overtimeHours: mySnapshot.data.overtimeHours }),
               checkIn: mySnapshot.data.checkIn,
               checkOut: mySnapshot.data.checkOut,
               onBreak: mySnapshot.data.onBreak,
@@ -1567,10 +1695,14 @@ export default function AttendancePage() {
             } : myTodayRow}
             activeSession={mySnapshot.data?.activeSession ?? null}
             activeAttendance={mySnapshot.data?.activeAttendance}
+            capabilities={mySnapshot.data?.capabilities}
+            calendarDate={mySnapshot.data?.date}
+            reviewHref={canViewAdminAttendance && mySnapshot.data?.activeAttendance?.startedAt ? `/dashboard/attendance?employeeId=${resolvedEmployeeId}&date=${dateTimeInZone(mySnapshot.data.activeAttendance.startedAt, myTodayRow?.employee.organization?.timezone ?? 'UTC').slice(0, 10)}` : undefined}
             attendanceLoading={mySnapshot.loading || !mySnapshot.data || Boolean(mySnapshot.error) || attendanceActionBusy}
             checkInLoading={checkInMutation.loading}
             checkOutLoading={checkOutMutation.loading}
             breakActionLoading={breakActionLoading}
+            onRefresh={() => void mySnapshot.refetch()}
             onCheckIn={() => handleEmployeeAction('in')}
             onCheckOut={() => handleEmployeeAction('out')}
             onBreakAction={() => handleEmployeeAction('break')}
@@ -1849,12 +1981,12 @@ export default function AttendancePage() {
               <p className="text-sm text-slate-500">Attendance starts on each employee&apos;s hire date.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <select value={reportMonth} onChange={(event) => setReportMonth(event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm">
+              <select value={reportMonth} onChange={(event) => { reportSelectionTouched.current = true; setReportMonth(event.target.value); }} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm">
                 {Array.from({ length: 12 }, (_, index) => (
                   <option key={index + 1} value={String(index + 1).padStart(2, '0')}>{new Date(2024, index, 1).toLocaleString([], { month: 'long' })}</option>
                 ))}
               </select>
-              <input type="number" min="2000" max="2100" value={reportYear} onChange={(event) => setReportYear(event.target.value)} className="w-24 rounded-xl border border-slate-300 px-3 py-2.5 text-sm" />
+              <input type="number" min="2000" max="2100" value={reportYear} onChange={(event) => { reportSelectionTouched.current = true; setReportYear(event.target.value); }} className="w-24 rounded-xl border border-slate-300 px-3 py-2.5 text-sm" />
               <select value={reportEmployeeId} onChange={(event) => setReportEmployeeId(event.target.value)} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm">
                 <option value="">All employees</option>
                 {employeeOptions.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
@@ -1968,7 +2100,7 @@ export default function AttendancePage() {
               <option value="">Select shift</option>
               {shifts.map((shift) => <option key={shift.id} value={shift.id}>{shift.name} · {shift.organizationName}</option>)}
             </select>
-            <button onClick={handleAssignShift} disabled={!assignEmployeeId || !assignShiftId} className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-white disabled:opacity-50"><ArrowRight aria-hidden="true" className="h-4 w-4" />Assign</button>
+            <button onClick={handleAssignShift} disabled={shiftBusy || !assignEmployeeId || !assignShiftId} className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-white disabled:opacity-50"><ArrowRight aria-hidden="true" className="h-4 w-4" />Assign</button>
           </div>
 
           <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
@@ -2133,20 +2265,21 @@ export default function AttendancePage() {
       </div>
 
       {showCreateShift && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-[2px]">
+        <AttendanceDialog label="Create shift" onClose={() => setShowCreateShift(false)} busy={shiftBusy}>
           <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <div><h3 className="text-lg font-semibold text-slate-900">New shift</h3><p className="mt-1 text-xs text-slate-500">Set the working hours and weekly holiday.</p></div>
-              <button type="button" onClick={() => setShowCreateShift(false)} aria-label="Close new shift modal" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X aria-hidden="true" className="h-5 w-5" /></button>
+              <button type="button" disabled={shiftBusy} onClick={() => setShowCreateShift(false)} aria-label="Close new shift modal" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X aria-hidden="true" className="h-5 w-5" /></button>
             </div>
+            {shiftError && <p role="alert" className="px-5 py-3 text-red-700">{shiftError}</p>}
             <div className="grid gap-3 p-5 sm:grid-cols-2">
-              <input value={newShift.name} onChange={(e) => setNewShift((prev) => ({ ...prev, name: e.target.value }))} placeholder="Shift name" className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm sm:col-span-2" />
-              <select value={newShift.type} onChange={(e) => setNewShift((prev) => ({ ...prev, type: e.target.value as 'FIXED' | 'FLEXIBLE' }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm"><option value="FIXED">Fixed</option><option value="FLEXIBLE">Flexible</option></select>
-              <input type="number" value={newShift.requiredHours} onChange={(e) => setNewShift((prev) => ({ ...prev, requiredHours: e.target.value }))} placeholder="Required hours" className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
-              <input type="time" value={newShift.startTime} onChange={(e) => setNewShift((prev) => ({ ...prev, startTime: e.target.value }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
-              <input type="time" value={newShift.endTime} onChange={(e) => setNewShift((prev) => ({ ...prev, endTime: e.target.value }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
-              <input type="number" value={newShift.minPresentHours} onChange={(e) => setNewShift((prev) => ({ ...prev, minPresentHours: e.target.value }))} placeholder="Minimum present hours" className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
-              <input type="number" value={newShift.gracePeriodMinutes} onChange={(e) => setNewShift((prev) => ({ ...prev, gracePeriodMinutes: e.target.value }))} placeholder="Grace period (min)" className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
+              <label className="grid gap-1 text-sm font-medium">Shift name<input value={newShift.name} onChange={(e) => setNewShift((prev) => ({ ...prev, name: e.target.value }))} placeholder="Shift name" className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm sm:col-span-2" /></label>
+              <label className="grid gap-1 text-sm font-medium">Shift type<select value={newShift.type} onChange={(e) => setNewShift((prev) => ({ ...prev, type: e.target.value as 'FIXED' | 'FLEXIBLE' }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm"><option value="FIXED">Fixed</option><option value="FLEXIBLE">Flexible</option></select></label>
+              <label className="grid gap-1 text-sm font-medium">Required hours<input type="number" value={newShift.requiredHours} onChange={(e) => setNewShift((prev) => ({ ...prev, requiredHours: e.target.value }))} placeholder="Required hours" className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" /></label>
+              <label className="grid gap-1 text-sm font-medium">Start time (optional for flexible)<input type="time" value={newShift.startTime} onChange={(e) => setNewShift((prev) => ({ ...prev, startTime: e.target.value }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" /></label>
+              <label className="grid gap-1 text-sm font-medium">End time (optional for flexible)<input type="time" value={newShift.endTime} onChange={(e) => setNewShift((prev) => ({ ...prev, endTime: e.target.value }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" /></label>
+              <label className="grid gap-1 text-sm font-medium">Minimum present hours<input type="number" value={newShift.minPresentHours} onChange={(e) => setNewShift((prev) => ({ ...prev, minPresentHours: e.target.value }))} placeholder="Minimum present hours" className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" /></label>
+              <label className="grid gap-1 text-sm font-medium">Grace period in minutes<input type="number" value={newShift.gracePeriodMinutes} onChange={(e) => setNewShift((prev) => ({ ...prev, gracePeriodMinutes: e.target.value }))} placeholder="Grace period (min)" className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm" /></label>
               <fieldset className="sm:col-span-2">
                 <legend className="mb-2 text-sm font-medium text-slate-700">Scheduled workdays</legend>
                 <div className="flex flex-wrap gap-2">
@@ -2170,15 +2303,15 @@ export default function AttendancePage() {
               </fieldset>
             </div>
             <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
-              <button type="button" onClick={() => setShowCreateShift(false)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Cancel</button>
-              <button type="button" onClick={handleCreateShift} disabled={!newShift.name.trim() || newShift.workingDays.length === 0} className="rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">Create shift</button>
+              <button type="button" disabled={shiftBusy} onClick={() => setShowCreateShift(false)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Cancel</button>
+              <button type="button" onClick={handleCreateShift} disabled={shiftBusy || !newShift.name.trim() || newShift.workingDays.length === 0} className="rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">Create shift</button>
             </div>
           </div>
-        </div>
+        </AttendanceDialog>
       )}
 
       {editingShift && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-[2px]">
+        <AttendanceDialog label="Edit shift" onClose={() => setEditingShift(null)} busy={shiftBusy}>
           <div className="w-full max-w-2xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_80px_-24px_rgba(15,23,42,0.35)]">
             <div className="flex items-start justify-between border-b border-slate-200 bg-linear-to-r from-orange-50 via-white to-slate-50 px-5 py-4 sm:px-6">
               <div className="flex items-start gap-3">
@@ -2189,7 +2322,7 @@ export default function AttendancePage() {
                 </div>
               </div>
               <button
-                onClick={() => setEditingShift(null)}
+                disabled={shiftBusy} onClick={() => setEditingShift(null)}
                 className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-xl text-slate-400 transition hover:border-slate-300 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2"
                 aria-label="Close edit shift modal"
               >
@@ -2211,10 +2344,11 @@ export default function AttendancePage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {shiftError && <p role="alert" className="px-5 py-3 text-red-700">{shiftError}</p>}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="md:col-span-2">
-                  <label className="mb-2 block text-sm font-medium text-slate-700">Shift name</label>
-                  <input
+                  <label className="mb-2 block text-sm font-medium text-slate-700" htmlFor="shift-edit-1">Shift name</label>
+                  <input id="shift-edit-1"
                     value={editingShift.name}
                     onChange={(event) => setEditingShift((current) => current ? { ...current, name: event.target.value } : current)}
                     className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-orange-400 focus:outline-none focus:ring-4 focus:ring-orange-100"
@@ -2222,8 +2356,8 @@ export default function AttendancePage() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">Type</label>
-                  <select
+                  <label className="mb-2 block text-sm font-medium text-slate-700" htmlFor="shift-edit-2">Type</label>
+                  <select id="shift-edit-2"
                     value={editingShift.type}
                     onChange={(event) => setEditingShift((current) => current ? { ...current, type: event.target.value as 'FIXED' | 'FLEXIBLE' } : current)}
                     className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-orange-400 focus:outline-none focus:ring-4 focus:ring-orange-100"
@@ -2235,8 +2369,8 @@ export default function AttendancePage() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">Required hours</label>
-                  <input
+                  <label className="mb-2 block text-sm font-medium text-slate-700" htmlFor="shift-edit-3">Required hours</label>
+                  <input id="shift-edit-3"
                     type="number"
                     value={editingShift.requiredHours ?? 8}
                     onChange={(event) => setEditingShift((current) => current ? { ...current, requiredHours: Number(event.target.value) || 0 } : current)}
@@ -2245,28 +2379,28 @@ export default function AttendancePage() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">Start time</label>
-                  <input
+                  <label className="mb-2 block text-sm font-medium text-slate-700" htmlFor="shift-edit-4">Start time</label>
+                  <input id="shift-edit-4"
                     type="time"
-                    value={editingShift.startTime ?? '09:00'}
+                    value={editingShift.startTime ?? ''}
                     onChange={(event) => setEditingShift((current) => current ? { ...current, startTime: event.target.value } : current)}
                     className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-orange-400 focus:outline-none focus:ring-4 focus:ring-orange-100"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">End time</label>
-                  <input
+                  <label className="mb-2 block text-sm font-medium text-slate-700" htmlFor="shift-edit-5">End time</label>
+                  <input id="shift-edit-5"
                     type="time"
-                    value={editingShift.endTime ?? '18:00'}
+                    value={editingShift.endTime ?? ''}
                     onChange={(event) => setEditingShift((current) => current ? { ...current, endTime: event.target.value } : current)}
                     className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-orange-400 focus:outline-none focus:ring-4 focus:ring-orange-100"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">Min present hours</label>
-                  <input
+                  <label className="mb-2 block text-sm font-medium text-slate-700" htmlFor="shift-edit-6">Min present hours</label>
+                  <input id="shift-edit-6"
                     type="number"
                     value={editingShift.minPresentHours ?? 5}
                     onChange={(event) => setEditingShift((current) => current ? { ...current, minPresentHours: Number(event.target.value) || 0 } : current)}
@@ -2275,8 +2409,8 @@ export default function AttendancePage() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">Grace period (min)</label>
-                  <input
+                  <label className="mb-2 block text-sm font-medium text-slate-700" htmlFor="shift-edit-7">Grace period (min)</label>
+                  <input id="shift-edit-7"
                     type="number"
                     value={editingShift.gracePeriodMinutes ?? 15}
                     onChange={(event) => setEditingShift((current) => current ? { ...current, gracePeriodMinutes: Number(event.target.value) || 0 } : current)}
@@ -2304,7 +2438,7 @@ export default function AttendancePage() {
 
             <div className="flex items-center justify-end gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:px-6">
               <button
-                onClick={() => setEditingShift(null)}
+                disabled={shiftBusy} onClick={() => setEditingShift(null)}
                 className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-300"
               >
                 Cancel
@@ -2312,8 +2446,9 @@ export default function AttendancePage() {
               <button
                 onClick={handleUpdateShift}
                 className="rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600 focus:outline-none focus:ring-4 focus:ring-orange-200 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={!isShiftFormComplete({
+                disabled={shiftBusy || !isShiftFormComplete({
                   name: editingShift.name,
+                  type: editingShift.type,
                   startTime: editingShift.startTime ?? '',
                   endTime: editingShift.endTime ?? '',
                 }) || workingDaysForShift(editingShift).length === 0}
@@ -2322,7 +2457,7 @@ export default function AttendancePage() {
               </button>
             </div>
           </div>
-        </div>
+        </AttendanceDialog>
       )}
 
       {canViewAdminAttendance ? (
@@ -2687,6 +2822,7 @@ export default function AttendancePage() {
           error={createAttendanceError ?? updateAttendanceMutation.error}
           onClose={() => setEditingRecord(null)}
           onSubmit={handleAttendanceUpdate}
+        onRecover={() => void handleLegacyRecovery()}
         />
       )}
     </div>

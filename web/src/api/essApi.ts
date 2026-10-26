@@ -21,6 +21,8 @@ export interface CheckOutResponse {
 }
 
 export interface AttendanceStatus {
+  capabilities?: { canCheckIn: boolean; canCheckOut: boolean; canBreak: boolean };
+  activeAttendance?: { kind: 'IDLE' | 'SESSION' | 'REVIEW_REQUIRED'; startedAt: string | null; message: string | null };
   status: 'NOT_CHECKED_IN' | 'CHECKED_IN' | 'CHECKED_OUT';
   activeSession: { startedAt: string } | null;
   checkIn: string | null;
@@ -324,6 +326,8 @@ export async function getAttendanceToday(): Promise<AttendanceStatus> {
     : [];
 
   return {
+    capabilities: isRecord(result.capabilities) ? result.capabilities as AttendanceStatus['capabilities'] : undefined,
+    activeAttendance: isRecord(result.activeAttendance) ? result.activeAttendance as AttendanceStatus['activeAttendance'] : undefined,
     activeSession: activeSessionStartedAt
       ? { startedAt: activeSessionStartedAt }
       : null,

@@ -102,6 +102,7 @@ model AppRole {
 }
 
 model Organization {
+  attendanceReconciliationJobs AttendanceReconciliationJob[]
   id                       Int                       @id @default(autoincrement())
   name                     String
   code                     String                    @unique
@@ -350,6 +351,8 @@ model Employee {
 }
 
 model Shift {
+  policyRootId       Int?
+  revision           Int                       @default(1)
   id                 Int                       @id @default(autoincrement())
   name               String
   type               ShiftType
@@ -373,9 +376,11 @@ model Shift {
   organization       Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+  @@index([policyRootId, revision])
 }
 
 model EmployeeShiftAssignment {
+  policyInferred Boolean @default(false)
   id            Int       @id @default(autoincrement())
   employeeId    Int
   shiftId       Int
@@ -390,6 +395,8 @@ model EmployeeShiftAssignment {
 }
 
 model Attendance {
+  manuallyCorrected Boolean                   @default(false)
+  version         Int                       @default(1)
   id              Int                       @id @default(autoincrement())
   employeeId      Int
   date            DateTime
@@ -421,6 +428,21 @@ model Attendance {
   @@unique([employeeId, date])
   @@index([date])
   @@index([organizationId])
+}
+
+model AttendanceReconciliationJob {
+  id             Int @id @default(autoincrement())
+  organizationId Int
+  date           DateTime @db.Date
+  cursor         Int @default(0)
+  leaseOwner     String?
+  leaseUntil     DateTime?
+  attempts       Int @default(0)
+  completedAt    DateTime?
+  lastError      String?
+  updatedAt      DateTime @default(now()) @updatedAt
+  @@unique([organizationId, date])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
 model AttendanceBreak {

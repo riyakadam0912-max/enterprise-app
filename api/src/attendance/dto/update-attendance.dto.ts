@@ -4,6 +4,8 @@ import {
   IsArray,
   IsDateString,
   IsIn,
+  IsInt,
+  Min,
   IsOptional,
   ValidateNested,
 } from 'class-validator';
@@ -22,27 +24,34 @@ const STATUSES = [
 ] as const;
 
 class UpdateAttendanceBreakDto {
-  @IsDateString()
+  @IsDateString({ strict: true })
   startedAt!: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   endedAt?: string | null;
 }
 
 export class UpdateAttendanceDto {
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
+  expectedSessionUpdatedAt?: string;
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  expectedVersion?: number;
+  @IsOptional()
+  @IsDateString({ strict: true })
   @ApiPropertyOptional({ example: '2026-04-14' })
   date?: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   @ApiPropertyOptional({ example: 'sample-checkIn' })
   checkIn?: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   @ApiPropertyOptional({ example: 'sample-checkOut' })
   checkOut?: string;
 

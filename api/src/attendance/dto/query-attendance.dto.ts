@@ -4,6 +4,8 @@ import {
   IsDateString,
   IsIn,
   IsInt,
+  Min,
+  Max,
   IsOptional,
   IsString,
 } from 'class-validator';
@@ -17,6 +19,9 @@ const STATUSES = [
   'HOLIDAY',
   'WEEKLY_OFF',
   'LATE',
+  'UPCOMING',
+  'NOT_STARTED',
+  'NOT_SCHEDULED',
 ] as const;
 
 const ATTENDANCE_QUEUE_FILTERS = [
@@ -28,26 +33,34 @@ const ATTENDANCE_QUEUE_FILTERS = [
 
 export class QueryAttendanceDto {
   @IsOptional()
+  @IsIn(['full', 'none'])
+  summaryMode?: 'full' | 'none';
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
+  @Min(1)
   @ApiPropertyOptional({ example: 123 })
   page?: number = 1;
 
   @IsOptional()
   @Type(() => Number)
   @IsInt()
+  @Min(1)
+  @Max(100)
   @ApiPropertyOptional({ example: 123 })
   limit?: number = 10;
 
   @IsOptional()
   @Type(() => Number)
   @IsInt()
+  @Min(1)
   @ApiPropertyOptional({ example: 123 })
   employeeId?: number;
 
   @IsOptional()
   @Type(() => Number)
   @IsInt()
+  @Min(1)
   @ApiPropertyOptional({ example: 123 })
   organizationId?: number;
 
@@ -57,12 +70,12 @@ export class QueryAttendanceDto {
   department?: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   @ApiPropertyOptional({ example: '2026-04-14' })
   date?: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   @ApiPropertyOptional({ example: '2026-04-14' })
   fromDate?: string;
 
@@ -75,12 +88,16 @@ export class QueryAttendanceDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
+  @Min(1900)
+  @Max(9999)
   @ApiPropertyOptional({ example: 2026 })
   year?: number;
 
   @IsOptional()
   @Type(() => Number)
   @IsInt()
+  @Min(1)
+  @Max(12)
   @ApiPropertyOptional({ example: 8 })
   month?: number;
 

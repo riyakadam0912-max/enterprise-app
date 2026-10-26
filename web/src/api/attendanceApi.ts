@@ -40,10 +40,11 @@ export interface AttendanceEmployee {
   name: string;
   department: string | null;
   designation: string | null;
-  organization?: { id: number; name: string };
+  organization?: { id: number; name: string; timezone?: string };
 }
 
 export interface AttendanceRecord {
+  version?: number;
   id: number | null;
   employeeId: number;
   employee: AttendanceEmployee;
@@ -74,7 +75,7 @@ export interface AttendanceListResponse {
   page: number;
   limit: number;
   date: string;
-  summary: AttendanceSummary;
+  summary?: AttendanceSummary;
 }
 
 export interface TodayAttendanceResponse {
@@ -119,6 +120,7 @@ export interface EmployeeAttendanceResponse {
 }
 
 export interface MyAttendanceResponse {
+  capabilities?: { canCheckIn: boolean; canCheckOut: boolean; canBreak: boolean };
   activeAttendance?: {
     kind: 'IDLE' | 'SESSION' | 'REVIEW_REQUIRED';
     id: number | null;
@@ -306,6 +308,8 @@ export interface AttendanceActionPayload {
 }
 
 export interface UpdateAttendancePayload {
+  expectedVersion?: number;
+  expectedSessionUpdatedAt?: string;
   date?: string;
   checkIn?: string;
   checkOut?: string;
@@ -329,6 +333,7 @@ function buildQuery(filters: { [key: string]: string | number | undefined | null
 export function getAttendance(filters: AttendanceFilters = {}): Promise<AttendanceListResponse> {
   return apiClient<AttendanceListResponse>(
     `/attendance${buildQuery({
+      summaryMode: 'none',
       page: filters.page,
       limit: filters.limit,
       employeeId: filters.employeeId,
@@ -344,6 +349,7 @@ export function getAttendance(filters: AttendanceFilters = {}): Promise<Attendan
 export function getMyAttendance(filters: AttendanceFilters = {}): Promise<AttendanceListResponse> {
   return apiClient<AttendanceListResponse>(
     `/attendance/me${buildQuery({
+      summaryMode: 'none',
       page: filters.page,
       limit: filters.limit,
       date: filters.date,
@@ -542,3 +548,21 @@ export function reopenAttendance(id: number, data: ReopenAttendancePayload): Pro
     body: JSON.stringify(data),
   });
 }
+
+export interface AttendanceSessionRecord {
+  id: number; startedAt: string; endedAt: string | null; updatedAt: string;
+  breaks: { startedAt: string; endedAt: string | null }[];
+}
+export function getAttendanceSessions(employeeId: number, date: string): Promise<AttendanceSessionRecord[]> {
+  return apiClient(`/attendance/employee/${employeeId}/sessions?date=${encodeURIComponent(date.slice(0, 10))}`);
+}
+export function correctAttendanceSession(id: number, data: UpdateAttendancePayload): Promise<AttendanceSessionRecord> {
+  return apiClient(`/attendance/sessions/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
+export interface AttendanceJobStatus {
+  organizationId: number; date: string; cursor: number; attempts: number;
+  completedAt: string | null; updatedAt: string; lastError: string | null;
+}
+export function getAttendanceJobStatus(): Promise<AttendanceJobStatus[]> { return apiClient('/attendance/automation/status'); }
+
+export function recoverAttendanceSession(id: number): Promise<AttendanceSessionRecord> { return apiClient(`/attendance/${id}/recover-session`, { method: 'POST' }); }

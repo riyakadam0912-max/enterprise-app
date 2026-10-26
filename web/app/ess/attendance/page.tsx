@@ -43,6 +43,7 @@ export default function ESSAttendancePage() {
     } catch (err: unknown) {
       setErrorMsg(getErrorMessage(err));
       setShowError(true);
+      await refetchToday();
     }
   };
 
@@ -55,6 +56,7 @@ export default function ESSAttendancePage() {
     } catch (err: unknown) {
       setErrorMsg(getErrorMessage(err));
       setShowError(true);
+      await refetchToday();
     }
   };
 
@@ -69,6 +71,7 @@ export default function ESSAttendancePage() {
     } catch (err: unknown) {
       setErrorMsg(getErrorMessage(err));
       setShowError(true);
+      await refetchToday();
     } finally {
       setBreakLoading(false);
     }
@@ -80,7 +83,7 @@ export default function ESSAttendancePage() {
   const breakAction = (
     <button
       onClick={handleBreak}
-      disabled={!isCheckedIn || breakLoading}
+      disabled={todayLoading || !today || checkInLoading || checkOutLoading || breakLoading || !(today?.capabilities?.canBreak ?? isCheckedIn)}
       className={`flex-1 py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-2 disabled:bg-gray-300 ${
         isFlexible
           ? 'bg-teal-700 text-white hover:bg-teal-800'
@@ -223,12 +226,13 @@ export default function ESSAttendancePage() {
               </div>
             )}
 
+            {today?.activeAttendance?.message && <p role="alert">{today.activeAttendance.message}</p>}
             {/* Action Buttons */}
             <div className="flex gap-3">
               {isFlexible && breakAction}
               <button
                 onClick={handleCheckIn}
-                disabled={isCheckedIn || checkInLoading}
+                disabled={todayLoading || !today || checkInLoading || checkOutLoading || breakLoading || !(today?.capabilities?.canCheckIn ?? !isCheckedIn)}
                 className={`flex-1 py-3 px-4 rounded-lg font-medium disabled:bg-gray-300 flex items-center justify-center gap-2 ${isFlexible ? 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50' : 'bg-green-600 text-white hover:bg-green-700'}`}
               >
                 <Clock className="w-5 h-5" />
@@ -236,7 +240,7 @@ export default function ESSAttendancePage() {
               </button>
               <button
                 onClick={handleCheckOut}
-                disabled={!isCheckedIn || checkOutLoading}
+                disabled={todayLoading || !today || checkInLoading || checkOutLoading || breakLoading || !(today?.capabilities?.canCheckOut ?? isCheckedIn)}
                 className={`flex-1 py-3 px-4 rounded-lg font-medium disabled:bg-gray-300 flex items-center justify-center gap-2 ${isFlexible ? 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50' : 'bg-red-600 text-white hover:bg-red-700'}`}
               >
                 <Clock className="w-5 h-5" />

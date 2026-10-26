@@ -25,6 +25,16 @@ export type ShiftSummary = {
 };
 
 export type AttendanceToday = {
+  capabilities?: {
+    canCheckIn: boolean;
+    canCheckOut: boolean;
+    canBreak: boolean;
+  };
+  activeAttendance?: {
+    kind: "IDLE" | "SESSION" | "REVIEW_REQUIRED";
+    startedAt: string | null;
+    message: string | null;
+  };
   date: string;
   status: AttendanceStatus;
   isShootDay?: boolean;

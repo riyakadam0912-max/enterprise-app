@@ -474,9 +474,9 @@ function EmployeeDashboard({ session }: { session: Session }) {
   const myTasks = useMemo(() => sortByDueDate(tasks.filter((task) => task.assignedToUserId === session.employeeId || task.assignedToUser?.id === session.userId)), [session.employeeId, session.userId, tasks]);
   const openTasks = useMemo(() => myTasks.filter(isTaskActive).length, [myTasks]);
   const leaveBalance = employee?.leaveBalance ?? 0;
-  const hasAssignedShift = Boolean(attendance?.shiftDetails);
-  const canCheckIn = !attendance?.checkIn && hasAssignedShift;
-  const canCheckOut = Boolean(attendance?.checkIn && !attendance?.checkOut);
+  const hasAssignedShift = Boolean(attendance?.shiftDetails) && attendance?.activeAttendance?.kind !== 'REVIEW_REQUIRED';
+  const canCheckIn = attendance?.capabilities?.canCheckIn ?? (hasAssignedShift && !attendance?.activeSession && (attendance?.shiftDetails?.type === 'FLEXIBLE' || !attendance?.checkIn));
+  const canCheckOut = attendance?.capabilities?.canCheckOut ?? Boolean(attendance?.checkIn && !attendance?.checkOut);
 
   const handleAttendanceAction = useCallback(async (mode: 'check-in' | 'check-out') => {
     if (!session.employeeId) return;
@@ -487,6 +487,7 @@ function EmployeeDashboard({ session }: { session: Session }) {
       await loadDashboard();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to update attendance right now.');
+      await loadDashboard();
     } finally {
       setActionBusy(null);
     }
@@ -590,7 +591,7 @@ export default function DashboardPage() {
     name: auth.user?.name ?? 'User',
   };
 
-  if (session.role === 'EMPLOYEE') return <EmployeeDashboard session={session} />;
+  if (session.role === 'EMPLOYEE') return <EmployeeDashboard key={`${auth.user?.id}:${auth.organizationId}:${auth.activeBusinessUnitId}`} session={session} />;
   if (session.role === 'MANAGER') return <ManagerDashboard />;
   return <AdminDashboard />;
 }

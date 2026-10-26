@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useAuthSession } from '@/stores/auth-store';
 import { ApiError } from '@/api/apiClient';
 import {
   AttendanceActionPayload,
@@ -183,6 +184,9 @@ export function useTodayAttendance(date?: string) {
 }
 
 export function useMyAttendanceSnapshot() {
+  const scope = useAuthSession();
+  const scopeKey = `${scope.user?.id}:${scope.organizationId}:${scope.activeBusinessUnitId}`;
+  const [dataScope, setDataScope] = useState('');
   const requestSequence = useRef(0);
   const [data, setData] = useState<MyAttendanceResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -194,7 +198,7 @@ export function useMyAttendanceSnapshot() {
     setError(null);
     try {
       const snapshot = await getMyAttendanceSnapshot();
-      if (requestId === requestSequence.current) setData(snapshot);
+      if (requestId === requestSequence.current) { setData(snapshot); setDataScope(scopeKey); }
     } catch (err) {
       const message = err instanceof Error ? err.message : undefined;
       if (requestId === requestSequence.current) {
@@ -204,7 +208,7 @@ export function useMyAttendanceSnapshot() {
     } finally {
       if (requestId === requestSequence.current) setLoading(false);
     }
-  }, []);
+  }, [scopeKey]);
 
   useEffect(() => {
     void fetchSnapshot();
@@ -226,7 +230,7 @@ export function useMyAttendanceSnapshot() {
 
   useEffect(() => () => { requestSequence.current += 1; }, []);
 
-  return { data, loading, error, refetch: fetchSnapshot };
+  return { data: dataScope === scopeKey ? data : null, loading: loading || dataScope !== scopeKey && !error, error, refetch: fetchSnapshot };
 }
 
 export function useEmployeeAttendance(employeeId: number, month?: string) {

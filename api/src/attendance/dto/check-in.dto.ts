@@ -8,12 +8,12 @@ export class CheckInDto {
   employeeId?: number;
 
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   @ApiPropertyOptional({ example: '2026-04-14' })
   date?: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   @ApiPropertyOptional({ example: 'sample-timestamp' })
   timestamp?: string;
 }

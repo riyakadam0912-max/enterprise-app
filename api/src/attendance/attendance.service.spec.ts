@@ -64,6 +64,8 @@ function createPrismaMock() {
       updateMany: jest.fn(),
     },
     attendanceSessionBreak: {
+      deleteMany: jest.fn(),
+      createMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
@@ -305,6 +307,7 @@ describe('AttendanceService', () => {
   it('validates merged fields when changing a flexible shift to fixed', async () => {
     prisma.shift.findFirst.mockResolvedValue({
       id: 3,
+      isActive: true,
       organizationId: 1,
       type: 'FLEXIBLE',
       startTime: null,
@@ -661,8 +664,8 @@ describe('AttendanceService', () => {
     );
 
     expect(result.total).toBe(1);
-    expect(result.summary.present).toBe(1);
-    expect(result.summary.absent).toBe(0);
+    expect(result.summary!.present).toBe(1);
+    expect(result.summary!.absent).toBe(0);
   });
 
   it('filters attendance rows for operational dashboard cards', async () => {
@@ -930,7 +933,6 @@ describe('AttendanceService', () => {
     await expect(
       service.update(49, { checkOut: null } as any, mockUser),
     ).rejects.toThrow('Use the reopen attendance action');
-    expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(prisma.attendance.update).not.toHaveBeenCalled();
   });
 
@@ -955,6 +957,7 @@ describe('AttendanceService', () => {
       },
     };
     prisma.attendance.findFirst
+      .mockResolvedValueOnce(record)
       .mockResolvedValueOnce(record)
       .mockResolvedValueOnce(null);
     prisma.attendance.findUnique.mockResolvedValueOnce({ checkOut });
@@ -1051,6 +1054,7 @@ describe('AttendanceService', () => {
     );
     prisma.attendance.findFirst
       .mockResolvedValueOnce(record)
+      .mockResolvedValueOnce(record)
       .mockResolvedValueOnce(null);
     prisma.attendance.findUnique.mockResolvedValueOnce({
       checkOut: record.checkOut,
@@ -1084,24 +1088,26 @@ describe('AttendanceService', () => {
   });
 
   it('does not reopen fixed attendance when another session is already open', async () => {
+    const closedRecord = {
+      id: 50,
+      employeeId: 7,
+      organizationId: 1,
+      date: new Date('2026-10-22T00:00:00.000Z'),
+      checkIn: new Date('2026-10-22T09:00:00.000Z'),
+      checkOut: new Date('2026-10-22T18:00:00.000Z'),
+      status: AttendanceStatus.PRESENT,
+      breaks: [],
+      employee: { name: 'Employee', hireDate: null, shift: null },
+      shift: {
+        id: 3,
+        type: 'FIXED',
+        requiredHours: 8,
+        minPresentHours: 5,
+      },
+    };
     prisma.attendance.findFirst
-      .mockResolvedValueOnce({
-        id: 50,
-        employeeId: 7,
-        organizationId: 1,
-        date: new Date('2026-10-22T00:00:00.000Z'),
-        checkIn: new Date('2026-10-22T09:00:00.000Z'),
-        checkOut: new Date('2026-10-22T18:00:00.000Z'),
-        status: AttendanceStatus.PRESENT,
-        breaks: [],
-        employee: { name: 'Employee', hireDate: null, shift: null },
-        shift: {
-          id: 3,
-          type: 'FIXED',
-          requiredHours: 8,
-          minPresentHours: 5,
-        },
-      })
+      .mockResolvedValueOnce(closedRecord)
+      .mockResolvedValueOnce(closedRecord)
       .mockResolvedValueOnce({ id: 51 });
     prisma.attendance.findUnique.mockResolvedValueOnce({
       checkOut: new Date('2026-10-22T18:00:00.000Z'),
@@ -1241,7 +1247,9 @@ describe('AttendanceService', () => {
       startedAt: new Date('2026-10-22T13:00:00.000Z'),
     };
     const openAttendance = { ...record, checkOut: null, workingHours: 0 };
-    prisma.attendance.findFirst.mockResolvedValueOnce(record);
+    prisma.attendance.findFirst
+      .mockResolvedValueOnce(record)
+      .mockResolvedValueOnce(record);
     prisma.attendance.findUnique
       .mockResolvedValueOnce({ checkOut })
       .mockResolvedValueOnce(openAttendance);
@@ -4777,6 +4785,10 @@ describe('AttendanceService', () => {
       breaks: [{ id: 12, startedAt: breakStart, endedAt: null }],
     });
 
+    prisma.attendance.findUnique.mockImplementation(
+      async () =>
+        (await prisma.attendance.findMany.mock.results[0]?.value)?.[0],
+    );
     await service.runDailyAutomation();
 
     const autoCheckOut = new Date('2026-03-14T05:00:00.000Z');
@@ -4871,6 +4883,10 @@ describe('AttendanceService', () => {
       },
     ]);
 
+    prisma.attendance.findUnique.mockImplementation(
+      async () =>
+        (await prisma.attendance.findMany.mock.results[0]?.value)?.[0],
+    );
     await service.runAutoCheckoutAutomation();
 
     expect(prisma.attendance.update).toHaveBeenCalledWith(
