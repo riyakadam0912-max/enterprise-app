@@ -103,6 +103,46 @@ describe('ProjectMessagesService mentions', () => {
     );
   });
 
+  it('uses shared project access rules for manager chat visibility', async () => {
+    const manager = {
+      ...admin,
+      userId: 22,
+      role: Role.MANAGER,
+      roles: [Role.MANAGER],
+    } as AuthUser;
+    projectsService.getProjectAccessWhere.mockResolvedValue({
+      organizationId: { in: [organizationId, 9] },
+      deletedAt: null,
+      OR: [{ coManagers: { some: { id: manager.userId } } }],
+    });
+    prisma.project.findFirst
+      .mockResolvedValueOnce({ id: 19 })
+      .mockResolvedValueOnce({ id: 19, organizationId: 9 });
+    prisma.projectMessage.findMany.mockResolvedValueOnce([]);
+
+    await expect(service.getMessages(19, manager)).resolves.toEqual([]);
+
+    expect(prisma.project.findFirst).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: {
+          id: 19,
+          AND: [
+            expect.objectContaining({
+              organizationId: { in: [organizationId, 9] },
+              OR: [{ coManagers: { some: { id: manager.userId } } }],
+            }),
+          ],
+        },
+      }),
+    );
+    expect(prisma.projectMessage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { projectId: 19, organizationId: 9 },
+      }),
+    );
+  });
+
   it('persists validated user and task mention metadata', async () => {
     const message = await service.createMessage(
       19,

@@ -214,6 +214,22 @@ export class WorkflowEngineService implements OnModuleInit {
     private readonly auditLogsService: AuditLogsService,
   ) {}
 
+  private transaction?: Prisma.TransactionClient;
+  private afterCommit?: Array<() => Promise<unknown>>;
+
+  forTransaction(transaction: Prisma.TransactionClient, afterCommit: Array<() => Promise<unknown>>) {
+    const scoped = new WorkflowEngineService(this.prisma, this.notificationsService, this.auditLogsService);
+    scoped.transaction = transaction;
+    scoped.afterCommit = afterCommit;
+    return scoped;
+  }
+
+  private get db() { return this.transaction ?? this.prisma; }
+
+  private runTransaction<T>(action: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    return this.transaction ? action(this.transaction) : this.prisma.$transaction(action);
+  }
+
   private validateOrganization(
     organizationId: number | null | undefined,
   ): number {
@@ -231,19 +247,19 @@ export class WorkflowEngineService implements OnModuleInit {
     for (const template of WORKFLOW_TEMPLATES) {
       try {
         // First try to find if definition exists
-        const existing = await this.prisma.workflowDefinition.findUnique({
+        const existing = await this.db.workflowDefinition.findUnique({
           where: { key: template.key },
         });
 
         if (existing) {
           // If exists, delete stages and rules first, then update
-          await this.prisma.workflowStage.deleteMany({
+          await this.db.workflowStage.deleteMany({
             where: { workflowDefinitionId: existing.id },
           });
-          await this.prisma.workflowRule.deleteMany({
+          await this.db.workflowRule.deleteMany({
             where: { workflowDefinitionId: existing.id },
           });
-          await this.prisma.workflowDefinition.update({
+          await this.db.workflowDefinition.update({
             where: { key: template.key },
             data: {
               name: template.name,
@@ -266,7 +282,7 @@ export class WorkflowEngineService implements OnModuleInit {
           });
         } else {
           // If not exists, create new
-          await this.prisma.workflowDefinition.create({
+          await this.db.workflowDefinition.create({
             data: {
               key: template.key,
               name: template.name,
@@ -298,7 +314,7 @@ export class WorkflowEngineService implements OnModuleInit {
   }
 
   async createDefinition(dto: CreateWorkflowDefinitionDto) {
-    return this.prisma.workflowDefinition.upsert({
+    return this.db.workflowDefinition.upsert({
       where: { key: dto.key },
       update: {
         name: dto.name,
@@ -358,7 +374,7 @@ export class WorkflowEngineService implements OnModuleInit {
   }
 
   async listDefinitions() {
-    return this.prisma.workflowDefinition.findMany({
+    return this.db.workflowDefinition.findMany({
       include: {
         stages: { orderBy: { order: 'asc' } },
         rules: { orderBy: { priority: 'desc' } },
@@ -370,7 +386,7 @@ export class WorkflowEngineService implements OnModuleInit {
   async getDefinitionByKey(
     key: string,
   ): Promise<WorkflowDefinitionWithStagesAndRules> {
-    const definition = await this.prisma.workflowDefinition.findUnique({
+    const definition = await this.db.workflowDefinition.findUnique({
       where: { key },
       include: {
         stages: { orderBy: { order: 'asc' } },
@@ -391,8 +407,9 @@ export class WorkflowEngineService implements OnModuleInit {
     organizationId: number,
   ): Promise<WorkflowInstanceWithIncludes | null> {
     const orgId = this.validateOrganization(organizationId);
-    return this.prisma.workflowInstance.findFirst({
+    return this.db.workflowInstance.findFirst({
       where: { entityType, entityId, organizationId: orgId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       include: {
         workflowDefinition: {
           include: { stages: { orderBy: { order: 'asc' } }, rules: true },
@@ -420,7 +437,7 @@ export class WorkflowEngineService implements OnModuleInit {
 
   private async resolveEmployeeUser(employeeId: number | undefined | null) {
     if (!employeeId) return null;
-    return this.prisma.employee.findUnique({
+    return this.db.employee.findUnique({
       where: { id: employeeId },
       select: {
         id: true,
@@ -442,7 +459,7 @@ export class WorkflowEngineService implements OnModuleInit {
     const requestorUserId =
       Number(context?.requestorUserId ?? context?.initiatedBy ?? 0) || null;
     if (!requestorUserId) return null;
-    return this.prisma.user.findUnique({
+    return this.db.user.findUnique({
       where: { id: requestorUserId },
       select: {
         id: true,
@@ -460,7 +477,7 @@ export class WorkflowEngineService implements OnModuleInit {
   ): Promise<number[]> {
     const orgId = Number(organizationId ?? 0);
     if (!orgId) return [];
-    const rows = await this.prisma.user.findMany({
+    const rows = await this.db.user.findMany({
       where: {
         organizationId: orgId,
         isActive: true,
@@ -506,7 +523,7 @@ export class WorkflowEngineService implements OnModuleInit {
       const role = toRole(rule.value);
       if (role) {
         const orgId = Number(organizationId ?? 0);
-        const rows = await this.prisma.user.findMany({
+        const rows = await this.db.user.findMany({
           where: orgId
             ? { role, isActive: true, organizationId: orgId }
             : { role, isActive: true },
@@ -548,7 +565,7 @@ export class WorkflowEngineService implements OnModuleInit {
       const managerIds = new Set<number>();
 
       if (employeeId) {
-        const employee = await this.prisma.employee.findUnique({
+        const employee = await this.db.employee.findUnique({
           where: { id: employeeId },
           include: { user: { select: { managerId: true } } },
         });
@@ -560,7 +577,7 @@ export class WorkflowEngineService implements OnModuleInit {
       const requestorUserId =
         Number(context?.requestorUserId ?? context?.initiatedBy ?? 0) || null;
       if (requestorUserId) {
-        const user = await this.prisma.user.findUnique({
+        const user = await this.db.user.findUnique({
           where: { id: requestorUserId },
           select: { managerId: true },
         });
@@ -604,7 +621,7 @@ export class WorkflowEngineService implements OnModuleInit {
       return;
     }
 
-    await this.prisma.workflowNotification.createMany({
+    await this.db.workflowNotification.createMany({
       data: params.recipients.map((recipientId: number) => ({
         workflowInstanceId: params.workflowInstanceId,
         recipientId,
@@ -617,7 +634,7 @@ export class WorkflowEngineService implements OnModuleInit {
       })),
     });
 
-    await Promise.all(
+    const notify = () => Promise.all(
       params.recipients.map((recipientId: number) =>
         this.notificationsService.create(
           {
@@ -629,6 +646,8 @@ export class WorkflowEngineService implements OnModuleInit {
         ),
       ),
     );
+    if (this.afterCommit) this.afterCommit.push(notify);
+    else await notify();
   }
 
   private async createAudit(params: {
@@ -641,7 +660,7 @@ export class WorkflowEngineService implements OnModuleInit {
     oldValue?: unknown;
     newValue?: unknown;
   }) {
-    await this.auditLogsService.logCustomAction({
+    const audit = () => this.auditLogsService.logCustomAction({
       userId: params.userId ?? null,
       module: params.module,
       entityType: params.entityType,
@@ -651,6 +670,8 @@ export class WorkflowEngineService implements OnModuleInit {
       oldValue: toJsonValue(params.oldValue),
       newValue: toJsonValue(params.newValue),
     });
+    if (this.afterCommit) this.afterCommit.push(audit);
+    else await audit();
   }
 
   async submitWorkflow(dto: WorkflowStartDto) {
@@ -663,6 +684,7 @@ export class WorkflowEngineService implements OnModuleInit {
     );
     if (
       existing &&
+      existing.status !== 'REJECTED' &&
       existing.status !== 'COMPLETED' &&
       existing.status !== 'CANCELLED'
     ) {
@@ -677,8 +699,8 @@ export class WorkflowEngineService implements OnModuleInit {
       ? await this.resolveRecipients(firstStage, dto.context)
       : [];
 
-    const instance = await this.prisma.$transaction(
-      async (transaction: PrismaClient) => {
+    const instance = await this.runTransaction(
+      async (transaction: Prisma.TransactionClient) => {
         const created: WorkflowInstanceWithIncludes =
           await transaction.workflowInstance.create({
             data: {
@@ -847,7 +869,7 @@ export class WorkflowEngineService implements OnModuleInit {
   }
 
   private async ensureStageSteps(
-    transaction: PrismaClient,
+    transaction: Prisma.TransactionClient,
     instance: WorkflowInstanceWithIncludes,
     stage: WorkflowStage,
     organizationId: number,
@@ -921,8 +943,8 @@ export class WorkflowEngineService implements OnModuleInit {
       throw new Error('No active workflow stage is available for approval');
     }
 
-    const updatedInstance = await this.prisma.$transaction(
-      async (transaction: PrismaClient) => {
+    const updatedInstance = await this.runTransaction(
+      async (transaction: Prisma.TransactionClient) => {
         const stageSteps = await this.ensureStageSteps(
           transaction,
           instance,
@@ -1150,8 +1172,8 @@ export class WorkflowEngineService implements OnModuleInit {
       );
     }
 
-    const updatedInstance = await this.prisma.$transaction(
-      async (transaction: PrismaClient) => {
+    const updatedInstance = await this.runTransaction(
+      async (transaction: Prisma.TransactionClient) => {
         await transaction.workflowStep.updateMany({
           where: {
             workflowInstanceId: instance.id,
@@ -1262,7 +1284,7 @@ export class WorkflowEngineService implements OnModuleInit {
       );
     }
 
-    await this.prisma.workflowComment.create({
+    await this.db.workflowComment.create({
       data: {
         workflowInstanceId: instance.id,
         authorId: dto.userId,
@@ -1307,7 +1329,7 @@ export class WorkflowEngineService implements OnModuleInit {
       );
     }
 
-    return this.prisma.workflowAction.create({
+    return this.db.workflowAction.create({
       data: {
         workflowInstanceId: instance.id,
         actionType: dto.actionType,

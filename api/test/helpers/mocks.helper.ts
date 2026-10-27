@@ -96,12 +96,14 @@ export type MockPrismaService = Partial<
   leaveCompOffClaim: DelegateMock;
   leavePolicy: DelegateMock;
   timesheet: DelegateMock;
+  taskTimerSession: DelegateMock;
   taskTimerInterval: DelegateMock;
   salaryStructure: DelegateMock;
   payrollCycle: DelegateMock;
   payrollEntry: DelegateMock;
   payslip: DelegateMock;
   task: DelegateMock;
+  workflowInstance: DelegateMock;
   taskCrewAssignment: DelegateMock;
   taskMessage: DelegateMock;
   project: DelegateMock;
@@ -183,12 +185,14 @@ export const createMockPrismaService = (): MockPrismaService => ({
   leaveCompOffClaim: createDelegateMock(),
   leavePolicy: createDelegateMock(),
   timesheet: createDelegateMock(),
+  taskTimerSession: createDelegateMock(),
   taskTimerInterval: createDelegateMock(),
   salaryStructure: createDelegateMock(),
   payrollCycle: createDelegateMock(),
   payrollEntry: createDelegateMock(),
   payslip: createDelegateMock(),
   task: createDelegateMock(),
+  workflowInstance: createDelegateMock(),
   taskCrewAssignment: createDelegateMock(),
   taskMessage: createDelegateMock(),
   project: createDelegateMock(),

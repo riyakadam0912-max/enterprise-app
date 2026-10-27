@@ -18,6 +18,7 @@ export interface Project {
   managerAssignedById?: number | null;
   managerAssignedBy?: { id: number; name: string; email: string } | null;
   clientName?: string | null;
+  taskType?: 'GENERAL' | 'SHOOT';
   category?: string | null;
   projectType?: string | null;
   specificTask?: string | null;
@@ -65,6 +66,7 @@ export interface Project {
     assignedToUser?: { id: number; name: string; email: string } | null;
     assignedByUser?: { id: number; name: string; email: string } | null;
     status: string;
+    taskType?: 'GENERAL' | 'SHOOT';
     category?: string | null;
     description?: string | null;
     links?: string | null;

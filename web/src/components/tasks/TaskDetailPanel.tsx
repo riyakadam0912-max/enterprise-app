@@ -278,7 +278,12 @@ function TaskDetailPanelBody({
   }, [links]);
 
   const dueDate = task.dueDate ? new Date(task.dueDate) : null;
-  const isPastDue = Boolean(dueDate && dueDate.getTime() < currentTime && taskStatus !== 'APPROVED');
+  const isFinished =
+    taskStatus === 'APPROVED' ||
+    (taskStatus === 'COMPLETED' && task.taskType === 'SHOOT');
+  const isPastDue = Boolean(
+    dueDate && dueDate.getTime() < currentTime && !isFinished,
+  );
   const reviewerName = task.reviewedByUser?.name ?? 'Manager';
 
   return (

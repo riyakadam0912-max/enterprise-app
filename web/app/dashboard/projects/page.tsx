@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sanitizeRichText } from '@/lib/sanitize-rich-text';
 import { reportError } from '@/lib/error-handling';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getCustomers, type Customer } from '@/api/customersApi';
@@ -49,6 +50,7 @@ type TaskPanelData = {
   id: number;
   taskName: string;
   status: string;
+  taskType?: 'GENERAL' | 'SHOOT';
   priority?: string | null;
   estimatedHours?: number | null;
   category?: string | null;
@@ -156,12 +158,18 @@ function getProjectOwnerNames(project?: Project | null) {
   return [...new Set(names)].join(', ');
 }
 
+function SafeRichText({ value }: { value: string }) {
+  const [html, setHtml] = useState('');
+  useEffect(() => { setHtml(sanitizeRichText(value)); }, [value]);
+  return <div dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
 function RichTextEditor({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) {
   const editorRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (editorRef.current && editorRef.current.innerHTML !== value) {
-      editorRef.current.innerHTML = value;
+      editorRef.current.innerHTML = sanitizeRichText(value);
     }
   }, [value]);
 
@@ -170,7 +178,7 @@ function RichTextEditor({ value, onChange, placeholder }: { value: string; onCha
     if (!editor) return;
     editor.focus();
     document.execCommand(command, false, arg);
-    onChange(editor.innerHTML);
+    onChange(sanitizeRichText(editor.innerHTML));
   };
 
   return (
@@ -200,7 +208,17 @@ function RichTextEditor({ value, onChange, placeholder }: { value: string; onCha
         suppressContentEditableWarning
         role="textbox"
         aria-label={placeholder}
-        onInput={(event) => onChange((event.currentTarget as HTMLDivElement).innerHTML)}
+        onPaste={(event) => {
+          event.preventDefault();
+          const html = event.clipboardData.getData('text/html');
+          if (html) {
+            document.execCommand('insertHTML', false, sanitizeRichText(html));
+          } else {
+            document.execCommand('insertText', false, event.clipboardData.getData('text/plain'));
+          }
+          onChange(sanitizeRichText(event.currentTarget.innerHTML));
+        }}
+        onInput={(event) => onChange(sanitizeRichText((event.currentTarget as HTMLDivElement).innerHTML))}
         className="min-h-30 px-3 py-2.5 text-sm leading-6 text-slate-700 outline-none"
         data-placeholder={placeholder}
       />
@@ -1716,8 +1734,9 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                   </div>
                   <div
                     className="prose prose-sm max-w-none text-sm text-slate-700"
-                    dangerouslySetInnerHTML={{ __html: projectDetails.description || '<p>No description available.</p>' }}
-                  />
+                  >
+                    <SafeRichText value={projectDetails.description || '<p>No description available.</p>'} />
+                  </div>
                   <div className="mt-4 space-y-1 text-sm text-slate-600">
                     <p>Start: {formatDate(projectDetails.startDate)}</p>
                     <p>Deadline: {formatDate(projectDetails.deadline ?? projectDetails.endDate)}</p>
@@ -1910,19 +1929,20 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                     <tbody className="divide-y divide-slate-100">
                       {visibleTasks.map((task) => {
                         const status = task.status?.toUpperCase() ?? 'PENDING';
+                        const isFinished = status === 'APPROVED' || (status === 'COMPLETED' && task.taskType === 'SHOOT');
                         const priority = (task.priority?.toUpperCase() ?? 'LOW') as keyof typeof taskPriorityClass;
                         const due = task.dueDate ? new Date(task.dueDate) : null;
                         const start = task.startDate ? new Date(task.startDate) : null;
                         const days = due ? Math.ceil((due.getTime() - currentTime) / 86400000) : null;
-                        const completion = task.completionPercent ?? (status === 'APPROVED' ? 100 : status === 'SUBMITTED' ? 80 : status === 'IN_PROGRESS' ? 55 : 0);
+                        const completion = isFinished ? 100 : task.completionPercent ?? (status === 'SUBMITTED' ? 80 : status === 'IN_PROGRESS' ? 55 : 0);
                         return (
                           <tr key={task.id} onClick={() => setSelectedTaskId(task.id)} className="cursor-pointer transition hover:bg-orange-50/50">
                             <td className="sticky left-0 z-10 bg-white px-4 py-3 text-slate-500">#{task.id}</td>
                             <td className="sticky left-14 z-10 bg-white px-4 py-3 font-semibold text-slate-900">{task.taskName}</td>
                             <td className="px-4 py-3 text-slate-600">{task.assignedToUser?.name ?? 'Unassigned'}</td>
                             <td className="whitespace-nowrap px-4 py-3 text-slate-600">{start ? formatDate(task.startDate) : '—'}</td>
-                            <td className={`whitespace-nowrap px-4 py-3 ${days != null && days < 0 && status !== 'APPROVED' ? 'font-semibold text-rose-600' : 'text-slate-600'}`}>
-                              {due ? <>{formatDateTime(task.dueDate)} {days !== null && <span className="text-xs">({days === 0 ? 'today' : days > 0 ? `${days} days left` : `${Math.abs(days)} days overdue`})</span>}</> : '—'}
+                            <td className={`whitespace-nowrap px-4 py-3 ${days != null && days < 0 && !isFinished ? 'font-semibold text-rose-600' : 'text-slate-600'}`}>
+                              {due ? <>{formatDateTime(task.dueDate)} {days !== null && !isFinished && <span className="text-xs">({days === 0 ? 'today' : days > 0 ? `${days} days left` : `${Math.abs(days)} days overdue`})</span>}</> : '—'}
                             </td>
                             <td className="px-4 py-3 text-slate-600">{start && due ? `${Math.max(1, Math.ceil((due.getTime() - start.getTime()) / 86400000) + 1)} days` : '—'}</td>
                             <td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${taskPriorityClass[priority] ?? taskPriorityClass.LOW}`}>{priority}</span></td>

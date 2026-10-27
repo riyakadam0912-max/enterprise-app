@@ -4,8 +4,12 @@ import { AttendanceTaskHoursService } from './attendance-task-hours.service';
 describe('AttendanceTaskHoursService', () => {
   const transaction = {
     $queryRaw: jest.fn().mockResolvedValue([{ locked: 1 }]),
+    organization: {
+      findUnique: jest.fn().mockResolvedValue({ timezone: 'UTC' }),
+    },
     employee: { findFirst: jest.fn() },
-    timesheet: { aggregate: jest.fn() },
+    timesheet: { aggregate: jest.fn(), findMany: jest.fn() },
+    taskTimerInterval: { findMany: jest.fn() },
     attendance: { upsert: jest.fn() },
   };
   const service = new AttendanceTaskHoursService();
@@ -17,10 +21,13 @@ describe('AttendanceTaskHoursService', () => {
       shiftId: 4,
       shift: { requiredHours: 8 },
       shiftAssignments: [],
+      organization: { timezone: 'UTC' },
     });
     transaction.timesheet.aggregate.mockResolvedValue({
       _sum: { hours: 2.5 },
     });
+    transaction.timesheet.findMany.mockResolvedValue([]);
+    transaction.taskTimerInterval.findMany.mockResolvedValue([]);
   });
 
   it('recomputes eligible hours and creates an attendance shell for the date', async () => {
@@ -50,6 +57,7 @@ describe('AttendanceTaskHoursService', () => {
           gte: new Date('2026-10-19T00:00:00.000Z'),
           lt: new Date('2026-10-20T00:00:00.000Z'),
         },
+        source: { not: 'TASK_TIMER' },
         status: { not: 'REJECTED' },
         deletedAt: null,
       },
@@ -72,6 +80,49 @@ describe('AttendanceTaskHoursService', () => {
       }),
       update: { taskHours: 2.5 },
     });
+  });
+
+  it('splits timer intervals across employee-local attendance days', async () => {
+    transaction.organization.findUnique.mockResolvedValueOnce({
+      timezone: 'Asia/Kolkata',
+    });
+    transaction.timesheet.aggregate.mockResolvedValue({
+      _sum: { hours: 0 },
+    });
+    transaction.taskTimerInterval.findMany.mockResolvedValue([
+      {
+        startedAt: new Date('2026-10-19T18:00:00.000Z'),
+        endedAt: new Date('2026-10-20T00:30:00.000Z'),
+      },
+    ]);
+
+    await service.recomputeTimesheetHours(
+      101,
+      3,
+      new Date('2026-10-19T20:00:00.000Z'),
+      transaction as never,
+    );
+
+    expect(transaction.taskTimerInterval.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          startedAt: { lt: new Date('2026-10-20T18:30:00.000Z') },
+          endedAt: { gt: new Date('2026-10-19T18:30:00.000Z') },
+        }),
+      }),
+    );
+    expect(transaction.attendance.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          employeeId_date: {
+            employeeId: 101,
+            date: new Date('2026-10-20T00:00:00.000Z'),
+          },
+        },
+        create: expect.objectContaining({ taskHours: 6 }),
+        update: { taskHours: 6 },
+      }),
+    );
   });
 
   it('uses the effective historical shift for the timesheet date', async () => {

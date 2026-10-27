@@ -50,6 +50,7 @@ function getPrismaDelegate(
 describe('ProjectsService', () => {
   let service: ProjectsService;
   let mockPrisma: ReturnType<typeof createMockPrismaService>;
+  let organizationScopeService: OrganizationScopeService;
 
   const mockAdminUser = createMockAuthUser(Role.ADMIN, { userId: 1 });
   const mockManagerUser = createMockAuthUser(Role.MANAGER, { userId: 2 });
@@ -93,6 +94,33 @@ describe('ProjectsService', () => {
     }).compile();
 
     service = module.get<ProjectsService>(ProjectsService);
+    organizationScopeService = module.get(OrganizationScopeService);
+  });
+
+  describe('shared project access', () => {
+    it('limits related-organization project access to explicit managers and co-managers', async () => {
+      jest
+        .spyOn(organizationScopeService, 'getRelatedOrganizationIds')
+        .mockResolvedValue([1, 2]);
+
+      const where = await service.getProjectAccessWhere({
+        ...mockManagerUser,
+        employeeId: 200,
+      });
+      const sharedOrganizationAccess = (where as any).OR[1];
+
+      expect(sharedOrganizationAccess).toEqual(
+        expect.objectContaining({
+          organizationId: { in: [2] },
+          deletedAt: null,
+          OR: expect.arrayContaining([
+            { managerId: mockManagerUser.userId },
+            { coManagers: { some: { id: mockManagerUser.userId } } },
+          ]),
+        }),
+      );
+      expect(sharedOrganizationAccess).not.toHaveProperty('businessUnitId');
+    });
   });
 
   it('should be defined', () => {
@@ -152,7 +180,10 @@ describe('ProjectsService', () => {
     it('includes sibling organizations in the authorized project family', async () => {
       const userDelegate = getPrismaDelegate(mockPrisma, 'user');
       jest
-        .spyOn((service as any).organizationScopeService, 'getRelatedOrganizationIds')
+        .spyOn(
+          (service as any).organizationScopeService,
+          'getRelatedOrganizationIds',
+        )
         .mockResolvedValue([10, 11, 12]);
       jest
         .spyOn((service as any).organizationScopeService, 'getOrganizationIds')
@@ -181,21 +212,26 @@ describe('ProjectsService', () => {
         isPlatformAdmin: true,
       });
 
-      await expect(service.getEligibleManagers(globalSuperAdmin)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.getEligibleManagers(globalSuperAdmin),
+      ).rejects.toThrow(BadRequestException);
 
       getPrismaDelegate(mockPrisma, 'project').findFirst.mockResolvedValueOnce({
         organizationId: 10,
       });
       getPrismaDelegate(mockPrisma, 'user').findMany.mockResolvedValueOnce([]);
       jest
-        .spyOn((service as any).organizationScopeService, 'getRelatedOrganizationIds')
+        .spyOn(
+          (service as any).organizationScopeService,
+          'getRelatedOrganizationIds',
+        )
         .mockResolvedValue([10, 11, 12]);
 
       await service.getEligibleManagers(globalSuperAdmin, 77);
 
-      expect(getPrismaDelegate(mockPrisma, 'user').findMany).toHaveBeenCalledWith(
+      expect(
+        getPrismaDelegate(mockPrisma, 'user').findMany,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             organizationId: { in: [10, 11, 12] },
@@ -1222,6 +1258,10 @@ describe('ProjectsService', () => {
     it('replaces additional owners while retaining the project creator', async () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
       const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      projectDelegate.findFirst.mockResolvedValueOnce({
+        id: 1,
+        organizationId: 1,
+      });
 
       projectDelegate.findUnique.mockResolvedValueOnce({ createdById: 1 });
       userDelegate.findMany.mockResolvedValueOnce([
@@ -1607,8 +1647,155 @@ describe('ProjectsService', () => {
       expect(result.completedTasks).toBe(1);
       expect(taskDelegate.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { projectId: 7, organizationId: 2 },
+          where: {
+            projectId: 7,
+            organizationId: 2,
+            deletedAt: null,
+          },
         }),
+      );
+    });
+
+    it('counts completed shoot tasks but not completed general tasks', async () => {
+      const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      projectDelegate.findFirst.mockResolvedValueOnce({
+        id: 8,
+        organizationId: 1,
+        projectName: 'Production',
+        status: 'IN_PROGRESS',
+      });
+      taskDelegate.findMany.mockResolvedValueOnce([
+        { id: 1, status: 'COMPLETED', taskType: 'GENERAL' },
+        { id: 2, status: 'COMPLETED', taskType: 'SHOOT' },
+        { id: 3, status: 'APPROVED', taskType: 'GENERAL' },
+      ]);
+
+      const result = await service.getProgress(8, mockAdminUser);
+
+      expect(result.completedTasks).toBe(2);
+      expect(result.progressPercent).toBe(67);
+    });
+  });
+
+  describe('audit regressions', () => {
+    beforeEach(() => {
+      jest
+        .spyOn(organizationScopeService, 'getRelatedOrganizationIds')
+        .mockResolvedValue([1, 2]);
+    });
+    it('rejects employee creation before writing a project', async () => {
+      await expect(
+        service.create({ projectName: 'Orphan' }, mockEmployeeUser),
+      ).rejects.toThrow(ForbiddenException);
+      expect(
+        getPrismaDelegate(mockPrisma, 'project').create,
+      ).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      'update',
+      'status',
+      'remove',
+      'removeEmployee',
+      'createLink',
+      'removeLink',
+    ])('rejects inaccessible projects before %s writes', async (operation) => {
+      const projects = getPrismaDelegate(mockPrisma, 'project');
+      projects.findFirst.mockResolvedValue(null);
+      const actions: Record<string, () => Promise<unknown>> = {
+        update: () =>
+          service.update(9, { projectName: 'Changed' }, mockAdminUser),
+        status: () => service.updateStatus(9, 'COMPLETED', mockAdminUser),
+        remove: () => service.remove(9, mockAdminUser),
+        removeEmployee: () => service.removeEmployee(9, 101, mockAdminUser),
+        createLink: () =>
+          service.createLink(
+            9,
+            { title: 'Link', url: 'https://example.com' },
+            mockAdminUser,
+          ),
+        removeLink: () => service.removeLink(9, 1, mockAdminUser),
+      };
+      await expect(actions[operation]()).rejects.toThrow(ForbiddenException);
+      expect(projects.update).not.toHaveBeenCalled();
+      expect(
+        getPrismaDelegate(mockPrisma, 'projectLink').create,
+      ).not.toHaveBeenCalled();
+      expect(
+        getPrismaDelegate(mockPrisma, 'projectLink').update,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('uses the accessible project organization for updates, status and deletion', async () => {
+      const projects = getPrismaDelegate(mockPrisma, 'project');
+      projects.findFirst.mockResolvedValue({ id: 9, organizationId: 2 });
+      projects.update.mockResolvedValue({ id: 9 });
+      await service.update(9, { projectName: 'Changed' }, mockAdminUser);
+      await service.updateStatus(9, 'COMPLETED', mockAdminUser);
+      await service.remove(9, mockAdminUser);
+      for (const [args] of projects.update.mock.calls) {
+        expect(args.where).toEqual({ id: 9, organizationId: 2 });
+      }
+      expect(projects.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 9, AND: expect.any(Array) }),
+        }),
+      );
+    });
+
+    it('removes an assigned employee from a related organization', async () => {
+      const projects = getPrismaDelegate(mockPrisma, 'project');
+      const employees = getPrismaDelegate(mockPrisma, 'employee');
+      projects.findFirst.mockResolvedValue({ id: 9, organizationId: 2 });
+      employees.findFirst.mockResolvedValue({
+        id: 101,
+        name: 'Assigned employee',
+      });
+      projects.update.mockResolvedValue({ id: 9 });
+      await service.removeEmployee(9, 101, mockAdminUser);
+      expect(employees.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            id: 101,
+            assignedProjects: { some: { id: 9 } },
+            deletedAt: null,
+          },
+        }),
+      );
+      expect(projects.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 9, organizationId: 2 },
+          data: { assignedEmployees: { disconnect: { id: 101 } } },
+        }),
+      );
+    });
+
+    it('reads and writes links in the accessible project organization', async () => {
+      const projects = getPrismaDelegate(mockPrisma, 'project');
+      const links = getPrismaDelegate(mockPrisma, 'projectLink');
+      projects.findFirst.mockResolvedValue({ id: 9, organizationId: 2 });
+      jest.spyOn(service, 'findOne').mockResolvedValue({ id: 9 } as any);
+      links.findFirst.mockResolvedValue({ id: 3, projectId: 9 });
+      await service.getLinks(9, mockAdminUser);
+      await service.createLink(
+        9,
+        { title: 'Link', url: 'https://example.com' },
+        mockAdminUser,
+      );
+      await service.removeLink(9, 3, mockAdminUser);
+      expect(links.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { projectId: 9, organizationId: 2, deletedAt: null },
+        }),
+      );
+      expect(links.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ organizationId: 2 }),
+        }),
+      );
+      expect(links.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 3, organizationId: 2 } }),
       );
     });
   });

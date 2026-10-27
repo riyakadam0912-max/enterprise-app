@@ -47,17 +47,6 @@ export class ProjectMessagesService {
     return user.organizationId;
   }
 
-  private async getScopedUser(user: AuthUser) {
-    const scopedUser = await this.db.user.findUnique({
-      where: { id: user.userId },
-      select: { id: true, role: true, managerId: true, employeeId: true },
-    });
-    if (!scopedUser) {
-      throw new ForbiddenException('User not found');
-    }
-    return scopedUser;
-  }
-
   /**
    * Centralized access control for project chat
    */
@@ -65,50 +54,14 @@ export class ProjectMessagesService {
     projectId: number,
     user: AuthUser,
   ): Promise<boolean> {
-    const organizationId = this.validateOrganization(user);
-
     if (this.isPlatformAdmin(user)) {
       return true;
-    }
-
-    if (user.role === Role.MANAGER) {
-      const project = await this.db.project.findFirst({
-        where: {
-          id: projectId,
-          organizationId,
-          OR: [
-            { managerId: user.userId },
-            { coManagers: { some: { id: user.userId } } },
-          ],
-        },
-        select: { id: true },
-      });
-      const allowed = Boolean(project);
-      return allowed;
-    }
-
-    const scopedUser = await this.getScopedUser(user);
-    if (!scopedUser.employeeId) {
-      return false;
     }
 
     const project = await this.db.project.findFirst({
       where: {
         id: projectId,
-        organizationId,
-        OR: [
-          { assignedEmployees: { some: { id: scopedUser.employeeId } } },
-          {
-            tasks: {
-              some: {
-                OR: [
-                  { assignedToUserId: user.userId },
-                  { assignedToId: scopedUser.employeeId },
-                ],
-              },
-            },
-          },
-        ],
+        AND: [await this.projectsService.getProjectAccessWhere(user)],
       },
       select: { id: true },
     });

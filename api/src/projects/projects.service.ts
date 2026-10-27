@@ -31,6 +31,7 @@ const TASK_STATUSES = [
   'IN_PROGRESS',
   'SUBMITTED',
   'APPROVED',
+  'COMPLETED',
   'REJECTED',
 ] as const;
 @Injectable()
@@ -136,7 +137,22 @@ export class ProjectsService {
     return employee?.id ?? null;
   }
 
-  async getProjectAccessWhere(
+  async getProjectAccessWhere(user: AuthUser): Promise<Prisma.ProjectWhereInput> {
+    const local = await this.getLocalProjectAccessWhere(user);
+    if (user.role !== Role.MANAGER && user.role !== Role.EMPLOYEE) return local;
+    const organizationId = this.validateOrganization(user);
+    const related = (await this.organizationScopeService.getRelatedOrganizationIds(organizationId)).filter((id) => id !== organizationId);
+    if (!related.length) return local;
+    const shared: Prisma.ProjectWhereInput[] = user.role === Role.MANAGER
+      ? [{ managerId: user.userId }, { coManagers: { some: { id: user.userId } } }]
+      : [];
+    const employeeId = user.employeeId ?? (await this.resolveEmployeeId(user, await this.getScopedUser(user)));
+    if (employeeId) shared.push({ assignedEmployees: { some: { id: employeeId } } });
+    if (!shared.length) return local;
+    return { OR: [local, { organizationId: { in: related }, deletedAt: null, OR: shared }] };
+  }
+
+  private async getLocalProjectAccessWhere(
     user: AuthUser,
   ): Promise<Prisma.ProjectWhereInput> {
     if (this.isPlatformAdmin(user) && user.organizationId == null) {
@@ -361,6 +377,17 @@ export class ProjectsService {
     return Boolean(project);
   }
 
+  private async getAccessibleProject(projectId: number, user: AuthUser) {
+    this.validateOrganization(user);
+    const project = await this.db.project.findFirst({
+      where: { id: projectId, ...(await this.getProjectAccessWhere(user)) },
+      select: { id: true, organizationId: true },
+    });
+    if (!project)
+      throw new ForbiddenException('You can only access allowed projects');
+    return project;
+  }
+
   private async canManageProject(
     projectId: number,
     user: AuthUser,
@@ -383,7 +410,7 @@ export class ProjectsService {
     const project = await this.db.project.findFirst({
       where: {
         id: projectId,
-        organizationId,
+        AND: [await this.getProjectAccessWhere(user)],
         OR: [
           { managerId: user.userId },
           { coManagers: { some: { id: user.userId } } },
@@ -414,7 +441,7 @@ export class ProjectsService {
 
     const organizationId = this.validateOrganization(user);
     const project = await this.db.project.findFirst({
-      where: { id: projectId, organizationId, managerId: user.userId },
+      where: { id: projectId, AND: [await this.getProjectAccessWhere(user)], managerId: user.userId },
       select: { id: true },
     });
     return Boolean(project);
@@ -483,6 +510,15 @@ export class ProjectsService {
   }
 
   async create(dto: CreateProjectDto, user: AuthUser) {
+    if (
+      !this.isPlatformAdmin(user) &&
+      user.role !== Role.ADMIN &&
+      user.role !== Role.MANAGER
+    ) {
+      throw new ForbiddenException(
+        'Only administrators or managers can create projects',
+      );
+    }
     const organizationId = this.validateOrganization(user);
     const assignableOrganizationIds =
       await this.getAssignableProjectOrganizationIds(organizationId, user);
@@ -668,12 +704,6 @@ export class ProjectsService {
 
   async findAll(user: AuthUser) {
     const where = await this.getProjectScope(user);
-    const organizationIds = await this.getProjectOrganizationIds(user);
-    const organizationFilter =
-      organizationIds == null
-        ? {}
-        : { organizationId: { in: organizationIds } };
-
     return this.db.project.findMany({
       where,
       include: {
@@ -684,11 +714,11 @@ export class ProjectsService {
         createdBy: { select: { id: true, name: true, email: true } },
         organization: { select: { id: true, name: true } },
         coManagers: {
-          where: organizationFilter,
+          where: { deletedAt: null },
           select: { id: true, name: true, email: true },
         },
         assignedEmployees: {
-          where: organizationFilter,
+          where: { deletedAt: null },
           select: {
             id: true,
             name: true,
@@ -697,7 +727,7 @@ export class ProjectsService {
             designation: true,
           },
         },
-        links: { where: { ...organizationFilter, deletedAt: null } },
+        links: { where: { deletedAt: null } },
         customer: {
           select: { id: true, customerName: true, customerType: true },
         },
@@ -733,9 +763,6 @@ export class ProjectsService {
             ],
           }
         : {
-            ...(projectOrganizationIds == null
-              ? {}
-              : { organizationId: { in: projectOrganizationIds } }),
             projectId: id,
           };
 
@@ -748,25 +775,11 @@ export class ProjectsService {
         createdBy: { select: { id: true, name: true, email: true } },
         organization: { select: { id: true, name: true } },
         coManagers: {
-          where:
-            organizationId == null
-              ? {}
-              : {
-                  organizationId: {
-                    in: projectOrganizationIds ?? [organizationId],
-                  },
-                },
+          where: { deletedAt: null },
           select: { id: true, name: true, email: true },
         },
         assignedEmployees: {
-          where:
-            organizationId == null
-              ? {}
-              : {
-                  organizationId: {
-                    in: projectOrganizationIds ?? [organizationId],
-                  },
-                },
+          where: { deletedAt: null },
           select: {
             id: true,
             name: true,
@@ -775,12 +788,7 @@ export class ProjectsService {
             designation: true,
           },
         },
-        links: {
-          where:
-            organizationId == null
-              ? { deletedAt: null }
-              : { organizationId, deletedAt: null },
-        },
+        links: { where: { deletedAt: null } },
       },
     });
     if (!project) throw new NotFoundException(`Project #${id} not found`);
@@ -1095,7 +1103,7 @@ export class ProjectsService {
     employeeId: number,
     requestingUser: AuthUser,
   ) {
-    const organizationId = this.validateOrganization(requestingUser);
+    this.validateOrganization(requestingUser);
     const allowed = await this.canManageProject(projectId, requestingUser);
     if (!allowed) {
       throw new ForbiddenException(
@@ -1103,8 +1111,17 @@ export class ProjectsService {
       );
     }
 
+    const { organizationId } = await this.getAccessibleProject(
+      projectId,
+      requestingUser,
+    );
+
     const employee = await this.db.employee.findFirst({
-      where: { id: employeeId, organizationId, deletedAt: null },
+      where: {
+        id: employeeId,
+        assignedProjects: { some: { id: projectId } },
+        deletedAt: null,
+      },
       select: { id: true, name: true },
     });
     if (!employee) {
@@ -1145,7 +1162,7 @@ export class ProjectsService {
   }
 
   async update(id: number, dto: UpdateProjectDto, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    this.validateOrganization(user);
     const canManage = await this.canManageProject(id, user);
     if (!canManage) {
       throw new ForbiddenException(
@@ -1153,9 +1170,21 @@ export class ProjectsService {
       );
     }
 
+    const { organizationId } = await this.getAccessibleProject(id, user);
+
     const scope = await this.businessUnitsService.resolveScope(user as any);
     const dtoAny = dto as any;
-    if (dtoAny.businessUnitId !== undefined) {
+    if (dtoAny.businessUnitId != null) {
+      const unit = await this.db.businessUnit.findFirst({
+        where: { id: dtoAny.businessUnitId, organizationId, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      if (!unit) throw new NotFoundException('Business unit not found');
+    }
+    if (
+      dtoAny.businessUnitId !== undefined &&
+      organizationId === user.organizationId
+    ) {
       await this.businessUnitsService.assertRecordAccessible(
         scope,
         dtoAny.businessUnitId,
@@ -1271,13 +1300,15 @@ export class ProjectsService {
   }
 
   async updateStatus(id: number, status: string, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    this.validateOrganization(user);
     const canManage = await this.canManageProject(id, user);
     if (!canManage) {
       throw new ForbiddenException(
         'Only project manager or admin can update this project status',
       );
     }
+
+    const { organizationId } = await this.getAccessibleProject(id, user);
 
     const updated = await this.db.project.update({
       where: { id, organizationId },
@@ -1300,13 +1331,15 @@ export class ProjectsService {
   }
 
   async remove(id: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    this.validateOrganization(user);
     const canManage = await this.canManageProject(id, user);
     if (!canManage) {
       throw new ForbiddenException(
         'Only project manager or admin can delete this project',
       );
     }
+    const { organizationId } = await this.getAccessibleProject(id, user);
+
     return this.db.project.update({
       where: { id, organizationId },
       data: { deletedAt: new Date() },
@@ -1480,16 +1513,9 @@ export class ProjectsService {
   }
 
   async getLinks(projectId: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
-    const hasAccess = await this.canViewProject(projectId, user);
-    if (!hasAccess) {
-      throw new ForbiddenException(
-        'You can only access links for allowed projects',
-      );
-    }
-
+    const { organizationId } = await this.getAccessibleProject(projectId, user);
     return this.db.projectLink.findMany({
-      where: { projectId, project: { organizationId }, deletedAt: null },
+      where: { projectId, organizationId, deletedAt: null },
       include: { createdBy: { select: { id: true, name: true, email: true } } },
       orderBy: { createdAt: 'desc' },
     });
@@ -1500,13 +1526,15 @@ export class ProjectsService {
     dto: CreateProjectLinkDto,
     user: AuthUser,
   ) {
-    const organizationId = this.validateOrganization(user);
+    this.validateOrganization(user);
     const canManage = await this.canManageProject(projectId, user);
     if (!canManage) {
       throw new ForbiddenException(
         'Only project manager or admin can add links',
       );
     }
+
+    const { organizationId } = await this.getAccessibleProject(projectId, user);
 
     await this.findOne(projectId, user);
 
@@ -1523,13 +1551,15 @@ export class ProjectsService {
   }
 
   async removeLink(projectId: number, linkId: number, user: AuthUser) {
-    const organizationId = this.validateOrganization(user);
+    this.validateOrganization(user);
     const canManage = await this.canManageProject(projectId, user);
     if (!canManage) {
       throw new ForbiddenException(
         'Only project manager or admin can remove links',
       );
     }
+
+    const { organizationId } = await this.getAccessibleProject(projectId, user);
 
     const link = await this.db.projectLink.findFirst({
       where: { id: linkId, projectId, organizationId },
@@ -1571,8 +1601,9 @@ export class ProjectsService {
       where: {
         projectId,
         organizationId: project.organizationId,
+        deletedAt: null,
       },
-      select: { id: true, status: true },
+      select: { id: true, status: true, taskType: true },
     });
 
     const byStatus: Record<string, number> = {};
@@ -1588,7 +1619,12 @@ export class ProjectsService {
     }
 
     const totalTasks = tasks.length;
-    const completedTasks = byStatus.APPROVED;
+    const completedShootTasks = tasks.filter(
+      (task) =>
+        String(task.status || '').toUpperCase() === 'COMPLETED' &&
+        task.taskType === 'SHOOT',
+    ).length;
+    const completedTasks = byStatus.APPROVED + completedShootTasks;
     const progressPercent =
       totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 

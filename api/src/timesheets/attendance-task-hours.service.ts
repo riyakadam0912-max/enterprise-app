@@ -1,5 +1,11 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import {
+  attendanceDateFromKey,
+  dateKeyInTimezone,
+  localMidnightAfterDateInTimezone,
+  localMidnightAtDateInTimezone,
+} from '../attendance/attendance-time.utils';
 
 @Injectable()
 export class AttendanceTaskHoursService {
@@ -9,14 +15,27 @@ export class AttendanceTaskHoursService {
     timesheetDate: Date,
     transaction: Prisma.TransactionClient,
   ) {
-    const date = new Date(
-      Date.UTC(
-        timesheetDate.getUTCFullYear(),
-        timesheetDate.getUTCMonth(),
-        timesheetDate.getUTCDate(),
-      ),
-    );
+    const organization = await transaction.organization.findUnique({
+      where: { id: organizationId },
+      select: { timezone: true },
+    });
+    if (!organization) {
+      throw new BadRequestException(
+        'The employee organization is unavailable for attendance tracking',
+      );
+    }
+
+    const timezone = organization.timezone ?? 'UTC';
+    const dateKey = dateKeyInTimezone(timesheetDate, timezone);
+    const date = attendanceDateFromKey(dateKey);
     const nextDate = new Date(date.getTime() + 86_400_000);
+    const dayStart = localMidnightAtDateInTimezone(dateKey, timezone);
+    const dayEnd = localMidnightAfterDateInTimezone(dateKey, timezone);
+    if (!dayStart || !dayEnd || dayEnd <= dayStart) {
+      throw new BadRequestException(
+        'Unable to calculate task time for the employee organization timezone',
+      );
+    }
     const dayNumber = Math.floor(date.getTime() / 86_400_000);
 
     await transaction.$queryRaw<Array<{ locked: number }>>`
@@ -55,16 +74,70 @@ export class AttendanceTaskHoursService {
       );
     }
 
-    const taskHours = await transaction.timesheet.aggregate({
-      where: {
-        employeeId,
-        organizationId,
-        date: { gte: date, lt: nextDate },
-        status: { not: 'REJECTED' },
-        deletedAt: null,
-      },
-      _sum: { hours: true },
-    });
+    const [timesheetHours, timerIntervals, timerTimesheets] =
+      await Promise.all([
+        transaction.timesheet.aggregate({
+          where: {
+            employeeId,
+            organizationId,
+            date: { gte: date, lt: nextDate },
+            source: { not: 'TASK_TIMER' },
+            status: { not: 'REJECTED' },
+            deletedAt: null,
+          },
+          _sum: { hours: true },
+        }),
+        transaction.taskTimerInterval.findMany({
+          where: {
+            timerSession: { user: { employeeId } },
+            startedAt: { lt: dayEnd },
+            endedAt: { gt: dayStart },
+          },
+          select: { startedAt: true, endedAt: true },
+        }),
+        transaction.timesheet.findMany({
+          where: {
+            employeeId,
+            organizationId,
+            date: {
+              gte: new Date(date.getTime() - 86_400_000),
+              lt: new Date(nextDate.getTime() + 86_400_000),
+            },
+            source: 'TASK_TIMER',
+            status: { not: 'REJECTED' },
+            deletedAt: null,
+          },
+          select: {
+            date: true,
+            hours: true,
+            timerSession: {
+              select: { intervals: { select: { id: true } } },
+            },
+          },
+        }),
+      ]);
+
+    const intervalHours = timerIntervals.reduce((total, interval) => {
+      const overlapStart = Math.max(
+        interval.startedAt.getTime(),
+        dayStart.getTime(),
+      );
+      const overlapEnd = Math.min(
+        interval.endedAt.getTime(),
+        dayEnd.getTime(),
+      );
+      return total + Math.max(0, overlapEnd - overlapStart) / 3_600_000;
+    }, 0);
+    const legacyTimerHours = timerTimesheets
+      .filter(
+        (timesheet) =>
+          dateKeyInTimezone(timesheet.date, timezone) === dateKey &&
+          (!timesheet.timerSession ||
+            timesheet.timerSession.intervals.length === 0),
+      )
+      .reduce((total, timesheet) => total + timesheet.hours, 0);
+    const taskHours =
+      (timesheetHours._sum.hours ?? 0) + intervalHours + legacyTimerHours;
     const shiftAssignment = employee.shiftAssignments[0];
 
     await transaction.attendance.upsert({
@@ -75,11 +148,12 @@ export class AttendanceTaskHoursService {
         date,
         shiftId: shiftAssignment?.shiftId ?? employee.shiftId,
         requiredHours:
-          shiftAssignment?.shift.requiredHours ?? employee.shift?.requiredHours,
+          shiftAssignment?.shift.requiredHours ??
+          employee.shift?.requiredHours,
         status: 'NOT_STARTED',
-        taskHours: taskHours._sum.hours ?? 0,
+        taskHours,
       },
-      update: { taskHours: taskHours._sum.hours ?? 0 },
+      update: { taskHours },
     });
   }
 }

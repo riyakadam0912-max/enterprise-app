@@ -70,7 +70,7 @@ export function TaskDetailHeader({
 }: TaskDetailHeaderProps) {
   const normalizedStatus = status.trim().toUpperCase() || 'PENDING';
   const normalizedPriority = priority?.trim().toUpperCase() || 'LOW';
-  const StatusIcon = normalizedStatus === 'APPROVED'
+  const StatusIcon = normalizedStatus === 'APPROVED' || normalizedStatus === 'COMPLETED'
     ? CircleCheck
     : normalizedStatus === 'REJECTED'
       ? CircleX

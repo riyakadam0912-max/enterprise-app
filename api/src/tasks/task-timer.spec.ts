@@ -56,7 +56,7 @@ describe('TasksService per-user task timer sessions', () => {
       findFirst: jest.Mock;
       create: jest.Mock;
     };
-    taskTimerInterval: { create: jest.Mock };
+    taskTimerInterval: { create: jest.Mock; findMany: jest.Mock };
     timesheet: { create: jest.Mock };
     attendance: { findMany: jest.Mock; findFirst: jest.Mock };
     attendanceBreak: { updateMany: jest.Mock };
@@ -74,7 +74,10 @@ describe('TasksService per-user task timer sessions', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 101 }),
       },
-      taskTimerInterval: { create: jest.fn().mockResolvedValue({ id: 51 }) },
+      taskTimerInterval: {
+        create: jest.fn().mockResolvedValue({ id: 51 }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       timesheet: { create: jest.fn().mockResolvedValue({ id: 77 }) },
       attendance: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -89,9 +92,12 @@ describe('TasksService per-user task timer sessions', () => {
       },
       attendanceSession: { findFirst: jest.fn().mockResolvedValue(null) },
       employee: {
-        findFirst: jest.fn().mockResolvedValue({ shift: { type: 'FIXED' } }),
+        findFirst: jest.fn().mockResolvedValue({
+          organizationId,
+          shift: { type: 'FIXED' },
+        }),
       },
-      user: { findFirst: jest.fn().mockResolvedValue({ employeeId: 101 }) },
+      user: { findFirst: jest.fn().mockResolvedValue({ employeeId: 101, employee: { organizationId } }) },
       $queryRaw: jest.fn().mockResolvedValue([]),
     };
     prisma = {
@@ -107,7 +113,10 @@ describe('TasksService per-user task timer sessions', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       employee: {
-        findFirst: jest.fn().mockResolvedValue({ shift: { type: 'FIXED' } }),
+        findFirst: jest.fn().mockResolvedValue({
+          organizationId,
+          shift: { type: 'FIXED' },
+        }),
       },
       attendance: {
         findFirst: jest.fn().mockResolvedValue({ id: 201 }),
@@ -141,7 +150,6 @@ describe('TasksService per-user task timer sessions', () => {
       data: expect.objectContaining({
         taskId: 8,
         userId: 11,
-        organizationId,
         status: 'RUNNING',
       }),
     });
@@ -153,6 +161,37 @@ describe('TasksService per-user task timer sessions', () => {
         status: 'RUNNING',
       }),
     });
+  });
+
+  it('uses the linked employee organization for attendance checks', async () => {
+    const employeeOrganizationId = 25;
+    tx.employee.findFirst.mockResolvedValueOnce({
+      organizationId: employeeOrganizationId,
+      shift: { type: 'FIXED' },
+    });
+
+    await service.updateTimer(
+      8,
+      { action: 'start' },
+      makeUser(11, Role.EMPLOYEE, 101),
+    );
+
+    expect(tx.attendanceSession.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          employeeId: 101,
+          organizationId: employeeOrganizationId,
+        }),
+      }),
+    );
+    expect(tx.attendance.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          employeeId: 101,
+          organizationId: employeeOrganizationId,
+        }),
+      }),
+    );
   });
 
   it('allows an employee to track only an assigned task', async () => {
@@ -181,14 +220,14 @@ describe('TasksService per-user task timer sessions', () => {
         id: 101,
         taskId: 9,
         userId: 11,
-        organizationId,
         status: 'RUNNING',
+        organizationId: 99,
         durationSeconds: 0,
         remainingSeconds: 0,
         startedAt,
         totalSeconds: 0,
         createdAt: startedAt,
-        task: { ...task, id: 9 },
+        task: { ...task, id: 9, organizationId: 99 },
       },
     ]);
     await service.updateTimer(8, { action: 'start' }, worker);
@@ -205,7 +244,12 @@ describe('TasksService per-user task timer sessions', () => {
       }),
     );
     expect(tx.timesheet.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ timerSessionId: 101 }),
+      data: expect.objectContaining({
+        timerSessionId: 101,
+        taskId: 9,
+        organizationId,
+        employeeId: 101,
+      }),
     });
     expect(tx.taskTimerSession.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -242,6 +286,7 @@ describe('TasksService per-user task timer sessions', () => {
       status: 'PAUSED',
     });
     tx.employee.findFirst.mockResolvedValue({
+      organizationId,
       shift: { type: 'FLEXIBLE' },
     });
     tx.attendanceSession.findFirst.mockResolvedValueOnce({
@@ -269,6 +314,7 @@ describe('TasksService per-user task timer sessions', () => {
       status: 'PAUSED',
     });
     tx.employee.findFirst.mockResolvedValue({
+      organizationId,
       shift: { type: 'FLEXIBLE' },
     });
     tx.attendanceSession.findFirst.mockResolvedValueOnce({
@@ -323,6 +369,7 @@ describe('TasksService per-user task timer sessions', () => {
 
   it('allows a flexible employee to start a timer when no break is active', async () => {
     tx.employee.findFirst.mockResolvedValue({
+      organizationId,
       shift: { type: 'FLEXIBLE' },
     });
     tx.attendanceSession.findFirst.mockResolvedValueOnce({
@@ -349,6 +396,7 @@ describe('TasksService per-user task timer sessions', () => {
 
   it('allows an open flexible session to start a timer when the current shift is stale', async () => {
     tx.employee.findFirst.mockResolvedValue({
+      organizationId,
       shift: { type: 'FIXED' },
     });
     tx.attendanceSession.findFirst.mockResolvedValueOnce({
@@ -377,6 +425,7 @@ describe('TasksService per-user task timer sessions', () => {
 
   it('rejects starting a timer during an open flexible-session break when the current shift is stale', async () => {
     tx.employee.findFirst.mockResolvedValue({
+      organizationId,
       shift: { type: 'FIXED' },
     });
     tx.attendanceSession.findFirst.mockResolvedValueOnce({
@@ -400,6 +449,7 @@ describe('TasksService per-user task timer sessions', () => {
 
   it('allows a flexible timer from an open attendance row when its session is missing', async () => {
     tx.employee.findFirst.mockResolvedValue({
+      organizationId,
       shift: { type: 'FLEXIBLE' },
     });
     tx.attendance.findFirst.mockResolvedValueOnce({
@@ -425,6 +475,7 @@ describe('TasksService per-user task timer sessions', () => {
 
   it('rejects a flexible timer when a legacy open attendance break exists without a session', async () => {
     tx.employee.findFirst.mockResolvedValue({
+      organizationId,
       shift: { type: 'FLEXIBLE' },
     });
     tx.attendance.findFirst.mockResolvedValueOnce({
@@ -448,6 +499,7 @@ describe('TasksService per-user task timer sessions', () => {
 
   it('rejects a timer when a legacy attendance break is open beside a flexible session', async () => {
     tx.employee.findFirst.mockResolvedValue({
+      organizationId,
       shift: { type: 'FLEXIBLE' },
     });
     tx.attendanceSession.findFirst.mockResolvedValueOnce({
@@ -478,9 +530,7 @@ describe('TasksService per-user task timer sessions', () => {
     prisma.taskTimerSession.findFirst.mockResolvedValueOnce({
       id: 101,
       taskId: 8,
-      userId: 11,
-      organizationId,
-      status: 'RUNNING',
+      userId: 11, status: 'RUNNING',
       durationSeconds: 3600,
       remainingSeconds: 3570,
       startedAt,
@@ -540,9 +590,7 @@ describe('TasksService per-user task timer sessions', () => {
     prisma.taskTimerSession.findFirst.mockResolvedValueOnce({
       id: 101,
       taskId: 8,
-      userId: 11,
-      organizationId,
-      status: 'RUNNING',
+      userId: 11, status: 'RUNNING',
       durationSeconds: 0,
       remainingSeconds: 0,
       startedAt,
@@ -571,9 +619,7 @@ describe('TasksService per-user task timer sessions', () => {
       {
         id: 101,
         taskId: 8,
-        userId: 11,
-        organizationId,
-        status: 'RUNNING',
+        userId: 11, status: 'RUNNING',
         durationSeconds: 0,
         remainingSeconds: 0,
         startedAt,
@@ -611,9 +657,7 @@ describe('TasksService per-user task timer sessions', () => {
     expect(tx.taskTimerSession.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
-          userId: 11,
-          organizationId,
-          status: 'RUNNING',
+          userId: 11, status: 'RUNNING',
         },
       }),
     );
