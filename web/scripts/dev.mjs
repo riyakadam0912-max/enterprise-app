@@ -1,7 +1,17 @@
+import nextEnv from '@next/env';
+import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import devUtils from '../../scripts/dev-utils.js';
 
 const { banner, COLORS, ensurePortsFree, logStep } = devUtils;
+const { loadEnvConfig } = nextEnv;
+const webDirectory = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+);
+
+loadEnvConfig(webDirectory, process.env.NODE_ENV !== 'production');
 
 async function waitForBackend(timeoutMs = 120000, intervalMs = 1500) {
   const startedAt = Date.now();

@@ -78,7 +78,7 @@ describe('TimesheetsService', () => {
         },
         {
           provide: OrganizationScopeService,
-          useValue: { getOrganizationIds: jest.fn().mockResolvedValue([1]) },
+          useValue: { getOrganizationIds: jest.fn().mockResolvedValue([1]), getRelatedOrganizationIds: jest.fn().mockResolvedValue([1]) },
         },
       ],
     }).compile();

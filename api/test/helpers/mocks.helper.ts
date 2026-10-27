@@ -99,6 +99,9 @@ export type MockPrismaService = Partial<
   taskTimerSession: DelegateMock;
   taskTimerInterval: DelegateMock;
   salaryStructure: DelegateMock;
+  salaryTemplate: DelegateMock;
+  salaryTemplateComponent: DelegateMock;
+  salaryStructureComponent: DelegateMock;
   payrollCycle: DelegateMock;
   payrollEntry: DelegateMock;
   payslip: DelegateMock;
@@ -188,6 +191,9 @@ export const createMockPrismaService = (): MockPrismaService => ({
   taskTimerSession: createDelegateMock(),
   taskTimerInterval: createDelegateMock(),
   salaryStructure: createDelegateMock(),
+  salaryTemplate: createDelegateMock(),
+  salaryTemplateComponent: createDelegateMock(),
+  salaryStructureComponent: createDelegateMock(),
   payrollCycle: createDelegateMock(),
   payrollEntry: createDelegateMock(),
   payslip: createDelegateMock(),

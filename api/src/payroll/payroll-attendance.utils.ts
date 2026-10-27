@@ -37,6 +37,8 @@ const DEFAULT_PAYROLL_SHIFT: WorkdayShift = {
   workingDays: [1, 2, 3, 4, 5],
 };
 
+export const MONTHLY_PAID_LEAVE_LIMIT = 1.5;
+
 export async function getPayrollAttendanceMetrics(
   prisma: PrismaService,
   employeeId: number,
@@ -228,6 +230,7 @@ export async function getPayrollAttendanceMetrics(
   let totalExpectedHours = 0;
   let lateCount = 0;
   let overtimeHours = 0;
+  let remainingPaidLeave = MONTHLY_PAID_LEAVE_LIMIT;
 
   for (
     const date = new Date(startDate);
@@ -257,8 +260,15 @@ export async function getPayrollAttendanceMetrics(
     );
     const leaveFraction = leave ? (leave.duration === 'HALF_DAY' ? 0.5 : 1) : 0;
     if (leave) {
-      if (leave.isPaid ?? true) paidLeaves += leaveFraction || 1;
-      else unpaidLeaves += leaveFraction || 1;
+      const requestedFraction = leaveFraction || 1;
+      if (leave.isPaid ?? true) {
+        const paidFraction = Math.min(requestedFraction, remainingPaidLeave);
+        paidLeaves += paidFraction;
+        unpaidLeaves += requestedFraction - paidFraction;
+        remainingPaidLeave -= paidFraction;
+      } else {
+        unpaidLeaves += requestedFraction;
+      }
       if (leaveFraction === 1) continue;
     }
     if (

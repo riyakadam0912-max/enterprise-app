@@ -3568,14 +3568,14 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       await Promise.all([
         this.prisma.taskTimerInterval.findMany({
           where: {
-            timerSession: { userId: user.userId, organizationId },
+            timerSession: { userId: user.userId },
             startedAt: { lt: measuredEnd },
             endedAt: { gt: rangeStart },
           },
           select: { startedAt: true, endedAt: true },
         }),
         this.prisma.taskTimerSession.findFirst({
-          where: { userId: user.userId, organizationId, status: 'RUNNING' },
+          where: { userId: user.userId, status: 'RUNNING' },
           select: {
             startedAt: true,
             task: { select: { taskName: true } },
@@ -4353,10 +4353,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     rangeStart: Date,
     rangeEnd: Date,
   ) {
-    const timerScope = {
-      organizationId,
-      user: { employeeId },
-    };
+    const timerScope = { user: { employeeId, employee: { organizationId } } };
     const [intervals, activeTimers] = await Promise.all([
       this.prisma.taskTimerInterval.findMany({
         where: {
@@ -4603,10 +4600,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       ...[...taskTimeRanges.values()].map(({ end }) => end.getTime()),
     );
     const employeeIds = employees.map((employee) => employee.id);
-    const timerScope = {
-      organizationId: { in: [...timezoneByOrganization.keys()] },
-      user: { employeeId: { in: employeeIds } },
-    };
+    const timerScope = { user: { employeeId: { in: employeeIds } } };
     const [taskIntervals, activeTaskTimers] =
       employeeIds.length > 0
         ? await Promise.all([

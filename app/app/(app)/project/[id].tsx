@@ -117,6 +117,7 @@ export default function ProjectDetail() {
       status?: string;
     }) => {
       if (action === "start") return updateTaskStatus(taskId, "IN_PROGRESS");
+      if (status === "PENDING") await updateTaskStatus(taskId, "IN_PROGRESS");
       if (status !== "SUBMITTED") await updateTaskStatus(taskId, "SUBMITTED");
       return reviewTask(taskId, "APPROVED", "Completed from project workspace");
     },

@@ -114,7 +114,7 @@ function normalizeTaskStatus(status?: string | null): TaskStatus {
 
 function isOverdue(task: Task, currentTime: number) {
   if (!task.dueDate) return false;
-  return new Date(task.dueDate).getTime() < currentTime && task.status?.toUpperCase() !== 'APPROVED';
+  return new Date(task.dueDate).getTime() < currentTime && !['APPROVED', 'COMPLETED'].includes(task.status?.toUpperCase() ?? '');
 }
 
 function parseLinks(value?: string | null) {

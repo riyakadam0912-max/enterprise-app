@@ -17,6 +17,11 @@ interface PayrollStructureLike {
   tds?: number | null;
   allowedLateMarks?: number | null;
   lateMarkPenalty?: number | null;
+  manualPf?: number | null;
+  manualEsi?: number | null;
+  manualProfessionalTax?: number | null;
+  manualTds?: number | null;
+  manualOtherDeductions?: number | null;
 }
 
 interface PayrollCalculationInput {
@@ -59,6 +64,7 @@ interface PayrollCalculationResult {
     lossOfPay: number;
     latePenalty: number;
     advance: number;
+    other: number;
   };
   totalDeductions: number;
   netPay: number;
@@ -132,10 +138,16 @@ export class PayrollCalculationService {
       attendanceData,
     );
 
-    const totalDeductions = Object.values(deductions).reduce(
-      (a: number, b: number) => a + b,
-      0,
-    );
+    // Employer PF is an employer cost and must never reduce employee take-home.
+    const totalDeductions =
+      deductions.pfEmployee +
+      deductions.esi +
+      deductions.professionalTax +
+      deductions.tds +
+      deductions.lossOfPay +
+      deductions.latePenalty +
+      deductions.advance +
+      deductions.other;
     const netPay = earnings.total - totalDeductions;
     const taxableIncome = this.calculateTaxableIncome(
       earnings.total,
@@ -215,10 +227,12 @@ export class PayrollCalculationService {
     attendanceData: NonNullable<PayrollCalculationInput['attendanceData']>,
   ) {
     const basic = salaryStructure.basic || 0;
-    const pfEmployee = this.calculatePF(basic, true);
+    const pfEmployee = salaryStructure.manualPf ?? this.calculatePF(basic, true);
     const pfEmployer = this.calculatePF(basic, false);
-    const esi = this.calculateESI(grossEarnings);
-    const professionalTax = this.calculateProfessionalTax(grossEarnings);
+    const esi = salaryStructure.manualEsi ?? this.calculateESI(grossEarnings);
+    const professionalTax =
+      salaryStructure.manualProfessionalTax ??
+      this.calculateProfessionalTax(grossEarnings);
     const lossOfPay = this.calculateLossOfPay(basic, attendanceData.absentDays);
     const latePenalty = this.calculateLatePenalty(
       salaryStructure,
@@ -226,7 +240,8 @@ export class PayrollCalculationService {
     );
 
     // TDS is calculated monthly based on annual tax projection
-    const tds = (salaryStructure.tds || 0) / 12;
+    const tds =
+      salaryStructure.manualTds ?? (salaryStructure.tds || 0) / 12;
 
     return {
       pfEmployee: Math.round(pfEmployee * 100) / 100,
@@ -237,6 +252,7 @@ export class PayrollCalculationService {
       lossOfPay: Math.round(lossOfPay * 100) / 100,
       latePenalty: Math.round(latePenalty * 100) / 100,
       advance: 0, // Would be fetched from actual advance records
+      other: Math.round((salaryStructure.manualOtherDeductions ?? 0) * 100) / 100,
     };
   }
 
@@ -379,7 +395,8 @@ export class PayrollCalculationService {
           deductions.esi +
           deductions.professionalTax +
           deductions.lossOfPay +
-          deductions.latePenalty),
+          deductions.latePenalty +
+          deductions.other),
     );
   }
 

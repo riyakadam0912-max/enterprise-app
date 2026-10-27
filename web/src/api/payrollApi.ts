@@ -17,11 +17,42 @@ export interface SalaryStructure {
   effectiveFrom: string;
   createdAt: string;
   updatedAt: string;
+  annualCtc?: number;
+  templateId?: number | null;
+  components?: SalaryComponent[];
   employee?: {
     id: number;
     name: string;
     email?: string;
   };
+}
+
+export type SalaryComponentCategory = 'EARNING' | 'EMPLOYER_CONTRIBUTION' | 'DEDUCTION' | 'REIMBURSEMENT';
+export type SalaryCalculationType = 'FIXED' | 'PERCENT_OF_CTC' | 'PERCENT_OF_BASIC' | 'RESIDUAL';
+
+export interface SalaryComponent {
+  id?: number;
+  code: string;
+  name: string;
+  payslipName?: string;
+  category: SalaryComponentCategory;
+  calculationType: SalaryCalculationType;
+  calculationValue: number;
+  monthlyAmount: number;
+  annualAmount?: number;
+  taxable?: boolean;
+  prorated?: boolean;
+  includedInCtc?: boolean;
+  showInPayslip?: boolean;
+  isManualOverride?: boolean;
+}
+
+export interface SalaryTemplate {
+  id: number;
+  name: string;
+  description?: string;
+  annualCtc: number;
+  components: SalaryComponent[];
 }
 
 export interface PayrollCycle {
@@ -145,6 +176,15 @@ export interface CreateSalaryStructurePayload {
   esi?: number;
   professionalTax?: number;
   tds?: number;
+  templateId?: number;
+  annualCtc?: number;
+  effectiveFrom?: string;
+  components?: SalaryComponent[];
+  manualPf?: number;
+  manualEsi?: number;
+  manualProfessionalTax?: number;
+  manualTds?: number;
+  manualOtherDeductions?: number;
 }
 
 export interface UpdateSalaryStructurePayload {
@@ -183,6 +223,17 @@ export interface CreateTaxDeclarationPayload {
 // Salary Structure APIs
 export function getSalaryStructures(): Promise<SalaryStructure[]> {
   return apiClient<SalaryStructure[]>('/payroll/salary-structures');
+}
+
+export function getSalaryTemplates(): Promise<SalaryTemplate[]> {
+  return apiClient<SalaryTemplate[]>('/payroll/salary-templates');
+}
+
+export function createSalaryTemplate(payload: Omit<SalaryTemplate, 'id'>): Promise<SalaryTemplate> {
+  return apiClient<SalaryTemplate>('/payroll/salary-templates', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 export function createSalaryStructure(payload: CreateSalaryStructurePayload): Promise<SalaryStructure> {

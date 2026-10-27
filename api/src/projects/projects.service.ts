@@ -137,19 +137,37 @@ export class ProjectsService {
     return employee?.id ?? null;
   }
 
-  async getProjectAccessWhere(user: AuthUser): Promise<Prisma.ProjectWhereInput> {
+  async getProjectAccessWhere(
+    user: AuthUser,
+  ): Promise<Prisma.ProjectWhereInput> {
     const local = await this.getLocalProjectAccessWhere(user);
     if (user.role !== Role.MANAGER && user.role !== Role.EMPLOYEE) return local;
     const organizationId = this.validateOrganization(user);
-    const related = (await this.organizationScopeService.getRelatedOrganizationIds(organizationId)).filter((id) => id !== organizationId);
+    const related = (
+      await this.organizationScopeService.getRelatedOrganizationIds(
+        organizationId,
+      )
+    ).filter((id) => id !== organizationId);
     if (!related.length) return local;
-    const shared: Prisma.ProjectWhereInput[] = user.role === Role.MANAGER
-      ? [{ managerId: user.userId }, { coManagers: { some: { id: user.userId } } }]
-      : [];
-    const employeeId = user.employeeId ?? (await this.resolveEmployeeId(user, await this.getScopedUser(user)));
-    if (employeeId) shared.push({ assignedEmployees: { some: { id: employeeId } } });
+    const shared: Prisma.ProjectWhereInput[] =
+      user.role === Role.MANAGER
+        ? [
+            { managerId: user.userId },
+            { coManagers: { some: { id: user.userId } } },
+          ]
+        : [];
+    const employeeId =
+      user.employeeId ??
+      (await this.resolveEmployeeId(user, await this.getScopedUser(user)));
+    if (employeeId)
+      shared.push({ assignedEmployees: { some: { id: employeeId } } });
     if (!shared.length) return local;
-    return { OR: [local, { organizationId: { in: related }, deletedAt: null, OR: shared }] };
+    return {
+      OR: [
+        local,
+        { organizationId: { in: related }, deletedAt: null, OR: shared },
+      ],
+    };
   }
 
   private async getLocalProjectAccessWhere(
@@ -406,7 +424,7 @@ export class ProjectsService {
       return false;
     }
 
-    const organizationId = this.validateOrganization(user);
+    this.validateOrganization(user);
     const project = await this.db.project.findFirst({
       where: {
         id: projectId,
@@ -439,9 +457,13 @@ export class ProjectsService {
       return false;
     }
 
-    const organizationId = this.validateOrganization(user);
+    this.validateOrganization(user);
     const project = await this.db.project.findFirst({
-      where: { id: projectId, AND: [await this.getProjectAccessWhere(user)], managerId: user.userId },
+      where: {
+        id: projectId,
+        AND: [await this.getProjectAccessWhere(user)],
+        managerId: user.userId,
+      },
       select: { id: true },
     });
     return Boolean(project);
@@ -743,7 +765,6 @@ export class ProjectsService {
       throw new ForbiddenException('You can only access allowed projects');
     }
 
-    const projectOrganizationIds = await this.getProjectOrganizationIds(user);
     const tasksWhere =
       user.role === Role.EMPLOYEE
         ? {

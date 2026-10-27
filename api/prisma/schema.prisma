@@ -194,6 +194,9 @@ model Organization {
   quotes                   Quote[]
   quoteItems               QuoteItem[]
   salaryStructures         SalaryStructure[]
+  salaryTemplates          SalaryTemplate[]
+  salaryTemplateComponents SalaryTemplateComponent[]
+  salaryStructureComponents SalaryStructureComponent[]
   shifts                   Shift[]
   tasks                    Task[]
   taskMessages             TaskMessage[]
@@ -1862,10 +1865,96 @@ model SalaryStructure {
   lateMarkPenalty     Float        @default(0)
   overtimeRatePerHour Float        @default(0)
   organizationId      Int
+  templateId          Int?
+  annualCtc           Float        @default(0)
+  effectiveTo         DateTime?
+  status              String       @default("ACTIVE")
+  version             Int          @default(1)
+  manualPf            Float?
+  manualEsi           Float?
+  manualProfessionalTax Float?
+  manualTds           Float?
+  manualOtherDeductions Float?
   employee            Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  template            SalaryTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  components          SalaryStructureComponent[]
 
   @@index([employeeId, isActive])
+  @@index([organizationId])
+  @@index([templateId])
+  @@index([employeeId, effectiveFrom, effectiveTo])
+}
+
+model SalaryTemplate {
+  id             Int          @id @default(autoincrement())
+  organizationId Int
+  name           String
+  description    String?
+  annualCtc      Float        @default(0)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  components     SalaryTemplateComponent[]
+  structures     SalaryStructure[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, isActive])
+}
+
+model SalaryTemplateComponent {
+  id               Int          @id @default(autoincrement())
+  templateId       Int
+  organizationId   Int
+  code             String
+  name             String
+  payslipName      String
+  category         String
+  calculationType  String       @default("FIXED")
+  calculationValue Float        @default(0)
+  monthlyAmount    Float        @default(0)
+  annualAmount     Float        @default(0)
+  taxable          Boolean      @default(true)
+  prorated         Boolean      @default(true)
+  includedInCtc    Boolean      @default(true)
+  showInPayslip    Boolean      @default(true)
+  isManualOverride Boolean      @default(false)
+  displayOrder     Int          @default(0)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  template         SalaryTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, code])
+  @@index([organizationId])
+}
+
+model SalaryStructureComponent {
+  id               Int          @id @default(autoincrement())
+  salaryStructureId Int
+  organizationId   Int
+  code             String
+  name             String
+  payslipName      String
+  category         String
+  calculationType  String       @default("FIXED")
+  calculationValue Float        @default(0)
+  monthlyAmount    Float        @default(0)
+  annualAmount     Float        @default(0)
+  taxable          Boolean      @default(true)
+  prorated         Boolean      @default(true)
+  includedInCtc    Boolean      @default(true)
+  showInPayslip    Boolean      @default(true)
+  isManualOverride Boolean      @default(false)
+  displayOrder     Int          @default(0)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  salaryStructure  SalaryStructure @relation(fields: [salaryStructureId], references: [id], onDelete: Cascade)
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([salaryStructureId, code])
   @@index([organizationId])
 }
 

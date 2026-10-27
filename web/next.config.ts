@@ -12,6 +12,7 @@ const LEGACY_API_PROXY_TARGETS = new Set([
 ]);
 
 const monorepoRoot = path.resolve(__dirname, '..');
+let hasWarnedAboutProductionApi = false;
 
 function normalizeProxyTarget(value: string | undefined): string {
   const trimmed = (value ?? LIVE_API_PROXY_TARGET).trim();
@@ -42,6 +43,24 @@ function resolveApiProxyTarget(): string {
   return configuredTarget;
 }
 
+function warnWhenLocalFrontendUsesProductionApi(apiProxyTarget: string): void {
+  if (
+    process.env.NODE_ENV !== 'development' ||
+    hasWarnedAboutProductionApi
+  ) {
+    return;
+  }
+
+  const targetHost = new URL(apiProxyTarget).hostname.toLowerCase();
+  if (targetHost.endsWith('.vercel.app')) {
+    hasWarnedAboutProductionApi = true;
+    console.warn(
+      `[web] Local frontend is proxying API requests to ${targetHost}. ` +
+        'Writes from this browser may change live data.',
+    );
+  }
+}
+
 const nextConfig: NextConfig = {
   outputFileTracingRoot: monorepoRoot,
   turbopack: {
@@ -50,19 +69,14 @@ const nextConfig: NextConfig = {
   async rewrites() {
     const apiProxyTarget = resolveApiProxyTarget();
 
+    warnWhenLocalFrontendUsesProductionApi(apiProxyTarget);
+
     return [
       {
         source: '/@vite/client',
         destination: '/@vite/client.js',
       },
       // Vercel uses web/vercel.json to avoid Next's legacy Node proxy.
-      // API_PROXY_TARGET applies to local and self-hosted deployments.
-      ...(process.env.VERCEL === '1'
-        ? []
-        : [{
-            source: '/api/v1/:path*',
-            destination: `${apiProxyTarget}/api/v1/:path*`,
-          }]),
     ];
   },
 };

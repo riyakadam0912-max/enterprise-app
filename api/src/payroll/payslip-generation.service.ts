@@ -51,14 +51,6 @@ export class PayslipGenerationService {
       payrollEntry.employee.organizationId,
     );
 
-    // Get tax declaration
-    const taxDeclaration = await this.prisma.taxDeclaration.findFirst({
-      where: {
-        employeeId: payrollEntry.employeeId,
-        year: payrollEntry.payrollCycle.year,
-      },
-    });
-
     // Calculate payroll
     const calculation = await this.calculationService.calculatePayroll({
       employeeId: payrollEntry.employeeId,
@@ -71,12 +63,7 @@ export class PayslipGenerationService {
     // Determine tax regime
     const taxRegime = 'NEW';
 
-    // Calculate TDS
-    const monthlyTds: number = this.calculationService.calculateMonthlyTDS(
-      (salaryStructure.basic + (salaryStructure.hra || 0)) * 12,
-      taxDeclaration,
-      taxRegime,
-    );
+    const monthlyTds = calculation.deductions.tds;
 
     // Create payslip record
     const payslip = await this.prisma.payslip.upsert({
@@ -94,8 +81,9 @@ export class PayslipGenerationService {
         professionalTax: calculation.deductions.professionalTax,
         tdsDeduction: monthlyTds,
         lossOfPay: calculation.deductions.lossOfPay,
-        otherDeductions: calculation.deductions.advance,
-        totalDeductions: calculation.totalDeductions + monthlyTds,
+        otherDeductions:
+          calculation.deductions.advance + calculation.deductions.other,
+        totalDeductions: calculation.totalDeductions,
         netPay: calculation.netPay,
         workingDays: attendanceData.totalWorkingDays,
         presentDays: attendanceData.presentDays,
@@ -127,8 +115,9 @@ export class PayslipGenerationService {
         professionalTax: calculation.deductions.professionalTax,
         tdsDeduction: monthlyTds,
         lossOfPay: calculation.deductions.lossOfPay,
-        otherDeductions: calculation.deductions.advance,
-        totalDeductions: calculation.totalDeductions + monthlyTds,
+        otherDeductions:
+          calculation.deductions.advance + calculation.deductions.other,
+        totalDeductions: calculation.totalDeductions,
         netPay: calculation.netPay,
         workingDays: attendanceData.totalWorkingDays,
         presentDays: attendanceData.presentDays,
@@ -185,10 +174,8 @@ export class PayslipGenerationService {
         tdsDeducted: monthlyTds,
         lossOfPay: calculation.deductions.lossOfPay,
         advanceRecovery: calculation.deductions.advance,
-        totalDeductions:
-          calculation.totalDeductions +
-          monthlyTds +
-          calculation.deductions.pfEmployer,
+        otherDeductions: calculation.deductions.other,
+        totalDeductions: calculation.totalDeductions,
       },
       create: {
         payrollEntryId,
@@ -200,10 +187,8 @@ export class PayslipGenerationService {
         tdsDeducted: monthlyTds,
         lossOfPay: calculation.deductions.lossOfPay,
         advanceRecovery: calculation.deductions.advance,
-        totalDeductions:
-          calculation.totalDeductions +
-          monthlyTds +
-          calculation.deductions.pfEmployer,
+        otherDeductions: calculation.deductions.other,
+        totalDeductions: calculation.totalDeductions,
       },
     });
 

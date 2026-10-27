@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { getSalaryStructures, createSalaryStructure, getPayrollCycles, createPayrollCycle, runPayrollCycle, getPayrollCycleEntries, markPayrollEntryPaid, generatePayslips, createTaxDeclaration, generateForm16, type SalaryStructure, type PayrollCycle, type PayrollEntry } from '@/api/payrollApi';
+import { getSalaryStructures, createSalaryStructure, getSalaryTemplates, createSalaryTemplate, getPayrollCycles, createPayrollCycle, runPayrollCycle, getPayrollCycleEntries, markPayrollEntryPaid, generatePayslips, createTaxDeclaration, generateForm16, type SalaryStructure, type SalaryTemplate, type SalaryComponent, type PayrollCycle, type PayrollEntry } from '@/api/payrollApi';
+import { getEmployees, type Employee } from '@/api/employeesApi';
 import TableActions from '@/components/common/TableActions';
 import { useAuthSession } from '@/stores/auth-store';
 
@@ -19,20 +20,33 @@ export default function PayrollPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   const [salaryStructures, setSalaryStructures] = useState<SalaryStructure[]>([]);
+  const [salaryTemplates, setSalaryTemplates] = useState<SalaryTemplate[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [payrollCycles, setPayrollCycles] = useState<PayrollCycle[]>([]);
   const [payrollEntries, setPayrollEntries] = useState<PayrollEntry[]>([]);
   const [selectedCycle, setSelectedCycle] = useState<PayrollCycle | null>(null);
 
   const canManage = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'HR';
 
-  const [salaryForm, setSalaryForm] = useState({ employeeId: 1, basic: 50000, hra: 10000, allowances: 5000, pf: 6000, esi: 375, professionalTax: 200, tds: 2000 });
+  const initialComponents: SalaryComponent[] = [
+    { code: 'BASIC', name: 'Basic Pay', payslipName: 'Basic Pay', category: 'EARNING', calculationType: 'FIXED', calculationValue: 0, monthlyAmount: 50000, taxable: true, prorated: true, includedInCtc: true, showInPayslip: true },
+    { code: 'HRA', name: 'House Rent Allowance', payslipName: 'HRA', category: 'EARNING', calculationType: 'FIXED', calculationValue: 0, monthlyAmount: 10000, taxable: true, prorated: true, includedInCtc: true, showInPayslip: true },
+    { code: 'OTHER_ALLOWANCE', name: 'Other Allowance', payslipName: 'Other Allowance', category: 'EARNING', calculationType: 'RESIDUAL', calculationValue: 0, monthlyAmount: 5000, taxable: true, prorated: true, includedInCtc: true, showInPayslip: true },
+    { code: 'PF', name: 'Provident Fund', payslipName: 'PF', category: 'DEDUCTION', calculationType: 'FIXED', calculationValue: 0, monthlyAmount: 0, taxable: false, prorated: false, includedInCtc: false, showInPayslip: true, isManualOverride: false },
+    { code: 'ESI', name: 'Employee State Insurance', payslipName: 'ESI', category: 'DEDUCTION', calculationType: 'FIXED', calculationValue: 0, monthlyAmount: 0, taxable: false, prorated: false, includedInCtc: false, showInPayslip: true, isManualOverride: false },
+    { code: 'PROFESSIONAL_TAX', name: 'Professional Tax', payslipName: 'Professional Tax', category: 'DEDUCTION', calculationType: 'FIXED', calculationValue: 0, monthlyAmount: 0, taxable: false, prorated: false, includedInCtc: false, showInPayslip: true, isManualOverride: false },
+    { code: 'TDS', name: 'TDS', payslipName: 'TDS', category: 'DEDUCTION', calculationType: 'FIXED', calculationValue: 0, monthlyAmount: 0, taxable: false, prorated: false, includedInCtc: false, showInPayslip: true, isManualOverride: false },
+  ];
+  const [salaryForm, setSalaryForm] = useState({ employeeId: 0, templateId: 0, templateName: '', templateDescription: '', annualCtc: 780000, effectiveFrom: new Date().toISOString().slice(0, 10), components: initialComponents });
   const [cycleForm, setCycleForm] = useState({ name: `Payroll ${monthName(new Date().getMonth() + 1)}`, month: new Date().getMonth() + 1, year: new Date().getFullYear(), notes: '' });
   const [taxForm, setTaxForm] = useState({ employeeId: 1, year: new Date().getFullYear(), investment80C: 150000, investment80D: 0, hraExemption: 0, otherIncome: 0 });
 
   const loadData = useCallback(async () => {
     try {
-      const [structures, cycles] = await Promise.all([getSalaryStructures(), getPayrollCycles()]);
+      const [structures, templates, employeeList, cycles] = await Promise.all([getSalaryStructures(), getSalaryTemplates(), getEmployees(), getPayrollCycles()]);
       setSalaryStructures(structures);
+      setSalaryTemplates(templates);
+      setEmployees(employeeList);
       setPayrollCycles(cycles);
       if (cycles.length > 0 && !selectedCycle) setSelectedCycle(cycles[0]);
     } catch (err) {
@@ -60,12 +74,58 @@ export default function PayrollPage() {
     e.preventDefault();
     try {
       setLoading(true);
-      await createSalaryStructure(salaryForm);
+      if (!salaryForm.employeeId) throw new Error('Select an employee');
+      const componentAmount = (code: string) => salaryForm.components.find((component) => component.code === code && component.isManualOverride)?.monthlyAmount;
+      await createSalaryStructure({
+        employeeId: salaryForm.employeeId,
+        templateId: salaryForm.templateId || undefined,
+        annualCtc: salaryForm.annualCtc,
+        effectiveFrom: salaryForm.effectiveFrom,
+        components: salaryForm.components,
+        manualPf: componentAmount('PF'),
+        manualEsi: componentAmount('ESI'),
+        manualProfessionalTax: componentAmount('PROFESSIONAL_TAX'),
+        manualTds: componentAmount('TDS'),
+        manualOtherDeductions: componentAmount('OTHER_DEDUCTION'),
+      });
       setSuccess('Salary structure created');
-      setSalaryForm({ employeeId: 1, basic: 50000, hra: 10000, allowances: 5000, pf: 6000, esi: 375, professionalTax: 200, tds: 2000 });
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const applyTemplate = (templateId: number) => {
+    const template = salaryTemplates.find((item) => item.id === templateId);
+    setSalaryForm((current) => ({
+      ...current,
+      templateId,
+      annualCtc: template?.annualCtc ?? current.annualCtc,
+      components: template?.components.map((component) => ({ ...component, id: undefined })) ?? current.components,
+    }));
+  };
+
+  const updateComponent = (index: number, patch: Partial<SalaryComponent>) => {
+    setSalaryForm((current) => ({
+      ...current,
+      components: current.components.map((component, componentIndex) => componentIndex === index ? { ...component, ...patch } : component),
+    }));
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!salaryForm.templateName.trim()) {
+      setError('Enter a template name before saving');
+      return;
+    }
+    try {
+      setLoading(true);
+      await createSalaryTemplate({ name: salaryForm.templateName, description: salaryForm.templateDescription, annualCtc: salaryForm.annualCtc, components: salaryForm.components });
+      setSuccess('Salary template saved');
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save template');
     } finally {
       setLoading(false);
     }
@@ -184,30 +244,72 @@ export default function PayrollPage() {
 
 {/* Structures Tab */}
         {activeTab === 'structures' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="bg-white rounded-lg shadow p-6">
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-8">
+            <div className="xl:col-span-3 bg-white rounded-lg shadow p-6">
               <h2 className="text-xl font-bold mb-6">Create Salary Structure</h2>
               <form onSubmit={handleCreateStructure} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Employee ID</label>
-                  <input type="number" value={salaryForm.employeeId} onChange={(e) => setSalaryForm({...salaryForm, employeeId: parseInt(e.target.value)})} className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Employee</label>
+                    <select required value={salaryForm.employeeId} onChange={(e) => setSalaryForm({...salaryForm, employeeId: Number(e.target.value)})} className="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                      <option value={0}>Select employee</option>
+                      {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name} · {employee.department || 'No department'}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Salary Template</label>
+                    <select value={salaryForm.templateId} onChange={(e) => applyTemplate(Number(e.target.value))} className="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                      <option value={0}>Custom structure</option>
+                      {salaryTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+                    </select>
+                  </div>
                 </div>
-                <div className="pt-4 border-t">
-                  <h3 className="font-semibold mb-3">Earnings</h3>
-                  <div className="space-y-2">
-                    <input placeholder="Basic" type="number" value={salaryForm.basic} onChange={(e) => setSalaryForm({...salaryForm, basic: parseFloat(e.target.value)})} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                    <input placeholder="HRA" type="number" value={salaryForm.hra} onChange={(e) => setSalaryForm({...salaryForm, hra: parseFloat(e.target.value)})} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                    <input placeholder="Allowances" type="number" value={salaryForm.allowances} onChange={(e) => setSalaryForm({...salaryForm, allowances: parseFloat(e.target.value)})} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Annual CTC</label>
+                    <input min="0" required type="number" value={salaryForm.annualCtc} onChange={(e) => setSalaryForm({...salaryForm, annualCtc: Number(e.target.value)})} className="w-full px-3 py-2 border rounded-lg" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Effective From</label>
+                    <input required type="date" value={salaryForm.effectiveFrom} onChange={(e) => setSalaryForm({...salaryForm, effectiveFrom: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
                   </div>
                 </div>
                 <div className="pt-4 border-t">
-                  <h3 className="font-semibold mb-3">Deductions</h3>
-                  <div className="space-y-2">
-                    <input placeholder="PF (12%)" type="number" value={salaryForm.pf} onChange={(e) => setSalaryForm({...salaryForm, pf: parseFloat(e.target.value)})} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                    <input placeholder="ESI" type="number" value={salaryForm.esi} onChange={(e) => setSalaryForm({...salaryForm, esi: parseFloat(e.target.value)})} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                    <input placeholder="Professional Tax" type="number" value={salaryForm.professionalTax} onChange={(e) => setSalaryForm({...salaryForm, professionalTax: parseFloat(e.target.value)})} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                    <input placeholder="TDS" type="number" value={salaryForm.tds} onChange={(e) => setSalaryForm({...salaryForm, tds: parseFloat(e.target.value)})} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <div className="mb-3 flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold">Salary Components</h3>
+                      <p className="text-xs text-slate-500">Manual statutory deductions are monthly overrides.</p>
+                    </div>
+                    <button type="button" onClick={() => setSalaryForm((current) => ({ ...current, components: [...current.components, { code: `CUSTOM_${current.components.length + 1}`, name: 'Custom Component', payslipName: 'Custom Component', category: 'EARNING', calculationType: 'FIXED', calculationValue: 0, monthlyAmount: 0, taxable: true, prorated: true, includedInCtc: true, showInPayslip: true }] }))} className="rounded-lg border px-3 py-2 text-xs font-semibold">+ Add component</button>
                   </div>
+                  <div className="space-y-3">
+                    {salaryForm.components.map((component, index) => (
+                      <div key={`${component.code}-${index}`} className="grid gap-2 rounded-xl border border-slate-200 p-3 md:grid-cols-12">
+                        <input aria-label="Component name" value={component.name} onChange={(e) => updateComponent(index, { name: e.target.value, payslipName: e.target.value })} className="rounded-lg border px-2 py-2 text-sm md:col-span-3" />
+                        <input aria-label="Component code" value={component.code} onChange={(e) => updateComponent(index, { code: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_') })} className="rounded-lg border px-2 py-2 text-sm md:col-span-2" />
+                        <select aria-label="Component category" value={component.category} onChange={(e) => updateComponent(index, { category: e.target.value as SalaryComponent['category'], includedInCtc: e.target.value !== 'DEDUCTION', isManualOverride: false })} className="rounded-lg border px-2 py-2 text-sm md:col-span-2">
+                          <option value="EARNING">Earning</option><option value="EMPLOYER_CONTRIBUTION">Employer contribution</option><option value="DEDUCTION">Deduction</option><option value="REIMBURSEMENT">Reimbursement</option>
+                        </select>
+                        <select aria-label="Calculation type" value={component.calculationType} onChange={(e) => updateComponent(index, { calculationType: e.target.value as SalaryComponent['calculationType'] })} className="rounded-lg border px-2 py-2 text-sm md:col-span-2">
+                          <option value="FIXED">Fixed</option><option value="PERCENT_OF_CTC">% of CTC</option><option value="PERCENT_OF_BASIC">% of Basic</option><option value="RESIDUAL">Residual</option>
+                        </select>
+                        <input aria-label="Monthly amount" min="0" type="number" value={component.monthlyAmount} onChange={(e) => updateComponent(index, { monthlyAmount: Number(e.target.value), calculationValue: Number(e.target.value) })} className="rounded-lg border px-2 py-2 text-right text-sm md:col-span-2" />
+                        <button type="button" aria-label={`Remove ${component.name}`} onClick={() => setSalaryForm((current) => ({ ...current, components: current.components.filter((_, componentIndex) => componentIndex !== index) }))} className="rounded-lg text-red-600 md:col-span-1">×</button>
+                        <div className="flex items-center justify-between text-xs text-slate-500 md:col-span-12">
+                          <span>Annual: {money(component.monthlyAmount * 12)}</span>
+                          {component.category === 'DEDUCTION' ? <label className="flex items-center gap-2"><input type="checkbox" checked={component.isManualOverride ?? false} onChange={(e) => updateComponent(index, { isManualOverride: e.target.checked })} /> Override automatic calculation</label> : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-4 text-sm">
+                  <div className="flex justify-between"><span>Allocated annual CTC</span><strong>{money(salaryForm.components.filter((component) => component.includedInCtc && component.category !== 'DEDUCTION').reduce((sum, component) => sum + component.monthlyAmount * 12, 0))}</strong></div>
+                  <div className="mt-1 flex justify-between"><span>Remaining CTC</span><strong>{money(salaryForm.annualCtc - salaryForm.components.filter((component) => component.includedInCtc && component.category !== 'DEDUCTION').reduce((sum, component) => sum + component.monthlyAmount * 12, 0))}</strong></div>
+                </div>
+                <div className="grid gap-2 md:grid-cols-2">
+                  <input placeholder="Template name (optional)" value={salaryForm.templateName} onChange={(e) => setSalaryForm({...salaryForm, templateName: e.target.value})} className="rounded-lg border px-3 py-2 text-sm" />
+                  <button type="button" onClick={() => void handleSaveTemplate()} disabled={loading} className="rounded-lg border border-blue-600 px-4 py-2 text-sm font-semibold text-blue-700 disabled:opacity-50">Save as reusable template</button>
                 </div>
                 <button type="submit" disabled={loading} className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
                   {loading ? 'Creating...' : 'Create Structure'}
@@ -215,7 +317,7 @@ export default function PayrollPage() {
               </form>
             </div>
 
-            <div className="lg:col-span-2 bg-white rounded-lg shadow p-6">
+            <div className="xl:col-span-2 bg-white rounded-lg shadow p-6">
               <h2 className="text-xl font-bold mb-6">Active Salary Structures</h2>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">

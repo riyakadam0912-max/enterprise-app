@@ -70,21 +70,34 @@ export class TasksService {
   private afterCommit?: Array<() => Promise<unknown>>;
   private readonly logger = new Logger(TasksService.name);
 
-  private async inTaskTransaction<T>(id: number | null, action: (service: TasksService) => Promise<T>): Promise<T> {
+  private async inTaskTransaction<T>(
+    id: number | null,
+    action: (service: TasksService) => Promise<T>,
+  ): Promise<T> {
     const afterCommit: Array<() => Promise<unknown>> = [];
     const result = await this.prisma.$transaction(async (tx) => {
       if (id != null) {
         await tx.$queryRaw`SELECT pg_advisory_xact_lock(137702::integer, ${id}::integer)`;
       }
-      const scoped = new TasksService(this.prisma, this.workflowEngine.forTransaction(tx, afterCommit),
-        this.notificationsService, this.businessUnitsService, this.cacheManager,
-        this.attendanceTaskHours, this.organizationScopeService);
+      const scoped = new TasksService(
+        this.prisma,
+        this.workflowEngine.forTransaction(tx, afterCommit),
+        this.notificationsService,
+        this.businessUnitsService,
+        this.cacheManager,
+        this.attendanceTaskHours,
+        this.organizationScopeService,
+      );
       scoped.transaction = tx;
       scoped.afterCommit = afterCommit;
       return action(scoped);
     });
     for (const effect of afterCommit) {
-      try { await effect(); } catch (error) { this.logger.error('Task post-commit notification/audit failed', error); }
+      try {
+        await effect();
+      } catch (error) {
+        this.logger.error('Task post-commit notification/audit failed', error);
+      }
     }
     return result;
   }
@@ -515,7 +528,9 @@ export class TasksService {
 
   async create(dto: CreateTaskDto, user: AuthUser) {
     if (!this.transaction && dto.status === 'SUBMITTED') {
-      return this.inTaskTransaction(null, (service) => service.create(dto, user));
+      return this.inTaskTransaction(null, (service) =>
+        service.create(dto, user),
+      );
     }
     const organizationId = this.validateOrganization(user);
     if (
@@ -537,12 +552,10 @@ export class TasksService {
     );
     const employeeBUWhere =
       this.businessUnitsService.buildEmployeeBUWhere(callerScope);
-    const isHierarchyAdmin = new Set<Role>([
-      Role.ADMIN,
-      Role.HR,
-      Role.SUPER_ADMIN,
-    ]).has(user.role);
-    const relatedOrganizationIds = await this.organizationScopeService?.getRelatedOrganizationIds(user.homeOrganizationId ?? organizationId);
+    const relatedOrganizationIds =
+      await this.organizationScopeService?.getRelatedOrganizationIds(
+        user.homeOrganizationId ?? organizationId,
+      );
     const projectOrganizationIds = relatedOrganizationIds?.length
       ? relatedOrganizationIds
       : [organizationId];
@@ -608,9 +621,14 @@ export class TasksService {
     }
 
     if (user.role === Role.EMPLOYEE) {
-      if ((dto.assignedToUserId != null && dto.assignedToUserId !== user.userId) ||
-          (dto.employeeId != null && dto.employeeId !== user.employeeId)) {
-        throw new ForbiddenException('Employees can only create tasks assigned to themselves');
+      if (
+        (dto.assignedToUserId != null &&
+          dto.assignedToUserId !== user.userId) ||
+        (dto.employeeId != null && dto.employeeId !== user.employeeId)
+      ) {
+        throw new ForbiddenException(
+          'Employees can only create tasks assigned to themselves',
+        );
       }
       if (!project) {
         throw new ForbiddenException(
@@ -618,10 +636,10 @@ export class TasksService {
         );
       }
       if (
-        (user.employeeId == null ||
-          !project.assignedEmployees.some(
-            (employee) => employee.id === user.employeeId,
-          ))
+        user.employeeId == null ||
+        !project.assignedEmployees.some(
+          (employee) => employee.id === user.employeeId,
+        )
       ) {
         throw new ForbiddenException(
           'You must be an assigned project member before creating tasks',
@@ -746,7 +764,10 @@ export class TasksService {
         assignedByUserId: user.userId,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
         priority: dto.priority,
-        status: dto.status === 'SUBMITTED' ? 'IN_PROGRESS' : this.normalizeTaskStatus(dto.status),
+        status:
+          dto.status === 'SUBMITTED'
+            ? 'IN_PROGRESS'
+            : this.normalizeTaskStatus(dto.status),
         estimatedHours: dto.estimatedHours,
         actualHours: dto.actualHours,
         submissionLink: dto.submissionLink,
@@ -773,7 +794,12 @@ export class TasksService {
       );
     }
     if (dto.status === 'SUBMITTED') {
-      await this.submitWork(createdTask.id, { submissionLink: dto.submissionLink ?? '', note: '' }, user, false);
+      await this.submitWork(
+        createdTask.id,
+        { submissionLink: dto.submissionLink ?? '', note: '' },
+        user,
+        false,
+      );
       return { ...createdTask, status: 'SUBMITTED' };
     }
     return createdTask;
@@ -1004,8 +1030,7 @@ export class TasksService {
           await this.lockTimerAndAttendanceStateForUser(user, tx);
           await this.assertUserIsWorking(user, tx);
           const otherRunningTimer = await tx.taskTimerSession.findFirst({
-            where: { userId, status: 'RUNNING', id: { not: session.id },
-            },
+            where: { userId, status: 'RUNNING', id: { not: session.id } },
             include: { task: { select: { taskName: true } } },
           });
           if (otherRunningTimer) {
@@ -1048,7 +1073,7 @@ export class TasksService {
     now = new Date(),
     transaction?: Prisma.TransactionClient,
   ) {
-    const organizationId = this.validateOrganization(user);
+    this.validateOrganization(user);
     const db = transaction ?? this.db;
     const session = await db.taskTimerSession.findFirst({
       where: {
@@ -1438,10 +1463,7 @@ export class TasksService {
           while (cursor < interval.endedAt) {
             const dateKey = dateKeyInTimezone(cursor, timezone);
             affectedDateKeys.add(dateKey);
-            const nextDay = localMidnightAfterDateInTimezone(
-              dateKey,
-              timezone,
-            );
+            const nextDay = localMidnightAfterDateInTimezone(dateKey, timezone);
             if (!nextDay || nextDay <= cursor) {
               throw new BadRequestException(
                 'Unable to calculate task time in the employee organization timezone',
@@ -1485,7 +1507,10 @@ export class TasksService {
   }
 
   async update(id: number, dto: UpdateTaskDto, user: AuthUser) {
-    if (!this.transaction) return this.inTaskTransaction(id, (service) => service.update(id, dto, user));
+    if (!this.transaction)
+      return this.inTaskTransaction(id, (service) =>
+        service.update(id, dto, user),
+      );
     const organizationId = this.validateOrganization(user);
     const canManage = await this.canManageTask(id, user);
     if (!canManage) {
@@ -1546,7 +1571,7 @@ export class TasksService {
           ? ((await this.organizationScopeService?.getRelatedOrganizationIds(
               user.homeOrganizationId ?? organizationId,
             )) ?? [organizationId])
-        : [organizationId];
+          : [organizationId];
     const newShootCrew =
       nextTaskType === 'SHOOT' && dto.shootCrewUserIds !== undefined
         ? await this.resolveShootCrew(
@@ -1559,11 +1584,18 @@ export class TasksService {
       ? newShootCrew.map(({ id }) => id)
       : existingShootCrew.map(({ userId }) => userId);
 
-    const targetProjectId = dto.projectId === undefined ? existingTask.projectId : dto.projectId;
-    const assignmentProject = targetProjectId ? await this.db.project.findFirst({
-      where: { id: targetProjectId, organizationId: existingTask.organizationId, deletedAt: null },
-      select: { assignedEmployees: { select: { id: true } } },
-    }) : null;
+    const targetProjectId =
+      dto.projectId === undefined ? existingTask.projectId : dto.projectId;
+    const assignmentProject = targetProjectId
+      ? await this.db.project.findFirst({
+          where: {
+            id: targetProjectId,
+            organizationId: existingTask.organizationId,
+            deletedAt: null,
+          },
+          select: { assignedEmployees: { select: { id: true } } },
+        })
+      : null;
 
     let assigneeData: {
       assignedToUserId?: number;
@@ -1663,10 +1695,18 @@ export class TasksService {
           })
         : null;
       if (dto.projectId && !project)
-        throw new NotFoundException('Destination project must belong to the task organization');
+        throw new NotFoundException(
+          'Destination project must belong to the task organization',
+        );
       if (targetProjectId !== existingTask.projectId) {
-        const tracked = await this.db.taskTimerSession.findFirst({ where: { taskId: id }, select: { id: true } });
-        const logged = await this.db.timesheet.findFirst({ where: { taskId: id }, select: { id: true } });
+        const tracked = await this.db.taskTimerSession.findFirst({
+          where: { taskId: id },
+          select: { id: true },
+        });
+        const logged = await this.db.timesheet.findFirst({
+          where: { taskId: id },
+          select: { id: true },
+        });
         const activeWorkflow = await this.db.workflowInstance.findFirst({
           where: {
             entityType: 'Task',
@@ -1676,12 +1716,23 @@ export class TasksService {
           },
           select: { id: true },
         });
-        if (tracked || logged || activeWorkflow || ['SUBMITTED', 'APPROVED', 'REJECTED'].includes(existingTask.status)) {
-          throw new ConflictException('Tasks with tracked time or review history cannot be moved');
+        if (
+          tracked ||
+          logged ||
+          activeWorkflow ||
+          ['SUBMITTED', 'APPROVED', 'REJECTED'].includes(existingTask.status)
+        ) {
+          throw new ConflictException(
+            'Tasks with tracked time or review history cannot be moved',
+          );
         }
       }
       if (project) {
-        if (user.role === Role.MANAGER && project.managerId !== user.userId && !project.coManagers.some((manager) => manager.id === user.userId)) {
+        if (
+          user.role === Role.MANAGER &&
+          project.managerId !== user.userId &&
+          !project.coManagers.some((manager) => manager.id === user.userId)
+        ) {
           throw new ForbiddenException(
             'Managers can only move tasks within their projects',
           );
@@ -2017,7 +2068,10 @@ export class TasksService {
   }
 
   async updateStatus(id: number, status: string, user: AuthUser) {
-    if (!this.transaction) return this.inTaskTransaction(id, (service) => service.updateStatus(id, status, user));
+    if (!this.transaction)
+      return this.inTaskTransaction(id, (service) =>
+        service.updateStatus(id, status, user),
+      );
     const taskScope = await this.getScopedWhere(user);
     const task = await this.db.task.findFirst({
       where: { id, ...taskScope },
@@ -2056,13 +2110,23 @@ export class TasksService {
     }
 
     const normalizedStatus = this.normalizeTaskStatus(status);
-    if (normalizedStatus === 'SUBMITTED') return this.submitWork(id, { submissionLink: '', note: '' }, user, false);
+    if (normalizedStatus === 'SUBMITTED')
+      return this.submitWork(id, { submissionLink: '', note: '' }, user, false);
     if (normalizedStatus === 'APPROVED' || normalizedStatus === 'REJECTED') {
       if (task.status !== 'SUBMITTED') {
         this.ensureTransitionAllowed(task.status, normalizedStatus, user.role);
-        await this.submitWork(id, { submissionLink: '', note: '' }, user, false);
+        await this.submitWork(
+          id,
+          { submissionLink: '', note: '' },
+          user,
+          false,
+        );
       }
-      return this.reviewTask(id, { status: normalizedStatus, decision: normalizedStatus }, user);
+      return this.reviewTask(
+        id,
+        { status: normalizedStatus, decision: normalizedStatus },
+        user,
+      );
     }
     this.assertShootCompletionAllowed(task, normalizedStatus, user);
     if (normalizedStatus !== 'COMPLETED') {
@@ -2092,19 +2156,44 @@ export class TasksService {
     });
   }
 
-  async submitWork(id: number, dto: SubmitTaskWorkDto, user: AuthUser, requireAssignee = true) {
-    if (!this.transaction) return this.inTaskTransaction(id, (service) => service.submitWork(id, dto, user, requireAssignee));
-    if (!requireAssignee && user.role !== Role.EMPLOYEE && !(await this.canManageTask(id, user))) {
-      throw new ForbiddenException('Only authorized managers can submit this task');
+  async submitWork(
+    id: number,
+    dto: SubmitTaskWorkDto,
+    user: AuthUser,
+    requireAssignee = true,
+  ) {
+    if (!this.transaction)
+      return this.inTaskTransaction(id, (service) =>
+        service.submitWork(id, dto, user, requireAssignee),
+      );
+    if (
+      !requireAssignee &&
+      user.role !== Role.EMPLOYEE &&
+      !(await this.canManageTask(id, user))
+    ) {
+      throw new ForbiddenException(
+        'Only authorized managers can submit this task',
+      );
     }
     const taskScope = await this.getScopedWhere(user);
     const task = await this.db.task.findFirst({
       where: {
         id,
-        AND: [taskScope, ...(requireAssignee || user.role === Role.EMPLOYEE ? [{ OR: [
-          { assignedToUserId: user.userId },
-          ...(user.employeeId ? [{ assignedToId: user.employeeId }] : []),
-        ] }] : [])],
+        AND: [
+          taskScope,
+          ...(requireAssignee || user.role === Role.EMPLOYEE
+            ? [
+                {
+                  OR: [
+                    { assignedToUserId: user.userId },
+                    ...(user.employeeId
+                      ? [{ assignedToId: user.employeeId }]
+                      : []),
+                  ],
+                },
+              ]
+            : []),
+        ],
       },
       include: {
         projectRef: { select: { managerId: true } },
@@ -2187,7 +2276,10 @@ export class TasksService {
   }
 
   async reviewTask(id: number, dto: ReviewTaskDto, user: AuthUser) {
-    if (!this.transaction) return this.inTaskTransaction(id, (service) => service.reviewTask(id, dto, user));
+    if (!this.transaction)
+      return this.inTaskTransaction(id, (service) =>
+        service.reviewTask(id, dto, user),
+      );
     this.validateOrganization(user);
 
     const canManage = await this.canManageTask(id, user);
@@ -2294,20 +2386,21 @@ export class TasksService {
           : undefined;
 
       if (recipientId) {
-        const notify = () => this.notificationsService.sendNotification({
-          recipientIds: [recipientId],
-          title: notificationTitle,
-          message: notificationMessage,
-          module: 'Tasks',
-          entityType: 'Task',
-          entityId: id,
-          actionUrl: '/dashboard/tasks',
-          organizationId: taskOrganizationId,
-          type: nextStatus === 'APPROVED' ? 'SUCCESS' : 'ERROR',
-          priority: 'HIGH',
-          category: 'TASK',
-          createdBy: user.userId,
-        });
+        const notify = () =>
+          this.notificationsService.sendNotification({
+            recipientIds: [recipientId],
+            title: notificationTitle,
+            message: notificationMessage,
+            module: 'Tasks',
+            entityType: 'Task',
+            entityId: id,
+            actionUrl: '/dashboard/tasks',
+            organizationId: taskOrganizationId,
+            type: nextStatus === 'APPROVED' ? 'SUCCESS' : 'ERROR',
+            priority: 'HIGH',
+            category: 'TASK',
+            createdBy: user.userId,
+          });
         if (this.afterCommit) this.afterCommit.push(notify);
         else await notify();
       }

@@ -106,6 +106,40 @@ describe('PayrollService', () => {
     expect(mockPrisma.payrollCycle.create).not.toHaveBeenCalled();
   });
 
+  it('creates a reusable salary template with normalized component snapshots', async () => {
+    const user = createMockAuthUser(Role.ADMIN);
+    mockPrisma.salaryTemplate.create.mockResolvedValue({ id: 10 });
+
+    await service.createSalaryTemplate(
+      {
+        name: 'Engineering',
+        annualCtc: 600000,
+        components: [
+          {
+            code: 'basic pay',
+            name: 'Basic Pay',
+            category: 'EARNING',
+            calculationType: 'FIXED',
+            calculationValue: 50000,
+            monthlyAmount: 50000,
+          },
+        ],
+      },
+      user,
+    );
+
+    expect(mockPrisma.salaryTemplate.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: 'Engineering',
+          components: {
+            create: [expect.objectContaining({ code: 'BASIC_PAY', annualAmount: 600000 })],
+          },
+        }),
+      }),
+    );
+  });
+
   it('calculates expected hours from scheduled workdays in the payroll month', async () => {
     mockPayrollEmployee();
     mockPrisma.attendance.findMany.mockResolvedValue([

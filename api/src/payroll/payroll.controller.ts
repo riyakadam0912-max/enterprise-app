@@ -19,6 +19,7 @@ import { CreateTaxDeclarationDto } from './dto/create-tax-declaration.dto';
 import { MarkPayrollEntryPaidDto } from './dto/mark-payroll-entry-paid.dto';
 import { UpdateSalaryStructureDto } from './dto/update-salary-structure.dto';
 import { UpdatePayslipDto } from './dto/update-payslip.dto';
+import { CreateSalaryTemplateDto } from './dto/create-salary-template.dto';
 import { PayrollService } from './payroll.service';
 import {
   ApiBearerAuth,
@@ -34,6 +35,21 @@ import type { AuthUser } from '../common/types/auth';
 @Controller('payroll')
 export class PayrollController {
   constructor(private readonly service: PayrollService) {}
+
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
+  @Get('salary-templates')
+  listSalaryTemplates(@CurrentUser() user: AuthUser) {
+    return this.service.listSalaryTemplates(user);
+  }
+
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
+  @Post('salary-templates')
+  createSalaryTemplate(
+    @Body() dto: CreateSalaryTemplateDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.service.createSalaryTemplate(dto, user);
+  }
 
   // Salary Structure endpoints
   @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)

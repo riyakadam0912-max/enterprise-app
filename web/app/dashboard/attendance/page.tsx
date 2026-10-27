@@ -132,30 +132,6 @@ function formatDateInput(value: string) {
   return new Date(value).toISOString().slice(0, 10);
 }
 
-function formatTimeInput(value: string | null) {
-  if (!value) return '';
-  const date = new Date(value);
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-}
-
-function toIsoFromParts(date: string, time: string) {
-  if (!date || !time) return undefined;
-  return new Date(`${date}T${time}:00`).toISOString();
-}
-
-function formatDateTimeLocal(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  const pad = (part: number) => String(part).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function toIsoFromDateTimeLocal(value: string) {
-  if (!value) return undefined;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
-}
-
 function StatCard({ label, value, tone, icon }: { label: string; value: number | string; tone: string; icon: string }) {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 px-5 py-4">
