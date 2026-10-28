@@ -19,7 +19,10 @@ export type Task = {
   assignee?: string | null;
   assignedToUserId?: number | null;
   assignedToId?: number | null;
+  parentTaskId?: number | null;
   dueDate?: string | null;
+  startDate?: string | null;
+  completionPercent?: number | null;
   taskType?: "GENERAL" | "SHOOT";
   shootClientName?: string | null;
   shootLocation?: string | null;
@@ -54,7 +57,10 @@ export type CreateTaskPayload = {
   shootCrewUserIds?: number[];
   project?: string | null;
   projectId?: number;
+  parentTaskId?: number | null;
   dueDate?: string | null;
+  startDate?: string | null;
+  completionPercent?: number | null;
   priority?: string | null;
   status?: string;
   notes?: string | null;

@@ -1,5 +1,12 @@
 import axios, { type AxiosError } from 'axios';
 
+export interface UserFacingError {
+  title: string;
+  message: string;
+  action?: string;
+  requestId?: string;
+}
+
 export function normalizeMessage(
   message: string | string[] | undefined | null,
   fallback: string,
@@ -68,6 +75,52 @@ export function extractApiErrorMessage(error: unknown, fallbackMessage = 'Reques
     ? 'The service is temporarily unavailable. Please try again shortly.'
     : 'Something went wrong. Please try again.';
   return fallbackMessage;
+}
+
+function getErrorDetails(error: unknown): { status?: number; code?: string; requestId?: string; rawMessage?: string } {
+  if (error instanceof Error && error.name === 'ApiError') {
+    const apiError = error as Error & { status?: number; code?: string; requestId?: string };
+    return { status: apiError.status, code: apiError.code, requestId: apiError.requestId, rawMessage: apiError.message };
+  }
+  const axiosError = error as AxiosError<{ code?: string; requestId?: string; message?: string | string[] }>;
+  return {
+    status: axiosError.response?.status,
+    code: axiosError.response?.data?.code,
+    requestId: axiosError.response?.data?.requestId ?? axiosError.response?.headers?.['x-request-id'],
+    rawMessage: normalizeMessage(axiosError.response?.data?.message, ''),
+  };
+}
+
+function isTechnicalMessage(message: string): boolean {
+  return /(?:Prisma|P\d{4}|SQL|stack trace|undefined|null reference|constraint|query engine|ECONN|ENOTFOUND|socket|endpoint|request failed)/i.test(message);
+}
+
+export function getUserFacingError(error: unknown, fallback = 'We couldn\'t complete that request.'): UserFacingError {
+  const { status, code, requestId, rawMessage } = getErrorDetails(error);
+  const safeMessage = rawMessage && !isTechnicalMessage(rawMessage) ? rawMessage : undefined;
+
+  if (status === 401 || code === 'AUTH_REQUIRED') {
+    return { title: 'Sign-in required', message: 'Your session has expired. Please sign in again.', action: 'Sign in' };
+  }
+  if (status === 403 || code?.includes('NOT_ALLOWED') || code?.includes('FORBIDDEN')) {
+    return { title: 'You don’t have access', message: safeMessage ?? 'You don’t have permission to complete this action.' };
+  }
+  if (status === 404 || code?.includes('NOT_FOUND')) {
+    return { title: 'We couldn’t find that', message: safeMessage ?? 'This item may have been removed or is no longer available.' };
+  }
+  if (status === 409 || code?.includes('CONFLICT')) {
+    return { title: 'This needs your attention', message: safeMessage ?? 'The item changed while you were working. Refresh and try again.' };
+  }
+  if (status === 400 || status === 422) {
+    return { title: 'Please check the details', message: safeMessage ?? 'Review the highlighted fields and try again.' };
+  }
+  if (status === 429) {
+    return { title: 'Please wait a moment', message: 'Too many attempts were made. Try again shortly.' };
+  }
+  if (status && status >= 500) {
+    return { title: 'We’re having trouble', message: 'Something went wrong on our side. Please try again.', action: 'Try again', requestId };
+  }
+  return { title: 'Unable to complete request', message: safeMessage ?? fallback, action: 'Try again', requestId };
 }
 
 export function isUnauthorizedError(error: unknown): boolean {

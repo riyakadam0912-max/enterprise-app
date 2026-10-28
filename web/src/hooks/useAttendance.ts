@@ -245,25 +245,37 @@ export function useMyAttendanceSnapshot() {
 
 export function useEmployeeAttendance(employeeId: number, month?: string) {
   const [data, setData] = useState<EmployeeAttendanceResponse | null>(null);
-  const [loading, setLoading] = useState(Boolean(employeeId));
+  const [loading, setLoading] = useState(Number.isInteger(employeeId) && employeeId > 0);
   const [error, setError] = useState<string | null>(null);
+  const requestSequence = useRef(0);
 
   const fetchEmployeeAttendance = useCallback(async () => {
-    if (!employeeId) return;
+    const requestId = ++requestSequence.current;
+    if (!Number.isInteger(employeeId) || employeeId <= 0) {
+      setData(null);
+      setError('The employee ID is invalid.');
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      setData(await getEmployeeAttendance(employeeId, month));
+      const response = await getEmployeeAttendance(employeeId, month);
+      if (requestId === requestSequence.current) setData(response);
     } catch (err) {
       const message = err instanceof Error ? err.message : undefined;
-      setError(getFriendlyLoadError(message));
+      if (requestId === requestSequence.current) {
+        setData(null);
+        setError(getFriendlyLoadError(message));
+      }
     } finally {
-      setLoading(false);
+      if (requestId === requestSequence.current) setLoading(false);
     }
   }, [employeeId, month]);
 
   useEffect(() => {
-    fetchEmployeeAttendance();
+    void fetchEmployeeAttendance();
+    return () => { requestSequence.current += 1; };
   }, [fetchEmployeeAttendance]);
 
   return { data, loading, error, refetch: fetchEmployeeAttendance };

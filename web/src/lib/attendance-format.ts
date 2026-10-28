@@ -104,3 +104,18 @@ export function joinTwelveHourDateTime(parts: {
   const seconds = dateOnly ? (original.split('T')[1]?.split(':').slice(2).join(':') || '00.000') : '00.000';
   return `${parts.date}T${String(hour).padStart(2, '0')}:${parts.minute}:${seconds}`;
 }
+export type AttendanceCalendarCell<T> = { key: string; day: T | null };
+
+export function buildAttendanceCalendarCells<T extends { date: string }>(month: string, days: T[]): AttendanceCalendarCell<T>[] {
+  const monthStart = new Date(`${month}-01T00:00:00`);
+  const leadingBlanks = monthStart.getDay();
+  const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+  const dayByDate = new Map(days.map((day) => [day.date.slice(0, 10), day]));
+
+  return Array.from({ length: leadingBlanks + daysInMonth }, (_, index) => {
+    if (index < leadingBlanks) return { key: `blank-${index}`, day: null };
+    const dayNumber = index - leadingBlanks + 1;
+    const date = `${month}-${String(dayNumber).padStart(2, '0')}`;
+    return { key: date, day: dayByDate.get(date) ?? null };
+  });
+}

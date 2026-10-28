@@ -1,7 +1,7 @@
 import axios, { type AxiosRequestConfig } from 'axios';
 import { axiosClient } from './axiosClient';
 import type { ApiResponseEnvelope } from '@/types/api';
-import { extractApiErrorMessage, normalizeMessage } from '@/lib/api-errors';
+import { getUserFacingError, normalizeMessage } from '@/lib/api-errors';
 
 export class ApiError extends Error {
   status?: number;
@@ -173,14 +173,10 @@ export async function apiClient<T>(
       }
 
       throw new ApiError(
-        extractApiErrorMessage(
+        getUserFacingError(
           error,
-          getErrorMessage(
-            status,
-            error.response.data,
-            error.message,
-          ),
-        ),
+          getErrorMessage(status, error.response.data, error.message),
+        ).message,
         status,
         error.response,
         typeof error.response.data === 'object' && error.response.data

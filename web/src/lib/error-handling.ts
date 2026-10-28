@@ -1,16 +1,16 @@
 'use client';
 
 import { toast } from '@/providers/toast-provider';
-import { extractApiErrorMessage } from '@/lib/api-errors';
+import { getUserFacingError } from '@/lib/api-errors';
 
 export function getErrorMessage(error: unknown, fallback = 'Something went wrong') {
-  return extractApiErrorMessage(error, fallback);
+  return getUserFacingError(error, fallback).message;
 }
 
 export function reportError(error: unknown, title = 'Request failed') {
-  const message = getErrorMessage(error);
+  const presentation = getUserFacingError(error);
   console.error(title, error);
-  toast.error(title, message);
+  toast.error(presentation.title === 'Unable to complete request' ? title : presentation.title, presentation.message);
 }
 
 export async function retryAsync<T>(fn: () => Promise<T>, attempts = 2, delayMs = 200): Promise<T> {

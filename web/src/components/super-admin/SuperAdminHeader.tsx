@@ -11,6 +11,7 @@ import NotificationBell from '@/components/notifications/NotificationBell';
 const superAdminNavItems = [
   { label: 'Dashboard', href: '/super-admin/dashboard' },
   { label: 'Organizations', href: '/super-admin/organizations' },
+  { label: 'Business Units', href: '/super-admin/business-units' },
   { label: 'Users', href: '/super-admin/users' },
   { label: 'Roles & Permissions', href: '/super-admin/roles' },
   { label: 'Audit Logs', href: '/super-admin/audit-logs' },
@@ -50,7 +51,7 @@ export function SuperAdminHeader({ onMenuToggle }: { onMenuToggle: () => void })
           </div>
           <nav className="flex items-center gap-2 text-sm text-slate-500">
             {breadcrumbs.map((crumb, index) => (
-              <div key={crumb.href} className="flex items-center gap-2">
+              <div key={`${crumb.href}-${index}`} className="flex items-center gap-2">
                 {index > 0 ? <ChevronRight className="h-4 w-4" /> : null}
                 <Link href={crumb.href} className={index === breadcrumbs.length - 1 ? 'font-medium text-slate-900' : 'hover:text-slate-700'}>
                   {crumb.label}

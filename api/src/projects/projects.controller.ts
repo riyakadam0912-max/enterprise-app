@@ -36,6 +36,15 @@ import {
 import { ProjectMessagesService } from './project-messages.service';
 import type { ProjectMessageMention } from './project-messages.service';
 import type { AuthUser } from '../common/types/auth';
+import { ProjectQueryDto } from './dto/project-query.dto';
+import { CreateMilestoneDto } from './dto/create-milestone.dto';
+import { UpdateMilestoneDto } from './dto/update-milestone.dto';
+import { CreateTaskListDto } from './dto/create-task-list.dto';
+import { UpdateTaskListDto } from './dto/update-task-list.dto';
+import { CreateTaskDependencyDto } from './dto/create-task-dependency.dto';
+import { CreateProjectIssueDto } from './dto/create-project-issue.dto';
+import { UpdateProjectIssueDto } from './dto/update-project-issue.dto';
+import { CreateProjectBaselineDto } from './dto/create-project-baseline.dto';
 
 type ProjectRequest = {
   user: AuthUser;
@@ -183,6 +192,16 @@ export class ProjectsController {
     return this.service.findAll(req.user);
   }
 
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.EMPLOYEE)
+  @ApiOperation({ summary: 'GET /query' })
+  @Get('query')
+  query(
+    @Query() query: ProjectQueryDto,
+    @Req() req: ProjectRequest,
+  ) {
+    return this.service.query(query, req.user);
+  }
+
   @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.EMPLOYEE)
   @ApiOperation({ summary: 'GET by-status' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
@@ -215,6 +234,82 @@ export class ProjectsController {
   }
 
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.EMPLOYEE)
+  @ApiOperation({ summary: 'GET :id/workspace' })
+  @Get(':id/workspace')
+  getWorkspace(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: ProjectRequest,
+  ) {
+    return this.service.getWorkspace(id, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @Post(':id/milestones')
+  createMilestone(@Param('id', ParseIntPipe) id: number, @Body() dto: CreateMilestoneDto, @Req() req: ProjectRequest) {
+    return this.service.createMilestone(id, dto, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @Patch(':id/milestones/:milestoneId')
+  updateMilestone(@Param('id', ParseIntPipe) id: number, @Param('milestoneId', ParseIntPipe) milestoneId: number, @Body() dto: UpdateMilestoneDto, @Req() req: ProjectRequest) {
+    return this.service.updateMilestone(id, milestoneId, dto, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @Delete(':id/milestones/:milestoneId')
+  removeMilestone(@Param('id', ParseIntPipe) id: number, @Param('milestoneId', ParseIntPipe) milestoneId: number, @Req() req: ProjectRequest) {
+    return this.service.removeMilestone(id, milestoneId, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @Post(':id/task-lists')
+  createTaskList(@Param('id', ParseIntPipe) id: number, @Body() dto: CreateTaskListDto, @Req() req: ProjectRequest) {
+    return this.service.createTaskList(id, dto, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @Patch(':id/task-lists/:taskListId')
+  updateTaskList(@Param('id', ParseIntPipe) id: number, @Param('taskListId', ParseIntPipe) taskListId: number, @Body() dto: UpdateTaskListDto, @Req() req: ProjectRequest) {
+    return this.service.updateTaskList(id, taskListId, dto, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @Delete(':id/task-lists/:taskListId')
+  removeTaskList(@Param('id', ParseIntPipe) id: number, @Param('taskListId', ParseIntPipe) taskListId: number, @Req() req: ProjectRequest) {
+    return this.service.removeTaskList(id, taskListId, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @Post(':id/dependencies')
+  createDependency(@Param('id', ParseIntPipe) id: number, @Body() dto: CreateTaskDependencyDto, @Req() req: ProjectRequest) {
+    return this.service.createDependency(id, dto, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @Delete(':id/dependencies/:dependencyId')
+  removeDependency(@Param('id', ParseIntPipe) id: number, @Param('dependencyId', ParseIntPipe) dependencyId: number, @Req() req: ProjectRequest) {
+    return this.service.removeDependency(id, dependencyId, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.EMPLOYEE)
+  @Post(':id/issues')
+  createIssue(@Param('id', ParseIntPipe) id: number, @Body() dto: CreateProjectIssueDto, @Req() req: ProjectRequest) {
+    return this.service.createIssue(id, dto, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.EMPLOYEE)
+  @Patch(':id/issues/:issueId')
+  updateIssue(@Param('id', ParseIntPipe) id: number, @Param('issueId', ParseIntPipe) issueId: number, @Body() dto: UpdateProjectIssueDto, @Req() req: ProjectRequest) {
+    return this.service.updateIssue(id, issueId, dto, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @Delete(':id/issues/:issueId')
+  removeIssue(@Param('id', ParseIntPipe) id: number, @Param('issueId', ParseIntPipe) issueId: number, @Req() req: ProjectRequest) {
+    return this.service.removeIssue(id, issueId, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.EMPLOYEE)
   @ApiOperation({ summary: 'GET :id' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
@@ -242,6 +337,38 @@ export class ProjectsController {
     req: ProjectRequest,
   ) {
     return this.service.getProgress(id, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @ApiOperation({ summary: 'GET :id/critical-path' })
+  @Get(':id/critical-path')
+  getCriticalPath(@Param('id', ParseIntPipe) id: number, @Req() req: ProjectRequest) {
+    return this.service.getCriticalPath(id, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @ApiOperation({ summary: 'GET :id/workload' })
+  @Get(':id/workload')
+  getWorkload(@Param('id', ParseIntPipe) id: number, @Req() req: ProjectRequest) {
+    return this.service.getWorkload(id, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @Post(':id/baselines')
+  createBaseline(@Param('id', ParseIntPipe) id: number, @Body() dto: CreateProjectBaselineDto, @Req() req: ProjectRequest) {
+    return this.service.createBaseline(id, dto, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @Get(':id/baselines')
+  listBaselines(@Param('id', ParseIntPipe) id: number, @Req() req: ProjectRequest) {
+    return this.service.listBaselines(id, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @Get(':id/baselines/:baselineId/variance')
+  getBaselineVariance(@Param('id', ParseIntPipe) id: number, @Param('baselineId', ParseIntPipe) baselineId: number, @Req() req: ProjectRequest) {
+    return this.service.getBaselineVariance(id, baselineId, req.user);
   }
 
   @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)

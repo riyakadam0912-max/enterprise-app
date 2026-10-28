@@ -115,6 +115,7 @@ export interface EmployeeAttendanceResponse {
     shift?: ShiftDetails | null;
   };
   month: string;
+  timezone?: string;
   summary: AttendanceSummary;
   days: EmployeeAttendanceDay[];
 }
@@ -267,7 +268,7 @@ export interface AttendanceFilters {
 export interface MonthlyAttendanceReportRow {
   employeeId: number;
   employeeName: string;
-  organization: { id: number; name: string };
+  organization?: { id: number; name: string };
   hireDate: string | null;
   department: string | null;
   role: string;
@@ -279,6 +280,8 @@ export interface MonthlyAttendanceReportRow {
   holidayCount: number;
   weeklyOffCount: number;
   workingDays: number;
+  isFlexible?: boolean;
+  workingDayEquivalents?: number;
   attendancePercent: number;
   overtimeHours?: number;
   shortfallHours?: number;

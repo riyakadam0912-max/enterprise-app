@@ -17,6 +17,15 @@ import { BusinessUnitsService } from '../business-units/business-units.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { Optional } from '@nestjs/common';
 import { OrganizationScopeService } from '../organizations/organization-scope.service';
+import { ProjectQueryDto } from './dto/project-query.dto';
+import { CreateMilestoneDto } from './dto/create-milestone.dto';
+import { UpdateMilestoneDto } from './dto/update-milestone.dto';
+import { CreateTaskListDto } from './dto/create-task-list.dto';
+import { UpdateTaskListDto } from './dto/update-task-list.dto';
+import { CreateTaskDependencyDto } from './dto/create-task-dependency.dto';
+import { CreateProjectIssueDto } from './dto/create-project-issue.dto';
+import { UpdateProjectIssueDto } from './dto/update-project-issue.dto';
+import { CreateProjectBaselineDto } from './dto/create-project-baseline.dto';
 
 const PROJECT_STATUSES = [
   'NOT_STARTED',
@@ -758,6 +767,71 @@ export class ProjectsService {
     });
   }
 
+  async query(query: ProjectQueryDto, user: AuthUser) {
+    const page = Math.max(1, Number.parseInt(query.page ?? '1', 10) || 1);
+    const pageSize = Math.min(
+      100,
+      Math.max(1, Number.parseInt(query.pageSize ?? '25', 10) || 25),
+    );
+    const and: Prisma.ProjectWhereInput[] = [await this.getProjectScope(user)];
+    const numberFilter = (value?: string) => {
+      const parsed = value == null ? NaN : Number.parseInt(value, 10);
+      return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+    };
+    const managerId = numberFilter(query.managerId);
+    if (query.search?.trim()) {
+      const search = query.search.trim();
+      and.push({
+        OR: [
+          { projectName: { contains: search, mode: 'insensitive' } },
+          { projectCode: { contains: search, mode: 'insensitive' } },
+          { clientName: { contains: search, mode: 'insensitive' } },
+        ],
+      });
+    }
+    if (query.status) and.push({ status: query.status });
+    if (query.priority) and.push({ priority: query.priority });
+    if (managerId) and.push({ managerId });
+    if (query.startFrom || query.endTo) {
+      and.push({
+        startDate: {
+          ...(query.startFrom ? { gte: new Date(query.startFrom) } : {}),
+          ...(query.endTo ? { lte: new Date(query.endTo) } : {}),
+        },
+      });
+    }
+    const where: Prisma.ProjectWhereInput = { AND: and };
+    const allowedSorts = new Set(['createdAt', 'updatedAt', 'projectName', 'startDate', 'endDate', 'priority', 'status']);
+    const sortBy = allowedSorts.has(query.sortBy ?? '') ? query.sortBy! : 'createdAt';
+    const sortDirection = query.sortDirection === 'asc' ? 'asc' : 'desc';
+    const [total, items] = await this.db.$transaction([
+      this.db.project.count({ where }),
+      this.db.project.findMany({
+        where,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        orderBy: { [sortBy]: sortDirection } as Prisma.ProjectOrderByWithRelationInput,
+        select: {
+          id: true,
+          projectName: true,
+          projectCode: true,
+          status: true,
+          priority: true,
+          startDate: true,
+          endDate: true,
+          managerId: true,
+          clientName: true,
+          budget: true,
+          createdAt: true,
+          updatedAt: true,
+          managerUser: { select: { id: true, name: true, email: true } },
+          _count: { select: { tasks: true, issues: true, milestones: true } },
+        },
+      }),
+    ]);
+    return { items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+  }
+
   async findOne(id: number, user: AuthUser) {
     const organizationId = user.organizationId;
     const hasAccess = await this.canViewProject(id, user);
@@ -852,6 +926,203 @@ export class ProjectsService {
       tasks,
       teamMembers,
     };
+  }
+
+  async getWorkspace(id: number, user: AuthUser) {
+    const hasAccess = await this.canViewProject(id, user);
+    if (!hasAccess) throw new ForbiddenException('You can only access allowed projects');
+    const project = await this.db.project.findFirst({
+      where: { id, ...(await this.getProjectAccessWhere(user)) },
+      select: { id: true, projectName: true, status: true, organizationId: true },
+    });
+    if (!project) throw new NotFoundException(`Project #${id} not found`);
+    const taskScope = user.role === Role.EMPLOYEE
+      ? {
+          projectId: id,
+          OR: [
+            { assignedToUserId: user.userId },
+            ...(user.employeeId ? [{ assignedToId: user.employeeId }] : []),
+            ...(user.employeeId
+              ? [{ projectRef: { assignedEmployees: { some: { id: user.employeeId } } } }]
+              : []),
+          ],
+        }
+      : { projectId: id };
+    const [milestones, taskLists, issues] = await this.db.$transaction([
+      this.db.projectMilestone.findMany({ where: { projectId: id }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }),
+      this.db.taskList.findMany({ where: { projectId: id }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }),
+      this.db.projectIssue.findMany({
+        where: { projectId: id },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          reportedBy: { select: { id: true, name: true, email: true } },
+          assignedTo: { select: { id: true, name: true, email: true } },
+        },
+      }),
+    ]);
+    const tasks = await this.db.task.findMany({
+      where: taskScope,
+      select: {
+        id: true, taskName: true, status: true, priority: true, startDate: true, dueDate: true,
+        completionPercent: true, milestoneId: true, taskListId: true, parentTaskId: true,
+        assignedToUser: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: [{ taskListId: 'asc' }, { createdAt: 'asc' }],
+    });
+    return { project, milestones, taskLists, tasks, issues };
+  }
+
+  async createMilestone(projectId: number, dto: CreateMilestoneDto, user: AuthUser) {
+    const canManage = await this.canManageProject(projectId, user);
+    if (!canManage) throw new ForbiddenException('Only project managers can manage milestones');
+    const project = await this.getAccessibleProject(projectId, user);
+    if (!dto.name.trim()) throw new BadRequestException('Milestone name is required');
+    return this.db.projectMilestone.create({
+      data: {
+        projectId,
+        organizationId: project.organizationId,
+        name: dto.name.trim(),
+        description: dto.description?.trim() || null,
+        startDate: dto.startDate ? new Date(dto.startDate) : null,
+        dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+        status: dto.status ?? 'NOT_STARTED',
+        sortOrder: dto.sortOrder ?? 0,
+      },
+    });
+  }
+
+  async updateMilestone(projectId: number, milestoneId: number, dto: UpdateMilestoneDto, user: AuthUser) {
+    const canManage = await this.canManageProject(projectId, user);
+    if (!canManage) throw new ForbiddenException('Only project managers can manage milestones');
+    const project = await this.getAccessibleProject(projectId, user);
+    const existing = await this.db.projectMilestone.findFirst({ where: { id: milestoneId, projectId, organizationId: project.organizationId } });
+    if (!existing) throw new NotFoundException('Milestone not found');
+    return this.db.projectMilestone.update({
+      where: { id: milestoneId },
+      data: {
+        ...(dto.name !== undefined && { name: dto.name.trim() }),
+        ...(dto.description !== undefined && { description: dto.description?.trim() || null }),
+        ...(dto.startDate !== undefined && { startDate: dto.startDate ? new Date(dto.startDate) : null }),
+        ...(dto.dueDate !== undefined && { dueDate: dto.dueDate ? new Date(dto.dueDate) : null }),
+        ...(dto.status !== undefined && { status: dto.status }),
+        ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
+      },
+    });
+  }
+
+  async removeMilestone(projectId: number, milestoneId: number, user: AuthUser) {
+    const canManage = await this.canManageProject(projectId, user);
+    if (!canManage) throw new ForbiddenException('Only project managers can manage milestones');
+    const project = await this.getAccessibleProject(projectId, user);
+    const existing = await this.db.projectMilestone.findFirst({ where: { id: milestoneId, projectId, organizationId: project.organizationId } });
+    if (!existing) throw new NotFoundException('Milestone not found');
+    return this.db.$transaction(async (tx) => {
+      await tx.task.updateMany({ where: { milestoneId }, data: { milestoneId: null } });
+      return tx.projectMilestone.delete({ where: { id: milestoneId } });
+    });
+  }
+
+  async createTaskList(projectId: number, dto: CreateTaskListDto, user: AuthUser) {
+    const canManage = await this.canManageProject(projectId, user);
+    if (!canManage) throw new ForbiddenException('Only project managers can manage task lists');
+    const project = await this.getAccessibleProject(projectId, user);
+    if (!dto.name.trim()) throw new BadRequestException('Task list name is required');
+    return this.db.taskList.create({
+      data: { projectId, organizationId: project.organizationId, name: dto.name.trim(), description: dto.description?.trim() || null, sortOrder: dto.sortOrder ?? 0 },
+    });
+  }
+
+  async updateTaskList(projectId: number, taskListId: number, dto: UpdateTaskListDto, user: AuthUser) {
+    const canManage = await this.canManageProject(projectId, user);
+    if (!canManage) throw new ForbiddenException('Only project managers can manage task lists');
+    const project = await this.getAccessibleProject(projectId, user);
+    const existing = await this.db.taskList.findFirst({ where: { id: taskListId, projectId, organizationId: project.organizationId } });
+    if (!existing) throw new NotFoundException('Task list not found');
+    return this.db.taskList.update({ where: { id: taskListId }, data: { ...(dto.name !== undefined && { name: dto.name.trim() }), ...(dto.description !== undefined && { description: dto.description?.trim() || null }), ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }) } });
+  }
+
+  async removeTaskList(projectId: number, taskListId: number, user: AuthUser) {
+    const canManage = await this.canManageProject(projectId, user);
+    if (!canManage) throw new ForbiddenException('Only project managers can manage task lists');
+    const project = await this.getAccessibleProject(projectId, user);
+    const existing = await this.db.taskList.findFirst({ where: { id: taskListId, projectId, organizationId: project.organizationId } });
+    if (!existing) throw new NotFoundException('Task list not found');
+    return this.db.$transaction(async (tx) => {
+      await tx.task.updateMany({ where: { taskListId }, data: { taskListId: null } });
+      return tx.taskList.delete({ where: { id: taskListId } });
+    });
+  }
+
+  async createDependency(projectId: number, dto: CreateTaskDependencyDto, user: AuthUser) {
+    const canManage = await this.canManageProject(projectId, user);
+    if (!canManage) throw new ForbiddenException('Only project managers can manage dependencies');
+    const project = await this.getAccessibleProject(projectId, user);
+    if (dto.predecessorId === dto.successorId) throw new BadRequestException('A task cannot depend on itself');
+    const tasks = await this.db.task.findMany({ where: { id: { in: [dto.predecessorId, dto.successorId] }, projectId, organizationId: project.organizationId, deletedAt: null }, select: { id: true } });
+    if (tasks.length !== 2) throw new NotFoundException('Both dependency tasks must belong to the project');
+    const duplicate = await this.db.taskDependency.findFirst({ where: { predecessorId: dto.predecessorId, successorId: dto.successorId } });
+    if (duplicate) throw new BadRequestException('Dependency already exists');
+    const visited = new Set<number>();
+    const pending = [dto.successorId];
+    while (pending.length) {
+      const current = pending.pop()!;
+      if (current === dto.predecessorId) throw new BadRequestException('Dependency would create a cycle');
+      if (visited.has(current)) continue;
+      visited.add(current);
+      const edges = await this.db.taskDependency.findMany({ where: { predecessorId: current, projectId }, select: { successorId: true } });
+      pending.push(...edges.map((edge) => edge.successorId));
+    }
+    return this.db.taskDependency.create({ data: { projectId, organizationId: project.organizationId, predecessorId: dto.predecessorId, successorId: dto.successorId, dependencyType: dto.dependencyType ?? 'FINISH_TO_START', lagDays: dto.lagDays ?? 0 } });
+  }
+
+  async removeDependency(projectId: number, dependencyId: number, user: AuthUser) {
+    const canManage = await this.canManageProject(projectId, user);
+    if (!canManage) throw new ForbiddenException('Only project managers can manage dependencies');
+    const project = await this.getAccessibleProject(projectId, user);
+    const existing = await this.db.taskDependency.findFirst({ where: { id: dependencyId, projectId, organizationId: project.organizationId } });
+    if (!existing) throw new NotFoundException('Dependency not found');
+    return this.db.taskDependency.delete({ where: { id: dependencyId } });
+  }
+
+  async createIssue(projectId: number, dto: CreateProjectIssueDto, user: AuthUser) {
+    const project = await this.getAccessibleProject(projectId, user);
+    if (!dto.title.trim()) throw new BadRequestException('Issue title is required');
+    if (dto.taskId != null) {
+      const task = await this.db.task.findFirst({ where: { id: dto.taskId, projectId, organizationId: project.organizationId, deletedAt: null }, select: { id: true } });
+      if (!task) throw new NotFoundException('Issue task not found');
+    }
+    if (dto.assignedToId != null) {
+      const assignee = await this.db.user.findFirst({ where: { id: dto.assignedToId, organizationId: project.organizationId, isActive: true }, select: { id: true } });
+      if (!assignee) throw new NotFoundException('Issue assignee not found');
+    }
+    return this.db.projectIssue.create({ data: { projectId, organizationId: project.organizationId, title: dto.title.trim(), description: dto.description?.trim() || null, status: dto.status ?? 'OPEN', priority: dto.priority ?? 'MEDIUM', severity: dto.severity?.trim() || null, taskId: dto.taskId ?? null, assignedToId: dto.assignedToId ?? null, reportedById: user.userId, dueDate: dto.dueDate ? new Date(dto.dueDate) : null } });
+  }
+
+  async updateIssue(projectId: number, issueId: number, dto: UpdateProjectIssueDto, user: AuthUser) {
+    const project = await this.getAccessibleProject(projectId, user);
+    const issue = await this.db.projectIssue.findFirst({ where: { id: issueId, projectId, organizationId: project.organizationId } });
+    if (!issue) throw new NotFoundException('Issue not found');
+    const canManage = await this.canManageProject(projectId, user);
+    if (!canManage && issue.reportedById !== user.userId && issue.assignedToId !== user.userId) throw new ForbiddenException('You cannot update this issue');
+    if (dto.title !== undefined && !dto.title.trim()) throw new BadRequestException('Issue title is required');
+    if (dto.taskId != null) {
+      const task = await this.db.task.findFirst({ where: { id: dto.taskId, projectId, organizationId: project.organizationId, deletedAt: null }, select: { id: true } });
+      if (!task) throw new NotFoundException('Issue task not found');
+    }
+    if (dto.assignedToId != null) {
+      const assignee = await this.db.user.findFirst({ where: { id: dto.assignedToId, organizationId: project.organizationId, isActive: true }, select: { id: true } });
+      if (!assignee) throw new NotFoundException('Issue assignee not found');
+    }
+    return this.db.projectIssue.update({ where: { id: issueId }, data: { ...(dto.title !== undefined && { title: dto.title.trim() }), ...(dto.description !== undefined && { description: dto.description?.trim() || null }), ...(dto.status !== undefined && { status: dto.status, resolvedAt: ['RESOLVED', 'CLOSED'].includes(dto.status) ? new Date() : null }), ...(dto.priority !== undefined && { priority: dto.priority }), ...(dto.severity !== undefined && { severity: dto.severity?.trim() || null }), ...(dto.taskId !== undefined && { taskId: dto.taskId ?? null }), ...(dto.assignedToId !== undefined && { assignedToId: dto.assignedToId ?? null }), ...(dto.dueDate !== undefined && { dueDate: dto.dueDate ? new Date(dto.dueDate) : null }) } });
+  }
+
+  async removeIssue(projectId: number, issueId: number, user: AuthUser) {
+    const canManage = await this.canManageProject(projectId, user);
+    if (!canManage) throw new ForbiddenException('Only project managers can remove issues');
+    const project = await this.getAccessibleProject(projectId, user);
+    const issue = await this.db.projectIssue.findFirst({ where: { id: issueId, projectId, organizationId: project.organizationId } });
+    if (!issue) throw new NotFoundException('Issue not found');
+    return this.db.projectIssue.delete({ where: { id: issueId } });
   }
 
   async addCoManager(
@@ -1624,7 +1895,16 @@ export class ProjectsService {
         organizationId: project.organizationId,
         deletedAt: null,
       },
-      select: { id: true, status: true, taskType: true },
+      select: {
+        id: true,
+        status: true,
+        taskType: true,
+        completionPercent: true,
+        estimatedHours: true,
+        actualHours: true,
+        milestoneId: true,
+        taskListId: true,
+      },
     });
 
     const byStatus: Record<string, number> = {};
@@ -1640,14 +1920,25 @@ export class ProjectsService {
     }
 
     const totalTasks = tasks.length;
-    const completedShootTasks = tasks.filter(
-      (task) =>
-        String(task.status || '').toUpperCase() === 'COMPLETED' &&
-        task.taskType === 'SHOOT',
-    ).length;
-    const completedTasks = byStatus.APPROVED + completedShootTasks;
+    const completedTasks = byStatus.APPROVED + byStatus.COMPLETED;
     const progressPercent =
       totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+    const plannedHours = tasks.reduce((sum, task) => sum + (task.estimatedHours ?? 0), 0);
+    const actualHours = tasks.reduce((sum, task) => sum + (task.actualHours ?? 0), 0);
+    const milestoneRollups = new Map<number, { totalTasks: number; completedTasks: number; progressPercent: number }>();
+    const taskListRollups = new Map<number, { totalTasks: number; completedTasks: number; progressPercent: number }>();
+    for (const task of tasks) {
+      const completed = ['APPROVED', 'COMPLETED'].includes(String(task.status ?? '').toUpperCase()) ? 1 : 0;
+      for (const [groupId, rollups] of [[task.milestoneId, milestoneRollups], [task.taskListId, taskListRollups]] as const) {
+        if (groupId == null) continue;
+        const current = rollups.get(groupId) ?? { totalTasks: 0, completedTasks: 0, progressPercent: 0 };
+        current.totalTasks += 1;
+        current.completedTasks += completed;
+        current.progressPercent = Math.round((current.completedTasks / current.totalTasks) * 100);
+        rollups.set(groupId, current);
+      }
+    }
 
     return {
       projectId: project.id,
@@ -1657,6 +1948,127 @@ export class ProjectsService {
       completedTasks,
       progressPercent,
       byStatus,
+      plannedHours,
+      actualHours,
+      remainingHours: Math.max(0, plannedHours - actualHours),
+      milestoneRollups: Object.fromEntries(milestoneRollups),
+      taskListRollups: Object.fromEntries(taskListRollups),
     };
+  }
+
+  async getCriticalPath(projectId: number, user: AuthUser) {
+    const project = await this.getAccessibleProject(projectId, user);
+    const tasks = await this.db.task.findMany({
+      where: { projectId, organizationId: project.organizationId, deletedAt: null },
+      select: { id: true, taskName: true, status: true, startDate: true, dueDate: true, estimatedHours: true, completionPercent: true, assignedToUser: { select: { id: true, name: true } } },
+    });
+    const taskIds = new Set(tasks.map((task) => task.id));
+    const dependencies = await this.db.taskDependency.findMany({ where: { projectId, organizationId: project.organizationId }, select: { predecessorId: true, successorId: true, dependencyType: true, lagDays: true } });
+    const incoming = new Map<number, number[]>();
+    const outgoing = new Map<number, number[]>();
+    dependencies.forEach((edge) => {
+      if (!taskIds.has(edge.predecessorId) || !taskIds.has(edge.successorId)) return;
+      incoming.set(edge.successorId, [...(incoming.get(edge.successorId) ?? []), edge.predecessorId]);
+      outgoing.set(edge.predecessorId, [...(outgoing.get(edge.predecessorId) ?? []), edge.successorId]);
+    });
+    const durations = new Map(tasks.map((task) => {
+      const start = task.startDate?.getTime();
+      const end = task.dueDate?.getTime();
+      const duration = start != null && end != null && end > start ? end - start : Math.max(1, task.estimatedHours ?? 1) * 3600000;
+      return [task.id, duration] as const;
+    }));
+    const memo = new Map<number, { duration: number; path: number[] }>();
+    const visiting = new Set<number>();
+    const longest = (taskId: number): { duration: number; path: number[] } => {
+      const cached = memo.get(taskId);
+      if (cached) return cached;
+      if (visiting.has(taskId)) return { duration: durations.get(taskId) ?? 0, path: [taskId] };
+      visiting.add(taskId);
+      let best = { duration: 0, path: [] as number[] };
+      for (const predecessorId of incoming.get(taskId) ?? []) {
+        const candidate = longest(predecessorId);
+        if (candidate.duration > best.duration) best = candidate;
+      }
+      visiting.delete(taskId);
+      const result = { duration: best.duration + (durations.get(taskId) ?? 0), path: [...best.path, taskId] };
+      memo.set(taskId, result);
+      return result;
+    };
+    let critical = { duration: 0, path: [] as number[] };
+    tasks.forEach((task) => {
+      const candidate = longest(task.id);
+      if (candidate.duration > critical.duration) critical = candidate;
+    });
+    const taskById = new Map(tasks.map((task) => [task.id, task]));
+    return {
+      projectId,
+      taskIds: critical.path,
+      durationHours: Math.round((critical.duration / 3600000) * 100) / 100,
+      tasks: critical.path.map((id) => taskById.get(id)).filter(Boolean),
+      dependencies: dependencies.filter((edge) => critical.path.includes(edge.predecessorId) && critical.path.includes(edge.successorId)),
+    };
+  }
+
+  async getWorkload(projectId: number, user: AuthUser) {
+    const project = await this.getAccessibleProject(projectId, user);
+    const tasks = await this.db.task.findMany({
+      where: { projectId, organizationId: project.organizationId, deletedAt: null },
+      select: { id: true, status: true, estimatedHours: true, actualHours: true, assignedToUserId: true, assignedToUser: { select: { id: true, name: true, email: true } } },
+    });
+    const grouped = new Map<number, { user: { id: number; name: string; email: string } | null; taskCount: number; openTasks: number; estimatedHours: number; actualHours: number }>();
+    for (const task of tasks) {
+      const key = task.assignedToUserId ?? 0;
+      const current = grouped.get(key) ?? { user: task.assignedToUser, taskCount: 0, openTasks: 0, estimatedHours: 0, actualHours: 0 };
+      current.taskCount += 1;
+      if (!['APPROVED', 'COMPLETED'].includes(String(task.status ?? '').toUpperCase())) current.openTasks += 1;
+      current.estimatedHours += task.estimatedHours ?? 0;
+      current.actualHours += task.actualHours ?? 0;
+      grouped.set(key, current);
+    }
+    return { projectId, members: [...grouped.values()].map((member) => ({ ...member, remainingHours: Math.max(0, member.estimatedHours - member.actualHours) })).sort((a, b) => b.remainingHours - a.remainingHours) };
+  }
+
+  async createBaseline(projectId: number, dto: CreateProjectBaselineDto, user: AuthUser) {
+    const canManage = await this.canManageProject(projectId, user);
+    if (!canManage) throw new ForbiddenException('Only project managers can create baselines');
+    const project = await this.getAccessibleProject(projectId, user);
+    const tasks = await this.db.task.findMany({
+      where: { projectId, organizationId: project.organizationId, deletedAt: null },
+      select: { id: true, taskName: true, status: true, startDate: true, dueDate: true, estimatedHours: true, completionPercent: true, milestoneId: true, taskListId: true },
+    });
+    const data = {
+      projectId,
+      capturedAt: new Date().toISOString(),
+      tasks: tasks.map((task) => ({ ...task, startDate: task.startDate?.toISOString() ?? null, dueDate: task.dueDate?.toISOString() ?? null })),
+    };
+    return (this.db as any).projectBaseline.create({
+      data: { projectId, organizationId: project.organizationId, name: dto.name?.trim() || `Baseline ${new Date().toLocaleDateString('en-GB')}`, data, createdById: user.userId },
+      include: { createdBy: { select: { id: true, name: true, email: true } } },
+    });
+  }
+
+  async listBaselines(projectId: number, user: AuthUser) {
+    const project = await this.getAccessibleProject(projectId, user);
+    return (this.db as any).projectBaseline.findMany({
+      where: { projectId, organizationId: project.organizationId },
+      orderBy: { snapshotAt: 'desc' },
+      select: { id: true, projectId: true, name: true, snapshotAt: true, createdAt: true, createdBy: { select: { id: true, name: true, email: true } } },
+    });
+  }
+
+  async getBaselineVariance(projectId: number, baselineId: number, user: AuthUser) {
+    const project = await this.getAccessibleProject(projectId, user);
+    const baseline = await (this.db as any).projectBaseline.findFirst({ where: { id: baselineId, projectId, organizationId: project.organizationId } });
+    if (!baseline) throw new NotFoundException('Project baseline not found');
+    const currentTasks = await this.db.task.findMany({ where: { projectId, organizationId: project.organizationId, deletedAt: null }, select: { id: true, status: true, startDate: true, dueDate: true, completionPercent: true } });
+    const baselineTasks = Array.isArray(baseline.data?.tasks) ? baseline.data.tasks as Array<{ id: number; status?: string; startDate?: string | null; dueDate?: string | null; completionPercent?: number }> : [];
+    const currentById = new Map(currentTasks.map((task) => [task.id, task]));
+    const taskVariance = baselineTasks.map((original) => {
+      const current = currentById.get(original.id);
+      const baselineDue = original.dueDate ? new Date(original.dueDate).getTime() : null;
+      const currentDue = current?.dueDate ? current.dueDate.getTime() : null;
+      return { taskId: original.id, statusChanged: original.status !== current?.status, completionDelta: (current?.completionPercent ?? 0) - (original.completionPercent ?? 0), dueDateDeltaDays: baselineDue != null && currentDue != null ? Math.round((currentDue - baselineDue) / 86400000) : null, missing: !current };
+    });
+    return { baselineId, projectId, baselineName: baseline.name, taskVariance, addedTasks: currentTasks.filter((task) => !baselineTasks.some((original) => original.id === task.id)).map((task) => task.id) };
   }
 }

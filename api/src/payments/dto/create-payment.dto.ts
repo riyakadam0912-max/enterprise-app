@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsDateString,
   IsIn,
+  Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -23,6 +24,7 @@ export class CreatePaymentDto {
   invoiceId!: number;
 
   @IsNumber()
+  @Min(0.01)
   @ApiProperty({ example: 123 })
   amount!: number;
 

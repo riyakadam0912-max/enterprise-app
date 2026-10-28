@@ -14,6 +14,14 @@ import {
   updateTask,
   updateTaskStatus,
   deleteTask,
+  createTaskChecklistItem,
+  updateTaskChecklistItem,
+  deleteTaskChecklistItem,
+  addTaskWatcher,
+  removeTaskWatcher,
+  bulkUpdateTasks,
+  TaskChecklistItem,
+  TaskWatcher,
 } from '@/api/tasksApi';
 import { useStableNow } from '@/hooks/useStableNow';
 import { Button } from '@/components/ui/button';
@@ -29,10 +37,11 @@ import {
 import CreateTaskDrawer from '@/components/tasks/CreateTaskDrawer';
 import { TaskDetailHeader, TaskDetailMetadata } from '@/components/tasks/TaskDetailPresentation';
 import { dateTimeLocalToIso, toDateTimeLocalValue } from '@/utils/dateUtils';
-import { Check, ClipboardList, ExternalLink, FileText, MessageCircle, Play, Send, X } from 'lucide-react';
+import { Check, ClipboardList, Ellipsis, ExternalLink, FileText, MessageCircle, Play, Send, X } from 'lucide-react';
 
 type DashboardRole = AuthRole;
 type TaskFilter = 'all' | 'mine' | 'needs-review';
+type TaskViewMode = 'list' | 'kanban' | 'calendar' | 'gantt';
 type DetailTab = 'overview' | 'submission' | 'chat';
 type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
 
@@ -199,6 +208,10 @@ function TaskDetailModal({
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState('');
+  const [checklistItems, setChecklistItems] = useState<TaskChecklistItem[]>([]);
+  const [checklistDraft, setChecklistDraft] = useState('');
+  const [watchers, setWatchers] = useState<TaskWatcher[]>([]);
+  const [collaborationBusy, setCollaborationBusy] = useState(false);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const chatIntervalRef = useRef<number | null>(null);
   const currentTime = useStableNow();
@@ -216,6 +229,9 @@ function TaskDetailModal({
       setStatusDraft(normalizeTaskStatus(task?.status));
       setChatMessages([]);
       setChatError('');
+      setChecklistItems(task?.checklistItems ?? []);
+      setChecklistDraft('');
+      setWatchers(task?.watchers ?? []);
     }, 0);
 
     return () => window.clearTimeout(timeout);
@@ -356,6 +372,57 @@ function TaskDetailModal({
     }
   }
 
+  async function handleAddChecklistItem() {
+    if (!activeTaskId || !checklistDraft.trim()) return;
+    setCollaborationBusy(true);
+    try {
+      const item = await createTaskChecklistItem(activeTaskId, checklistDraft.trim(), checklistItems.length);
+      setChecklistItems((items) => [...items, item]);
+      setChecklistDraft('');
+    } finally {
+      setCollaborationBusy(false);
+    }
+  }
+
+  async function handleToggleChecklistItem(item: TaskChecklistItem) {
+    if (!activeTaskId) return;
+    setCollaborationBusy(true);
+    try {
+      const updated = await updateTaskChecklistItem(activeTaskId, item.id, { completed: !item.completed });
+      setChecklistItems((items) => items.map((current) => current.id === item.id ? updated : current));
+    } finally {
+      setCollaborationBusy(false);
+    }
+  }
+
+  async function handleDeleteChecklistItem(itemId: number) {
+    if (!activeTaskId) return;
+    setCollaborationBusy(true);
+    try {
+      await deleteTaskChecklistItem(activeTaskId, itemId);
+      setChecklistItems((items) => items.filter((item) => item.id !== itemId));
+    } finally {
+      setCollaborationBusy(false);
+    }
+  }
+
+  async function handleToggleWatcher() {
+    if (!activeTaskId || currentUserId == null) return;
+    setCollaborationBusy(true);
+    try {
+      const existing = watchers.some((watcher) => watcher.userId === currentUserId);
+      if (existing) {
+        await removeTaskWatcher(activeTaskId, currentUserId);
+        setWatchers((current) => current.filter((watcher) => watcher.userId !== currentUserId));
+      } else {
+        const watcher = await addTaskWatcher(activeTaskId);
+        setWatchers((current) => [...current, watcher]);
+      }
+    } finally {
+      setCollaborationBusy(false);
+    }
+  }
+
   return createPortal(
     <div className="fixed inset-0 z-50">
       <div
@@ -430,6 +497,31 @@ function TaskDetailModal({
                   <div className="whitespace-pre-wrap wrap-break-word text-sm leading-6 text-slate-600">
                     {task.description?.trim() ? task.description : 'No instructions provided.'}
                   </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-sm font-semibold text-slate-900">Checklist</p>
+                    <span className="text-xs text-slate-500">{checklistItems.filter((item) => item.completed).length}/{checklistItems.length}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {checklistItems.map((item) => (
+                      <div key={item.id} className="flex items-center gap-2 rounded-lg bg-white px-3 py-2">
+                        <input type="checkbox" checked={item.completed} onChange={() => void handleToggleChecklistItem(item)} disabled={collaborationBusy} aria-label={`Complete ${item.title}`} />
+                        <span className={cn('flex-1 text-sm', item.completed ? 'text-slate-400 line-through' : 'text-slate-700')}>{item.title}</span>
+                        <button type="button" onClick={() => void handleDeleteChecklistItem(item.id)} className="text-xs text-slate-400 hover:text-rose-600">Remove</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <input value={checklistDraft} onChange={(event) => setChecklistDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void handleAddChecklistItem(); }} placeholder="Add checklist item" className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                    <Button size="sm" onClick={() => void handleAddChecklistItem()} disabled={collaborationBusy || !checklistDraft.trim()}>Add</Button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3">
+                  <div><p className="text-sm font-semibold text-slate-900">Watchers</p><p className="text-xs text-slate-500">{watchers.length} following this task</p></div>
+                  <Button size="sm" variant="outline" onClick={() => void handleToggleWatcher()} disabled={collaborationBusy || currentUserId == null}>{watchers.some((watcher) => watcher.userId === currentUserId) ? 'Unfollow' : 'Follow'}</Button>
                 </div>
 
                 {canEditTasks && showEditForm && (
@@ -764,6 +856,8 @@ function AllTasksPage() {
   const [busy, setBusy] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [filter, setFilter] = useState<TaskFilter>('all');
+  const [viewMode, setViewMode] = useState<TaskViewMode>('list');
+  const [isViewMenuOpen, setIsViewMenuOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
@@ -852,6 +946,27 @@ function AllTasksPage() {
     return scopedTasks.filter(matchesSearch);
   }, [filter, isManagerOrAdmin, search, currentUserId, tasks]);
 
+  const calendarGroups = useMemo(() => {
+    const groups = new Map<string, Task[]>();
+    filteredTasks.forEach((task) => {
+      const date = task.dueDate ? new Date(task.dueDate) : null;
+      const key = date && !Number.isNaN(date.getTime())
+        ? date.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' })
+        : 'No due date';
+      groups.set(key, [...(groups.get(key) ?? []), task]);
+    });
+    return [...groups.entries()];
+  }, [filteredTasks]);
+
+  const ganttWindow = useMemo(() => {
+    const dates = filteredTasks.flatMap((task) => [task.startDate ?? task.createdAt, task.dueDate ?? task.startDate ?? task.createdAt])
+      .map((value) => new Date(value).getTime())
+      .filter((value) => Number.isFinite(value));
+    const min = dates.length ? Math.min(...dates) : Date.now();
+    const max = dates.length ? Math.max(...dates) : min + 86400000;
+    return { min, span: Math.max(max - min, 86400000) };
+  }, [filteredTasks]);
+
   useEffect(() => {
     if (selectedTaskId != null && !filteredTasks.some((task) => task.id === selectedTaskId)) {
       setSelectedTaskId(null);
@@ -884,6 +999,21 @@ function AllTasksPage() {
       toast.success('Tasks deleted', 'Selected tasks were deleted successfully');
     } catch (error) {
       handleTaskActionError(error);
+    }
+  }
+
+  async function completeSelectedTasks() {
+    if (selectedTaskIds.length === 0) return;
+    setBusy(true);
+    try {
+      await bulkUpdateTasks({ taskIds: selectedTaskIds, status: 'COMPLETED' });
+      setTasks((current) => current.map((task) => selectedTaskIds.includes(task.id) ? { ...task, status: 'COMPLETED', completionPercent: 100 } : task));
+      setSelectedTaskIds([]);
+      toast.success('Tasks updated', 'Selected tasks were marked completed');
+    } catch (error) {
+      handleTaskActionError(error);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -1110,7 +1240,38 @@ function AllTasksPage() {
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
             <div className="flex items-center gap-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Spreadsheet view</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Task workspace</p>
+                <div className="relative">
+                  <button
+                    type="button"
+                    aria-label="Choose task view"
+                    title="Choose task view"
+                    onClick={() => setIsViewMenuOpen((open) => !open)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
+                  >
+                    <Ellipsis className="h-4 w-4" />
+                  </button>
+                  {isViewMenuOpen && (
+                    <div className="absolute left-0 top-10 z-30 w-40 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                      {(['list', 'kanban', 'calendar', 'gantt'] as TaskViewMode[]).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => { setViewMode(mode); setIsViewMenuOpen(false); }}
+                          className={cn(
+                            'flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-medium capitalize transition',
+                            viewMode === mode ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
+                          )}
+                        >
+                          <span>{mode}</span>
+                          {viewMode === mode && <span className="text-[10px]">✓</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
               {selectedTaskIds.length > 0 && <span className="text-xs font-semibold text-orange-600">{selectedTaskIds.length} selected</span>}
             </div>
 
@@ -1197,6 +1358,7 @@ function AllTasksPage() {
             <div className="flex items-center gap-2 border-b border-orange-100 bg-orange-50 px-4 py-2">
               <span className="text-xs font-semibold text-orange-700">{selectedTaskIds.length} selected</span>
               <button type="button" onClick={exportSelectedTasks} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">Export CSV</button>
+              <button type="button" onClick={() => void completeSelectedTasks()} disabled={busy} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">Mark complete</button>
               {canDeleteTasks && <button type="button" onClick={() => void deleteSelectedTasks()} className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white">Delete</button>}
               <button type="button" onClick={() => setSelectedTaskIds([])} className="text-xs font-semibold text-slate-500">Clear</button>
             </div>
@@ -1210,12 +1372,85 @@ function AllTasksPage() {
                 <p className="text-sm text-slate-500">Create a new task or adjust filters to see existing tasks.</p>
               </div>
             </div>
+          ) : viewMode === 'kanban' ? (
+            <div className="grid gap-4 overflow-x-auto p-4 md:grid-cols-3">
+              {(['PENDING', 'IN_PROGRESS', 'SUBMITTED', 'APPROVED', 'REJECTED', 'COMPLETED'] as const).map((status) => {
+                const statusTasks = filteredTasks.filter((task) => task.status?.toUpperCase() === status);
+                return (
+                  <section key={status} className="min-h-56 rounded-xl bg-slate-50 p-3">
+                    <div className="mb-3 flex items-center justify-between">
+                      <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{status.replace('_', ' ')}</h3>
+                      <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-500">{statusTasks.length}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {statusTasks.map((task) => (
+                        <button
+                          key={task.id}
+                          type="button"
+                          onClick={() => { setSelectedTaskId(task.id); setActiveTab('overview'); }}
+                          className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow"
+                        >
+                          <p className="text-sm font-semibold text-slate-900">{task.taskName}</p>
+                          <p className="mt-1 text-xs text-slate-500">{task.project ?? 'No project'}</p>
+                          <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                            <span>{task.assignedToUser?.name ?? task.assignee ?? 'Unassigned'}</span>
+                            <span>{task.completionPercent ?? 0}%</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          ) : viewMode === 'calendar' ? (
+            <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
+              {calendarGroups.map(([date, dateTasks]) => (
+                <section key={date} className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-slate-900">{date}</h3>
+                    <span className="text-xs text-slate-500">{dateTasks.length} task{dateTasks.length === 1 ? '' : 's'}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {dateTasks.map((task) => (
+                      <button key={task.id} type="button" onClick={() => { setSelectedTaskId(task.id); setActiveTab('overview'); }} className="w-full rounded-lg border border-slate-100 bg-slate-50 p-3 text-left hover:border-slate-300">
+                        <p className="text-sm font-semibold text-slate-900">{task.taskName}</p>
+                        <p className="mt-1 text-xs text-slate-500">{task.project ?? 'No project'} · {task.status.replace('_', ' ')}</p>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : viewMode === 'gantt' ? (
+            <div className="space-y-3 overflow-x-auto p-4">
+              <div className="min-w-[720px]">
+                <div className="mb-2 flex justify-between text-[11px] uppercase tracking-wide text-slate-400">
+                  <span>{new Date(ganttWindow.min).toLocaleDateString()}</span>
+                  <span>{new Date(ganttWindow.min + ganttWindow.span).toLocaleDateString()}</span>
+                </div>
+                {filteredTasks.map((task) => {
+                  const start = new Date(task.startDate ?? task.createdAt).getTime();
+                  const end = new Date(task.dueDate ?? task.startDate ?? task.createdAt).getTime();
+                  const left = Math.max(0, Math.min(100, ((start - ganttWindow.min) / ganttWindow.span) * 100));
+                  const width = Math.max(2, Math.min(100 - left, ((Math.max(end, start + 86400000) - start) / ganttWindow.span) * 100));
+                  return (
+                    <button key={task.id} type="button" onClick={() => { setSelectedTaskId(task.id); setActiveTab('overview'); }} className="group flex w-full items-center gap-3 py-2 text-left">
+                      <span className="w-44 shrink-0 truncate text-xs font-medium text-slate-700">{task.taskName}</span>
+                      <span className="relative h-7 flex-1 rounded bg-slate-100">
+                        <span className="absolute top-1 h-5 rounded-md bg-slate-900/80 transition group-hover:bg-orange-500" style={{ left: `${left}%`, width: `${width}%` }} />
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-max border-collapse text-sm">
                 <thead className="sticky top-0 z-10 bg-slate-50">
                   <tr>
-                    <th className="sticky left-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-3">
+                    <th className="sticky left-0 z-30 w-12 border-b border-slate-200 bg-slate-50 px-3 py-3">
                       <input
                         type="checkbox"
                         checked={filteredTasks.length > 0 && filteredTasks.every((task) => selectedTaskIds.includes(task.id))}
@@ -1226,7 +1461,11 @@ function AllTasksPage() {
                     {visibleTaskColumnList.map((column, index) => (
                       <th
                         key={column.key}
-                        className={`whitespace-nowrap border-b border-slate-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 ${index < 2 ? 'sticky z-10 bg-slate-50' : ''}`}
+                        className={cn(
+                          'whitespace-nowrap border-b border-slate-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500',
+                          column.key === 'id' && 'sticky left-12 z-30 w-16 bg-slate-50',
+                          column.key === 'task' && 'sticky left-28 z-30 min-w-[18rem] bg-slate-50',
+                        )}
                       >
                         {column.label}
                       </th>
@@ -1260,11 +1499,11 @@ function AllTasksPage() {
                         const cellClass = 'whitespace-nowrap px-4 py-3 text-slate-700';
 
                         if (column.key === 'id') {
-                          return <td key={column.key} className={`${cellClass} sticky z-10 bg-white`}>#{task.id}</td>;
+                          return <td key={column.key} className={`${cellClass} sticky left-12 z-20 w-16 bg-white`}>#{task.id}</td>;
                         }
 
                         if (column.key === 'task') {
-                          return <td key={column.key} className={`${cellClass} sticky z-10 bg-white`}><span className="font-semibold text-slate-900">{task.taskName}</span></td>;
+                          return <td key={column.key} className={`${cellClass} sticky left-28 z-20 min-w-[18rem] bg-white`}><span className="font-semibold text-slate-900">{task.taskName}</span></td>;
                         }
 
                         if (column.key === 'organization') {

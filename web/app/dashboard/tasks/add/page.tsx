@@ -45,6 +45,13 @@ export default function AddTaskPage() {
   const [error,  setError]  = useState('');
 
   useEffect(() => {
+    if (role !== 'EMPLOYEE' || currentUserId == null) return;
+    setForm((previous) => previous.assignedToUserId
+      ? previous
+      : { ...previous, assignedToUserId: String(currentUserId), assignee: authSession.user?.name ?? '' });
+  }, [authSession.user?.name, currentUserId, role]);
+
+  useEffect(() => {
     async function loadOptions() {
       try {
         setProjects(await getProjects());
@@ -75,9 +82,15 @@ export default function AddTaskPage() {
     setForm((prev) => ({ ...prev, [key]: val }));
   }
 
+  function assignToMe() {
+    if (currentUserId == null) return;
+    setForm((previous) => ({ ...previous, assignedToUserId: String(currentUserId), assignee: authSession.user?.name ?? '' }));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.taskName.trim()) { setError('Task Name is required'); return; }
+    if (!form.assignedToUserId) { setError('Choose an assignee or select Assign to me.'); return; }
     setSaving(true);
     setError('');
     try {
@@ -147,21 +160,21 @@ export default function AddTaskPage() {
           </select>
         </div>
 
-        {/* Optional Assignee */}
+        {/* Assignee */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Assignee <span className="font-normal text-gray-400">(optional)</span></label>
-          <select
-            className={field}
-            value={form.assignedToUserId}
-            onChange={(e) => {
+          <label className="block text-sm font-medium text-gray-700 mb-1">Assignee</label>
+          <div className="flex gap-2">
+            <select className={`${field} min-w-0 flex-1`} value={form.assignedToUserId} disabled={role === 'EMPLOYEE'} onChange={(e) => {
               const selected = assignableUsers.find((user) => String(user.id) === e.target.value);
               set('assignedToUserId', e.target.value);
               set('assignee', selected?.name ?? '');
-            }}
-          >
-            <option value="">Myself</option>
-            {assignableUsers.map((user) => <option key={user.id} value={user.id}>{user.name} ({user.role})</option>)}
-          </select>
+            }}>
+              <option value="">Select assignee</option>
+              {assignableUsers.map((user) => <option key={user.id} value={user.id}>{user.name} ({user.role})</option>)}
+            </select>
+            <button type="button" onClick={assignToMe} disabled={currentUserId == null} className="shrink-0 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 transition hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50">Assign to me</button>
+          </div>
+          {role === 'EMPLOYEE' && <p className="mt-1 text-xs text-gray-500">Employees can only assign tasks to themselves.</p>}
         </div>
 
         {/* Due Date */}

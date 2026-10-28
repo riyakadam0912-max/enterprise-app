@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import { Download, FileSpreadsheet, Filter, RefreshCw, Search, ShieldAlert, X } from 'lucide-react';
 import { canAccessAuditLogs } from '@/utils/auth/permissions';
 import { AuditLogEntry, AuditLogFilters, getAuditLogs } from '@/api/auditLogsApi';
+import { auditActivitySummary, auditModuleLabel, auditStatusLabel } from '@/lib/audit-presenter';
 
 const MODULE_OPTIONS = ['All', 'Auth', 'Users', 'HR', 'Attendance', 'Leave', 'Payroll', 'Tasks', 'Projects', 'CRM', 'Accounting', 'Inventory', 'Assets', 'Roles & Permissions'];
 const ACTION_OPTIONS = ['All', 'CREATE', 'UPDATE', 'DELETE', 'LOGIN_SUCCESS', 'LOGIN_FAILURE', 'LOGOUT', 'CUSTOM_ACTION'];
@@ -37,13 +38,6 @@ function statusClass(status: AuditLogEntry['status']) {
     : 'bg-rose-100 text-rose-700 ring-1 ring-rose-200';
 }
 
-function actionClass(action: string) {
-  if (action.startsWith('LOGIN')) return 'bg-blue-100 text-blue-700';
-  if (action === 'DELETE') return 'bg-rose-100 text-rose-700';
-  if (action === 'CREATE') return 'bg-emerald-100 text-emerald-700';
-  if (action === 'UPDATE') return 'bg-amber-100 text-amber-700';
-  return 'bg-slate-100 text-slate-700';
-}
 
 function downloadFile(name: string, content: string, type: string) {
   const blob = new Blob([content], { type });
@@ -272,31 +266,23 @@ export default function AuditLogsPage() {
                 <tr>
                   <th className="px-4 py-3">Timestamp</th>
                   <th className="px-4 py-3">User</th>
-                  <th className="px-4 py-3">Role</th>
-                  <th className="px-4 py-3">Module</th>
-                  <th className="px-4 py-3">Action</th>
-                  <th className="px-4 py-3">Field</th>
-                  <th className="px-4 py-3">Old Value</th>
-                  <th className="px-4 py-3">New Value</th>
-                  <th className="px-4 py-3">IP Address</th>
+                  <th className="px-4 py-3">Activity</th>
+                  <th className="px-4 py-3">Area</th>
+                  <th className="px-4 py-3">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {loading ? (
-                  <tr><td className="px-4 py-10 text-center text-slate-500" colSpan={9}>Loading audit log entries...</td></tr>
+                  <tr><td className="px-4 py-10 text-center text-slate-500" colSpan={5}>Loading activity...</td></tr>
                 ) : items.length === 0 ? (
-                  <tr><td className="px-4 py-10 text-center text-slate-500" colSpan={9}>No audit events match the current filters.</td></tr>
+                  <tr><td className="px-4 py-10 text-center text-slate-500" colSpan={5}>No activity matches the current filters.</td></tr>
                 ) : items.map((log) => (
                   <tr key={log.id} onClick={() => setSelected(log)} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60">
                     <td className="px-4 py-3 text-slate-600">{formatDateTime(log.createdAt)}</td>
                     <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">{log.userName ?? 'System'}</td>
-                    <td className="px-4 py-3 text-slate-600">{log.userRole ?? 'N/A'}</td>
-                    <td className="px-4 py-3 text-slate-600">{log.module}</td>
-                    <td className="px-4 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${actionClass(log.action)}`}>{log.action}</span></td>
-                    <td className="px-4 py-3 text-slate-600">{log.fieldName ?? '—'}</td>
-                    <td className="px-4 py-3 text-slate-500"><span className="max-w-48 truncate block">{prettyJson(log.oldValue)}</span></td>
-                    <td className="px-4 py-3 text-slate-500"><span className="max-w-48 truncate block">{prettyJson(log.newValue)}</span></td>
-                    <td className="px-4 py-3 text-slate-600">{log.ipAddress ?? '—'}</td>
+                    <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">{auditActivitySummary(log)}</td>
+                    <td className="px-4 py-3 text-slate-600">{auditModuleLabel(log.module)}</td>
+                    <td className="px-4 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(log.status)}`}>{auditStatusLabel(log.status)}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -321,8 +307,8 @@ export default function AuditLogsPage() {
           <div className="w-full max-w-4xl overflow-hidden rounded-4xl bg-white shadow-2xl dark:bg-slate-900">
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-800">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Audit Log Details</p>
-                <h2 className="mt-1 text-xl font-semibold text-slate-900 dark:text-slate-50">{selected.module} - {selected.action}</h2>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Activity details</p>
+                <h2 className="mt-1 text-xl font-semibold text-slate-900 dark:text-slate-50">{auditActivitySummary(selected)}</h2>
               </div>
               <button onClick={() => setSelected(null)} className="rounded-full border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
                 <X className="h-4 w-4" />
@@ -340,24 +326,21 @@ export default function AuditLogsPage() {
               <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/40">
                 <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Action Summary</h3>
                 <div className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
-                  <p><span className="font-semibold text-slate-900 dark:text-slate-100">Module:</span> {selected.module}</p>
-                  <p><span className="font-semibold text-slate-900 dark:text-slate-100">Entity:</span> {selected.entityType} {selected.entityId ? `#${selected.entityId}` : ''}</p>
-                  <p><span className="font-semibold text-slate-900 dark:text-slate-100">Endpoint:</span> {selected.endpoint ?? 'N/A'}</p>
-                  <p><span className="font-semibold text-slate-900 dark:text-slate-100">Method:</span> {selected.requestMethod ?? 'N/A'}</p>
+                  <p><span className="font-semibold text-slate-900 dark:text-slate-100">Area:</span> {auditModuleLabel(selected.module)}</p>
+                  <p><span className="font-semibold text-slate-900 dark:text-slate-100">Record:</span> {selected.entityType} {selected.entityId ? `#${selected.entityId}` : ''}</p>
                   <p><span className="font-semibold text-slate-900 dark:text-slate-100">Timestamp:</span> {formatDateTime(selected.createdAt)}</p>
-                  <p><span className="font-semibold text-slate-900 dark:text-slate-100">IP:</span> {selected.ipAddress ?? 'N/A'}</p>
                 </div>
               </div>
               <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/40 md:col-span-2">
                 <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Changed Fields</h3>
                 <div className="grid gap-3 md:grid-cols-2">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Field</p>
-                    <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">{selected.fieldName ?? 'N/A'}</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Changed</p>
+                    <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">{selected.fieldName ?? 'General details'}</p>
                   </div>
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Status</p>
-                    <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(selected.status)}`}>{selected.status}</span>
+                    <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(selected.status)}`}>{auditStatusLabel(selected.status)}</span>
                   </div>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
@@ -374,6 +357,12 @@ export default function AuditLogsPage() {
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Description</p>
                   <p className="mt-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">{selected.description ?? 'N/A'}</p>
                 </div>
+                <details className="rounded-2xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
+                  <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Technical details</summary>
+                  <div className="mt-3 space-y-1 text-xs text-slate-500">
+                    <p>Action: {selected.action}</p><p>Endpoint: {selected.endpoint ?? 'N/A'}</p><p>Method: {selected.requestMethod ?? 'N/A'}</p><p>IP address: {selected.ipAddress ?? 'N/A'}</p><p>User ID: {selected.userId ?? 'N/A'}</p>
+                  </div>
+                </details>
               </div>
             </div>
           </div>

@@ -208,15 +208,18 @@ export function useNotifications(options?: {
 
     const wsUrl = clientEnv.NEXT_PUBLIC_NOTIFICATION_WS_URL;
     const canUseSocket =
-      !enablePolling ||
-      (wsUrl && typeof wsUrl === 'string' && wsUrl.trim().length > 0);
+      typeof wsUrl === 'string' && wsUrl.trim().length > 0;
 
     lastSyncAtRef.current = new Date().toISOString();
 
     if (!canUseSocket) {
-      setTransportMode('polling');
-      void pollDelta();
-      startPolling();
+      if (enablePolling) {
+        setTransportMode('polling');
+        void pollDelta();
+        startPolling();
+      } else {
+        setTransportMode('idle');
+      }
       return () => {
         stopPolling();
       };
@@ -249,6 +252,7 @@ export function useNotifications(options?: {
         setTransportMode('polling');
         void pollDelta();
         startPolling();
+        client.disconnect();
       }
       if (transportModeRef.current === 'socket') {
         setError('Notification socket connection failed');

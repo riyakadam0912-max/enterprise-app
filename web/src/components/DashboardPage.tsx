@@ -140,6 +140,16 @@ function EmptyState({ title, description }: { title: string; description: string
   );
 }
 
+function DashboardHeader({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
+  return (
+    <header className="mb-6 flex flex-col gap-1">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">{eyebrow}</p>
+      <h1 className="text-2xl font-semibold tracking-tight text-slate-950">{title}</h1>
+      <p className="text-sm text-slate-500">{description}</p>
+    </header>
+  );
+}
+
 function AdminDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [statsError, setStatsError] = useState<string | null>(null);
@@ -199,10 +209,10 @@ function AdminDashboard() {
   }
 
   const kpis = [
-    { label: 'Total Employees', value: String(stats?.totalEmployees ?? 0) },
-    { label: 'Total Deals', value: String(stats?.totalDeals ?? 0) },
-    { label: 'Pipeline Value', value: formatInrCurrency(stats?.pipelineValue ?? 0) },
-    { label: 'Revenue', value: formatInrCurrency(stats?.totalRevenue ?? 0) },
+    { label: 'Total Employees', value: statsError ? '—' : String(stats?.totalEmployees ?? 0) },
+    { label: 'Total Deals', value: statsError ? '—' : String(stats?.totalDeals ?? 0) },
+    { label: 'Pipeline Value', value: statsError ? '—' : formatInrCurrency(stats?.pipelineValue ?? 0) },
+    { label: 'Revenue', value: statsError ? '—' : formatInrCurrency(stats?.totalRevenue ?? 0) },
   ];
 
   const todayRows = todayAttendance.data?.rows ?? [];
@@ -210,7 +220,8 @@ function AdminDashboard() {
 
   return (
     <div className="min-h-full bg-slate-50 p-6">
-      {statsError ? <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">Could not load live stats: {statsError}</div> : null}
+      <DashboardHeader eyebrow="Workspace" title="Organization overview" description="A calm snapshot of people, attendance, revenue, and operational follow-up." />
+      {statsError ? <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><span>Could not load live stats: {statsError}</span><button type="button" onClick={() => window.location.reload()} className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-red-700 shadow-sm hover:bg-red-100">Retry</button></div> : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {kpis.map((card) => <StatCard key={card.label} label={card.label} value={card.value} />)}
@@ -337,7 +348,8 @@ function ManagerDashboard() {
 
   return (
     <div className="min-h-full bg-slate-50 p-6">
-      {error ? <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{error}</div> : null}
+      <DashboardHeader eyebrow="Team workspace" title="Manager overview" description="Keep reviews, attendance exceptions, and approvals moving." />
+      {error ? <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"><span>{error}</span><button type="button" onClick={() => void loadDashboard()} className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm hover:bg-amber-100">Retry</button></div> : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Active Team" value={String(activeEmployees)} hint={`${employees.length} employee records`} />
@@ -507,7 +519,8 @@ function EmployeeDashboard({ session }: { session: Session }) {
 
   return (
     <div className="min-h-full bg-slate-50 p-6">
-      {error ? <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{error}</div> : null}
+      <DashboardHeader eyebrow="Personal workspace" title={`Good morning, ${session.name}`} description="Your tasks, attendance, leave balance, and quick actions in one quiet view." />
+      {error ? <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"><span>{error}</span><button type="button" onClick={() => void loadDashboard()} className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm hover:bg-amber-100">Retry</button></div> : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <StatCard label="Open Tasks" value={String(openTasks)} hint="Assigned to you" />

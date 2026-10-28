@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useParams } from 'next/navigation';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
-import { AttendanceStatus } from '@/api/attendanceApi';
+import { AttendanceStatus, EmployeeAttendanceDay, EmployeeAttendanceResponse } from '@/api/attendanceApi';
 import { useEmployeeAttendance } from '@/hooks/useAttendance';
 import { useAuthSession } from '@/stores/auth-store';
 import { formatHoursDuration, formatShiftRange } from '@/lib/time-format';
+import { buildAttendanceCalendarCells, csvCell } from '@/lib/attendance-format';
 
 const DAY_HEADERS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -39,11 +40,72 @@ function shiftMonth(month: string, delta: number) {
   return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function SummaryMini({ label, value }: { label: string; value: number | string }) {
+function isValidMonth(value: string | null): value is string {
+  return value !== null && /^(\d{4})-(0[1-9]|1[0-2])$/.test(value);
+}
+
+function formatAttendanceTime(value: string, timezone?: string) {
+  return new Intl.DateTimeFormat([], {
+    timeZone: timezone || undefined,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).format(new Date(value));
+}
+
+function downloadEmployeeMonthCsv(data: EmployeeAttendanceResponse) {
+  const headers = [
+    'Employee', 'Employee ID', 'Month', 'Date', 'Status', 'Check In', 'Check Out',
+    'Attendance Hours', 'Task Hours', 'Break Hours', 'Late Minutes', 'Overtime Hours',
+    'Shortfall Hours', 'Expected Hours', 'Holiday', 'Shoot Day', 'Work From Home Credit',
+    'Shift', 'Shift Type', 'Timezone',
+  ];
+  const rows = data.days.map((day) => {
+    const breakHours = (day.breaks ?? []).reduce((total, interval) => {
+      if (!interval.endedAt) return total;
+      return total + Math.max(0, new Date(interval.endedAt).getTime() - new Date(interval.startedAt).getTime()) / 3_600_000;
+    }, 0);
+    return [
+      data.employee.name,
+      data.employee.id,
+      data.month,
+      day.date.slice(0, 10),
+      day.status,
+      day.checkIn ?? '',
+      day.checkOut ?? '',
+      day.workingHours ?? '',
+      day.taskHours ?? 0,
+      breakHours.toFixed(2),
+      day.lateMinutes,
+      day.overtimeHours,
+      day.shortfallHours ?? '',
+      day.expectedHours ?? '',
+      day.holidayName ?? '',
+      day.isShootDay ? 'Yes' : 'No',
+      day.workFromHomeCredit ?? '',
+      day.shiftDetails?.name ?? '',
+      day.shiftDetails?.type ?? '',
+      data.timezone ?? '',
+    ];
+  });
+  const csv = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
+  const blob = new Blob([`${csv}\r\n`], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `attendance-${data.employee.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase()}-${data.month}.csv`;
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function SummaryMini({ label, value, loading = false }: { label: string; value: number | string; loading?: boolean }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
       <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>
+      {loading ? <div className="mt-2 h-8 w-16 animate-pulse rounded-lg bg-slate-100" /> : <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>}
     </div>
   );
 }
@@ -63,7 +125,11 @@ export default function EmployeeAttendancePage() {
   const routeEmployeeId = Number(params.id);
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const [month, setMonth] = useState(defaultMonth);
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
+  const [month, setMonth] = useState(() => isValidMonth(searchParams.get('month')) ? searchParams.get('month')! : defaultMonth);
+  const [selectedDay, setSelectedDay] = useState<EmployeeAttendanceDay | null>(null);
   const authSession = useAuthSession();
   const session = useMemo(() => ({
     role: (authSession.role as 'SUPER_ADMIN' | 'ADMIN' | 'HR' | 'MANAGER' | 'EMPLOYEE') ?? 'EMPLOYEE',
@@ -72,9 +138,16 @@ export default function EmployeeAttendancePage() {
   const employeeId = session.role === 'EMPLOYEE' && session.employeeId ? session.employeeId : routeEmployeeId;
   const { data, loading, error } = useEmployeeAttendance(employeeId, month);
 
+  const updateMonth = (nextMonth: string) => {
+    setMonth(nextMonth);
+    setSelectedDay(null);
+    router.replace(`${pathname}?month=${nextMonth}`, { scroll: false });
+  };
+
   const monthStart = new Date(`${month}-01T00:00:00`);
-  const leadingBlanks = monthStart.getDay();
+  const calendarCells = buildAttendanceCalendarCells(month, data?.days ?? []);
   const isForbiddenEmployeeView = session.role === 'EMPLOYEE' && session.employeeId !== routeEmployeeId;
+  const canDownloadMonthlyCsv = session.role === 'SUPER_ADMIN' || session.role === 'ADMIN' || session.role === 'HR';
   const monthLabel = monthStart.toLocaleDateString([], { month: 'long', year: 'numeric' });
 
   return (
@@ -84,6 +157,16 @@ export default function EmployeeAttendancePage() {
           <Link href="/dashboard/attendance" className="text-sm text-orange-600 hover:text-orange-700">← Back to Attendance</Link>
           <h1 className="text-2xl font-semibold text-slate-900 mt-2">{data?.employee.name ?? 'Employee Attendance'}</h1>
           <p className="text-sm text-slate-500 mt-1">Monthly attendance calendar with daily status and working-hour detail.</p>
+          {canDownloadMonthlyCsv && (
+            <button
+              type="button"
+              onClick={() => data && downloadEmployeeMonthCsv(data)}
+              disabled={!data || loading || Boolean(error)}
+              className="mt-4 inline-flex items-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              Download monthly CSV
+            </button>
+          )}
         </div>
       </div>
 
@@ -92,17 +175,17 @@ export default function EmployeeAttendancePage() {
       ) : (
         <>
           <div className="grid grid-cols-2 xl:grid-cols-5 gap-4">
-            <SummaryMini label="Days Present" value={data?.summary.present ?? 0} />
-            <SummaryMini label="Days Absent" value={data?.summary.absent ?? 0} />
-            <SummaryMini label="Leaves" value={data?.summary.leave ?? 0} />
-            <SummaryMini label="Holidays" value={data?.summary.holiday ?? 0} />
-            <SummaryMini label="Half Days" value={data?.summary.halfDay ?? 0} />
+            <SummaryMini label="Days Present" value={data?.summary.present ?? 0} loading={loading} />
+            <SummaryMini label="Days Absent" value={data?.summary.absent ?? 0} loading={loading} />
+            <SummaryMini label="Leaves" value={data?.summary.leave ?? 0} loading={loading} />
+            <SummaryMini label="Holidays" value={data?.summary.holiday ?? 0} loading={loading} />
+            <SummaryMini label="Half Days" value={data?.summary.halfDay ?? 0} loading={loading} />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <SummaryMini label="Late Count" value={data?.summary.lateCount ?? 0} />
-            <SummaryMini label="Overtime" value={formatHoursDuration(data?.summary.overtimeHours ?? 0)} />
-            <SummaryMini label="Task Hours" value={formatHoursDuration(data?.summary.totalTaskHours ?? 0)} />
+            <SummaryMini label="Late Count" value={data?.summary.lateCount ?? 0} loading={loading} />
+            <SummaryMini label="Overtime" value={formatHoursDuration(data?.summary.overtimeHours ?? 0)} loading={loading} />
+            <SummaryMini label="Task Hours" value={formatHoursDuration(data?.summary.totalTaskHours ?? 0)} loading={loading} />
             <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
               <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Assigned Shift</p>
               <p className="mt-2 text-sm font-semibold text-slate-900">
@@ -128,7 +211,7 @@ export default function EmployeeAttendancePage() {
               <div className="flex items-center justify-between gap-2 sm:justify-end">
                 <button
                   type="button"
-                  onClick={() => setMonth((current) => shiftMonth(current, -1))}
+                  onClick={() => updateMonth(shiftMonth(month, -1))}
                   aria-label="Previous month"
                   title="Previous month"
                   className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-200"
@@ -136,12 +219,13 @@ export default function EmployeeAttendancePage() {
                   <ChevronLeft aria-hidden="true" className="h-4 w-4" />
                   <span className="hidden sm:inline">Previous</span>
                 </button>
-                <div className="min-w-36 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-center text-sm font-semibold text-slate-800">
-                  {monthLabel}
-                </div>
+                <label className="sr-only" htmlFor="attendance-month">Attendance month</label>
+                <input id="attendance-month" type="month" value={month} onChange={(event) => updateMonth(event.target.value)} className="min-w-36 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-center text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-200" />
+                <span className="sr-only">{monthLabel}</span>
+                <button type="button" onClick={() => updateMonth(defaultMonth)} disabled={month === defaultMonth} className="rounded-lg px-2.5 py-2 text-xs font-semibold text-orange-600 transition hover:bg-orange-50 disabled:cursor-not-allowed disabled:text-slate-300">Today</button>
                 <button
                   type="button"
-                  onClick={() => setMonth((current) => shiftMonth(current, 1))}
+                  onClick={() => updateMonth(shiftMonth(month, 1))}
                   aria-label="Next month"
                   title="Next month"
                   className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-200"
@@ -159,28 +243,28 @@ export default function EmployeeAttendancePage() {
               <EmptyPanel title="No attendance records this month" description="Check another month or start tracking attendance from the main page." />
             ) : (
               <div className="space-y-4">
-                <div className="grid grid-cols-7 gap-2">
+                <div className="overflow-x-auto pb-1">
+                <div className="grid min-w-[46rem] grid-cols-7 gap-2">
                   {DAY_HEADERS.map((header) => (
                     <div key={header} className="text-xs font-semibold uppercase tracking-wide text-slate-500 px-2 py-1">{header}</div>
                   ))}
-                  {Array.from({ length: leadingBlanks }).map((_, index) => (
-                    <div key={`blank-${index}`} className="min-h-28 rounded-2xl border border-dashed border-slate-100 bg-slate-50/60" />
-                  ))}
-                  {data?.days.map((day) => (
-                    <div key={day.date} className={`min-h-28 rounded-2xl border p-3 ${STATUS_CELL[day.status]}`}>
+                  {calendarCells.map((cell) => {
+                    if (!cell.day) {
+                      return <div key={cell.key} className="min-h-28 rounded-2xl border border-dashed border-slate-100 bg-slate-50/60" />;
+                    }
+                    const day = cell.day;
+                    return <button type="button" key={cell.key} onClick={() => setSelectedDay(day)} aria-label={`${day.date}: ${statusLabel(day.status)}`} className={`min-h-28 rounded-2xl border p-3 text-left transition hover:-translate-y-0.5 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-300 ${STATUS_CELL[day.status]} ${selectedDay?.date === day.date ? 'ring-2 ring-orange-400 ring-offset-1' : ''}`}>
                       <div className="flex items-start justify-between gap-2">
                         <span className="text-lg font-semibold">{day.day}</span>
                         <span className="text-[10px] font-semibold uppercase tracking-wide">{statusLabel(day.status)}</span>
                       </div>
                       <div className="mt-4 space-y-1 text-xs">
                         {day.checkIn && (
-                          <p>{new Date(day.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })} - {day.checkOut ? new Date(day.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : 'In progress'}</p>
+                          <p>{formatAttendanceTime(day.checkIn, data?.timezone)} - {day.checkOut ? formatAttendanceTime(day.checkOut, data?.timezone) : 'In progress'}</p>
                         )}
                         {(day.workingHours != null || (day.taskHours ?? 0) > 0) && (
                           <p>
-                            {formatHoursDuration(
-                              (day.workingHours ?? 0) + (day.taskHours ?? 0),
-                            )}
+                            Worked {formatHoursDuration(day.workingHours ?? 0)}
                           </p>
                         )}
                         {(day.taskHours ?? 0) > 0 && (
@@ -208,8 +292,8 @@ export default function EmployeeAttendancePage() {
                           const durationHours = end ? Math.max(0, end.getTime() - start.getTime()) / 3600000 : null;
                           return (
                             <p key={interval.startedAt} className="text-[11px]">
-                              Break {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              {' - '}{end?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) ?? 'In progress'}
+                              Break {formatAttendanceTime(interval.startedAt, data?.timezone)}
+                              {' - '}{end ? formatAttendanceTime(interval.endedAt!, data?.timezone) : 'In progress'}
                               {durationHours !== null && <> · {formatHoursDuration(durationHours)}</>}
                             </p>
                           );
@@ -219,8 +303,27 @@ export default function EmployeeAttendancePage() {
                         {day.status === 'LEAVE' && <p>Approved leave</p>}
                         {day.status === 'HOLIDAY' && <p>{day.holidayName ?? 'Corporate holiday'}</p>}
                       </div>
+                    </button>;
+                  })}
+                </div>
+                {selectedDay && (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4" aria-live="polite">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected day</p>
+                        <h3 className="mt-1 text-base font-semibold text-slate-900">{new Date(`${selectedDay.date.slice(0, 10)}T00:00:00`).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</h3>
+                      </div>
+                      <button type="button" onClick={() => setSelectedDay(null)} className="rounded-lg px-2 py-1 text-xs font-semibold text-slate-500 hover:bg-white hover:text-slate-900">Close</button>
                     </div>
-                  ))}
+                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
+                      <div><p className="text-xs text-slate-500">Status</p><p className="mt-1 font-semibold text-slate-900">{statusLabel(selectedDay.status)}</p></div>
+                      <div><p className="text-xs text-slate-500">Attendance time</p><p className="mt-1 font-semibold text-slate-900">{formatHoursDuration(selectedDay.workingHours ?? 0)}</p></div>
+                      <div><p className="text-xs text-slate-500">Task hours</p><p className="mt-1 font-semibold text-slate-900">{formatHoursDuration(selectedDay.taskHours ?? 0)}</p></div>
+                      <div><p className="text-xs text-slate-500">Late / overtime</p><p className="mt-1 font-semibold text-slate-900">{selectedDay.lateMinutes}m / {formatHoursDuration(selectedDay.overtimeHours ?? 0)}</p></div>
+                      <div><p className="text-xs text-slate-500">Timezone</p><p className="mt-1 font-semibold text-slate-900">{data?.timezone ?? 'Local time'}</p></div>
+                    </div>
+                  </div>
+                )}
                 </div>
                 <div className="flex flex-wrap gap-3 pt-2">
                   {(['PRESENT', 'ABSENT', 'HALF_DAY', 'LEAVE', 'HOLIDAY', 'WEEKLY_OFF', 'UPCOMING', 'NOT_STARTED', 'NOT_SCHEDULED'] as AttendanceStatus[]).map((status) => (

@@ -1656,7 +1656,7 @@ describe('ProjectsService', () => {
       );
     });
 
-    it('counts completed shoot tasks but not completed general tasks', async () => {
+    it('counts completed tasks consistently across task types', async () => {
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
       const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
       projectDelegate.findFirst.mockResolvedValueOnce({
@@ -1673,8 +1673,8 @@ describe('ProjectsService', () => {
 
       const result = await service.getProgress(8, mockAdminUser);
 
-      expect(result.completedTasks).toBe(2);
-      expect(result.progressPercent).toBe(67);
+      expect(result.completedTasks).toBe(3);
+      expect(result.progressPercent).toBe(100);
     });
   });
 

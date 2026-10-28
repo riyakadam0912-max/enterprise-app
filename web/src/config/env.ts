@@ -22,6 +22,25 @@ const isLocalDevelopmentUrl = (value: string | undefined): boolean => {
   }
 };
 
+const normalizeOptionalSocketOrigin = (value: string | undefined): string => {
+  const trimmed = (value ?? '').trim();
+  if (!trimmed) return '';
+
+  try {
+    const url = new URL(trimmed);
+    if (!['http:', 'https:', 'ws:', 'wss:'].includes(url.protocol)) {
+      return '';
+    }
+    if (!url.hostname || url.username || url.password) {
+      return '';
+    }
+    return url.origin.replace(/\/$/, '');
+  } catch {
+    // Invalid optional socket configuration means REST polling should be used.
+    return '';
+  }
+};
+
 const clientEnvSchema = z.object({
   NEXT_PUBLIC_API_URL: z.string().min(1).default('/api/v1'),
   NEXT_PUBLIC_NOTIFICATION_WS_URL: z.string().optional().default(''),
@@ -70,7 +89,7 @@ export function getClientEnv(): ClientEnv {
   const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL ?? '/api/v1';
   const apiUrl = isVercel ? '/api/v1' : configuredApiUrl;
   const rawWsUrl = process.env.NEXT_PUBLIC_NOTIFICATION_WS_URL ?? '';
-  const wsUrl = isVercel ? '' : rawWsUrl;
+  const wsUrl = isVercel ? '' : normalizeOptionalSocketOrigin(rawWsUrl);
   const pollingEnabledRaw = process.env.NEXT_PUBLIC_POLLING_ENABLED ?? 'true';
   const pollingEnabled =
     isVercel || ['true', '1', 'yes', ''].includes(String(pollingEnabledRaw).trim().toLowerCase());

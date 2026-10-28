@@ -182,14 +182,214 @@ export interface ProjectProgress {
   completedTasks: number;
   progressPercent: number;
   byStatus: Record<string, number>;
+  plannedHours: number;
+  actualHours: number;
+  remainingHours: number;
+  milestoneRollups: Record<string, { totalTasks: number; completedTasks: number; progressPercent: number }>;
+  taskListRollups: Record<string, { totalTasks: number; completedTasks: number; progressPercent: number }>;
+}
+
+export interface ProjectCriticalPath {
+  projectId: number;
+  taskIds: number[];
+  durationHours: number;
+  tasks: Array<{ id: number; taskName: string; status: string; startDate: string | null; dueDate: string | null; estimatedHours: number | null; completionPercent: number; assignedToUser: { id: number; name: string } | null }>;
+  dependencies: Array<{ predecessorId: number; successorId: number; dependencyType: string; lagDays: number }>;
+}
+
+export interface ProjectWorkload {
+  projectId: number;
+  members: Array<{ user: { id: number; name: string; email: string } | null; taskCount: number; openTasks: number; estimatedHours: number; actualHours: number; remainingHours: number }>;
+}
+
+export interface ProjectBaseline {
+  id: number;
+  projectId: number;
+  name: string;
+  snapshotAt: string;
+  createdAt: string;
+  createdBy: { id: number; name: string; email: string };
+}
+
+export interface ProjectQuery {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: string;
+  priority?: string;
+  managerId?: number;
+  startFrom?: string;
+  endTo?: string;
+  sortBy?: string;
+  sortDirection?: 'asc' | 'desc';
+}
+
+export interface ProjectQueryResult {
+  items: Project[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface ProjectWorkspace {
+  project: { id: number; projectName: string; status: string; organizationId: number };
+  milestones: Array<{ id: number; name: string; description: string | null; startDate: string | null; dueDate: string | null; status: string; sortOrder: number }>;
+  taskLists: Array<{ id: number; name: string; description: string | null; sortOrder: number }>;
+  tasks: Array<{
+    id: number;
+    taskName: string;
+    status: string;
+    priority: string | null;
+    startDate: string | null;
+    dueDate: string | null;
+    completionPercent: number;
+    milestoneId: number | null;
+    taskListId: number | null;
+    parentTaskId: number | null;
+    assignedToUser: { id: number; name: string; email: string } | null;
+  }>;
+  issues: Array<{
+    id: number;
+    title: string;
+    description: string | null;
+    status: string;
+    priority: string;
+    severity: string | null;
+    dueDate: string | null;
+    reportedBy: { id: number; name: string; email: string };
+    assignedTo: { id: number; name: string; email: string } | null;
+  }>;
+}
+
+export interface ProjectMilestone {
+  id: number;
+  projectId: number;
+  name: string;
+  description: string | null;
+  startDate: string | null;
+  dueDate: string | null;
+  status: string;
+  sortOrder: number;
+}
+
+export interface ProjectTaskList {
+  id: number;
+  projectId: number;
+  name: string;
+  description: string | null;
+  sortOrder: number;
+}
+
+export interface ProjectIssue {
+  id: number;
+  projectId: number;
+  taskId?: number | null;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  severity: string | null;
+  assignedToId?: number | null;
+  dueDate: string | null;
+}
+
+export interface CreateMilestonePayload {
+  name: string;
+  description?: string;
+  startDate?: string;
+  dueDate?: string;
+  status?: string;
+  sortOrder?: number;
+}
+
+export interface CreateTaskListPayload {
+  name: string;
+  description?: string;
+  sortOrder?: number;
+}
+
+export interface CreateTaskDependencyPayload {
+  predecessorId: number;
+  successorId: number;
+  dependencyType?: 'FINISH_TO_START' | 'START_TO_START' | 'FINISH_TO_FINISH' | 'START_TO_FINISH';
+  lagDays?: number;
+}
+
+export interface CreateProjectIssuePayload {
+  title: string;
+  description?: string;
+  status?: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+  priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  severity?: string;
+  taskId?: number;
+  assignedToId?: number;
+  dueDate?: string;
 }
 
 export async function getProjects(): Promise<Project[]> {
   return apiClient<Project[]>('/projects');
 }
 
+export async function queryProjects(query: ProjectQuery = {}): Promise<ProjectQueryResult> {
+  const params = new URLSearchParams();
+  Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') params.set(key, String(value));
+  });
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  return apiClient<ProjectQueryResult>(`/projects/query${suffix}`);
+}
+
 export async function getProject(id: number): Promise<Project> {
   return apiClient<Project>(`/projects/${id}`);
+}
+
+export async function getProjectWorkspace(id: number): Promise<ProjectWorkspace> {
+  return apiClient<ProjectWorkspace>(`/projects/${id}/workspace`);
+}
+
+export async function createProjectMilestone(projectId: number, payload: CreateMilestonePayload): Promise<ProjectMilestone> {
+  return apiClient<ProjectMilestone>(`/projects/${projectId}/milestones`, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function updateProjectMilestone(projectId: number, milestoneId: number, payload: Partial<CreateMilestonePayload>): Promise<ProjectMilestone> {
+  return apiClient<ProjectMilestone>(`/projects/${projectId}/milestones/${milestoneId}`, { method: 'PATCH', body: JSON.stringify(payload) });
+}
+
+export async function deleteProjectMilestone(projectId: number, milestoneId: number): Promise<void> {
+  await apiClient<void>(`/projects/${projectId}/milestones/${milestoneId}`, { method: 'DELETE' });
+}
+
+export async function createProjectTaskList(projectId: number, payload: CreateTaskListPayload): Promise<ProjectTaskList> {
+  return apiClient<ProjectTaskList>(`/projects/${projectId}/task-lists`, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function updateProjectTaskList(projectId: number, taskListId: number, payload: Partial<CreateTaskListPayload>): Promise<ProjectTaskList> {
+  return apiClient<ProjectTaskList>(`/projects/${projectId}/task-lists/${taskListId}`, { method: 'PATCH', body: JSON.stringify(payload) });
+}
+
+export async function deleteProjectTaskList(projectId: number, taskListId: number): Promise<void> {
+  await apiClient<void>(`/projects/${projectId}/task-lists/${taskListId}`, { method: 'DELETE' });
+}
+
+export async function createTaskDependency(projectId: number, payload: CreateTaskDependencyPayload) {
+  return apiClient<{ id: number; predecessorId: number; successorId: number; dependencyType: string; lagDays: number }>(`/projects/${projectId}/dependencies`, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function deleteTaskDependency(projectId: number, dependencyId: number): Promise<void> {
+  await apiClient<void>(`/projects/${projectId}/dependencies/${dependencyId}`, { method: 'DELETE' });
+}
+
+export async function createProjectIssue(projectId: number, payload: CreateProjectIssuePayload): Promise<ProjectIssue> {
+  return apiClient<ProjectIssue>(`/projects/${projectId}/issues`, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function updateProjectIssue(projectId: number, issueId: number, payload: Partial<CreateProjectIssuePayload>): Promise<ProjectIssue> {
+  return apiClient<ProjectIssue>(`/projects/${projectId}/issues/${issueId}`, { method: 'PATCH', body: JSON.stringify(payload) });
+}
+
+export async function deleteProjectIssue(projectId: number, issueId: number): Promise<void> {
+  await apiClient<void>(`/projects/${projectId}/issues/${issueId}`, { method: 'DELETE' });
 }
 
 export async function getEligibleProjectAssignees(projectId?: number): Promise<ProjectAssignmentUser[]> {
@@ -253,6 +453,26 @@ export async function updateProjectStatus(id: number, status: string): Promise<P
 
 export async function getProjectProgress(id: number): Promise<ProjectProgress> {
   return apiClient<ProjectProgress>(`/projects/${id}/progress`);
+}
+
+export async function getProjectCriticalPath(id: number): Promise<ProjectCriticalPath> {
+  return apiClient<ProjectCriticalPath>(`/projects/${id}/critical-path`);
+}
+
+export async function getProjectWorkload(id: number): Promise<ProjectWorkload> {
+  return apiClient<ProjectWorkload>(`/projects/${id}/workload`);
+}
+
+export async function createProjectBaseline(id: number, name?: string): Promise<ProjectBaseline> {
+  return apiClient<ProjectBaseline>(`/projects/${id}/baselines`, { method: 'POST', body: JSON.stringify(name ? { name } : {}) });
+}
+
+export async function getProjectBaselines(id: number): Promise<ProjectBaseline[]> {
+  return apiClient<ProjectBaseline[]>(`/projects/${id}/baselines`);
+}
+
+export async function getProjectBaselineVariance(id: number, baselineId: number) {
+  return apiClient<{ baselineId: number; projectId: number; baselineName: string; taskVariance: Array<{ taskId: number; statusChanged: boolean; completionDelta: number; dueDateDeltaDays: number | null; missing: boolean }>; addedTasks: number[] }>(`/projects/${id}/baselines/${baselineId}/variance`);
 }
 
 export async function deleteProject(id: number): Promise<void> {

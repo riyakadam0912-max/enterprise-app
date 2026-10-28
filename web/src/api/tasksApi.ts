@@ -25,6 +25,7 @@ export interface Task {
   driveLink?: string | null;
   project: string | null;
   projectId?: number | null;
+  parentTaskId?: number | null;
   projectRef?: {
     id: number;
     projectName: string;
@@ -45,6 +46,17 @@ export interface Task {
     email: string;
   } | null;
   dueDate: string | null;
+  startDate?: string | null;
+  completionPercent?: number | null;
+  milestoneId?: number | null;
+  taskListId?: number | null;
+  parentTask?: { id: number; taskName: string; status: string } | null;
+  childTasks?: Array<{ id: number; taskName: string; status: string; completionPercent: number; dueDate: string | null }>;
+  outgoingDependencies?: Array<{ id: number; dependencyType: string; lagDays: number; successor: { id: number; taskName: string; status: string } }>;
+  incomingDependencies?: Array<{ id: number; dependencyType: string; lagDays: number; predecessor: { id: number; taskName: string; status: string } }>;
+  projectIssues?: Array<{ id: number; title: string; status: string; priority: string; dueDate: string | null }>;
+  checklistItems?: TaskChecklistItem[];
+  watchers?: TaskWatcher[];
   priority: string | null;
   status: string;
   submissionLink?: string | null;
@@ -83,6 +95,24 @@ export interface TaskTimerSession {
   user: { id: number; name: string; email: string };
 }
 
+export interface TaskChecklistItem {
+  id: number;
+  taskId: number;
+  title: string;
+  completed: boolean;
+  completedById: number | null;
+  completedAt: string | null;
+  sortOrder: number;
+  completedBy?: { id: number; name: string; email: string } | null;
+}
+
+export interface TaskWatcher {
+  taskId: number;
+  userId: number;
+  createdAt: string;
+  user: { id: number; name: string; email: string; role: string };
+}
+
 export interface TaskPayload {
   taskType?: 'GENERAL' | 'SHOOT';
   shootClientName?: string | null;
@@ -99,10 +129,13 @@ export interface TaskPayload {
   driveLink?: string | null;
   project?: string | null;
   projectId?: number;
+  parentTaskId?: number | null;
   assignee?: string | null;
   employeeId?: number | null;
   assignedToUserId?: number | null;
   dueDate?: string | null;
+  startDate?: string | null;
+  completionPercent?: number | null;
   priority?: string | null;
   status?: string;
   submissionLink?: string | null;
@@ -112,6 +145,30 @@ export interface TaskPayload {
   notes?: string | null;
   leadId?: number | null;
   dealId?: number | null;
+}
+
+export interface TaskQuery {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  projectId?: number;
+  milestoneId?: number;
+  taskListId?: number;
+  status?: string;
+  priority?: string;
+  assignedToUserId?: number;
+  dueFrom?: string;
+  dueTo?: string;
+  sortBy?: string;
+  sortDirection?: 'asc' | 'desc';
+}
+
+export interface TaskQueryResult {
+  items: Task[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 }
 
 export interface TaskMessage {
@@ -127,6 +184,15 @@ export async function getTasks(): Promise<Task[]> {
   return request<Task[]>('/tasks');
 }
 
+export async function queryTasks(query: TaskQuery = {}): Promise<TaskQueryResult> {
+  const params = new URLSearchParams();
+  Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') params.set(key, String(value));
+  });
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  return request<TaskQueryResult>(`/tasks/query${suffix}`);
+}
+
 export async function getTask(id: number): Promise<Task> {
   return request<Task>(`/tasks/${id}`);
 }
@@ -140,6 +206,34 @@ export async function sendTaskMessage(id: number, content: string): Promise<Task
     method: 'POST',
     body: JSON.stringify({ content }),
   });
+}
+
+export async function getTaskChecklist(id: number): Promise<TaskChecklistItem[]> {
+  return request<TaskChecklistItem[]>(`/tasks/${id}/checklist`);
+}
+
+export async function createTaskChecklistItem(id: number, title: string, sortOrder?: number): Promise<TaskChecklistItem> {
+  return request<TaskChecklistItem>(`/tasks/${id}/checklist`, { method: 'POST', body: JSON.stringify({ title, sortOrder }) });
+}
+
+export async function updateTaskChecklistItem(id: number, itemId: number, payload: { title?: string; completed?: boolean; sortOrder?: number }): Promise<TaskChecklistItem> {
+  return request<TaskChecklistItem>(`/tasks/${id}/checklist/${itemId}`, { method: 'PATCH', body: JSON.stringify(payload) });
+}
+
+export async function deleteTaskChecklistItem(id: number, itemId: number): Promise<void> {
+  await request<void>(`/tasks/${id}/checklist/${itemId}`, { method: 'DELETE' });
+}
+
+export async function getTaskWatchers(id: number): Promise<TaskWatcher[]> {
+  return request<TaskWatcher[]>(`/tasks/${id}/watchers`);
+}
+
+export async function addTaskWatcher(id: number, userId?: number): Promise<TaskWatcher> {
+  return request<TaskWatcher>(`/tasks/${id}/watchers`, { method: 'POST', body: JSON.stringify(userId == null ? {} : { userId }) });
+}
+
+export async function removeTaskWatcher(id: number, userId: number): Promise<void> {
+  await request<void>(`/tasks/${id}/watchers/${userId}`, { method: 'DELETE' });
 }
 
 export async function createTask(data: TaskPayload): Promise<Task> {
@@ -164,6 +258,18 @@ export async function updateTaskStatus(
     method: 'PATCH',
     body: JSON.stringify({ status }),
   });
+}
+
+export interface BulkTaskUpdatePayload {
+  taskIds: number[];
+  status?: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'COMPLETED';
+  priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  assignedToUserId?: number;
+  dueDate?: string | null;
+}
+
+export async function bulkUpdateTasks(payload: BulkTaskUpdatePayload): Promise<{ updated: number; taskIds: number[] }> {
+  return request<{ updated: number; taskIds: number[] }>('/tasks/bulk', { method: 'PATCH', body: JSON.stringify(payload) });
 }
 
 export async function updateTaskTimer(

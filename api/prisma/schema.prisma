@@ -62,6 +62,11 @@ model User {
   userRoles                    UserRole[]
   authSessions                 AuthSession[]
   coManagedProjects            Project[]              @relation("ProjectCoManagers")
+  reportedProjectIssues        ProjectIssue[]         @relation("ProjectIssueReporter")
+  assignedProjectIssues        ProjectIssue[]         @relation("ProjectIssueAssignee")
+  createdProjectBaselines      ProjectBaseline[]      @relation("ProjectBaselineCreator")
+  taskWatchers                 TaskWatcher[]
+  completedChecklistItems      TaskChecklistItem[]    @relation("ChecklistCompletedBy")
   businessUnitAdminAssignments BusinessUnitAdmin[]    @relation("BusinessUnitAdminUser")
   clientProfile                ClientProfile?
 
@@ -204,6 +209,8 @@ model Organization {
   tickets                  Ticket[]
   timesheets               Timesheet[]
   taskTimerSessions        TaskTimerSession[]
+  taskChecklistItems       TaskChecklistItem[]
+  taskWatchers             TaskWatcher[]
   users                    User[]
   workflowActions          WorkflowAction[]
   workflowAssignments      WorkflowAssignment[]
@@ -218,6 +225,11 @@ model Organization {
   clientProfiles           ClientProfile[]
   clientInvitations        ClientInvitation[]
   customers                Customer[]
+  projectMilestones        ProjectMilestone[]
+  taskLists                TaskList[]
+  taskDependencies         TaskDependency[]
+  projectIssues            ProjectIssue[]
+  projectBaselines         ProjectBaseline[]
 
   @@index([status])
   @@index([createdAt])
@@ -726,7 +738,9 @@ model Task {
   updatedAt               DateTime             @updatedAt
   actualHours             Float?
   assignee                String?
+  startDate               DateTime?
   dueDate                 DateTime?
+  completionPercent       Int                  @default(0)
   estimatedHours          Float?
   notes                   String?
   priority                String?
@@ -745,6 +759,9 @@ model Task {
   links                   String?
   driveLink               String?
   projectId               Int?
+  parentTaskId            Int?
+  parentTask              Task?                @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  childTasks              Task[]               @relation("TaskHierarchy")
   reviewedAt              DateTime?
   reviewedBy              Int?
   submissionNotes         String?
@@ -759,15 +776,27 @@ model Task {
   lead                    Lead?                @relation(fields: [leadId], references: [id])
   organization            Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   projectRef              Project?             @relation("ProjectTasks", fields: [projectId], references: [id])
+  milestoneId              Int?
+  taskListId               Int?
+  milestone                ProjectMilestone?   @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  taskList                 TaskList?           @relation(fields: [taskListId], references: [id], onDelete: SetNull)
   reviewedByUser          User?                @relation("TaskReviewedBy", fields: [reviewedBy], references: [id])
   timerSessions           TaskTimerSession[]
   shootCrew               TaskCrewAssignment[]
   timesheets              Timesheet[]          @relation("TaskTimesheets")
   messages                TaskMessage[]
+  outgoingDependencies    TaskDependency[]      @relation("TaskDependencyFrom")
+  incomingDependencies    TaskDependency[]      @relation("TaskDependencyTo")
+  projectIssues           ProjectIssue[]
+  checklistItems          TaskChecklistItem[]
+  watchers                TaskWatcher[]
 
   @@index([organizationId])
   @@index([businessUnitId])
   @@index([taskType, shootDate])
+  @@index([projectId, startDate, dueDate])
+  @@index([parentTaskId])
+  @@index([projectId, taskListId, milestoneId])
 }
 
 model TaskCrewAssignment {
@@ -828,6 +857,39 @@ model TaskMessage {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([taskId, createdAt])
+  @@index([organizationId])
+}
+
+model TaskChecklistItem {
+  id             Int          @id @default(autoincrement())
+  taskId         Int
+  organizationId Int
+  title          String
+  completed      Boolean      @default(false)
+  completedById  Int?
+  completedAt    DateTime?
+  sortOrder      Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  task           Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  completedBy    User?        @relation("ChecklistCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+
+  @@index([taskId, sortOrder])
+  @@index([organizationId])
+}
+
+model TaskWatcher {
+  taskId         Int
+  userId         Int
+  organizationId Int
+  createdAt      DateTime     @default(now())
+  task           Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+  @@index([userId, createdAt])
   @@index([organizationId])
 }
 
@@ -1068,6 +1130,11 @@ model Project {
   customerId            Int?
   customer              Customer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
   tasks                 Task[]                @relation("ProjectTasks")
+  milestones            ProjectMilestone[]
+  taskLists             TaskList[]
+  dependencies          TaskDependency[]
+  issues                ProjectIssue[]
+  baselines             ProjectBaseline[]
   timesheets            Timesheet[]           @relation("ProjectTimesheets")
   assignedEmployees     Employee[]            @relation("ProjectAssignedEmployees")
   coManagers            User[]                @relation("ProjectCoManagers")
@@ -1076,6 +1143,106 @@ model Project {
   @@index([businessUnitId])
   @@index([createdById])
   @@index([managerAssignedById])
+}
+
+model ProjectMilestone {
+  id             Int          @id @default(autoincrement())
+  projectId      Int
+  organizationId Int
+  name           String
+  description    String?
+  startDate      DateTime?
+  dueDate        DateTime?
+  status         String       @default("NOT_STARTED")
+  sortOrder      Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tasks          Task[]
+
+  @@index([projectId, sortOrder])
+  @@index([organizationId, status])
+}
+
+model TaskList {
+  id             Int          @id @default(autoincrement())
+  projectId      Int
+  organizationId Int
+  name           String
+  description    String?
+  sortOrder      Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tasks          Task[]
+
+  @@index([projectId, sortOrder])
+  @@index([organizationId])
+}
+
+model TaskDependency {
+  id             Int          @id @default(autoincrement())
+  projectId      Int
+  organizationId Int
+  predecessorId  Int
+  successorId    Int
+  dependencyType String       @default("FINISH_TO_START")
+  lagDays        Int          @default(0)
+  createdAt      DateTime     @default(now())
+  predecessor    Task         @relation("TaskDependencyFrom", fields: [predecessorId], references: [id], onDelete: Cascade)
+  successor      Task         @relation("TaskDependencyTo", fields: [successorId], references: [id], onDelete: Cascade)
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([predecessorId, successorId])
+  @@index([projectId])
+  @@index([organizationId])
+}
+
+model ProjectIssue {
+  id             Int          @id @default(autoincrement())
+  projectId      Int
+  organizationId Int
+  taskId         Int?
+  title          String
+  description    String?
+  status         String       @default("OPEN")
+  priority       String       @default("MEDIUM")
+  severity       String?
+  reportedById   Int
+  assignedToId   Int?
+  dueDate        DateTime?
+  resolvedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task           Task?        @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  reportedBy     User         @relation("ProjectIssueReporter", fields: [reportedById], references: [id])
+  assignedTo     User?        @relation("ProjectIssueAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, status, priority])
+  @@index([organizationId, status])
+  @@index([taskId])
+}
+
+model ProjectBaseline {
+  id             Int          @id @default(autoincrement())
+  projectId      Int
+  organizationId Int
+  name           String
+  snapshotAt     DateTime     @default(now())
+  data           Json
+  createdById    Int
+  createdAt      DateTime     @default(now())
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User         @relation("ProjectBaselineCreator", fields: [createdById], references: [id])
+
+  @@index([projectId, snapshotAt])
+  @@index([organizationId])
 }
 
 model ProjectMessage {

@@ -58,6 +58,13 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (role !== 'EMPLOYEE' || currentUserId == null) return;
+    setForm((previous) => previous.assignedToUserId
+      ? previous
+      : { ...previous, assignedToUserId: String(currentUserId), assignee: authSession.user?.name ?? '' });
+  }, [authSession.user?.name, currentUserId, role]);
+
+  useEffect(() => {
     if (!open) return;
 
     async function loadOptions() {
@@ -99,10 +106,19 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
     setForm((previous) => ({ ...previous, [key]: value }));
   }
 
+  function assignToMe() {
+    if (currentUserId == null) return;
+    setForm((previous) => ({ ...previous, assignedToUserId: String(currentUserId), assignee: authSession.user?.name ?? '' }));
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!form.taskName.trim()) {
       setError('Task name is required.');
+      return;
+    }
+    if (!form.assignedToUserId) {
+      setError('Choose an assignee or select Assign to me.');
       return;
     }
     const shootDuration = Number.parseFloat(form.shootEstimatedHours);
@@ -146,7 +162,9 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
         notes: form.notes.trim() || null,
         driveLink: form.driveLink.trim() || undefined,
       });
-      setForm(buildEmptyForm());
+      setForm(role === 'EMPLOYEE' && currentUserId != null
+        ? { ...buildEmptyForm(), assignedToUserId: String(currentUserId), assignee: authSession.user?.name ?? '' }
+        : buildEmptyForm());
       await onCreated();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Failed to create task. Please try again.');
@@ -281,18 +299,18 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
             </label>
 
             <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-slate-700">Assignee <span className="font-normal text-slate-400">(optional)</span></span>
-              <select
-                className={field}
-                value={form.assignedToUserId}
-                onChange={(event) => {
+              <span className="text-sm font-medium text-slate-700">Assignee</span>
+              <div className="flex gap-2">
+                <select className={`${field} min-w-0 flex-1`} value={form.assignedToUserId} disabled={role === 'EMPLOYEE'} onChange={(event) => {
                   const selected = assignableUsers.find((user) => String(user.id) === event.target.value);
                   setForm((previous) => ({ ...previous, assignedToUserId: event.target.value, assignee: selected?.name ?? '' }));
-                }}
-              >
-                <option value="">Myself</option>
-                {assignableUsers.map((user) => <option key={user.id} value={user.id}>{user.name} ({user.role})</option>)}
-              </select>
+                }}>
+                  <option value="">Select assignee</option>
+                  {assignableUsers.map((user) => <option key={user.id} value={user.id}>{user.name} ({user.role})</option>)}
+                </select>
+                <button type="button" onClick={assignToMe} disabled={currentUserId == null} className="shrink-0 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 transition hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50">Assign to me</button>
+              </div>
+              {role === 'EMPLOYEE' && <span className="block text-xs text-slate-500">Employees can only assign tasks to themselves.</span>}
             </label>
 
             <label className="block space-y-1.5">

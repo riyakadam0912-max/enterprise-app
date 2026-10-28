@@ -160,20 +160,8 @@ const navConfig: NavItem[] = [
       { label: 'Categories',    href: '/dashboard/expenses/categories',     icon: <KanbanIcon /> },
     ],
   },
-  {
-    type: 'dropdown', id: 'projects', label: 'Projects', icon: <FolderIcon />,
-    children: [
-      { label: 'All Projects', href: '/dashboard/projects',          icon: <ReportIcon /> },
-      { label: 'Statuses',     href: '/dashboard/projects/statuses', icon: <KanbanIcon /> },
-    ],
-  },
-  {
-    type: 'dropdown', id: 'tasks', label: 'Tasks', icon: <CheckIcon />,
-    children: [
-      { label: 'All Tasks',  href: '/dashboard/tasks',            icon: <ReportIcon /> },
-      { label: 'Priorities', href: '/dashboard/tasks/priorities', icon: <KanbanIcon /> },
-    ],
-  },
+  { type: 'link', label: 'Projects', href: '/dashboard/projects', icon: <FolderIcon /> },
+  { type: 'link', label: 'Tasks', href: '/dashboard/tasks', icon: <CheckIcon /> },
   {
     type: 'dropdown', id: 'contacts', label: 'Contacts', icon: <ContactsIcon />,
     children: [
@@ -239,20 +227,18 @@ interface SidebarProps {
 const EMPLOYEE_VISIBLE_LABELS = new Set([
   'Dashboard',
   'Contacts',
-  'Tasks',
-  'Projects',
   'Timesheets',
   'Attendance',
   'Events',
   'Requests',
   'Expenses',
   'Forms',
+  'Projects',
+  'Tasks',
 ]);
 
 const MANAGER_VISIBLE_LABELS = new Set([
   'Dashboard',
-  'Tasks',
-  'Projects',
   'Invoices',
   'Expenses',
   'Attendance',
@@ -262,6 +248,8 @@ const MANAGER_VISIBLE_LABELS = new Set([
   'Employees',
   'Events',
   'Forms',
+  'Projects',
+  'Tasks',
 ]);
 
 const MANAGER_EMPLOYEE_CHILD_LABELS = new Set([

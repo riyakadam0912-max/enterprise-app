@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArrowRight, CalendarDays, CalendarRange, Clock3, Pencil, Plus, Trash2, UsersRound, X } from 'lucide-react';
 import { refreshAttendanceViews } from '@/lib/attendance-refresh';
-import { recoverAttendanceSession, getAttendanceJobStatus, AttendanceJobStatus, getAttendanceSessions, correctAttendanceSession, AttendanceSessionRecord, assignShift, AttendanceRecord, AttendanceStatus, createAttendanceForEmployeeDate, createHoliday, createShift, DailyTaskWorkSummary, deleteHoliday, deleteShift, getHolidays, getMonthlyAttendanceReport, getMyAttendanceHistory, getMyTaskWorkSummary, getShifts, getTeamWeeklyWorkHours, getWorkHourBalances, HolidayRecord, MyAttendanceResponse, ShiftRecord, startAttendanceBreak, stopAttendanceBreak, TeamWeeklyWorkHours, updateHoliday, updateShift, WorkHourBalances } from '@/api/attendanceApi';
+import { recoverAttendanceSession, getAttendanceJobStatus, AttendanceJobStatus, getAttendanceSessions, correctAttendanceSession, AttendanceSessionRecord, assignShift, AttendanceRecord, AttendanceStatus, createAttendanceForEmployeeDate, createHoliday, createShift, DailyTaskWorkSummary, deleteHoliday, deleteShift, getHolidays, getMonthlyAttendanceReport, getMyAttendanceHistory, getMyTaskWorkSummary, getShifts, getTeamWeeklyWorkHours, getWorkHourBalances, HolidayRecord, MyAttendanceResponse, ShiftRecord, startAttendanceBreak, stopAttendanceBreak, TeamWeeklyWorkHours, updateHoliday, updateShift, WorkHourBalances, MonthlyAttendanceReportResponse } from '@/api/attendanceApi';
 import { useAttendance, useCheckIn, useCheckOut, useMyAttendanceSnapshot, useTodayAttendance, useUpdateAttendance } from '@/hooks/useAttendance';
 import { useEmployees } from '@/hooks/useEmployees';
 import TableActions from '@/components/common/TableActions';
@@ -32,37 +32,6 @@ const STATUS_STYLES: Record<AttendanceStatus, string> = {
 };
 
 type MonthlyReportStatus = AttendanceStatus | 'LATE' | '';
-
-interface MonthlyAttendanceReportRow {
-  employeeId: number;
-  employeeName: string;
-  organization?: { id: number; name: string };
-  hireDate: string | null;
-  department: string | null;
-  role: string;
-  presentCount: number;
-  absentCount: number;
-  lateCount: number;
-  halfDayCount: number;
-  leaveCount: number;
-  holidayCount: number;
-  weeklyOffCount: number;
-  workingDays: number;
-  isFlexible?: boolean;
-  workingDayEquivalents?: number;
-  attendancePercent: number;
-  overtimeHours?: number;
-  shortfallHours?: number;
-  totalWorkedHours?: number;
-  totalExpectedHours?: number;
-}
-
-interface MonthlyAttendanceReportResponse {
-  month: string;
-  year: number;
-  rows: MonthlyAttendanceReportRow[];
-  total: number;
-}
 
 function todayString() {
   const date = new Date();
@@ -96,6 +65,15 @@ function formatLateDuration(totalMinutes: number) {
   if (hours === 0) return `${minutes}m`;
   if (minutes === 0) return `${hours}h`;
   return `${hours}h ${minutes}m`;
+}
+
+function formatAttendanceTime(value: string, timezone?: string) {
+  return new Intl.DateTimeFormat([], {
+    timeZone: timezone || undefined,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).format(new Date(value));
 }
 
 function isShiftFormComplete(shift: { name: string; startTime: string; endTime: string; type?: string }) {
@@ -233,7 +211,7 @@ function WorkHourProgress({ label, balance }: { label: string; balance: WorkHour
   return (
     <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white/90 px-4 py-3">
       <div
-        className="relative grid h-18 w-18 shrink-0 place-items-center rounded-full"
+        className="relative grid h-16 w-16 shrink-0 place-items-center rounded-full"
         style={{ background: `conic-gradient(#10b981 ${progressPercent}%, #e2e8f0 ${progressPercent}% 100%)` }}
         role="progressbar"
         aria-label={
@@ -245,7 +223,7 @@ function WorkHourProgress({ label, balance }: { label: string; balance: WorkHour
         aria-valuemin={0}
         aria-valuemax={100}
       >
-        <div className="grid h-13 w-13 place-items-center rounded-full bg-white text-sm font-bold text-slate-900">
+        <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-sm font-bold text-slate-900">
           {formatHoursDuration(taskWorkHours)}
         </div>
       </div>
@@ -600,9 +578,9 @@ function EmployeeAttendancePanel(props: {
               const durationHours = end ? Math.max(0, end.getTime() - start.getTime()) / 3600000 : null;
               return (
                 <li key={interval.startedAt}>
-                  {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {formatAttendanceTime(interval.startedAt, row?.employee.organization?.timezone)}
                   {' - '}
-                  {end?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) ?? 'In progress'}
+                  {end ? formatAttendanceTime(interval.endedAt!, row?.employee.organization?.timezone) : 'In progress'}
                   {durationHours !== null && <> · {formatHoursDuration(durationHours)}</>}
                 </li>
               );
@@ -2067,19 +2045,19 @@ function AttendancePageContent() {
             </button>
           </div>
 
-          <div className="mt-3 flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 sm:flex-row">
+          <div className="mt-3 grid min-w-0 grid-cols-1 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 sm:grid-cols-2 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <UsersRound aria-hidden="true" className="ml-2 h-4 w-4 shrink-0 text-slate-400" />
-              <select value={assignEmployeeId} onChange={(e) => setAssignEmployeeId(e.target.value)} aria-label="Select employee" className="min-w-0 flex-1 bg-transparent px-1 py-2 text-sm text-slate-700 outline-none">
+              <select value={assignEmployeeId} onChange={(e) => setAssignEmployeeId(e.target.value)} aria-label="Select employee" className="w-full min-w-0 flex-1 bg-transparent px-1 py-2 text-sm text-slate-700 outline-none">
                 <option value="">Select employee</option>
                 {employeeOptions.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
               </select>
             </div>
-            <select value={assignShiftId} onChange={(e) => setAssignShiftId(e.target.value)} aria-label="Select shift" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+            <select value={assignShiftId} onChange={(e) => setAssignShiftId(e.target.value)} aria-label="Select shift" className="w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
               <option value="">Select shift</option>
               {shifts.map((shift) => <option key={shift.id} value={shift.id}>{shift.name} · {shift.organizationName}</option>)}
             </select>
-            <button onClick={handleAssignShift} disabled={shiftBusy || !assignEmployeeId || !assignShiftId} className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-white disabled:opacity-50"><ArrowRight aria-hidden="true" className="h-4 w-4" />Assign</button>
+            <button onClick={handleAssignShift} disabled={shiftBusy || !assignEmployeeId || !assignShiftId} className="inline-flex w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-white disabled:opacity-50 sm:col-span-2 2xl:col-span-1 2xl:w-auto"><ArrowRight aria-hidden="true" className="h-4 w-4" />Assign</button>
           </div>
 
           <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
@@ -2733,8 +2711,8 @@ function AttendancePageContent() {
                         {row.checkIn && <li>Check in · {formatTime(row.checkIn)}</li>}
                         {(row.breaks ?? []).map((interval) => (
                           <li key={interval.startedAt}>
-                            Break · {new Date(interval.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            {' - '}{interval.endedAt ? new Date(interval.endedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'In progress'}
+                            Break · {formatAttendanceTime(interval.startedAt, row.employee.organization?.timezone)}
+                            {' - '}{interval.endedAt ? formatAttendanceTime(interval.endedAt, row.employee.organization?.timezone) : 'In progress'}
                           </li>
                         ))}
                         {(row.breaks ?? []).length === 0 && <li>No breaks</li>}

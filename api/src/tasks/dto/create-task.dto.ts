@@ -9,6 +9,8 @@ import {
   IsArray,
   ArrayUnique,
   IsPositive,
+  Min,
+  Max,
   Matches,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
@@ -79,6 +81,21 @@ export class CreateTaskDto {
   projectId?: number;
 
   @IsOptional()
+  @IsInt()
+  @ApiPropertyOptional({ description: 'Optional parent task ID for subtasks.' })
+  parentTaskId?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @ApiPropertyOptional({ description: 'Optional project milestone ID.' })
+  milestoneId?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @ApiPropertyOptional({ description: 'Optional project task list ID.' })
+  taskListId?: number | null;
+
+  @IsOptional()
   @IsString()
   @ApiPropertyOptional({
     example:
@@ -114,6 +131,18 @@ export class CreateTaskDto {
   @IsDateString()
   @ApiPropertyOptional({ example: '2026-04-14' })
   dueDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  @ApiPropertyOptional({ example: '2026-04-01' })
+  startDate?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  @ApiPropertyOptional({ example: 0, minimum: 0, maximum: 100 })
+  completionPercent?: number;
 
   @IsOptional()
   @IsString()

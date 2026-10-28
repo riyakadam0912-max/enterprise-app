@@ -6,7 +6,11 @@ import {
   DelegateMock,
 } from '../../test/helpers/mocks.helper';
 import { Role } from '../common/enums/role.enum';
-import { ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { AuthUser } from '../common/types/auth';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 
@@ -83,6 +87,7 @@ describe('PaymentsService', () => {
 
     it('should create a payment successfully for admin', async () => {
       const paymentDelegate = getPrismaDelegate(mockPrisma, 'payment');
+      const invoiceDelegate = getPrismaDelegate(mockPrisma, 'invoice');
       const mockPayment = {
         id: 1,
         organizationId: 1,
@@ -91,6 +96,12 @@ describe('PaymentsService', () => {
         invoice: { id: 1, totalAmount: 200 },
       };
       paymentDelegate.create.mockResolvedValueOnce(mockPayment);
+      invoiceDelegate.findUnique.mockResolvedValueOnce({
+        id: 1,
+        organizationId: 1,
+        totalAmount: 200,
+        status: 'ISSUED',
+      });
 
       const dto: CreatePaymentDto = {
         invoiceId: 1,
@@ -164,22 +175,52 @@ describe('PaymentsService', () => {
       expect(result.remainingAmount).toEqual(75);
     });
 
-    it('should handle case where invoice is not found', async () => {
+    it('should reject when invoice is not found in the organization', async () => {
       const paymentDelegate = getPrismaDelegate(mockPrisma, 'payment');
       const invoiceDelegate = getPrismaDelegate(mockPrisma, 'invoice');
 
-      const mockPayments = [
-        { id: 1, organizationId: 1, invoiceId: 1, amount: 50 },
-      ];
-
-      paymentDelegate.findMany.mockResolvedValueOnce(mockPayments);
       invoiceDelegate.findUnique.mockResolvedValueOnce(null);
 
-      const result = await service.findByInvoice(1, mockAdminUser);
-      expect(result.payments).toEqual(mockPayments);
-      expect(result.totalAmount).toEqual(0);
-      expect(result.paidAmount).toEqual(50);
-      expect(result.remainingAmount).toEqual(-50);
+      await expect(service.findByInvoice(1, mockAdminUser)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('excludes pending and failed payments from the paid amount', async () => {
+      const paymentDelegate = getPrismaDelegate(mockPrisma, 'payment');
+      const invoiceDelegate = getPrismaDelegate(mockPrisma, 'invoice');
+      paymentDelegate.findMany.mockResolvedValueOnce([
+        { id: 1, amount: 50, status: 'COMPLETED' },
+        { id: 2, amount: 25, status: 'PENDING' },
+        { id: 3, amount: 10, status: 'FAILED' },
+        { id: 4, amount: 5, status: 'REFUNDED' },
+      ]);
+      invoiceDelegate.findUnique.mockResolvedValueOnce({
+        id: 1,
+        organizationId: 1,
+        totalAmount: 100,
+        status: 'ISSUED',
+      });
+
+      await expect(service.findByInvoice(1, mockAdminUser)).resolves.toMatchObject({
+        paidAmount: 45,
+        remainingAmount: 55,
+      });
+    });
+
+    it('rejects non-positive payment amounts', async () => {
+      await expect(
+        service.create(
+          {
+            invoiceId: 1,
+            amount: 0,
+            paymentMethod: 'CASH',
+            paymentDate: '2026-01-01',
+            status: 'COMPLETED',
+          },
+          mockAdminUser,
+        ),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useMemo } from 'react';
-import { usePayments } from '@/hooks/usePayments';
+import { useEffect, useState } from 'react';
+import { getPayment, type Payment } from '@/api/paymentsApi';
 import { formatDate, formatInr, PAYMENT_STATUS_STYLES } from '@/utils/finance';
 
 function StatusBadge({ status }: { status: string }) {
@@ -15,12 +15,28 @@ export default function PaymentDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const paymentId = Number(params.id);
-  const { payments, loading, error } = usePayments();
+  const [payment, setPayment] = useState<Payment | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const payment = useMemo(
-    () => payments.find((entry) => entry.id === paymentId) ?? null,
-    [payments, paymentId],
-  );
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError(null);
+    getPayment(paymentId)
+      .then((value) => {
+        if (active) setPayment(value);
+      })
+      .catch((value: unknown) => {
+        if (active) setError(value instanceof Error ? value.message : 'Payment not found');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [paymentId]);
 
   if (loading) {
     return <div className="p-6 text-sm text-slate-400">Loading payment…</div>;

@@ -8,7 +8,6 @@ import {
   Building2,
   ChevronLeft,
   ChevronRight,
-  CreditCard,
   FileText,
   LayoutDashboard,
   LogOut,
@@ -27,10 +26,9 @@ import { SuperAdminHeader } from '@/components/super-admin/SuperAdminHeader';
 const superAdminNavItems = [
   { label: 'Dashboard', href: '/super-admin/dashboard', icon: LayoutDashboard },
   { label: 'Organizations', href: '/super-admin/organizations', icon: Building2 },
+  { label: 'Business Units', href: '/super-admin/business-units', icon: Building2 },
   { label: 'Users', href: '/super-admin/users', icon: Users },
   { label: 'Roles & Permissions', href: '/super-admin/roles', icon: Shield },
-  { label: 'Subscription Plans', href: '/super-admin/plans', icon: CreditCard },
-  { label: 'Billing', href: '/super-admin/billing', icon: FileText },
   { label: 'Audit Logs', href: '/super-admin/audit-logs', icon: FileText },
   { label: 'System Settings', href: '/super-admin/settings', icon: Settings },
   { label: 'Reports', href: '/super-admin/reports', icon: BarChart3 },
@@ -115,7 +113,7 @@ export default function SuperAdminShell({ children }: { children: React.ReactNod
       <aside
         className={`fixed inset-y-0 left-0 z-50 transform border-r border-slate-200/70 bg-slate-950 text-white shadow-[0_20px_60px_-30px_rgba(15,23,42,0.85)] transition-all duration-300 ease-out lg:static lg:translate-x-0 ${
           mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
-        } ${sidebarCollapsed ? 'w-24' : 'w-72'}`}
+        } ${sidebarCollapsed ? 'w-72 lg:w-24' : 'w-72'}`}
       >
         <div className="flex flex-col h-full">
           <div className="border-b border-slate-800/80 p-4">
@@ -152,6 +150,9 @@ export default function SuperAdminShell({ children }: { children: React.ReactNod
                 <Link
                   key={item.href}
                   href={item.href}
+                  aria-label={item.label}
+                  aria-current={isActive ? 'page' : undefined}
+                  title={sidebarCollapsed ? item.label : undefined}
                   onClick={() => setMobileMenuOpen(false)}
                   className={`flex items-center gap-3 rounded-2xl px-3 py-3 transition-all ${
                     isActive ? 'bg-white/10 text-white shadow-lg shadow-indigo-950/20' : 'text-slate-300 hover:bg-slate-900/70 hover:text-white'
@@ -168,13 +169,18 @@ export default function SuperAdminShell({ children }: { children: React.ReactNod
             <Link
               href="/super-admin/profile"
               onClick={() => setMobileMenuOpen(false)}
+              aria-label="Profile"
+              title={sidebarCollapsed ? 'Profile' : undefined}
               className={`flex items-center gap-3 rounded-2xl px-3 py-3 text-slate-300 transition hover:bg-slate-900/70 hover:text-white ${sidebarCollapsed ? 'justify-center px-2' : ''}`}
             >
               <User className="h-5 w-5 shrink-0" />
               {!sidebarCollapsed ? <span className="font-medium">Profile</span> : null}
             </Link>
             <button
+              type="button"
               onClick={handleLogout}
+              aria-label="Logout"
+              title={sidebarCollapsed ? 'Logout' : undefined}
               className={`flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-slate-300 transition hover:bg-slate-900/70 hover:text-white ${sidebarCollapsed ? 'justify-center px-2' : ''}`}
             >
               <LogOut className="h-5 w-5 shrink-0" />

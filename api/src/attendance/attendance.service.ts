@@ -1231,6 +1231,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       include: {
         shift: true,
         shiftAssignments: { include: { shift: true } },
+        organization: { select: { timezone: true } },
       },
     });
     if (!employee)
@@ -4045,6 +4046,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     return {
       employee,
       month: monthKey,
+      timezone,
       summary,
       days,
     };

@@ -68,6 +68,19 @@ export class PaymentsController {
     return this.paymentsService.findByInvoice(id, req.user);
   }
 
+  @Roles(Role.ADMIN, Role.HR, Role.MANAGER)
+  @ApiOperation({ summary: 'GET :id' })
+  @ApiResponse({ status: 200, description: 'GET request successful.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @ApiResponse({ status: 404, description: 'Resource not found.' })
+  @Get(':id')
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.paymentsService.findOne(id, req.user);
+  }
+
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.HR)
   @ApiOperation({ summary: 'PATCH :id' })
   @ApiResponse({ status: 200, description: 'PATCH request successful.' })

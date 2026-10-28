@@ -13,6 +13,10 @@ import { DASHBOARD_CACHE_KEY } from '../common/utils/cache-keys';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Prisma } from '@prisma/client';
 import { CreateTaskDto } from './dto/create-task.dto';
+import { TaskQueryDto } from './dto/task-query.dto';
+import { CreateChecklistItemDto } from './dto/create-checklist-item.dto';
+import { UpdateChecklistItemDto } from './dto/update-checklist-item.dto';
+import { BulkUpdateTasksDto } from './dto/bulk-update-tasks.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { Role } from '../common/enums/role.enum';
 import { SubmitTaskWorkDto } from './dto/submit-task-work.dto';
@@ -269,6 +273,44 @@ export class TasksService {
     }
 
     throw new ForbiddenException('Task must be assigned to a user');
+  }
+
+  private async validateParentTask(
+    parentTaskId: number | null | undefined,
+    organizationId: number,
+    projectId: number | null,
+    taskId?: number,
+  ) {
+    if (parentTaskId == null) return;
+    if (taskId === parentTaskId) {
+      throw new BadRequestException('A task cannot be its own parent');
+    }
+
+    const parent = await this.db.task.findFirst({
+      where: { id: parentTaskId, organizationId, deletedAt: null },
+      select: { id: true, projectId: true, parentTaskId: true },
+    });
+    if (!parent) throw new NotFoundException('Parent task not found');
+    if (parent.projectId !== projectId) {
+      throw new BadRequestException(
+        'Parent and child tasks must belong to the same project',
+      );
+    }
+
+    const visited = new Set<number>();
+    let ancestorId = parent.parentTaskId;
+    while (ancestorId != null) {
+      if (ancestorId === taskId) {
+        throw new BadRequestException('Task hierarchy cannot contain a cycle');
+      }
+      if (visited.has(ancestorId)) break;
+      visited.add(ancestorId);
+      const ancestor = await this.db.task.findFirst({
+        where: { id: ancestorId, organizationId, deletedAt: null },
+        select: { parentTaskId: true },
+      });
+      ancestorId = ancestor?.parentTaskId ?? null;
+    }
   }
 
   private assertManagerAssigneePolicy(
@@ -598,6 +640,21 @@ export class TasksService {
       throw new NotFoundException('Project not found');
     }
 
+    await this.validateParentTask(
+      dto.parentTaskId,
+      organizationId,
+      project?.id ?? null,
+    );
+
+    if (dto.milestoneId != null || dto.taskListId != null) {
+      const planningRecords = await Promise.all([
+        dto.milestoneId == null ? null : this.db.projectMilestone.findFirst({ where: { id: dto.milestoneId, projectId: project?.id ?? undefined, organizationId }, select: { id: true } }),
+        dto.taskListId == null ? null : this.db.taskList.findFirst({ where: { id: dto.taskListId, projectId: project?.id ?? undefined, organizationId }, select: { id: true } }),
+      ]);
+      if (dto.milestoneId != null && !planningRecords[0]) throw new NotFoundException('Milestone not found for task project');
+      if (dto.taskListId != null && !planningRecords[1]) throw new NotFoundException('Task list not found for task project');
+    }
+
     if (
       user.role === Role.MANAGER &&
       project &&
@@ -754,6 +811,9 @@ export class TasksService {
         taskName: resolvedTaskName,
         project: dto.project ?? project?.projectName,
         projectId: project?.id,
+        parentTaskId: dto.parentTaskId ?? null,
+        milestoneId: dto.milestoneId ?? null,
+        taskListId: dto.taskListId ?? null,
         description: dto.description ?? dto.notes,
         category: dto.category,
         links: dto.links,
@@ -762,7 +822,9 @@ export class TasksService {
         assignedToId: assignee.employeeId ?? undefined,
         assignedToUserId: assignee.id,
         assignedByUserId: user.userId,
+        startDate: dto.startDate ? new Date(dto.startDate) : undefined,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
+        completionPercent: dto.completionPercent ?? 0,
         priority: dto.priority,
         status:
           dto.status === 'SUBMITTED'
@@ -1770,6 +1832,27 @@ export class TasksService {
       }
     }
 
+    if (dto.parentTaskId !== undefined) {
+      await this.validateParentTask(
+        dto.parentTaskId,
+        existingTask.organizationId,
+        projectData.projectId ?? existingTask.projectId ?? null,
+        id,
+      );
+    }
+
+    if (dto.milestoneId !== undefined || dto.taskListId !== undefined) {
+      const projectId = projectData.projectId ?? existingTask.projectId ?? undefined;
+      if (dto.milestoneId != null) {
+        const milestone = await this.db.projectMilestone.findFirst({ where: { id: dto.milestoneId, projectId, organizationId: existingTask.organizationId }, select: { id: true } });
+        if (!milestone) throw new NotFoundException('Milestone not found for task project');
+      }
+      if (dto.taskListId != null) {
+        const taskList = await this.db.taskList.findFirst({ where: { id: dto.taskListId, projectId, organizationId: existingTask.organizationId }, select: { id: true } });
+        if (!taskList) throw new NotFoundException('Task list not found for task project');
+      }
+    }
+
     const updated = await this.db.task.update({
       where: { id, organizationId: existingTask.organizationId },
       data: {
@@ -1778,6 +1861,11 @@ export class TasksService {
         }),
         ...(dto.project !== undefined && { project: dto.project }),
         ...projectData,
+        ...(dto.parentTaskId !== undefined && {
+          parentTaskId: dto.parentTaskId,
+        }),
+        ...(dto.milestoneId !== undefined && { milestoneId: dto.milestoneId }),
+        ...(dto.taskListId !== undefined && { taskListId: dto.taskListId }),
         ...(dto.assignee !== undefined && { assignee: dto.assignee }),
         ...(dto.driveLink !== undefined && { driveLink: dto.driveLink }),
         ...assigneeData,
@@ -1831,6 +1919,12 @@ export class TasksService {
         ...(dto.dealId !== undefined && { dealId: dto.dealId }),
         ...(dto.dueDate !== undefined && {
           dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+        }),
+        ...(dto.startDate !== undefined && {
+          startDate: dto.startDate ? new Date(dto.startDate) : null,
+        }),
+        ...(dto.completionPercent !== undefined && {
+          completionPercent: dto.completionPercent,
         }),
       },
       include: {
@@ -2436,6 +2530,196 @@ export class TasksService {
     return this.getTaskAccessWhere(user);
   }
 
+  private async getCollaborativeTask(id: number, user: AuthUser) {
+    const task = await this.db.task.findFirst({
+      where: { id, ...(await this.getTaskAccessWhere(user)) },
+      select: { id: true, organizationId: true },
+    });
+    if (!task) throw new NotFoundException(`Task #${id} not found`);
+    return task;
+  }
+
+  async getChecklist(taskId: number, user: AuthUser) {
+    await this.getCollaborativeTask(taskId, user);
+    return (this.db as any).taskChecklistItem.findMany({
+      where: { taskId },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      include: { completedBy: { select: { id: true, name: true, email: true } } },
+    });
+  }
+
+  async createChecklistItem(taskId: number, dto: CreateChecklistItemDto, user: AuthUser) {
+    const task = await this.getCollaborativeTask(taskId, user);
+    if (!dto.title.trim()) throw new BadRequestException('Checklist title is required');
+    return (this.db as any).taskChecklistItem.create({
+      data: { taskId, organizationId: task.organizationId, title: dto.title.trim(), sortOrder: dto.sortOrder ?? 0 },
+      include: { completedBy: { select: { id: true, name: true, email: true } } },
+    });
+  }
+
+  async updateChecklistItem(taskId: number, itemId: number, dto: UpdateChecklistItemDto, user: AuthUser) {
+    await this.getCollaborativeTask(taskId, user);
+    const item = await (this.db as any).taskChecklistItem.findFirst({ where: { id: itemId, taskId } });
+    if (!item) throw new NotFoundException('Checklist item not found');
+    if (dto.title !== undefined && !dto.title.trim()) throw new BadRequestException('Checklist title is required');
+    return (this.db as any).taskChecklistItem.update({
+      where: { id: itemId },
+      data: {
+        ...(dto.title !== undefined && { title: dto.title.trim() }),
+        ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
+        ...(dto.completed !== undefined && { completed: dto.completed, completedById: dto.completed ? user.userId : null, completedAt: dto.completed ? new Date() : null }),
+      },
+      include: { completedBy: { select: { id: true, name: true, email: true } } },
+    });
+  }
+
+  async deleteChecklistItem(taskId: number, itemId: number, user: AuthUser) {
+    await this.getCollaborativeTask(taskId, user);
+    const item = await (this.db as any).taskChecklistItem.findFirst({ where: { id: itemId, taskId }, select: { id: true } });
+    if (!item) throw new NotFoundException('Checklist item not found');
+    return (this.db as any).taskChecklistItem.delete({ where: { id: itemId } });
+  }
+
+  async getWatchers(taskId: number, user: AuthUser) {
+    await this.getCollaborativeTask(taskId, user);
+    return (this.db as any).taskWatcher.findMany({
+      where: { taskId },
+      orderBy: { createdAt: 'asc' },
+      include: { user: { select: { id: true, name: true, email: true, role: true } } },
+    });
+  }
+
+  async addWatcher(taskId: number, requestedUserId: number | undefined, user: AuthUser) {
+    const task = await this.getCollaborativeTask(taskId, user);
+    const canManage = ([Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER] as Role[]).includes(user.role);
+    const targetUserId = requestedUserId ?? user.userId;
+    if (!canManage && targetUserId !== user.userId) throw new ForbiddenException('You can only watch a task for yourself');
+    const target = await this.db.user.findFirst({ where: { id: targetUserId, organizationId: task.organizationId, isActive: true }, select: { id: true } });
+    if (!target) throw new NotFoundException('Watcher user not found');
+    return (this.db as any).taskWatcher.upsert({
+      where: { taskId_userId: { taskId, userId: targetUserId } },
+      create: { taskId, userId: targetUserId, organizationId: task.organizationId },
+      update: {},
+      include: { user: { select: { id: true, name: true, email: true, role: true } } },
+    });
+  }
+
+  async removeWatcher(taskId: number, targetUserId: number, user: AuthUser) {
+    await this.getCollaborativeTask(taskId, user);
+    const canManage = ([Role.SUPER_ADMIN, Role.ADMIN, Role.HR, Role.MANAGER] as Role[]).includes(user.role);
+    if (!canManage && targetUserId !== user.userId) throw new ForbiddenException('You can only remove yourself as a watcher');
+    const watcher = await (this.db as any).taskWatcher.findUnique({ where: { taskId_userId: { taskId, userId: targetUserId } } });
+    if (!watcher) throw new NotFoundException('Watcher not found');
+    return (this.db as any).taskWatcher.delete({ where: { taskId_userId: { taskId, userId: targetUserId } } });
+  }
+
+  async query(query: TaskQueryDto, user: AuthUser) {
+    const page = Math.max(1, Number.parseInt(query.page ?? '1', 10) || 1);
+    const pageSize = Math.min(
+      100,
+      Math.max(1, Number.parseInt(query.pageSize ?? '25', 10) || 25),
+    );
+    const baseWhere = await this.getScopedWhere(user);
+    const and: Prisma.TaskWhereInput[] = [baseWhere];
+    const numberFilter = (value?: string) => {
+      const parsed = value == null ? NaN : Number.parseInt(value, 10);
+      return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+    };
+    const projectId = numberFilter(query.projectId);
+    const milestoneId = numberFilter(query.milestoneId);
+    const taskListId = numberFilter(query.taskListId);
+    const assignedToUserId = numberFilter(query.assignedToUserId);
+
+    if (query.search?.trim()) {
+      const search = query.search.trim();
+      and.push({
+        OR: [
+          { taskName: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
+        ],
+      });
+    }
+    if (projectId) and.push({ projectId });
+    if (milestoneId) and.push({ milestoneId });
+    if (taskListId) and.push({ taskListId });
+    if (assignedToUserId) and.push({ assignedToUserId });
+    if (query.status) and.push({ status: query.status });
+    if (query.priority) and.push({ priority: query.priority });
+    if (query.dueFrom || query.dueTo) {
+      and.push({
+        dueDate: {
+          ...(query.dueFrom ? { gte: new Date(query.dueFrom) } : {}),
+          ...(query.dueTo ? { lte: new Date(query.dueTo) } : {}),
+        },
+      });
+    }
+
+    const where: Prisma.TaskWhereInput = { AND: and };
+    const allowedSorts = new Set(['createdAt', 'updatedAt', 'dueDate', 'startDate', 'taskName', 'priority', 'status']);
+    const sortBy = allowedSorts.has(query.sortBy ?? '') ? query.sortBy! : 'createdAt';
+    const sortDirection = query.sortDirection === 'asc' ? 'asc' : 'desc';
+    const db = this.prisma;
+    const [total, items] = await db.$transaction([
+      db.task.count({ where }),
+      db.task.findMany({
+        where,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        orderBy: { [sortBy]: sortDirection } as Prisma.TaskOrderByWithRelationInput,
+        select: {
+          id: true,
+          taskType: true,
+          taskName: true,
+          status: true,
+          priority: true,
+          startDate: true,
+          dueDate: true,
+          completionPercent: true,
+          projectId: true,
+          parentTaskId: true,
+          milestoneId: true,
+          taskListId: true,
+          assignedToUserId: true,
+          estimatedHours: true,
+          actualHours: true,
+          createdAt: true,
+          updatedAt: true,
+          projectRef: { select: { id: true, projectName: true } },
+          milestone: { select: { id: true, name: true } },
+          taskList: { select: { id: true, name: true } },
+          assignedToUser: { select: { id: true, name: true, email: true } },
+          _count: { select: { childTasks: true } },
+        },
+      }),
+    ]);
+
+    return { items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+  }
+
+  async bulkUpdate(dto: BulkUpdateTasksDto, user: AuthUser) {
+    if (dto.taskIds.length > 200) throw new BadRequestException('Bulk updates are limited to 200 tasks');
+    const uniqueTaskIds = [...new Set(dto.taskIds)];
+    const scope = await this.getTaskAccessWhere(user);
+    const tasks = await this.db.task.findMany({ where: { AND: [{ id: { in: uniqueTaskIds } }, scope] }, select: { id: true, organizationId: true } });
+    if (tasks.length !== uniqueTaskIds.length) throw new ForbiddenException('One or more tasks are not accessible');
+    if (dto.assignedToUserId != null) {
+      const organizations = [...new Set(tasks.map((task) => task.organizationId))];
+      const assignee = await this.db.user.findFirst({ where: { id: dto.assignedToUserId, organizationId: { in: organizations }, isActive: true }, select: { id: true } });
+      if (!assignee) throw new NotFoundException('Assigned user not found');
+    }
+    if (dto.status == null && dto.priority == null && dto.assignedToUserId == null && dto.dueDate === undefined) {
+      throw new BadRequestException('At least one task field must be provided');
+    }
+    const data = {
+      ...(dto.status !== undefined && { status: dto.status }),
+      ...(dto.priority !== undefined && { priority: dto.priority }),
+      ...(dto.assignedToUserId !== undefined && { assignedToUserId: dto.assignedToUserId }),
+      ...(dto.dueDate !== undefined && { dueDate: dto.dueDate ? new Date(dto.dueDate) : null }),
+    };
+    const updated = await this.db.task.updateMany({ where: { id: { in: uniqueTaskIds } }, data });
+    return { updated: updated.count, taskIds: uniqueTaskIds };
+  }
+
   async findAll(user: AuthUser) {
     const where = await this.getScopedWhere(user);
     return this.db.task.findMany({
@@ -2473,6 +2757,22 @@ export class TasksService {
         assignedToUser: { select: { id: true, name: true, email: true } },
         assignedByUser: { select: { id: true, name: true, email: true } },
         reviewedByUser: { select: { id: true, name: true, email: true } },
+        parentTask: { select: { id: true, taskName: true, status: true } },
+        childTasks: {
+          where: { deletedAt: null },
+          select: { id: true, taskName: true, status: true, completionPercent: true, dueDate: true },
+          orderBy: { createdAt: 'asc' },
+        },
+        outgoingDependencies: {
+          select: { id: true, dependencyType: true, lagDays: true, successor: { select: { id: true, taskName: true, status: true } } },
+        },
+        incomingDependencies: {
+          select: { id: true, dependencyType: true, lagDays: true, predecessor: { select: { id: true, taskName: true, status: true } } },
+        },
+        projectIssues: {
+          select: { id: true, title: true, status: true, priority: true, dueDate: true },
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
     if (!task) throw new NotFoundException(`Task #${id} not found`);

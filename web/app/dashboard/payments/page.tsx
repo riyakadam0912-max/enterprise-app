@@ -52,7 +52,10 @@ export default function PaymentsPage() {
   }, []);
 
   const paymentStats = useMemo(() => {
-    const collected = payments.reduce((sum, payment) => (payment.status === 'REFUNDED' ? sum - payment.amount : sum + payment.amount), 0);
+    const collected = payments.reduce((sum, payment) => {
+      if (payment.status === 'PENDING' || payment.status === 'FAILED') return sum;
+      return payment.status === 'REFUNDED' ? sum - payment.amount : sum + payment.amount;
+    }, 0);
     return {
       total: payments.length,
       collected,

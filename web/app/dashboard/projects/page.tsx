@@ -43,6 +43,7 @@ import { useAuthSession } from '@/stores/auth-store';
 import { ProjectGrid } from '@/components/projects/ProjectGrid';
 import { dateTimeLocalToIso, formatDateTime } from '@/utils/dateUtils';
 import { formatHoursDuration } from '@/lib/time-format';
+import { Ellipsis } from 'lucide-react';
 
 type ProjectTab = 'overview' | 'tasks' | 'users' | 'reports' | 'issues' | 'timeLogs' | 'chat';
 
@@ -272,6 +273,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
   const employeeId = session.employeeId;
   const currentTime = useStableNow();
   const [activeTab, setActiveTab] = useState<ProjectTab>('overview');
+  const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [projectDetails, setProjectDetails] = useState<Project | null>(null);
@@ -1683,22 +1685,40 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
 
           </div>
 
-          <div className="mb-6 flex flex-wrap gap-1 border-b border-slate-200 py-3">
-            {tabs
-              .filter((tab) => !(tab.id === 'chat' && !canViewChat))
-              .map((tab) => (
+          <div className="mb-6 flex items-center justify-between border-b border-slate-200 py-3">
+            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+              {tabs.find((tab) => tab.id === activeTab)?.label ?? 'Overview'}
+            </span>
+            <div className="relative">
               <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`border-b-2 px-3 py-2 text-sm font-medium ${
-                  activeTab === tab.id
-                    ? 'border-orange-500 text-slate-950'
-                    : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-900'
-                }`}
+                type="button"
+                aria-label="Choose project section"
+                title="Choose project section"
+                onClick={() => setIsProjectMenuOpen((open) => !open)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
               >
-                {tab.label}
+                <Ellipsis className="h-4 w-4" />
               </button>
-            ))}
+              {isProjectMenuOpen && (
+                <div className="absolute right-0 top-10 z-30 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                  {tabs
+                    .filter((tab) => !(tab.id === 'chat' && !canViewChat))
+                    .map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => { setActiveTab(tab.id); setIsProjectMenuOpen(false); }}
+                        className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-medium transition ${
+                          activeTab === tab.id ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                        }`}
+                      >
+                        <span>{tab.label}</span>
+                        {activeTab === tab.id && <span className="text-[10px]">✓</span>}
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {activeTab === 'overview' && (
@@ -1724,6 +1744,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                     <div className="h-2 rounded-full bg-orange-500" style={{ width: `${progress ? Math.max(0, Math.min(100, progress.progressPercent)) : 0}%` }} />
                   </div>
                   {progress && <p className="mt-3 text-sm text-slate-500">{progress.totalTasks} task{progress.totalTasks === 1 ? '' : 's'} · {progress.completedTasks} completed</p>}
+                  {progress && <p className="mt-1 text-xs text-slate-400">{(progress.actualHours ?? 0).toFixed(1)}h logged · {(progress.remainingHours ?? 0).toFixed(1)}h remaining</p>}
                 </div>
               </div>
 
@@ -1794,6 +1815,8 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                     <div className="space-y-1 text-sm text-slate-600">
                       <p>Total Tasks: {progress.totalTasks}</p>
                       <p>Completed Tasks: {progress.completedTasks}</p>
+                      <p>Planned Hours: {(progress.plannedHours ?? 0).toFixed(1)}</p>
+                      <p>Actual Hours: {(progress.actualHours ?? 0).toFixed(1)}</p>
                       <p>Project Status: {progress.projectStatus}</p>
                     </div>
                   ) : (
@@ -1920,7 +1943,12 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                     <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                       <tr>
                         {['ID', 'Task Name', 'Owner', 'Start Date', 'Due Date', 'Duration', 'Priority', 'Completion', 'Time Logs', 'Status'].map((heading, index) => (
-                          <th key={heading} className={`whitespace-nowrap border-b border-slate-200 px-4 py-3 ${index < 2 ? 'sticky z-10 bg-slate-50' : ''}`}>
+                          <th
+                            key={heading}
+                            className={`whitespace-nowrap border-b border-slate-200 px-4 py-3 ${
+                              index === 0 ? 'sticky left-0 z-30 w-16 bg-slate-50' : index === 1 ? 'sticky left-16 z-30 min-w-[18rem] bg-slate-50' : ''
+                            }`}
+                          >
                             {heading}
                           </th>
                         ))}
@@ -1937,8 +1965,8 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                         const completion = isFinished ? 100 : task.completionPercent ?? (status === 'SUBMITTED' ? 80 : status === 'IN_PROGRESS' ? 55 : 0);
                         return (
                           <tr key={task.id} onClick={() => setSelectedTaskId(task.id)} className="cursor-pointer transition hover:bg-orange-50/50">
-                            <td className="sticky left-0 z-10 bg-white px-4 py-3 text-slate-500">#{task.id}</td>
-                            <td className="sticky left-14 z-10 bg-white px-4 py-3 font-semibold text-slate-900">{task.taskName}</td>
+                            <td className="sticky left-0 z-20 w-16 bg-white px-4 py-3 text-slate-500">#{task.id}</td>
+                            <td className="sticky left-16 z-20 min-w-[18rem] bg-white px-4 py-3 font-semibold text-slate-900">{task.taskName}</td>
                             <td className="px-4 py-3 text-slate-600">{task.assignedToUser?.name ?? 'Unassigned'}</td>
                             <td className="whitespace-nowrap px-4 py-3 text-slate-600">{start ? formatDate(task.startDate) : '—'}</td>
                             <td className={`whitespace-nowrap px-4 py-3 ${days != null && days < 0 && !isFinished ? 'font-semibold text-rose-600' : 'text-slate-600'}`}>

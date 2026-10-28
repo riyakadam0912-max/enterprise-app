@@ -133,10 +133,108 @@ export class OrganizationsService {
     );
   }
 
-  private async canAccessOrganization(user: AuthUser, _organizationId: number) {
-    if (this.isPlatformAdmin(user) || this.isOrganizationAdmin(user))
-      return true;
-    return false;
+  private async canAccessOrganization(user: AuthUser, organizationId: number) {
+    if (this.isPlatformAdmin(user)) return true;
+    if (!this.isOrganizationAdmin(user)) return false;
+
+    const homeOrganizationId = user.homeOrganizationId ?? user.organizationId;
+    if (homeOrganizationId == null) return false;
+    const relatedIds = await this.getOrganizationFamilyIds(homeOrganizationId);
+    return relatedIds.includes(organizationId);
+  }
+
+  private async getOrganizationFamilyIds(
+    organizationId: number,
+  ): Promise<number[]> {
+    const organizations = await this.prisma.organization.findMany({
+      where: { status: 'ACTIVE', deletedAt: null },
+      select: { id: true, parentId: true },
+    });
+    const byId = new Map(
+      organizations.map((organization) => [organization.id, organization]),
+    );
+    if (!byId.has(organizationId)) return [];
+
+    let rootId = organizationId;
+    const visited = new Set<number>([rootId]);
+    while (byId.get(rootId)?.parentId != null) {
+      const parentId = byId.get(rootId)!.parentId!;
+      if (visited.has(parentId) || !byId.has(parentId)) break;
+      visited.add(parentId);
+      rootId = parentId;
+    }
+
+    const familyIds = new Set<number>([rootId]);
+    let frontier = [rootId];
+    while (frontier.length > 0) {
+      const parents = new Set(frontier);
+      frontier = organizations
+        .filter(
+          (organization) =>
+            organization.parentId != null &&
+            parents.has(organization.parentId) &&
+            !familyIds.has(organization.id),
+        )
+        .map((organization) => organization.id);
+      frontier.forEach((id) => familyIds.add(id));
+    }
+    return [...familyIds];
+  }
+
+  private async validateParentOrganization(
+    parentId: number | null | undefined,
+    user: AuthUser,
+    currentOrganizationId?: number,
+  ) {
+    if (parentId == null) return;
+    if (currentOrganizationId != null && parentId === currentOrganizationId) {
+      throw new ConflictException('An organization cannot be its own parent');
+    }
+
+    const parent = await this.prisma.organization.findFirst({
+      where: { id: parentId, status: 'ACTIVE', deletedAt: null },
+      select: { id: true },
+    });
+    if (!parent) throw new NotFoundException('Parent organization not found');
+
+    if (!(await this.canAccessOrganization(user, parentId))) {
+      throw new ForbiddenException('Parent organization access denied');
+    }
+
+    if (currentOrganizationId != null) {
+      const descendants = await this.getOrganizationDescendantIds(
+        currentOrganizationId,
+      );
+      if (descendants.includes(parentId)) {
+        throw new ConflictException(
+          'An organization cannot be moved under its own descendant',
+        );
+      }
+    }
+  }
+
+  private async getOrganizationDescendantIds(
+    organizationId: number,
+  ): Promise<number[]> {
+    const organizations = await this.prisma.organization.findMany({
+      where: { status: 'ACTIVE', deletedAt: null },
+      select: { id: true, parentId: true },
+    });
+    const descendants = new Set<number>();
+    let frontier = [organizationId];
+    while (frontier.length > 0) {
+      const children = organizations
+        .filter(
+          (organization) =>
+            organization.parentId != null &&
+            frontier.includes(organization.parentId),
+        )
+        .map((organization) => organization.id)
+        .filter((id) => id !== organizationId && !descendants.has(id));
+      children.forEach((id) => descendants.add(id));
+      frontier = children;
+    }
+    return [...descendants];
   }
 
   async getAccessibleOrganizations(user: AuthUser) {
@@ -317,16 +415,23 @@ export class OrganizationsService {
       );
     }
 
+    let resolvedParentId = dto.parentId ?? null;
+
     // Non-platform admins can only create child orgs under their own org
     if (!this.isPlatformAdmin(user)) {
-      if (dto.parentId != null && dto.parentId !== user.organizationId) {
+      if (
+        resolvedParentId != null &&
+        resolvedParentId !== user.organizationId
+      ) {
         throw new ForbiddenException(
           'You can only create organizations under your own organization',
         );
       }
       // Force parentId to the caller's own org
-      dto.parentId = user.organizationId as number;
+      resolvedParentId = user.organizationId as number;
     }
+
+    await this.validateParentOrganization(resolvedParentId, user);
 
     const normalizedSlug =
       dto.slug?.trim() || this.buildSlug(dto.name, `org-${Date.now()}`);
@@ -354,59 +459,62 @@ export class OrganizationsService {
     const normalizedStatus = (dto.status ?? 'ACTIVE').toUpperCase();
     const createdAt = new Date();
 
-    const organization = await this.prisma.organization.create({
-      data: {
-        name: dto.name,
-        code:
-          dto.name
-            .replace(/[^a-zA-Z0-9]/g, '')
-            .slice(0, 8)
-            .toUpperCase() || `ORG${Date.now()}`,
-        slug: normalizedSlug,
-        email: dto.businessEmail ?? null,
-        phone: dto.phone ?? null,
-        logoUrl: dto.logoUrl ?? null,
-        address: dto.address ?? null,
-        city: dto.city ?? null,
-        state: dto.state ?? null,
-        country: dto.country ?? null,
-        timezone: dto.timezone ?? 'Asia/Kolkata',
-        currency: dto.currency ?? 'INR',
-        status: normalizedStatus as
-          | 'ACTIVE'
-          | 'SUSPENDED'
-          | 'INACTIVE'
-          | 'CANCELLED',
-        website: dto.website ?? null,
-        industry: dto.industry ?? null,
-        parentId: dto.parentId ?? null,
-        createdAt,
-      },
-    });
-
-    if (dto.adminEmail && dto.adminPassword) {
-      const existingUser = await this.prisma.user.findFirst({
-        where: { email: dto.adminEmail, deletedAt: null },
-      });
-
-      if (existingUser) {
-        throw new ConflictException(
-          'A user with this admin email already exists',
-        );
-      }
-
-      const hashedPassword = await hashPassword(dto.adminPassword);
-      await this.prisma.user.create({
+    const organization = await this.prisma.$transaction(async (tx) => {
+      const organization = await tx.organization.create({
         data: {
-          organizationId: organization.id,
-          name: dto.adminName ?? dto.adminEmail,
-          email: dto.adminEmail,
-          password: hashedPassword,
-          role: Role.ADMIN,
-          isActive: true,
+          name: dto.name,
+          code:
+            dto.name
+              .replace(/[^a-zA-Z0-9]/g, '')
+              .slice(0, 8)
+              .toUpperCase() || `ORG${Date.now()}`,
+          slug: normalizedSlug,
+          email: dto.businessEmail ?? null,
+          phone: dto.phone ?? null,
+          logoUrl: dto.logoUrl ?? null,
+          address: dto.address ?? null,
+          city: dto.city ?? null,
+          state: dto.state ?? null,
+          country: dto.country ?? null,
+          timezone: dto.timezone ?? 'Asia/Kolkata',
+          currency: dto.currency ?? 'INR',
+          status: normalizedStatus as
+            | 'ACTIVE'
+            | 'SUSPENDED'
+            | 'INACTIVE'
+            | 'CANCELLED',
+          website: dto.website ?? null,
+          industry: dto.industry ?? null,
+          parentId: resolvedParentId,
+          createdAt,
         },
       });
-    }
+
+      if (dto.adminEmail && dto.adminPassword) {
+        const existingUser = await tx.user.findFirst({
+          where: { email: dto.adminEmail, deletedAt: null },
+        });
+
+        if (existingUser) {
+          throw new ConflictException(
+            'A user with this admin email already exists',
+          );
+        }
+
+        const hashedPassword = await hashPassword(dto.adminPassword);
+        await tx.user.create({
+          data: {
+            organizationId: organization.id,
+            name: dto.adminName ?? dto.adminEmail,
+            email: dto.adminEmail,
+            password: hashedPassword,
+            role: Role.ADMIN,
+            isActive: true,
+          },
+        });
+      }
+      return organization;
+    });
 
     return {
       success: true,
@@ -669,6 +777,10 @@ export class OrganizationsService {
       );
     }
 
+    if (dto.parentId !== undefined) {
+      await this.validateParentOrganization(dto.parentId, user, id);
+    }
+
     if (dto.slug && dto.slug.trim() !== organization.slug) {
       const existingSlug = await this.prisma.organization.findFirst({
         where: { slug: dto.slug.trim(), NOT: { id } },
@@ -707,6 +819,8 @@ export class OrganizationsService {
         currency: dto.currency ?? organization.currency,
         website: dto.website ?? organization.website,
         industry: dto.industry ?? organization.industry,
+        parentId:
+          dto.parentId === undefined ? organization.parentId : dto.parentId,
         status: (dto.status ?? organization.status).toString().toUpperCase() as
           | 'ACTIVE'
           | 'SUSPENDED'
@@ -773,6 +887,16 @@ export class OrganizationsService {
       );
     }
 
+    const activeChild = await this.prisma.organization.findFirst({
+      where: { parentId: id, status: 'ACTIVE', deletedAt: null },
+      select: { id: true },
+    });
+    if (activeChild) {
+      throw new ConflictException(
+        'Move or archive child organizations before deleting this organization',
+      );
+    }
+
     await this.prisma.organization.update({
       where: { id },
       data: { deletedAt: new Date() },
@@ -823,12 +947,22 @@ export class OrganizationsService {
         scopeParentId = options.parentId;
       }
     } else {
+      const homeOrganizationId = user.homeOrganizationId ?? user.organizationId;
+      const familyIds =
+        homeOrganizationId == null
+          ? []
+          : await this.getOrganizationFamilyIds(homeOrganizationId);
       // Organization admins remain scoped to their active org unless a
       // different parentId is explicitly provided.
       if (options?.parentId != null && options.parentId > 0) {
+        if (!familyIds.includes(options.parentId)) {
+          throw new ForbiddenException(
+            'Organization parent is outside your organization family',
+          );
+        }
         scopeParentId = options.parentId;
-      } else if (user.organizationId != null) {
-        scopeParentId = user.organizationId;
+      } else if (homeOrganizationId != null) {
+        scopeParentId = homeOrganizationId;
       }
     }
 
