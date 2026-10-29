@@ -39,6 +39,7 @@ describe('PayrollService', () => {
 
   beforeEach(async () => {
     mockPrisma = createMockPrismaService();
+    (mockPrisma as any).payrollEntry = { findFirst: jest.fn() };
     mockPrisma.taskTimerInterval.findMany.mockResolvedValue([]);
     mockPrisma.timesheet.findMany.mockResolvedValue([]);
     mockPrisma.organization.findMany.mockResolvedValue([]);
@@ -104,6 +105,70 @@ describe('PayrollService', () => {
     ).rejects.toThrow(ConflictException);
 
     expect(mockPrisma.payrollCycle.create).not.toHaveBeenCalled();
+  });
+
+  it('does not allow paid payslips to be edited', async () => {
+    const user = createMockAuthUser(Role.ADMIN);
+    jest.spyOn(service, 'getPayslip').mockResolvedValue({
+      id: 44,
+      payrollEntryId: 9,
+    } as any);
+    (mockPrisma.payrollEntry as any).findFirst.mockResolvedValue({
+      status: 'PAID',
+    });
+
+    await expect(
+      service.updatePayslip(44, { bonus: 100 }, user),
+    ).rejects.toThrow('Paid payslips cannot be edited');
+    expect((mockPrisma.payslip as any).update).not.toHaveBeenCalled();
+  });
+
+  it('requires valid PAN and address data for Form 16 generation', () => {
+    expect(() =>
+      (service as any).validateForm16Employee({
+        pan: 'invalid',
+        address: 'Registered address',
+      }),
+    ).toThrow('A valid PAN is required before generating Form 16');
+
+    expect(() =>
+      (service as any).validateForm16Employee({
+        pan: 'ABCDE1234F',
+        address: ' ',
+      }),
+    ).toThrow('Employee address is required before generating Form 16');
+  });
+
+  it('requires every payroll entry to be paid before finalizing a cycle', async () => {
+    const user = createMockAuthUser(Role.ADMIN);
+    mockPrisma.payrollCycle.findFirst.mockResolvedValue({
+      id: 7,
+      status: 'RUN',
+      entries: [{ status: 'PAID' }, { status: 'PENDING' }],
+    });
+
+    await expect(service.finalizeCycle(7, user)).rejects.toThrow(
+      'All payroll entries must be paid before finalizing the cycle',
+    );
+    expect(mockPrisma.payrollCycle.update).not.toHaveBeenCalled();
+  });
+
+  it('finalizes a cycle once all entries are paid', async () => {
+    const user = createMockAuthUser(Role.ADMIN);
+    mockPrisma.payrollCycle.findFirst.mockResolvedValue({
+      id: 7,
+      status: 'RUN',
+      entries: [{ status: 'PAID' }],
+    });
+    mockPrisma.payrollCycle.update.mockResolvedValue({
+      id: 7,
+      status: 'FINALIZED',
+    });
+
+    await expect(service.finalizeCycle(7, user)).resolves.toEqual({
+      id: 7,
+      status: 'FINALIZED',
+    });
   });
 
   it('creates a reusable salary template with normalized component snapshots', async () => {

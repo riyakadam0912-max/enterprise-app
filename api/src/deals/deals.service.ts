@@ -33,6 +33,18 @@ export class DealsService {
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
+  private async resolveOwnerUserId(
+    employeeId: number | null | undefined,
+    organizationId: number,
+  ): Promise<number | null> {
+    if (!employeeId) return null;
+    const employee = await this.prisma.employee.findFirst({
+      where: { id: employeeId, organizationId, deletedAt: null },
+      select: { user: { select: { id: true } } },
+    });
+    return employee?.user?.id ?? null;
+  }
+
   private async invalidateDashboardCache() {
     await this.cacheManager.del(DASHBOARD_CACHE_KEY);
   }
@@ -96,6 +108,10 @@ export class DealsService {
 
   async create(dto: CreateDealDto, user: AuthUser) {
     const organizationId = this.requireWriteOrganization(user);
+    const ownerUserId = await this.resolveOwnerUserId(
+      dto.employeeId,
+      organizationId,
+    );
     const data: Prisma.DealCreateInput = {
       organization: { connect: { id: organizationId } },
       title: dto.title,
@@ -111,6 +127,7 @@ export class DealsService {
       assignedEmployee: dto.employeeId
         ? { connect: { id: dto.employeeId } }
         : undefined,
+      ownerUser: ownerUserId ? { connect: { id: ownerUserId } } : undefined,
       pipeline: dto.pipeline,
       lead: dto.leadId ? { connect: { id: dto.leadId } } : undefined,
       linkedContact: dto.contactId
@@ -127,19 +144,41 @@ export class DealsService {
     return result;
   }
 
-  async findAll(user: AuthUser) {
+  async findAll(user: AuthUser, scope?: string) {
     const orgScope = this.resolveReadScope(user);
     const employee = await this.resolveEmployeeScope(user);
-    return this.prisma.deal.findMany({
-      where: {
-        ...(orgScope !== null ? { organizationId: orgScope } : {}),
-        deletedAt: null,
+    const normalizedScope = scope?.trim().toLowerCase();
+    const where: Prisma.DealWhereInput = {
+      ...(orgScope !== null ? { organizationId: orgScope } : {}),
+      deletedAt: null,
+    };
+
+    if (normalizedScope === 'unassigned') {
+      where.ownerUserId = null;
+      where.assignedToId = null;
+      where.owner = null;
+    } else if (normalizedScope === 'mine') {
+      where.OR = [
+        { ownerUserId: user.userId },
         ...(employee
-          ? {
-              OR: [{ assignedToId: employee.id }, { owner: employee.name }],
-            }
-          : {}),
-      },
+          ? [{ assignedToId: employee.id }, { owner: employee.name }]
+          : []),
+      ];
+    } else if (normalizedScope === 'my_team') {
+      const team = await this.prisma.user.findMany({
+        where: {
+          ...(orgScope !== null ? { organizationId: orgScope } : {}),
+          OR: [{ id: user.userId }, { managerId: user.userId }],
+        },
+        select: { id: true },
+      });
+      where.ownerUserId = { in: team.map((member) => member.id) };
+    } else if (employee) {
+      where.OR = [{ assignedToId: employee.id }, { owner: employee.name }];
+    }
+
+    return this.prisma.deal.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
       include: includeRelations,
     });
@@ -184,6 +223,13 @@ export class DealsService {
         dto.employeeId === null
           ? { disconnect: true }
           : { connect: { id: dto.employeeId } };
+      const ownerUserId = await this.resolveOwnerUserId(
+        dto.employeeId,
+        organizationId,
+      );
+      data.ownerUser = ownerUserId
+        ? { connect: { id: ownerUserId } }
+        : { disconnect: true };
     }
     if (dto.pipeline !== undefined) data.pipeline = dto.pipeline;
     if (dto.closeDate !== undefined) {
@@ -224,6 +270,33 @@ export class DealsService {
           user.userId,
         ),
       );
+
+      // Keep a durable CRM timeline entry for stage aging and audit views.
+      // This is additive and intentionally best-effort so an unavailable
+      // timeline write cannot make an otherwise successful deal update fail.
+      try {
+        await this.prisma.activityTimeline.create({
+          data: {
+            organizationId,
+            module: 'CRM',
+            entityType: 'Deal',
+            entityId: id,
+            eventType: 'STAGE_CHANGED',
+            action: 'STAGE_CHANGED',
+            title: `Deal stage changed to ${dto.stage}`,
+            description: `Deal #${id} moved from ${currentDeal.stage} to ${dto.stage}.`,
+            oldValue: { stage: currentDeal.stage },
+            newValue: { stage: dto.stage },
+            performedBy: user.userId,
+            status: 'INFO',
+            priority: 'MEDIUM',
+            icon: 'kanban',
+            color: 'blue',
+          },
+        });
+      } catch {
+        // Timeline persistence is non-critical to the deal mutation.
+      }
     }
 
     await this.invalidateDashboardCache();
@@ -237,6 +310,47 @@ export class DealsService {
     const result = await this.prisma.deal.update({
       where: { id, organizationId },
       data: { deletedAt: new Date() },
+    });
+    await this.invalidateDashboardCache();
+    return result;
+  }
+
+  async reassignOwner(id: number, ownerUserId: number | null, user: AuthUser) {
+    const organizationId = this.requireWriteOrganization(user);
+    await this.findOne(id, user);
+    const owner = ownerUserId
+      ? await this.prisma.user.findFirst({
+          where: { id: ownerUserId, organizationId, deletedAt: null },
+          select: { id: true, employee: { select: { id: true, name: true } } },
+        })
+      : null;
+    if (ownerUserId && !owner) {
+      throw new NotFoundException('Owner not found in this organization');
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.deal.update({
+        where: { id, organizationId },
+        data: {
+          ownerUser: owner ? { connect: { id: owner.id } } : { disconnect: true },
+          assignedEmployee: owner?.employee
+            ? { connect: { id: owner.employee.id } }
+            : { disconnect: true },
+          owner: owner?.employee?.name ?? null,
+        },
+      });
+      await tx.activity.create({
+        data: {
+          organization: { connect: { id: organizationId } },
+          type: 'DEAL_OWNER_REASSIGNED',
+          description: owner
+            ? `Deal #${id} assigned to ${owner.employee?.name ?? owner.id}`
+            : `Deal #${id} unassigned`,
+          user: { connect: { id: user.userId } },
+          deal: { connect: { id } },
+        },
+      });
+      return updated;
     });
     await this.invalidateDashboardCache();
     return result;
@@ -262,6 +376,12 @@ export class DealsService {
         continue;
       }
       try {
+        const assignedEmployeeId =
+          typeof r.assignedToId === 'number' ? r.assignedToId : null;
+        const ownerUserId = await this.resolveOwnerUserId(
+          assignedEmployeeId,
+          organizationId,
+        );
         const data: Prisma.DealCreateInput = {
           organization: { connect: { id: organizationId } },
           title,
@@ -280,10 +400,12 @@ export class DealsService {
               : undefined,
           contact: typeof r.contact === 'string' ? r.contact : undefined,
           owner: typeof r.owner === 'string' ? r.owner : undefined,
-          assignedEmployee:
-            typeof r.assignedToId === 'number'
-              ? { connect: { id: r.assignedToId } }
-              : undefined,
+          assignedEmployee: assignedEmployeeId
+            ? { connect: { id: assignedEmployeeId } }
+            : undefined,
+          ownerUser: ownerUserId
+            ? { connect: { id: ownerUserId } }
+            : undefined,
           pipeline: typeof r.pipeline === 'string' ? r.pipeline : undefined,
           lead:
             typeof r.leadId === 'number'

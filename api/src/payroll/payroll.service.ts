@@ -6,6 +6,7 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import type { Prisma } from '@prisma/client';
@@ -14,7 +15,10 @@ import { CreatePayrollCycleDto } from './dto/create-payroll-cycle.dto';
 import { CreateSalaryStructureDto } from './dto/create-salary-structure.dto';
 import { CreateTaxDeclarationDto } from './dto/create-tax-declaration.dto';
 import { MarkPayrollEntryPaidDto } from './dto/mark-payroll-entry-paid.dto';
-import { PayrollCalculationService } from './payroll-calculation.service';
+import {
+  PayrollCalculationService,
+  STANDARD_DEDUCTION_2024,
+} from './payroll-calculation.service';
 import { PayslipGenerationService } from './payslip-generation.service';
 import { UpdateSalaryStructureDto } from './dto/update-salary-structure.dto';
 import { UpdatePayslipDto } from './dto/update-payslip.dto';
@@ -45,6 +49,24 @@ export class PayrollService {
       throw new ForbiddenException('User has no associated organization');
     }
     return user.organizationId;
+  }
+
+  private validateForm16Employee(employee: {
+    pan?: string | null;
+    address?: string | null;
+  }) {
+    const pan = employee.pan?.trim().toUpperCase();
+    if (!pan || !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan)) {
+      throw new BadRequestException(
+        'A valid PAN is required before generating Form 16',
+      );
+    }
+    if (!employee.address?.trim()) {
+      throw new BadRequestException(
+        'Employee address is required before generating Form 16',
+      );
+    }
+    return pan;
   }
 
   private resolveReadOrganization(user: AuthUser): number | null {
@@ -156,7 +178,6 @@ export class PayrollService {
     if (!employee) {
       throw new NotFoundException('Employee not found');
     }
-
     const template = dto.templateId
       ? await this.prisma.salaryTemplate.findFirst({
           where: { id: dto.templateId, organizationId, deletedAt: null, isActive: true },
@@ -432,6 +453,23 @@ export class PayrollService {
     if (!cycle) {
       throw new NotFoundException('Payroll cycle not found');
     }
+    if (cycle.status === 'FINALIZED') {
+      throw new ConflictException('Finalized payroll cycles cannot be rerun');
+    }
+    const paidEntry = await this.prisma.payrollEntry.findFirst({
+      where: {
+        payrollCycleId: cycle.id,
+        organizationId,
+        deletedAt: null,
+        status: 'PAID',
+      },
+      select: { id: true },
+    });
+    if (paidEntry) {
+      throw new ConflictException(
+        'Payroll cycles with paid entries cannot be rerun',
+      );
+    }
 
     const scope = await this.businessUnitsService.resolveScope(user as any);
     let buStructureWhere: Prisma.SalaryStructureWhereInput = {};
@@ -534,6 +572,50 @@ export class PayrollService {
     return payload;
   }
 
+  async finalizeCycle(cycleId: number, user: AuthUser) {
+    const organizationId = this.validateOrganization(user);
+    const cycle = await this.prisma.payrollCycle.findFirst({
+      where: { id: cycleId, deletedAt: null, organizationId },
+      include: { entries: { where: { deletedAt: null }, select: { status: true } } },
+    });
+    if (!cycle) {
+      throw new NotFoundException('Payroll cycle not found');
+    }
+    if (cycle.status === 'FINALIZED') {
+      return cycle;
+    }
+    if (
+      cycle.entries.length === 0 ||
+      cycle.entries.some((entry) => entry.status !== 'PAID')
+    ) {
+      throw new ConflictException(
+        'All payroll entries must be paid before finalizing the cycle',
+      );
+    }
+    const result = await this.prisma.payrollCycle.update({
+      where: { id: cycleId, organizationId },
+      data: { status: 'FINALIZED' },
+    });
+    await this.prisma.auditLog.create({
+      data: {
+        userId: user.userId,
+        userRole: user.role,
+        module: 'PAYROLL',
+        entityType: 'PayrollCycle',
+        entityId: cycleId,
+        action: 'FINALIZE_PAYROLL_CYCLE',
+        fieldName: 'status',
+        oldValue: { status: cycle.status },
+        newValue: { status: 'FINALIZED' },
+        description: `Finalized payroll cycle ${cycleId}`,
+        status: 'SUCCESS',
+        organizationId,
+      },
+    });
+    await this.invalidateDashboardCache();
+    return result;
+  }
+
   async getCycleEntries(
     cycleId: number,
     user: AuthUser,
@@ -603,6 +685,11 @@ export class PayrollService {
     }>
   > {
     const organizationId = this.validateOrganization(user);
+    if (user.role === Role.EMPLOYEE && user.employeeId !== dto.employeeId) {
+      throw new ForbiddenException(
+        'Employees can only submit their own tax declaration',
+      );
+    }
     const scope = await this.businessUnitsService.resolveScope(user as any);
     const employeeBUWhere =
       this.businessUnitsService.buildEmployeeBUWhere(scope);
@@ -654,6 +741,11 @@ export class PayrollService {
     }>
   > {
     const organizationId = this.validateOrganization(user);
+    if (user.role === Role.EMPLOYEE && user.employeeId !== employeeId) {
+      throw new ForbiddenException(
+        'Employees can only view their own tax declaration',
+      );
+    }
     const scope = await this.businessUnitsService.resolveScope(user as any);
     let buDeclWhere: Prisma.TaxDeclarationWhereInput = {};
     if (!scope.allUnits) {
@@ -762,6 +854,16 @@ export class PayrollService {
     user: AuthUser,
   ) {
     const current = await this.getPayslip(payslipId, user);
+    const payrollEntry = await this.prisma.payrollEntry.findFirst({
+      where: {
+        id: current.payrollEntryId,
+        organizationId: this.validateOrganization(user),
+      },
+      select: { status: true },
+    });
+    if (payrollEntry?.status === 'PAID') {
+      throw new ConflictException('Paid payslips cannot be edited');
+    }
     const earnings = {
       basicSalary: dto.basicSalary ?? current.basicSalary,
       hra: dto.hra ?? current.hra,
@@ -873,6 +975,7 @@ export class PayrollService {
     if (!employee) {
       throw new NotFoundException('Employee not found');
     }
+    const panNumber = this.validateForm16Employee(employee);
 
     let buPayslipWhere: Prisma.PayslipWhereInput = {};
     if (!scope.allUnits) {
@@ -905,18 +1008,20 @@ export class PayrollService {
       0,
     );
 
-    const panNumber = employee.pan ?? '';
+    const standardDeduction = STANDARD_DEDUCTION_2024;
 
     const form16Data = {
       panNumber,
-      panHash: '0',
-      addressLine1: '',
+      panHash: panNumber
+        ? createHash('sha256').update(panNumber).digest('hex')
+        : null,
+      addressLine1: employee.address ?? '',
       addressLine2: '',
       pin: '',
-      deducteeState: 'MAHARASHTRA',
+      deducteeState: null,
       gross: grossIncome,
-      standard: 75000,
-      taxableIncome: Math.max(0, grossIncome - 75000),
+      standard: standardDeduction,
+      taxableIncome: Math.max(0, grossIncome - standardDeduction),
       totalTax: totalTaxPaid,
       reliefU89: 0,
       totalDeduction: totalTaxPaid,

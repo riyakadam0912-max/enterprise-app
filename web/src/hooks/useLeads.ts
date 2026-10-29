@@ -11,9 +11,10 @@ import {
   Lead,
   CreateLeadPayload,
   UpdateLeadPayload,
+  LeadScope,
 } from '@/api/leadsApi';
 
-export function useLeads() {
+export function useLeads(scope?: LeadScope) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,14 +23,14 @@ export function useLeads() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getLeads();
+      const data = await getLeads(scope);
       setLeads(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch leads');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [scope]);
 
   useEffect(() => {
     fetchLeads();

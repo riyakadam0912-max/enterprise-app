@@ -15,6 +15,7 @@ import {
 import { LeadsService } from './leads.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
+import { ReassignLeadOwnerDto } from './dto/reassign-lead-owner.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -83,7 +84,9 @@ export class LeadsController {
   @ApiResponse({ status: 404, description: 'Resource not found.' })
   @Get()
   findAll(@Req() req: AuthenticatedRequest) {
-    return this.leadsService.findAll(req.user);
+    const scope =
+      typeof req.query.scope === 'string' ? req.query.scope : undefined;
+    return this.leadsService.findAll(req.user, scope);
   }
 
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.EMPLOYEE)
@@ -112,6 +115,16 @@ export class LeadsController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.leadsService.getDetail(id, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @Patch(':id/owner')
+  reassignOwner(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReassignLeadOwnerDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.leadsService.reassignOwner(id, dto.ownerUserId ?? null, req.user);
   }
 
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.EMPLOYEE)

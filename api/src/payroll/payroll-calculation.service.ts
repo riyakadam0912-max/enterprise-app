@@ -9,6 +9,10 @@ interface TaxSlab {
   baseAmount: number;
 }
 
+// FY 2024-25 new-regime standard deduction. Keep this named so statutory
+// calculations and Form 16 generation cannot silently diverge.
+export const STANDARD_DEDUCTION_2024 = 75000;
+
 interface PayrollStructureLike {
   basic?: number | null;
   hra?: number | null;
@@ -104,7 +108,7 @@ export class PayrollCalculationService {
     pfEmployerRate: 0.12,
     esiRate: 0.0075,
     esiSalaryLimit: 21000,
-    standardDeduction2024: 75000,
+    standardDeduction2024: STANDARD_DEDUCTION_2024,
     defaultLossOfPayRate: 0.5,
   };
 

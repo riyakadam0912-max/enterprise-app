@@ -15,6 +15,7 @@ import {
 import { DealsService } from './deals.service';
 import { CreateDealDto } from './dto/create-deal.dto';
 import { UpdateDealDto } from './dto/update-deal.dto';
+import { ReassignDealOwnerDto } from './dto/reassign-deal-owner.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -77,9 +78,10 @@ export class DealsController {
     @Req()
     req: {
       user: AuthUser;
+      query?: { scope?: string };
     },
   ) {
-    return this.dealsService.findAll(req.user);
+    return this.dealsService.findAll(req.user, req.query?.scope);
   }
 
   // Pipeline route MUST be declared before :id to avoid being caught as id=pipeline
@@ -128,6 +130,16 @@ export class DealsController {
     req: { user: AuthUser },
   ) {
     return this.dealsService.findOne(id, req.user);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @Patch(':id/owner')
+  reassignOwner(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReassignDealOwnerDto,
+    @Req() req: { user: AuthUser },
+  ) {
+    return this.dealsService.reassignOwner(id, dto.ownerUserId ?? null, req.user);
   }
 
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.EMPLOYEE)

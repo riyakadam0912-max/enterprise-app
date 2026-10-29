@@ -3745,6 +3745,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       where: {
         employeeId,
         date: { gte: monthStart, lte: monthEnd },
+        deletedAt: null,
       },
       include: { shift: true, breaks: true },
       orderBy: { date: 'asc' },

@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -14,6 +15,18 @@ import type { AuthUser } from '../common/types/auth';
 @Injectable()
 export class LeadsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private async resolveOwnerUserId(
+    employeeId: number | null | undefined,
+    organizationId: number,
+  ): Promise<number | null> {
+    if (!employeeId) return null;
+    const employee = await this.prisma.employee.findFirst({
+      where: { id: employeeId, organizationId, deletedAt: null },
+      select: { user: { select: { id: true } } },
+    });
+    return employee?.user?.id ?? null;
+  }
 
   private isPlatformAdmin(user: AuthUser): boolean {
     return (
@@ -78,6 +91,10 @@ export class LeadsService {
 
   async create(dto: CreateLeadDto, user: AuthUser) {
     const organizationId = this.requireWriteOrganization(user);
+    const ownerUserId = await this.resolveOwnerUserId(
+      dto.assignedEmployeeId,
+      organizationId,
+    );
     return this.prisma.lead.create({
       data: {
         organization: { connect: { id: organizationId } },
@@ -97,25 +114,47 @@ export class LeadsService {
         assignedEmployee: dto.assignedEmployeeId
           ? { connect: { id: dto.assignedEmployeeId } }
           : undefined,
+        ownerUser: ownerUserId ? { connect: { id: ownerUserId } } : undefined,
         leadScore: dto.leadScore,
         createdBy: dto.createdBy,
       },
     });
   }
 
-  async findAll(user: AuthUser) {
+  async findAll(user: AuthUser, scope?: string) {
     const orgScope = this.resolveReadScope(user);
     const employee = await this.resolveEmployeeScope(user);
+    const normalizedScope = scope?.trim().toLowerCase();
 
     const where: Prisma.LeadWhereInput = {
       ...(orgScope !== null ? { organizationId: orgScope } : {}),
       deletedAt: null,
-      ...(employee
-        ? {
-            OR: [{ assignedToId: employee.id }, { assignedTo: employee.name }],
-          }
-        : {}),
     };
+
+    if (normalizedScope === 'unassigned') {
+      where.ownerUserId = null;
+      where.assignedToId = null;
+      where.assignedTo = null;
+      where.leadOwner = null;
+    } else if (normalizedScope === 'mine') {
+      where.OR = [
+        { ownerUserId: user.userId },
+        ...(employee
+          ? [{ assignedToId: employee.id }, { assignedTo: employee.name }]
+          : []),
+      ];
+    } else if (normalizedScope === 'my_team') {
+      const team = await this.prisma.user.findMany({
+        where: {
+          ...(orgScope !== null ? { organizationId: orgScope } : {}),
+          OR: [{ id: user.userId }, { managerId: user.userId }],
+        },
+        select: { id: true },
+      });
+      where.ownerUserId = { in: team.map((member) => member.id) };
+    } else if (employee) {
+      where.OR = [{ assignedToId: employee.id }, { assignedTo: employee.name }];
+    }
 
     return this.prisma.lead.findMany({
       where,
@@ -230,6 +269,13 @@ export class LeadsService {
         dto.assignedEmployeeId === null
           ? { disconnect: true }
           : { connect: { id: dto.assignedEmployeeId } };
+      const ownerUserId = await this.resolveOwnerUserId(
+        dto.assignedEmployeeId,
+        organizationId,
+      );
+      data.ownerUser = ownerUserId
+        ? { connect: { id: ownerUserId } }
+        : { disconnect: true };
     }
     if (dto.leadScore !== undefined) data.leadScore = dto.leadScore;
     if (dto.createdBy !== undefined) data.createdBy = dto.createdBy;
@@ -255,11 +301,119 @@ export class LeadsService {
     });
   }
 
+  async reassignOwner(id: number, ownerUserId: number | null, user: AuthUser) {
+    const organizationId = this.requireWriteOrganization(user);
+    await this.findOne(id, user);
+    const owner = ownerUserId
+      ? await this.prisma.user.findFirst({
+          where: { id: ownerUserId, organizationId, deletedAt: null },
+          select: { id: true, employee: { select: { id: true, name: true } } },
+        })
+      : null;
+    if (ownerUserId && !owner) {
+      throw new NotFoundException('Owner not found in this organization');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.lead.update({
+        where: { id, organizationId },
+        data: {
+          ownerUser: owner ? { connect: { id: owner.id } } : { disconnect: true },
+          assignedEmployee: owner?.employee
+            ? { connect: { id: owner.employee.id } }
+            : { disconnect: true },
+          assignedTo: owner?.employee?.name ?? null,
+          leadOwner: owner?.employee?.name ?? null,
+        },
+      });
+      await tx.activity.create({
+        data: {
+          organization: { connect: { id: organizationId } },
+          type: 'LEAD_OWNER_REASSIGNED',
+          description: owner
+            ? `Lead ${updated.name} assigned to ${owner.employee?.name ?? owner.id}`
+            : `Lead ${updated.name} unassigned`,
+          user: { connect: { id: user.userId } },
+          lead: { connect: { id } },
+        },
+      });
+      return updated;
+    });
+  }
+
   async convertLead(id: number, userId: number, user: AuthUser) {
     const organizationId = this.requireWriteOrganization(user);
     const lead = await this.findOne(id, user);
 
     const result = await this.prisma.$transaction(async (tx) => {
+      // Claim the conversion inside the transaction. This keeps the existing
+      // endpoint idempotent and prevents concurrent requests from creating
+      // duplicate contacts and deals for the same lead.
+      const conversionClaim = await tx.lead.updateMany({
+        where: {
+          id: lead.id,
+          organizationId,
+          deletedAt: null,
+          NOT: {
+            status: { equals: 'CONVERTED', mode: 'insensitive' },
+          },
+        },
+        data: { status: 'CONVERTED' },
+      });
+
+      if (conversionClaim.count === 0) {
+        const existingDeal = await tx.deal.findFirst({
+          where: {
+            organizationId,
+            leadId: lead.id,
+            contactId: { not: null },
+            deletedAt: null,
+          },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, contactId: true },
+        });
+
+        if (existingDeal?.contactId) {
+          return {
+            dealId: existingDeal.id,
+            contactId: existingDeal.contactId,
+          };
+        }
+
+        throw new ConflictException(
+          `Lead #${lead.id} is marked as converted but has no converted deal`,
+        );
+      }
+
+      const customerMatches: Prisma.CustomerWhereInput[] = [];
+      const company = lead.company?.trim();
+      const email = lead.email?.trim();
+      if (company) {
+        customerMatches.push({
+          customerName: { equals: company, mode: 'insensitive' },
+        });
+      }
+      if (email) {
+        customerMatches.push({
+          email: { equals: email, mode: 'insensitive' },
+        });
+      }
+      const matchingCustomers = customerMatches.length
+        ? await tx.customer.findMany({
+            where: {
+              organizationId,
+              deletedAt: null,
+              OR: customerMatches,
+            },
+            select: { id: true },
+            orderBy: { createdAt: 'asc' },
+            take: 2,
+          })
+        : [];
+      const existingCustomer = matchingCustomers.length === 1
+        ? matchingCustomers[0]
+        : null;
+
       const contact = await tx.contact.create({
         data: {
           organization: { connect: { id: organizationId } },
@@ -282,13 +436,27 @@ export class LeadsService {
           linkedContact: { connect: { id: contact.id } },
           contact: contact.contactName,
           owner: lead.assignedTo,
+          ownerUser: lead.ownerUserId
+            ? { connect: { id: lead.ownerUserId } }
+            : undefined,
+          assignedEmployee: lead.assignedToId
+            ? { connect: { id: lead.assignedToId } }
+            : undefined,
           pipeline: 'Sales',
         },
       });
 
       await tx.lead.update({
         where: { id: lead.id, organizationId },
-        data: { status: 'CONVERTED' },
+        data: {
+          convertedAt: new Date(),
+          convertedBy: { connect: { id: userId } },
+          convertedContact: { connect: { id: contact.id } },
+          convertedDeal: { connect: { id: deal.id } },
+          ...(existingCustomer
+            ? { convertedCustomer: { connect: { id: existingCustomer.id } } }
+            : {}),
+        },
       });
 
       // Create activities using separate creates since createMany doesn't support nested connects
@@ -338,6 +506,13 @@ export class LeadsService {
         continue;
       }
       try {
+        const assignedEmployeeId = r.assignedToId
+          ? Number(r.assignedToId)
+          : null;
+        const ownerUserId = await this.resolveOwnerUserId(
+          assignedEmployeeId,
+          organizationId,
+        );
         await this.prisma.lead.create({
           data: {
             organization: { connect: { id: organizationId } },
@@ -356,8 +531,11 @@ export class LeadsService {
               ? new Date(String(r.nextFollowUp))
               : undefined,
             assignedTo: r.assignedTo ? String(r.assignedTo) : undefined,
-            assignedEmployee: r.assignedToId
-              ? { connect: { id: Number(r.assignedToId) } }
+            assignedEmployee: assignedEmployeeId
+              ? { connect: { id: assignedEmployeeId } }
+              : undefined,
+            ownerUser: ownerUserId
+              ? { connect: { id: ownerUserId } }
               : undefined,
             leadScore: r.leadScore ? Number(r.leadScore) : undefined,
             createdBy: r.createdBy ? String(r.createdBy) : undefined,

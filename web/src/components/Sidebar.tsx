@@ -201,16 +201,7 @@ const navConfig: NavItem[] = [
     ],
   },
   {
-    type: 'dropdown', id: 'employees', label: 'Employees', icon: <UsersIcon />,
-    children: [
-      { label: '+ Employees',   href: '/dashboard/employees/add' },
-      { label: 'All Employees', href: '/dashboard/employees' },
-      { label: 'Departments',   href: '/dashboard/employees/departments' },
-      { label: 'Designations',  href: '/dashboard/employees/designations' },
-    ],
-  },
-  {
-    type: 'link', label: 'User Management', href: '/dashboard/users', icon: <UsersIcon />,
+    type: 'link', label: 'Employee Management', href: '/dashboard/employees', icon: <UsersIcon />,
   },
   {
     type: 'link', label: 'Organization', href: '/dashboard/organization', icon: <OrganizationIcon />,
@@ -245,17 +236,11 @@ const MANAGER_VISIBLE_LABELS = new Set([
   'Requests',
   'Reports',
   'Timesheets',
-  'Employees',
+  'Employee Management',
   'Events',
   'Forms',
   'Projects',
   'Tasks',
-]);
-
-const MANAGER_EMPLOYEE_CHILD_LABELS = new Set([
-  'All Employees',
-  'Departments',
-  'Designations',
 ]);
 
 function filterEventManagementChildren(item: NavItem): NavItem {
@@ -266,6 +251,21 @@ function filterEventManagementChildren(item: NavItem): NavItem {
     };
   }
   return item;
+}
+
+function flattenNavigation(items: NavItem[]): NavItem[] {
+  return items.map((item) => {
+    if (item.type === 'link') return item;
+    const primaryChild = item.children.find(
+      (child) => !child.href.endsWith('/add') && !/status|type|pipeline|stage|category/i.test(child.label),
+    ) ?? item.children[0];
+    return {
+      type: 'link',
+      label: item.label,
+      href: primaryChild?.href ?? '/dashboard',
+      icon: item.icon,
+    };
+  });
 }
 
 const HR_VISIBLE_LABELS = new Set([
@@ -286,8 +286,7 @@ const HR_VISIBLE_LABELS = new Set([
   'Contacts',
   'Events',
   'Marketing Campaigns',
-  'Employees',
-  'User Management',
+  'Employee Management',
 ]);
 
 function getMatchedDropdownId(items: NavItem[], path: string): string | null {
@@ -341,33 +340,24 @@ export default function Sidebar({ currentPath }: SidebarProps) {
           ? [...items, navConfig.find((item) => item.type === 'link' && item.label === 'My Business Units')!]
           : items;
       if (role === 'EMPLOYEE') {
-        return withBusinessUnitAdminLink(navConfig
+        return flattenNavigation(withBusinessUnitAdminLink(navConfig
           .filter((item) => EMPLOYEE_VISIBLE_LABELS.has(item.label))
-          .map(filterEventManagementChildren));
+          .map(filterEventManagementChildren)));
       }
       if (role === 'MANAGER') {
-        return withBusinessUnitAdminLink(navConfig
+        return flattenNavigation(withBusinessUnitAdminLink(navConfig
           .filter((item) => MANAGER_VISIBLE_LABELS.has(item.label))
-          .map(filterEventManagementChildren)
-          .map((item) => {
-            if (item.type === 'dropdown' && item.id === 'employees') {
-              return {
-                ...item,
-                children: item.children.filter((child) => MANAGER_EMPLOYEE_CHILD_LABELS.has(child.label)),
-              };
-            }
-            return item;
-          }));
+          .map(filterEventManagementChildren)));
       }
       if (role === 'HR') {
-        return navConfig.filter((item) => HR_VISIBLE_LABELS.has(item.label));
+        return flattenNavigation(navConfig.filter((item) => HR_VISIBLE_LABELS.has(item.label)));
       }
       if (role === 'SUPER_ADMIN') {
-        return navConfig.filter((item) => item.label !== 'My Business Units');
+        return flattenNavigation(navConfig.filter((item) => item.label !== 'My Business Units'));
       }
       return role === 'ADMIN'
-        ? navConfig
-        : navConfig.filter((item) => item.label !== 'Organization');
+        ? flattenNavigation(navConfig)
+        : flattenNavigation(navConfig.filter((item) => item.label !== 'Organization'));
     },
     [role, session.isBusinessUnitAdmin],
   );

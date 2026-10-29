@@ -3,9 +3,11 @@ import { apiClient } from './apiClient';
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type DealStage = 'NEW' | 'QUALIFIED' | 'PROPOSAL' | 'WON' | 'LOST';
+export type DealScope = 'mine' | 'my_team' | 'unassigned';
 
 export interface Deal {
   id:              number;
+  ownerUserId:     number | null;
   title:           string;
   value:           number;
   stage:           DealStage;
@@ -46,8 +48,9 @@ export type UpdateDealPayload = Partial<CreateDealPayload>;
 
 // ── API functions ─────────────────────────────────────────────────────────────
 
-export function getDeals(): Promise<Deal[]> {
-  return apiClient<Deal[]>('/deals');
+export function getDeals(scope?: DealScope): Promise<Deal[]> {
+  const query = scope ? `?scope=${encodeURIComponent(scope)}` : '';
+  return apiClient<Deal[]>(`/deals${query}`);
 }
 
 export function getDeal(id: number): Promise<Deal> {
@@ -74,4 +77,11 @@ export function deleteDeal(id: number): Promise<void> {
 
 export function getPipeline(): Promise<Pipeline> {
   return apiClient<Pipeline>('/deals/pipeline');
+}
+
+export function reassignDealOwner(id: number, ownerUserId: number | null): Promise<Deal> {
+  return apiClient<Deal>(`/deals/${id}/owner`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ownerUserId }),
+  });
 }

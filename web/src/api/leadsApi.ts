@@ -35,8 +35,11 @@ export interface ConvertLeadResponse {
   contactId: number;
 }
 
-export function getLeads(): Promise<Lead[]> {
-  return apiClient<Lead[]>('/leads');
+export type LeadScope = 'mine' | 'my_team' | 'unassigned';
+
+export function getLeads(scope?: LeadScope): Promise<Lead[]> {
+  const query = scope ? `?scope=${encodeURIComponent(scope)}` : '';
+  return apiClient<Lead[]>(`/leads${query}`);
 }
 
 export function getLead(id: number): Promise<Lead> {
@@ -72,6 +75,13 @@ export function deleteLead(id: number): Promise<void> {
 export function convertLead(id: number): Promise<ConvertLeadResponse> {
   return apiClient<ConvertLeadResponse>(`/leads/${id}/convert`, {
     method: 'POST',
+  });
+}
+
+export function reassignLeadOwner(id: number, ownerUserId: number | null): Promise<Lead> {
+  return apiClient<Lead>(`/leads/${id}/owner`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ownerUserId }),
   });
 }
 

@@ -448,6 +448,9 @@ export class EmployeesService {
           hireDate: createEmployeeDto.hireDate
             ? new Date(createEmployeeDto.hireDate)
             : null,
+          exitDate: createEmployeeDto.exitDate
+            ? new Date(createEmployeeDto.exitDate)
+            : null,
           manager: createEmployeeDto.manager,
           leaveBalance: createEmployeeDto.leaveBalance,
           status: createEmployeeDto.status,
@@ -702,6 +705,12 @@ export class EmployeesService {
       ...employeeDto
     } = updateEmployeeDto;
     const data: Prisma.EmployeeUpdateInput = { ...employeeDto };
+    if (updateEmployeeDto.exitDate !== undefined) {
+      delete (data as { exitDate?: unknown }).exitDate;
+      data.exitDate = updateEmployeeDto.exitDate
+        ? new Date(updateEmployeeDto.exitDate)
+        : null;
+    }
     if (updateEmployeeDto.shiftId !== undefined) {
       if (updateEmployeeDto.shiftId === null) {
         data.shift = { disconnect: true };

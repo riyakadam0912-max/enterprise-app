@@ -45,6 +45,9 @@ export class PerformanceService {
 
   async createGoal(dto: CreateGoalDto, user: AuthUser) {
     const organizationId = this.validateOrganization(user);
+    if (user.role === Role.EMPLOYEE && user.employeeId !== dto.employeeId) {
+      throw new ForbiddenException('Employees can only manage their own goals');
+    }
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId, organizationId },
     });
@@ -76,7 +79,10 @@ export class PerformanceService {
   async listGoals(user: AuthUser, employeeId?: number) {
     const organizationId = this.validateOrganization(user);
     const scopedEmployeeId =
-      user.role === Role.EMPLOYEE ? (user.employeeId ?? undefined) : employeeId;
+      user.role === Role.EMPLOYEE ? user.employeeId : employeeId;
+    if (user.role === Role.EMPLOYEE && scopedEmployeeId == null) {
+      throw new ForbiddenException('Employee profile is required');
+    }
 
     return this.prisma.goal.findMany({
       where: {
@@ -97,6 +103,11 @@ export class PerformanceService {
     user: AuthUser,
   ) {
     const organizationId = this.validateOrganization(user);
+    if (user.role === Role.EMPLOYEE && user.employeeId !== dto.employeeId) {
+      throw new ForbiddenException(
+        'Employees can only submit reviews for their own profile',
+      );
+    }
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId, organizationId },
     });
@@ -148,7 +159,10 @@ export class PerformanceService {
   async listReviews(user: AuthUser, employeeId?: number) {
     const organizationId = this.validateOrganization(user);
     const scopedEmployeeId =
-      user.role === Role.EMPLOYEE ? (user.employeeId ?? undefined) : employeeId;
+      user.role === Role.EMPLOYEE ? user.employeeId : employeeId;
+    if (user.role === Role.EMPLOYEE && scopedEmployeeId == null) {
+      throw new ForbiddenException('Employee profile is required');
+    }
 
     return this.prisma.performanceReview.findMany({
       where: {

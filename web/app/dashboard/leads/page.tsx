@@ -1,9 +1,13 @@
 ﻿'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLeads, removeLead } from '@/hooks/useLeads';
+import { reassignLeadOwner } from '@/api/leadsApi';
+import type { LeadScope } from '@/api/leadsApi';
+import { getEmployees } from '@/api/employeesApi';
+import type { Employee } from '@/api/employeesApi';
 import { useStableNow } from '@/hooks/useStableNow';
 import TableActions from '@/components/common/TableActions';
 
@@ -16,6 +20,7 @@ const SOURCE_STYLES: Record<string, string> = {
 };
 
 const STATUS_FILTERS = ['All', 'New', 'Contacted', 'Qualified', 'Proposal Sent', 'Closed Won', 'Closed Lost'] as const;
+const PAGE_SIZE = 10;
 
 function fmtDate(d?: string | null) {
   if (!d) return '—';
@@ -55,16 +60,29 @@ function getInitials(name: string) {
 
 export default function LeadsReportPage() {
   const router = useRouter();
-  const { leads, loading, error, refetch } = useLeads();
+  const [ownerScope, setOwnerScope] = useState<LeadScope | undefined>();
+  const { leads, loading, error, refetch } = useLeads(ownerScope);
   const currentTime = useStableNow();
   const [deleting, setDeleting] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>('All');
+  const [page, setPage] = useState(1);
+  const [owners, setOwners] = useState<Employee[]>([]);
+  const [savingOwner, setSavingOwner] = useState<number | null>(null);
+
+  useEffect(() => {
+    getEmployees().then(setOwners).catch(() => setOwners([]));
+  }, []);
 
   async function handleDelete(id: number) {
     if (!confirm('Delete this lead?')) return;
     setDeleting(id);
     try { await removeLead(id); refetch(); } finally { setDeleting(null); }
+  }
+
+  async function handleOwnerChange(id: number, ownerUserId: number | null) {
+    setSavingOwner(id);
+    try { await reassignLeadOwner(id, ownerUserId); await refetch(); } finally { setSavingOwner(null); }
   }
 
   const filtered = useMemo(() => {
@@ -81,6 +99,10 @@ export default function LeadsReportPage() {
       return matchesSearch && matchesStatus;
     });
   }, [leads, search, statusFilter]);
+
+  useEffect(() => setPage(1), [search, statusFilter, ownerScope]);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const visibleLeads = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const leadStats = useMemo(() => {
     const openLeads = leads.filter((lead) => {
@@ -142,7 +164,7 @@ export default function LeadsReportPage() {
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+        <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-end">
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Search leads</label>
             <input
@@ -153,7 +175,19 @@ export default function LeadsReportPage() {
               className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-100"
             />
           </div>
-          <div className="text-sm text-slate-500 lg:text-right">Use the chips below to narrow the queue.</div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Owner view</label>
+            <select
+              value={ownerScope ?? 'all'}
+              onChange={(event) => setOwnerScope(event.target.value === 'all' ? undefined : event.target.value as LeadScope)}
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-100"
+            >
+              <option value="all">All owners</option>
+              <option value="mine">My leads</option>
+              <option value="my_team">My team</option>
+              <option value="unassigned">Unassigned</option>
+            </select>
+          </div>
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -222,7 +256,7 @@ export default function LeadsReportPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtered.map((lead) => (
+                {visibleLeads.map((lead) => (
                   <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-4">
                       <div className="flex items-start gap-3">
@@ -250,7 +284,20 @@ export default function LeadsReportPage() {
                         </span>
                       ) : '—'}
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-600">{lead.assignedTo ?? lead.leadOwner ?? '—'}</td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <select
+                        aria-label={`Owner for ${lead.name}`}
+                        value={lead.ownerUserId ?? ''}
+                        disabled={savingOwner === lead.id || owners.length === 0}
+                        onChange={(event) => handleOwnerChange(lead.id, event.target.value ? Number(event.target.value) : null)}
+                        className="max-w-40 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-600 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-100 disabled:opacity-50"
+                      >
+                        <option value="">Unassigned</option>
+                        {owners.filter((employee) => employee.user?.id).map((employee) => (
+                          <option key={employee.user!.id} value={employee.user!.id}>{employee.name}</option>
+                        ))}
+                      </select>
+                    </td>
                     <td className="px-4 py-4 whitespace-nowrap">
                       <div>
                         <p className="text-sm text-slate-600">{fmtDate(lead.nextFollowUp)}</p>
@@ -276,7 +323,16 @@ export default function LeadsReportPage() {
               </tbody>
             </table>
             <div className="border-t border-slate-100 px-4 py-3 text-xs text-slate-400">
-              Showing {filtered.length} of {leads.length}
+              <div className="flex items-center justify-between gap-3">
+                <span>Showing {filtered.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {leads.length}</span>
+                {filtered.length > PAGE_SIZE && (
+                  <div className="flex items-center gap-2">
+                    <button type="button" disabled={page === 1} onClick={() => setPage((current) => Math.max(1, current - 1))} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 disabled:cursor-not-allowed disabled:opacity-40">Previous</button>
+                    <span className="text-slate-500">{page} / {pageCount}</span>
+                    <button type="button" disabled={page === pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 disabled:cursor-not-allowed disabled:opacity-40">Next</button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

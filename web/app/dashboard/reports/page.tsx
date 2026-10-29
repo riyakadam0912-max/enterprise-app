@@ -3,6 +3,7 @@
 import { isSuperAdminSession, useAuthSession } from '@/stores/auth-store';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { formatDate } from '@/utils/dateUtils';
 import { getEmployees, Employee } from '@/api/employeesApi';
@@ -215,18 +216,7 @@ function ReportsPage() {
     setIsResolvingEmployee(true);
 
     try {
-      let employeeId = performer.employeeId;
-
-      if (!employeeId) {
-        const employeeList = employees.length ? employees : await getEmployees();
-        const matchedEmployee = employeeList.find(
-          (employee) =>
-            employee.name.trim().toLowerCase() === performer.name.trim().toLowerCase() &&
-            (employee.department ?? 'Unassigned') === performer.department,
-        );
-        employeeId = matchedEmployee?.id ?? 0;
-      }
-
+      const employeeId = performer.employeeId;
       if (!employeeId) {
         throw new Error('Could not resolve employee ID for this alert.');
       }
@@ -296,16 +286,52 @@ function ReportsPage() {
     }
   };
 
+  const exportReport = () => {
+    if (!data) return;
+    const escapeCell = (value: unknown) => {
+      const text = String(value ?? '');
+      return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+    const rows = [
+      ['Report period', month],
+      ['Total employees', data.summaryCards.totalEmployees],
+      ['Present today', data.summaryCards.presentToday],
+      ['Monthly payroll cost', data.summaryCards.monthlyPayrollCost],
+      ['Attrition rate', `${data.summaryCards.attritionRate}%`],
+      [],
+      ['Date', 'Employee', 'Department', 'Status', 'Late minutes', 'Overtime hours'],
+      ...data.tables.attendanceBreakdown.map((item) => [
+        item.date,
+        item.employeeName,
+        item.department,
+        item.status,
+        item.lateMinutes,
+        item.overtimeHours,
+      ]),
+    ];
+    const csv = rows.map((row) => row.map(escapeCell).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `reports-${month}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Older API deployments may omit this optional quality metadata field.
+  // Treat a missing value as an empty warning list so the report remains usable.
+  const dataQualityWarnings = data?.dataQualityWarnings ?? [];
+
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-50 via-cyan-50 to-emerald-50 p-6 md:p-8">
+    <div className="min-h-screen bg-slate-50 p-6 md:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <section className="rounded-3xl border border-cyan-100 bg-white/85 p-6 shadow-sm backdrop-blur">
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-700">Insights Hub</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Insights</p>
               <h1 className="mt-1 text-3xl font-semibold text-slate-900">Reports & Analytics</h1>
               <p className="mt-1 text-sm text-slate-600">
-                Real-time and historical HR analytics inspired by Keka-style decision dashboards.
+                Decision-ready workforce reporting for the selected period.
               </p>
             </div>
 
@@ -337,6 +363,15 @@ function ReportsPage() {
                     ))}
                   </select>
                 </label>
+              ) : null}
+
+              {canUseOrgFilters && selectedEmployeeId ? (
+                <Link
+                  href={`/dashboard/attendance/employee/${selectedEmployeeId}?month=${month}`}
+                  className="mt-5 inline-flex items-center justify-center rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-600"
+                >
+                  Open detailed attendance
+                </Link>
               ) : null}
 
               {canUseOrgFilters ? (
@@ -372,6 +407,14 @@ function ReportsPage() {
                 </label>
               ) : null}
             </div>
+            <button
+              type="button"
+              onClick={exportReport}
+              disabled={!data || loading}
+              className="inline-flex h-10 items-center justify-center rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Export CSV
+            </button>
           </div>
         </section>
 
@@ -396,14 +439,33 @@ function ReportsPage() {
               />
             </section>
 
+            <div className="flex flex-col gap-2 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+              <span>Updated {new Date(data.generatedAt).toLocaleString()}</span>
+              {dataQualityWarnings.length ? (
+                <span className="text-amber-700">
+                  {dataQualityWarnings.length} data quality warning{dataQualityWarnings.length === 1 ? '' : 's'}
+                </span>
+              ) : (
+                <span className="text-emerald-700">Data checks passed</span>
+              )}
+            </div>
+
+            {dataQualityWarnings.length ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <ul className="list-disc space-y-1 pl-5">
+                  {dataQualityWarnings.map((warning) => <li key={warning}>{warning}</li>)}
+                </ul>
+              </div>
+            ) : null}
+
             <section className="grid gap-4 lg:grid-cols-2">
-              <article className="rounded-2xl border border-cyan-100 bg-white p-4 shadow-sm">
+              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <h2 className="text-sm font-semibold text-slate-900">Attendance Trend</h2>
                 <p className="mb-2 text-xs text-slate-500">Present vs absent by day</p>
                 <AttendanceTrendChart data={data.charts.attendanceTrend} />
               </article>
 
-              <article className="rounded-2xl border border-rose-100 bg-white p-4 shadow-sm">
+              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <h2 className="text-sm font-semibold text-slate-900">Payroll Cost Trend</h2>
                 <p className="mb-2 text-xs text-slate-500">Net pay and deductions by month</p>
                 <PayrollCostChart data={data.charts.payrollCost} />
@@ -411,13 +473,13 @@ function ReportsPage() {
             </section>
 
             <section className="grid gap-4 lg:grid-cols-2">
-              <article className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
+              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <h2 className="text-sm font-semibold text-slate-900">Employee Growth</h2>
                 <p className="mb-2 text-xs text-slate-500">Headcount movement over recent months</p>
                 <EmployeeGrowthChart data={data.charts.employeeGrowth} />
               </article>
 
-              <article className="rounded-2xl border border-amber-100 bg-white p-4 shadow-sm">
+              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <h2 className="text-sm font-semibold text-slate-900">Performance Distribution</h2>
                 <p className="mb-2 text-xs text-slate-500">Rating buckets with counts and percentages</p>
                 <PerformanceDistributionChart data={data.charts.performanceDistribution} />

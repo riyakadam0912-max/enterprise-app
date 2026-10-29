@@ -1,6 +1,7 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
+import globals from "globals";
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -19,6 +20,16 @@ const eslintConfig = defineConfig([
     rules: {
       'no-undef': 'error',
       'no-unused-vars': 'error',
+    },
+  },
+  {
+    files: ['scripts/**/*.{js,jsx,mjs,cjs}', 'test/**/*.cjs'],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.browser },
+    },
+    rules: {
+      'no-undef': 'off',
+      '@typescript-eslint/no-require-imports': 'off',
     },
   },
   // Override default ignores of eslint-config-next.

@@ -57,6 +57,7 @@ export interface Employee {
 
 export interface Lead {
   id: number;
+  ownerUserId?: number | null;
   name: string;
   company?: string;
   email?: string;

@@ -150,6 +150,19 @@ export class PayrollController {
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'PATCH cycles/:id/finalize' })
+  @ApiResponse({ status: 200, description: 'Payroll cycle finalized.' })
+  @ApiResponse({ status: 409, description: 'Cycle contains unpaid entries.' })
+  @ApiResponse({ status: 404, description: 'Payroll cycle not found.' })
+  @Patch('cycles/:id/finalize')
+  finalizeCycle(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.service.finalizeCycle(id, user);
+  }
+
+  @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'GET cycles/:id/entries' })
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })

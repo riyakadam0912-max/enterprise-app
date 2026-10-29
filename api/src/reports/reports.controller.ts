@@ -29,6 +29,7 @@ export class ReportsController {
   ) {}
 
   @ApiOperation({ summary: 'GET overview' })
+  @Roles('SUPER_ADMIN', 'ADMIN', 'HR')
   @ApiResponse({ status: 200, description: 'GET request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
   @ApiResponse({ status: 401, description: 'Unauthorized.' })

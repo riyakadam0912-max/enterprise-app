@@ -364,6 +364,7 @@ describe('LeadsService', () => {
       const leadDelegate = getPrismaDelegate(mockPrisma, 'lead');
       const contactDelegate = getPrismaDelegate(mockPrisma, 'contact');
       const dealDelegate = getPrismaDelegate(mockPrisma, 'deal');
+      const customerDelegate = getPrismaDelegate(mockPrisma, 'customer');
       const activityDelegate = getPrismaDelegate(mockPrisma, 'activity');
       const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
 
@@ -375,15 +376,23 @@ describe('LeadsService', () => {
         company: 'Test Company',
         source: 'Website',
         assignedTo: 'John Doe',
+        assignedToId: 8,
+        ownerUserId: 12,
       };
 
       employeeDelegate.findUnique.mockResolvedValueOnce(null);
       leadDelegate.findFirst.mockResolvedValueOnce(mockLead);
+      leadDelegate.updateMany.mockResolvedValueOnce({ count: 1 });
       contactDelegate.create.mockResolvedValueOnce({ id: 1 });
       dealDelegate.create.mockResolvedValueOnce({ id: 1 });
+      customerDelegate.findMany.mockResolvedValueOnce([{ id: 4 }]);
       leadDelegate.update.mockResolvedValueOnce({
         ...mockLead,
         status: 'CONVERTED',
+        convertedAt: new Date(),
+        convertedById: 1,
+        convertedContactId: 1,
+        convertedDealId: 1,
       });
       activityDelegate.create.mockResolvedValue({ id: 1 });
 
@@ -392,6 +401,7 @@ describe('LeadsService', () => {
           return await callback({
             contact: contactDelegate,
             deal: dealDelegate,
+            customer: customerDelegate,
             lead: leadDelegate,
             activity: activityDelegate,
           });
@@ -402,6 +412,108 @@ describe('LeadsService', () => {
       expect(result.message).toEqual('Lead converted successfully');
       expect(result.dealId).toEqual(1);
       expect(result.contactId).toEqual(1);
+      expect(leadDelegate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            convertedCustomer: { connect: { id: 4 } },
+          }),
+        }),
+      );
+      expect(dealDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            ownerUser: { connect: { id: 12 } },
+            assignedEmployee: { connect: { id: 8 } },
+          }),
+        }),
+      );
+    });
+
+    it('should leave the customer link empty when matching is ambiguous', async () => {
+      const leadDelegate = getPrismaDelegate(mockPrisma, 'lead');
+      const contactDelegate = getPrismaDelegate(mockPrisma, 'contact');
+      const dealDelegate = getPrismaDelegate(mockPrisma, 'deal');
+      const customerDelegate = getPrismaDelegate(mockPrisma, 'customer');
+      const activityDelegate = getPrismaDelegate(mockPrisma, 'activity');
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+
+      employeeDelegate.findUnique.mockResolvedValueOnce(null);
+      leadDelegate.findFirst.mockResolvedValueOnce({
+        id: 2,
+        name: 'Ambiguous Lead',
+        company: 'Shared Company',
+        email: 'shared@example.com',
+        assignedTo: null,
+      });
+      leadDelegate.updateMany.mockResolvedValueOnce({ count: 1 });
+      customerDelegate.findMany.mockResolvedValueOnce([{ id: 10 }, { id: 11 }]);
+      contactDelegate.create.mockResolvedValueOnce({ id: 2 });
+      dealDelegate.create.mockResolvedValueOnce({ id: 2 });
+      leadDelegate.update.mockResolvedValueOnce({ id: 2 });
+      activityDelegate.create.mockResolvedValue({ id: 2 });
+
+      (mockPrisma.$transaction as jest.Mock).mockImplementation(
+        async (callback) =>
+          callback({
+            contact: contactDelegate,
+            deal: dealDelegate,
+            customer: customerDelegate,
+            lead: leadDelegate,
+            activity: activityDelegate,
+          }),
+      );
+
+      await service.convertLead(2, 1, mockAdminUser);
+
+      expect(leadDelegate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.not.objectContaining({
+            convertedCustomer: expect.anything(),
+          }),
+        }),
+      );
+    });
+
+    it('should return the existing conversion without creating duplicates', async () => {
+      const leadDelegate = getPrismaDelegate(mockPrisma, 'lead');
+      const contactDelegate = getPrismaDelegate(mockPrisma, 'contact');
+      const dealDelegate = getPrismaDelegate(mockPrisma, 'deal');
+      const customerDelegate = getPrismaDelegate(mockPrisma, 'customer');
+      const activityDelegate = getPrismaDelegate(mockPrisma, 'activity');
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+
+      const mockLead = {
+        id: 1,
+        name: 'Converted Lead',
+        status: 'CONVERTED',
+      };
+
+      employeeDelegate.findUnique.mockResolvedValueOnce(null);
+      leadDelegate.findFirst.mockResolvedValueOnce(mockLead);
+      leadDelegate.updateMany.mockResolvedValueOnce({ count: 0 });
+      dealDelegate.findFirst.mockResolvedValueOnce({ id: 7, contactId: 9 });
+
+      (mockPrisma.$transaction as jest.Mock).mockImplementation(
+        async (callback) =>
+          callback({
+            contact: contactDelegate,
+            deal: dealDelegate,
+            customer: customerDelegate,
+            lead: leadDelegate,
+            activity: activityDelegate,
+          }),
+      );
+
+      const result = await service.convertLead(1, 1, mockAdminUser);
+
+      expect(result).toEqual({
+        message: 'Lead converted successfully',
+        dealId: 7,
+        contactId: 9,
+      });
+      expect(contactDelegate.create).not.toHaveBeenCalled();
+      expect(dealDelegate.create).not.toHaveBeenCalled();
+      expect(activityDelegate.create).not.toHaveBeenCalled();
     });
   });
 

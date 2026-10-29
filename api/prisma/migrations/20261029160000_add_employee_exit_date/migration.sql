@@ -1,0 +1,2 @@
+ALTER TABLE "Employee"
+ADD COLUMN "exitDate" TIMESTAMP(3);

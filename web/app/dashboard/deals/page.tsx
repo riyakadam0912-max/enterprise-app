@@ -2,7 +2,10 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getDeals, deleteDeal, Deal } from '../../../src/api/dealsApi';
+import { getDeals, deleteDeal, reassignDealOwner } from '../../../src/api/dealsApi';
+import type { Deal, DealScope } from '../../../src/api/dealsApi';
+import { getEmployees } from '../../../src/api/employeesApi';
+import type { Employee } from '../../../src/api/employeesApi';
 import TableActions from '@/components/common/TableActions';
 import { formatInrCurrency } from '@/utils/formatCurrency';
 import { reportError } from '@/lib/error-handling';
@@ -12,6 +15,7 @@ const PIPELINE_COLORS: Record<string, string> = {
   Service:   'bg-red-100 text-red-700',
   Sales:     'bg-teal-100 text-teal-700',
 };
+const PAGE_SIZE = 10;
 
 function formatValue(v: number) {
   return formatInrCurrency(v, 2);
@@ -27,13 +31,17 @@ export default function DealsPage() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [ownerScope, setOwnerScope] = useState<DealScope | undefined>();
   const [stageFilter, setStageFilter] = useState<'All' | 'Open' | 'Won' | 'Lost'>('All');
+  const [page, setPage] = useState(1);
+  const [owners, setOwners] = useState<Employee[]>([]);
+  const [savingOwner, setSavingOwner] = useState<number | null>(null);
   const now = useMemo(() => new Date().getTime(), []);
 
   useEffect(() => {
     async function loadDeals() {
       try {
-        setDeals(await getDeals());
+        setDeals(await getDeals(ownerScope));
       } catch (error) {
         reportError(error, 'Unable to load deals');
       } finally {
@@ -42,12 +50,21 @@ export default function DealsPage() {
     }
 
     loadDeals();
+  }, [ownerScope]);
+
+  useEffect(() => {
+    getEmployees().then(setOwners).catch(() => setOwners([]));
   }, []);
 
   const handleDelete = async (id: number) => {
     if (!confirm('Delete this deal?')) return;
     await deleteDeal(id);
     setDeals((prev) => prev.filter((deal) => deal.id !== id));
+  };
+
+  const handleOwnerChange = async (id: number, ownerUserId: number | null) => {
+    setSavingOwner(id);
+    try { await reassignDealOwner(id, ownerUserId); setDeals(await getDeals(ownerScope)); } finally { setSavingOwner(null); }
   };
 
   const filtered = useMemo(() => {
@@ -69,6 +86,10 @@ export default function DealsPage() {
       return matchesSearch && matchesStage;
     });
   }, [deals, search, stageFilter]);
+
+  useEffect(() => setPage(1), [search, stageFilter, ownerScope]);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const visibleDeals = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const dealStats = useMemo(() => {
     const openDeals = deals.filter((deal) => deal.stage !== 'WON' && deal.stage !== 'LOST');
@@ -135,11 +156,11 @@ export default function DealsPage() {
             >
               Stages View
             </button>
-            <TableActions moduleKey="deals" rows={filtered} onRefresh={() => getDeals().then(setDeals)} />
+            <TableActions moduleKey="deals" rows={filtered} onRefresh={() => getDeals(ownerScope).then(setDeals)} />
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+        <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-end">
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Search deals</label>
             <input
@@ -150,7 +171,19 @@ export default function DealsPage() {
               className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-100"
             />
           </div>
-          <div className="text-sm text-slate-500 lg:text-right">Filter by stage and keep the highest-value opportunities visible.</div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Owner view</label>
+            <select
+              value={ownerScope ?? 'all'}
+              onChange={(event) => setOwnerScope(event.target.value === 'all' ? undefined : event.target.value as DealScope)}
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-100"
+            >
+              <option value="all">All owners</option>
+              <option value="mine">My deals</option>
+              <option value="my_team">My team</option>
+              <option value="unassigned">Unassigned</option>
+            </select>
+          </div>
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -215,7 +248,7 @@ export default function DealsPage() {
                       </td>
                     </tr>
                   ) : (
-                    filtered.map((deal) => (
+                    visibleDeals.map((deal) => (
                       <tr key={deal.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-4">
                           <div>
@@ -227,7 +260,20 @@ export default function DealsPage() {
                         <td className="px-4 py-4 capitalize text-slate-600">{deal.stage.charAt(0) + deal.stage.slice(1).toLowerCase()}</td>
                         <td className="px-4 py-4 text-slate-600">{deal.probability != null ? `${deal.probability.toFixed(2)}%` : '—'}</td>
                         <td className="px-4 py-4 text-slate-600">{formatShortDate(deal.closeDate)}</td>
-                        <td className="px-4 py-4 text-slate-600">{deal.owner ?? '—'}</td>
+                        <td className="px-4 py-4">
+                          <select
+                            aria-label={`Owner for ${deal.title}`}
+                            value={deal.ownerUserId ?? ''}
+                            disabled={savingOwner === deal.id || owners.length === 0}
+                            onChange={(event) => handleOwnerChange(deal.id, event.target.value ? Number(event.target.value) : null)}
+                            className="max-w-40 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-600 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-100 disabled:opacity-50"
+                          >
+                            <option value="">Unassigned</option>
+                            {owners.filter((employee) => employee.user?.id).map((employee) => (
+                              <option key={employee.user!.id} value={employee.user!.id}>{employee.name}</option>
+                            ))}
+                          </select>
+                        </td>
                         <td className="px-4 py-4">
                           {deal.pipeline ? (
                             <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${PIPELINE_COLORS[deal.pipeline] ?? 'bg-slate-100 text-slate-700'}`}>
@@ -256,6 +302,18 @@ export default function DealsPage() {
                   )}
                 </tbody>
               </table>
+              {filtered.length > 0 && (
+                <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-xs text-slate-400">
+                  <span>Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {deals.length}</span>
+                  {filtered.length > PAGE_SIZE && (
+                    <div className="flex items-center gap-2">
+                      <button type="button" disabled={page === 1} onClick={() => setPage((current) => Math.max(1, current - 1))} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 disabled:cursor-not-allowed disabled:opacity-40">Previous</button>
+                      <span className="text-slate-500">{page} / {pageCount}</span>
+                      <button type="button" disabled={page === pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 disabled:cursor-not-allowed disabled:opacity-40">Next</button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

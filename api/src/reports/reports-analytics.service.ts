@@ -46,6 +46,8 @@ interface DateRange {
 }
 
 export interface DashboardSummaryPayload {
+  generatedAt: string;
+  dataQualityWarnings: string[];
   attendanceSummary: unknown;
   payrollSummary: unknown;
   turnoverSummary: unknown;
@@ -311,14 +313,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
           where: {
             employeeId: where.employeeId,
             employee: where.employee,
-            year: {
-              gte: dateRange.start.getFullYear(),
-              lte: dateRange.end.getFullYear(),
-            },
-            month: {
-              gte: dateRange.start.getMonth() + 1,
-              lte: dateRange.end.getMonth() + 1,
-            },
+            ...this.payslipPeriodWhere(dateRange),
           },
           _sum: {
             bonus: true,
@@ -470,13 +465,22 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
         this.prisma.employee.count({
           where: {
             ...employeeWhere,
-            status: {
-              in: ['RESIGNED', 'TERMINATED', 'INACTIVE'],
-            },
-            updatedAt: {
-              gte: dateRange.start,
-              lte: dateRange.end,
-            },
+            OR: [
+              {
+                exitDate: {
+                  gte: dateRange.start,
+                  lte: dateRange.end,
+                },
+              },
+              {
+                status: { in: ['RESIGNED', 'TERMINATED', 'INACTIVE'] },
+                exitDate: null,
+                updatedAt: {
+                  gte: dateRange.start,
+                  lte: dateRange.end,
+                },
+              },
+            ],
           },
         }),
       ]);
@@ -590,7 +594,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
     filters: ReportsQueryFilters,
   ): Promise<DashboardSummaryPayload> {
     const dateRange = this.resolveDateRange(filters);
-    const cacheKey = `dashboard-summary:${user.userId}:${user.organizationId ?? 'ALL'}:${dateRange.start.toISOString()}:${dateRange.end.toISOString()}`;
+    const cacheKey = `dashboard-summary:${user.userId}:${user.organizationId ?? 'ALL'}:${dateRange.start.toISOString()}:${dateRange.end.toISOString()}:${JSON.stringify(filters)}`;
     const cached = await this.cacheManager.get<{
       cachedAt: number;
       payload: unknown;
@@ -620,6 +624,20 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
       filters.department,
       filters.role,
     );
+    const today = new Date();
+    const todayRange: DateRange = {
+      start: new Date(today.getFullYear(), today.getMonth(), today.getDate()),
+      end: new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+        23,
+        59,
+        59,
+        999,
+      ),
+      monthLabel: '',
+    };
 
     const [
       attendanceTrend,
@@ -627,6 +645,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
       employeeGrowth,
       attendanceRows,
       recentHires,
+      presentToday,
     ] = await Promise.all([
       this.buildAttendanceTrend(scope, dateRange, filters),
       this.getPayrollCostTrends(user, filters),
@@ -653,6 +672,17 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
         orderBy: { hireDate: 'desc' },
         take: 10,
       }),
+      this.prisma.attendance.count({
+        where: {
+          ...this.attendanceWhere(
+            todayRange,
+            scope,
+            filters.department,
+            filters.role,
+          ),
+          status: { in: ['PRESENT', 'HALF_DAY'] },
+        },
+      }),
     ]);
 
     const performanceDistribution = this.toPerformanceDistribution(
@@ -661,13 +691,25 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
     );
 
     const payload = {
+      generatedAt: new Date().toISOString(),
+      dataQualityWarnings: [
+        attendanceSummary.totalDays === 0
+          ? 'No attendance records exist for the selected period.'
+          : null,
+        payrollSummary.totalPayout === 0
+          ? 'No payroll entries exist for the selected period.'
+          : null,
+        performanceSummary.topPerformers.length === 0
+          ? 'No performance reviews exist for the selected period.'
+          : null,
+      ].filter((warning): warning is string => Boolean(warning)),
       attendanceSummary,
       payrollSummary,
       turnoverSummary,
       performanceSummary,
       summaryCards: {
         totalEmployees: turnoverSummary.totalEmployees,
-        presentToday: attendanceSummary.presentDays,
+        presentToday,
         monthlyPayrollCost: payrollSummary.netCost,
         attritionRate: turnoverSummary.attritionRate,
       },
@@ -764,7 +806,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
         const count = await this.prisma.employee.count({
           where: {
             ...employeeWhere,
-            createdAt: {
+            hireDate: {
               lte: monthEnd,
             },
           },
@@ -1016,10 +1058,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
   ) {
     return {
       organizationId: scope.organizationId,
-      createdAt: {
-        gte: dateRange.start,
-        lte: dateRange.end,
-      },
+      ...this.payrollCyclePeriodWhere(dateRange),
       employeeId: scope.employeeIds?.length
         ? {
             in: scope.employeeIds,
@@ -1035,6 +1074,48 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
           : undefined,
       },
     };
+  }
+
+  private payrollCyclePeriodWhere(dateRange: DateRange) {
+    const pairs: Array<{ month: number; year: number }> = [];
+    const cursor = new Date(
+      dateRange.start.getFullYear(),
+      dateRange.start.getMonth(),
+      1,
+    );
+    const end = new Date(
+      dateRange.end.getFullYear(),
+      dateRange.end.getMonth(),
+      1,
+    );
+    while (cursor <= end) {
+      pairs.push({ month: cursor.getMonth() + 1, year: cursor.getFullYear() });
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+    return {
+      payrollCycle: {
+        OR: pairs,
+      },
+    };
+  }
+
+  private payslipPeriodWhere(dateRange: DateRange) {
+    const pairs: Array<{ month: number; year: number }> = [];
+    const cursor = new Date(
+      dateRange.start.getFullYear(),
+      dateRange.start.getMonth(),
+      1,
+    );
+    const end = new Date(
+      dateRange.end.getFullYear(),
+      dateRange.end.getMonth(),
+      1,
+    );
+    while (cursor <= end) {
+      pairs.push({ month: cursor.getMonth() + 1, year: cursor.getFullYear() });
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+    return { OR: pairs };
   }
 
   private employeeWhere(scope: ScopeInfo, department?: string, role?: string) {

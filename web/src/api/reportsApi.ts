@@ -91,6 +91,8 @@ export interface RecentHireRow {
 }
 
 export interface ReportsDashboard {
+  generatedAt: string;
+  dataQualityWarnings?: string[];
   attendanceSummary: AttendanceSummary;
   payrollSummary: PayrollSummary;
   turnoverSummary: TurnoverSummary;

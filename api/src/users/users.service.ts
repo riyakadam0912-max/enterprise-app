@@ -38,16 +38,28 @@ export class UsersService {
     );
   }
 
-  private buildOrganizationFilter(user: AuthUser) {
-    if (user.organizationId != null) {
-      return { organizationId: user.organizationId };
-    }
-
-    if (this.isPlatformAdmin(user)) {
+  private async buildOrganizationFilter(user: AuthUser) {
+    if (this.isPlatformAdmin(user) && user.organizationId == null) {
       return {};
     }
 
-    throw new ForbiddenException('User has no associated organization');
+    if (user.organizationId == null) {
+      throw new ForbiddenException('User has no associated organization');
+    }
+
+    const canManageDescendants =
+      this.isAdminUser(user) ||
+      user.role === Role.HR ||
+      user.roles?.includes(Role.HR) === true;
+
+    if (!canManageDescendants || !this.organizationScopeService) {
+      return { organizationId: user.organizationId };
+    }
+
+    const organizationIds = await this.organizationScopeService.getOrganizationIds(user);
+    return organizationIds && organizationIds.length > 0
+      ? { organizationId: { in: organizationIds } }
+      : { organizationId: user.organizationId };
   }
 
   private isSuperAdminUser(user: AuthUser): boolean {
@@ -166,9 +178,9 @@ export class UsersService {
     user: AuthUser,
     organizationIdOverride?: number | null,
   ) {
-    const effectiveOrganizationId =
+    let effectiveOrganizationId =
       organizationIdOverride ?? user.organizationId ?? null;
-    const organizationFilter = this.buildOrganizationFilter({
+    const organizationFilter = await this.buildOrganizationFilter({
       ...user,
       organizationId: effectiveOrganizationId,
     });
@@ -185,6 +197,13 @@ export class UsersService {
       });
       if (!employee) {
         throw new NotFoundException('Employee not found');
+      }
+
+      // When a parent administrator provisions access for a child employee,
+      // keep the login account in the employee's organization rather than
+      // silently attaching it to the administrator's home organization.
+      if (organizationIdOverride == null && employee.organizationId != null) {
+        effectiveOrganizationId = employee.organizationId;
       }
 
       const mapped = await this.prisma.user.findFirst({
@@ -287,7 +306,7 @@ export class UsersService {
   }
 
   async findAll(user: AuthUser) {
-    const organizationFilter = this.buildOrganizationFilter(user);
+    const organizationFilter = await this.buildOrganizationFilter(user);
     return this.prisma.user.findMany({
       where: { ...organizationFilter },
       orderBy: { createdAt: 'desc' },
@@ -307,7 +326,7 @@ export class UsersService {
   }
 
   async findOne(id: number, user: AuthUser) {
-    const organizationFilter = this.buildOrganizationFilter(user);
+    const organizationFilter = await this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
       where: { id, ...organizationFilter },
       select: {
@@ -332,7 +351,7 @@ export class UsersService {
   }
 
   async update(id: number, updateUserDto: UpdateUserDto, user: AuthUser) {
-    const organizationFilter = this.buildOrganizationFilter(user);
+    const organizationFilter = await this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
       where: { id, ...organizationFilter },
     });
@@ -420,7 +439,7 @@ export class UsersService {
   }
 
   async updateRole(id: number, role: Role, user: AuthUser) {
-    const organizationFilter = this.buildOrganizationFilter(user);
+    const organizationFilter = await this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
       where: { id, ...organizationFilter },
     });
@@ -465,7 +484,7 @@ export class UsersService {
   }
 
   async remove(id: number, user: AuthUser) {
-    const organizationFilter = this.buildOrganizationFilter(user);
+    const organizationFilter = await this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
       where: { id, ...organizationFilter },
     });
@@ -480,7 +499,7 @@ export class UsersService {
   }
 
   async activate(id: number, user: AuthUser) {
-    const organizationFilter = this.buildOrganizationFilter(user);
+    const organizationFilter = await this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
       where: { id, ...organizationFilter },
     });
@@ -507,7 +526,7 @@ export class UsersService {
   }
 
   async deactivate(id: number, user: AuthUser) {
-    const organizationFilter = this.buildOrganizationFilter(user);
+    const organizationFilter = await this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
       where: { id, ...organizationFilter },
     });
@@ -534,7 +553,7 @@ export class UsersService {
   }
 
   async requestPasswordResetCode(id: number, actor: AuthUser) {
-    const organizationFilter = this.buildOrganizationFilter(actor);
+    const organizationFilter = await this.buildOrganizationFilter(actor);
     const targetUser = await this.prisma.user.findFirst({
       where: { id, ...organizationFilter },
       select: {
@@ -585,7 +604,7 @@ export class UsersService {
     user: AuthUser,
     securityCode?: string,
   ) {
-    const organizationFilter = this.buildOrganizationFilter(user);
+    const organizationFilter = await this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
       where: { id, ...organizationFilter },
       select: {
@@ -647,7 +666,7 @@ export class UsersService {
   }
 
   async unlock(id: number, user: AuthUser) {
-    const organizationFilter = this.buildOrganizationFilter(user);
+    const organizationFilter = await this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
       where: { id, ...organizationFilter },
     });
@@ -674,7 +693,7 @@ export class UsersService {
   }
 
   async assignOrganization(id: number, organizationId: number, user: AuthUser) {
-    const organizationFilter = this.buildOrganizationFilter(user);
+    const organizationFilter = await this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
       where: { id, ...organizationFilter },
     });
@@ -701,7 +720,7 @@ export class UsersService {
   }
 
   async assignRoles(id: number, roleIds: number[], user: AuthUser) {
-    const organizationFilter = this.buildOrganizationFilter(user);
+    const organizationFilter = await this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
       where: { id, ...organizationFilter },
     });
@@ -726,7 +745,7 @@ export class UsersService {
   }
 
   async assignDepartment(id: number, department: string, user: AuthUser) {
-    const organizationFilter = this.buildOrganizationFilter(user);
+    const organizationFilter = await this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
       where: { id, ...organizationFilter },
       select: { id: true, employeeId: true, organizationId: true },
@@ -752,7 +771,7 @@ export class UsersService {
   }
 
   async assignManager(id: number, managerId: number | null, user: AuthUser) {
-    const organizationFilter = this.buildOrganizationFilter(user);
+    const organizationFilter = await this.buildOrganizationFilter(user);
     const existing = await this.prisma.user.findFirst({
       where: { id, ...organizationFilter },
     });
@@ -802,7 +821,7 @@ export class UsersService {
     const organizationFilter =
       organizationIds && organizationIds.length > 0
         ? { organizationId: { in: organizationIds } }
-        : this.buildOrganizationFilter(user);
+        : await this.buildOrganizationFilter(user);
     if (
       user.role === Role.ADMIN ||
       user.role === Role.HR ||

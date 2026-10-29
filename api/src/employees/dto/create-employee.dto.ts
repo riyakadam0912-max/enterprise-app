@@ -47,6 +47,11 @@ export class CreateEmployeeDto {
 
   @IsOptional()
   @IsString()
+  @ApiPropertyOptional({ example: '2026-12-31' })
+  exitDate?: string;
+
+  @IsOptional()
+  @IsString()
   @ApiPropertyOptional({ example: 'sample-manager' })
   manager?: string;
 
