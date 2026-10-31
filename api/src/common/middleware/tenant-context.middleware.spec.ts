@@ -164,4 +164,109 @@ describe('TenantContextMiddleware organization selection', () => {
     expect(next).toHaveBeenCalled();
     expect(request).toHaveProperty('organizationId', 3);
   });
+
+  it('rejects protected tenant requests when no organization is resolved', async () => {
+    const jwtService = {
+      verify: jest.fn().mockReturnValue({
+        sub: 10,
+        userId: 10,
+        role: Role.ADMIN,
+        roles: [Role.ADMIN],
+      }),
+    };
+    const middleware = new TenantContextMiddleware(
+      jwtService as any,
+      {
+        organization: { findMany: jest.fn() },
+        businessUnitAdmin: { findMany: jest.fn() },
+        businessUnit: { findMany: jest.fn() },
+      } as any,
+    );
+    const next = jest.fn();
+    const json = jest.fn();
+    const response = { status: jest.fn().mockReturnValue({ json }) };
+
+    await middleware.use(
+      {
+        cookies: { enterprise_access_token: 'valid-token' },
+        headers: {},
+        method: 'GET',
+        path: '/api/v1/employees',
+      } as any,
+      response as any,
+      next,
+    );
+
+    expect(response.status).toHaveBeenCalledWith(403);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Organization context is required',
+      }),
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('allows session-management routes without an organization context', async () => {
+    const jwtService = {
+      verify: jest.fn().mockReturnValue({
+        sub: 10,
+        userId: 10,
+        role: Role.ADMIN,
+        roles: [Role.ADMIN],
+      }),
+    };
+    const middleware = new TenantContextMiddleware(
+      jwtService as any,
+      { organization: {}, businessUnitAdmin: {} } as any,
+    );
+    const next = jest.fn();
+    const response = { status: jest.fn(), json: jest.fn() };
+
+    await middleware.use(
+      {
+        cookies: { enterprise_access_token: 'valid-token' },
+        headers: {},
+        method: 'POST',
+        path: '/api/v1/auth/logout',
+      } as any,
+      response as any,
+      next,
+    );
+
+    expect(response.status).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  it('passes tenant context resolution errors to the error handler', async () => {
+    const error = new Error('Database unavailable');
+    const jwtService = {
+      verify: jest.fn().mockReturnValue({
+        sub: 10,
+        userId: 10,
+        role: Role.ADMIN,
+        organizationId: 2,
+      }),
+    };
+    const middleware = new TenantContextMiddleware(
+      jwtService as any,
+      {
+        organization: { findUnique: jest.fn().mockRejectedValue(error) },
+      } as any,
+    );
+    const next = jest.fn();
+
+    await middleware.use(
+      {
+        cookies: { enterprise_access_token: 'valid-token' },
+        headers: {},
+        method: 'GET',
+        path: '/api/v1/employees',
+      } as any,
+      { status: jest.fn(), json: jest.fn() } as any,
+      next,
+    );
+
+    expect(next).toHaveBeenCalledWith(error);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
 });

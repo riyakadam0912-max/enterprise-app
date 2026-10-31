@@ -856,6 +856,10 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
       typeof user.organizationId === 'number' && user.organizationId > 0
         ? user.organizationId
         : undefined;
+    const platformAdministrator = isPlatformAdministrator(user);
+    if (!organizationId && !platformAdministrator) {
+      throw new ForbiddenException('Organization context missing');
+    }
 
     const requestedEmployeeId = filters.employeeId
       ? Number(filters.employeeId)
@@ -865,7 +869,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (
-      isPlatformAdministrator(user) ||
+      platformAdministrator ||
       user.role === 'ADMIN' ||
       user.role === 'HR'
     ) {

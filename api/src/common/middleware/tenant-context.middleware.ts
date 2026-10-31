@@ -35,6 +35,33 @@ export class TenantContextMiddleware implements NestMiddleware {
     return false;
   }
 
+  private isOrganizationOptionalRoute(request: Request): boolean {
+    const path = request.path.replace(/\/+$/, '') || '/';
+    const method = request.method.toUpperCase();
+    const matchesPath = (suffix: string) =>
+      path === suffix || path.endsWith(suffix);
+
+    if (
+      method === 'GET' &&
+      (path === '/' || matchesPath('/health') || matchesPath('/auth/me'))
+    ) {
+      return true;
+    }
+
+    return (
+      method === 'POST' &&
+      [
+        '/auth/login',
+        '/auth/refresh',
+        '/auth/forgot-password',
+        '/auth/reset-password',
+        '/auth/bootstrap-admin',
+        '/auth/logout',
+        '/auth/logout-all',
+      ].some(matchesPath)
+    );
+  }
+
   async resolveBusinessUnitContext(
     request: any,
     payload: JwtPayload,
@@ -453,23 +480,17 @@ export class TenantContextMiddleware implements NestMiddleware {
       request.__tenantResolvedByMiddleware = true;
       request.__isPlatformAdmin = isPlatformAdmin;
 
-      if (resolvedOrganizationId == null && !isPlatformAdmin) {
-        const activeOrgs = await this.prisma.organization.findMany({
-          where: { status: 'ACTIVE', deletedAt: null },
-          select: { id: true },
-          orderBy: { id: 'asc' },
+      if (
+        resolvedOrganizationId == null &&
+        !isPlatformAdmin &&
+        !this.isOrganizationOptionalRoute(request)
+      ) {
+        res.status(403).json({
+          statusCode: 403,
+          message: 'Organization context is required',
+          error: 'Forbidden',
         });
-        if (activeOrgs.length === 1) {
-          resolvedOrganizationId = activeOrgs[0].id;
-          request.organizationId = resolvedOrganizationId;
-          this.logger.debug(
-            `Auto-assigned organization ${resolvedOrganizationId} (only ACTIVE org) for tenant user ${payload.sub ?? payload.userId}`,
-          );
-        } else if (activeOrgs.length > 1) {
-          this.logger.warn(
-            `Tenant user ${payload.sub ?? payload.userId} has no resolved organizationId; found ${activeOrgs.length} ACTIVE orgs. Set organizationId on tenant users.`,
-          );
-        }
+        return;
       }
 
       const buContext = await this.resolveBusinessUnitContext(
@@ -493,7 +514,7 @@ export class TenantContextMiddleware implements NestMiddleware {
       return next();
     } catch (err) {
       this.logger.error('TenantContextMiddleware error', err as any);
-      return next();
+      return next(err);
     }
   }
 }

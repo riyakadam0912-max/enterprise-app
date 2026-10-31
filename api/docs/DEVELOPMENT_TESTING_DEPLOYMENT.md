@@ -202,7 +202,7 @@ The API validates environment variables in `api/src/config/env.ts`. The runtime 
 
 ### Production rules
 
-The validation layer explicitly rejects placeholder or insecure secrets in production and requires a valid frontend origin and secure cookie settings.
+The validation layer rejects placeholder secrets in production, requires distinct access and refresh secrets of at least 32 bytes each, and requires a valid frontend origin and secure cookie settings. Use separately generated random values; the length check does not assess entropy.
 
 ## Coding standards and architecture conventions
 
@@ -340,7 +340,7 @@ The codebase includes both a live API proxy target and legacy fallback options i
 Use this checklist before shipping:
 
 - [ ] `DATABASE_URL` points to a live database and Prisma migrations are applied.
-- [ ] `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` are unique, secure, and non-placeholder.
+- [ ] `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` are independently generated, unique, non-placeholder, and at least 32 bytes each.
 - [ ] `JWT_ISSUER` and `JWT_AUDIENCE` match the running environment.
 - [ ] `FRONTEND_URL` or `FRONTEND_ORIGIN` is configured for production.
 - [ ] `FRONTEND_URLS` includes all trusted origins.
@@ -348,6 +348,7 @@ Use this checklist before shipping:
 - [ ] `EMAIL_PROVIDER` is configured with a working sender.
 - [ ] `BOOTSTRAP_SUPER_ADMIN_*` values are set and secure for first-time install.
 - [ ] Org and BU permission rules are tested in production-like data.
+- [ ] Tenant users have an active organization assignment; unresolved tenant context is rejected.
 - [ ] Login, role assignment, tenant selection, and access-denied cases were smoke-tested.
 - [ ] Audit logs and mail sending are not failing silently.
 

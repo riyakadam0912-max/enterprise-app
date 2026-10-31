@@ -104,4 +104,24 @@ describe('ReportsAnalyticsService', () => {
       }),
     );
   });
+
+  it.each(['ADMIN', 'HR'] as const)(
+    'rejects %s report requests without an organization context',
+    async (role) => {
+      await expect(
+        service.getAttendanceReport({ userId: 1, role } as any, {}),
+      ).rejects.toThrow('Organization context missing');
+
+      expect(prisma.attendance.count).not.toHaveBeenCalled();
+    },
+  );
+
+  it('allows platform administrators to use an unscoped report context', async () => {
+    const scope = await service['resolveScope'](
+      { userId: 1, role: 'SUPER_ADMIN' } as any,
+      {},
+    );
+
+    expect(scope.organizationIds).toBeUndefined();
+  });
 });

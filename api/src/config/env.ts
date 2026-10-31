@@ -266,6 +266,14 @@ export function validateServerEnv(env: Record<string, unknown>): ServerEnv {
         'Production JWT secrets must not use placeholder or example values.',
       );
     }
+    if (
+      Buffer.byteLength(jwtAccessSecret, 'utf8') < 32 ||
+      Buffer.byteLength(jwtRefreshSecret, 'utf8') < 32
+    ) {
+      throw new Error(
+        'Production JWT secrets must each be at least 32 bytes long.',
+      );
+    }
     if (jwtAccessSecret === jwtRefreshSecret) {
       throw new Error(
         'Production JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different.',

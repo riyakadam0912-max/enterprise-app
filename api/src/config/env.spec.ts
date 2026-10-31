@@ -100,6 +100,18 @@ describe('validateServerEnv', () => {
     );
   });
 
+  it.each([
+    ['JWT_ACCESS_SECRET', 'a'.repeat(31)],
+    ['JWT_REFRESH_SECRET', 'r'.repeat(31)],
+  ])('rejects production %s shorter than 32 bytes', (key, secret) => {
+    expect(() =>
+      validateServerEnv({
+        ...validProductionEnv,
+        [key]: secret,
+      }),
+    ).toThrow('Production JWT secrets must each be at least 32 bytes long.');
+  });
+
   it('allows Redis-backed limits on Vercel without starting workers or sockets', () => {
     const config = validateServerEnv({
       ...validProductionEnv,
