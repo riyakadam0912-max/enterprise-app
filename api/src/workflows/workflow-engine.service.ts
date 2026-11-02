@@ -10,7 +10,6 @@ import {
   WorkflowActionType,
   WorkflowStage,
   WorkflowStep,
-  PrismaClient,
 } from '@prisma/client';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -217,17 +216,30 @@ export class WorkflowEngineService implements OnModuleInit {
   private transaction?: Prisma.TransactionClient;
   private afterCommit?: Array<() => Promise<unknown>>;
 
-  forTransaction(transaction: Prisma.TransactionClient, afterCommit: Array<() => Promise<unknown>>) {
-    const scoped = new WorkflowEngineService(this.prisma, this.notificationsService, this.auditLogsService);
+  forTransaction(
+    transaction: Prisma.TransactionClient,
+    afterCommit: Array<() => Promise<unknown>>,
+  ) {
+    const scoped = new WorkflowEngineService(
+      this.prisma,
+      this.notificationsService,
+      this.auditLogsService,
+    );
     scoped.transaction = transaction;
     scoped.afterCommit = afterCommit;
     return scoped;
   }
 
-  private get db() { return this.transaction ?? this.prisma; }
+  private get db() {
+    return this.transaction ?? this.prisma;
+  }
 
-  private runTransaction<T>(action: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
-    return this.transaction ? action(this.transaction) : this.prisma.$transaction(action);
+  private runTransaction<T>(
+    action: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return this.transaction
+      ? action(this.transaction)
+      : this.prisma.$transaction(action);
   }
 
   private validateOrganization(
@@ -634,18 +646,19 @@ export class WorkflowEngineService implements OnModuleInit {
       })),
     });
 
-    const notify = () => Promise.all(
-      params.recipients.map((recipientId: number) =>
-        this.notificationsService.create(
-          {
-            userId: recipientId,
-            title: params.title,
-            message: params.message,
-          },
-          params.organizationId,
+    const notify = () =>
+      Promise.all(
+        params.recipients.map((recipientId: number) =>
+          this.notificationsService.create(
+            {
+              userId: recipientId,
+              title: params.title,
+              message: params.message,
+            },
+            params.organizationId,
+          ),
         ),
-      ),
-    );
+      );
     if (this.afterCommit) this.afterCommit.push(notify);
     else await notify();
   }
@@ -660,16 +673,17 @@ export class WorkflowEngineService implements OnModuleInit {
     oldValue?: unknown;
     newValue?: unknown;
   }) {
-    const audit = () => this.auditLogsService.logCustomAction({
-      userId: params.userId ?? null,
-      module: params.module,
-      entityType: params.entityType,
-      entityId: params.entityId ?? null,
-      action: params.action,
-      description: params.description,
-      oldValue: toJsonValue(params.oldValue),
-      newValue: toJsonValue(params.newValue),
-    });
+    const audit = () =>
+      this.auditLogsService.logCustomAction({
+        userId: params.userId ?? null,
+        module: params.module,
+        entityType: params.entityType,
+        entityId: params.entityId ?? null,
+        action: params.action,
+        description: params.description,
+        oldValue: toJsonValue(params.oldValue),
+        newValue: toJsonValue(params.newValue),
+      });
     if (this.afterCommit) this.afterCommit.push(audit);
     else await audit();
   }

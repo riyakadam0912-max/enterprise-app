@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import type { INestApplication as NestINestApplication } from '@nestjs/common';
 import { AppModule } from '../../src/app.module';
+import { VercelThrottlerGuard } from '../../src/auth/vercel-throttler.guard';
 import { DatabaseHelper } from './database.helper';
 
 type TestApp = NestINestApplication & {
@@ -16,7 +17,10 @@ export class AppHelper {
   static async createTestingApp(): Promise<NestINestApplication> {
     const moduleFixture = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideGuard(VercelThrottlerGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     const app = moduleFixture.createNestApplication() as unknown as TestApp;
     app.setGlobalPrefix('api/v1');

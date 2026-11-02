@@ -461,8 +461,14 @@ export class AttendanceController {
 
   @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)
   @Post(':id/recover-session')
-  recoverSession(@Param('id', ParseIntPipe) id: number, @Req() req: AuthenticatedRequest) {
-    return this.attendanceService.recoverLegacySession(id, this.scopedUser(req));
+  recoverSession(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.attendanceService.recoverLegacySession(
+      id,
+      this.scopedUser(req),
+    );
   }
 
   @Roles(Role.ADMIN, Role.HR, Role.SUPER_ADMIN)

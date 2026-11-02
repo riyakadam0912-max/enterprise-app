@@ -97,7 +97,11 @@ describe('TasksService per-user task timer sessions', () => {
           shift: { type: 'FIXED' },
         }),
       },
-      user: { findFirst: jest.fn().mockResolvedValue({ employeeId: 101, employee: { organizationId } }) },
+      user: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ employeeId: 101, employee: { organizationId } }),
+      },
       $queryRaw: jest.fn().mockResolvedValue([]),
     };
     prisma = {
@@ -530,7 +534,8 @@ describe('TasksService per-user task timer sessions', () => {
     prisma.taskTimerSession.findFirst.mockResolvedValueOnce({
       id: 101,
       taskId: 8,
-      userId: 11, status: 'RUNNING',
+      userId: 11,
+      status: 'RUNNING',
       durationSeconds: 3600,
       remainingSeconds: 3570,
       startedAt,
@@ -590,7 +595,8 @@ describe('TasksService per-user task timer sessions', () => {
     prisma.taskTimerSession.findFirst.mockResolvedValueOnce({
       id: 101,
       taskId: 8,
-      userId: 11, status: 'RUNNING',
+      userId: 11,
+      status: 'RUNNING',
       durationSeconds: 0,
       remainingSeconds: 0,
       startedAt,
@@ -619,7 +625,8 @@ describe('TasksService per-user task timer sessions', () => {
       {
         id: 101,
         taskId: 8,
-        userId: 11, status: 'RUNNING',
+        userId: 11,
+        status: 'RUNNING',
         durationSeconds: 0,
         remainingSeconds: 0,
         startedAt,
@@ -657,7 +664,8 @@ describe('TasksService per-user task timer sessions', () => {
     expect(tx.taskTimerSession.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
-          userId: 11, status: 'RUNNING',
+          userId: 11,
+          status: 'RUNNING',
         },
       }),
     );

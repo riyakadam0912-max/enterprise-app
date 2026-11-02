@@ -97,9 +97,14 @@ export class PayrollService {
   private normalizeComponents(components: SalaryComponentDto[]) {
     const seen = new Set<string>();
     return components.map((component, index) => {
-      const code = component.code.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+      const code = component.code
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9_]/g, '_');
       if (!code || seen.has(code)) {
-        throw new BadRequestException(`Salary component code must be unique: ${code || 'blank'}`);
+        throw new BadRequestException(
+          `Salary component code must be unique: ${code || 'blank'}`,
+        );
       }
       seen.add(code);
       const monthlyAmount = Number(component.monthlyAmount.toFixed(2));
@@ -122,9 +127,15 @@ export class PayrollService {
     });
   }
 
-  private validateCtc(annualCtc: number, components: ReturnType<PayrollService['normalizeComponents']>) {
+  private validateCtc(
+    annualCtc: number,
+    components: ReturnType<PayrollService['normalizeComponents']>,
+  ) {
     const allocated = components
-      .filter((component) => component.includedInCtc && component.category !== 'DEDUCTION')
+      .filter(
+        (component) =>
+          component.includedInCtc && component.category !== 'DEDUCTION',
+      )
       .reduce((sum, component) => sum + component.annualAmount, 0);
     if (allocated > annualCtc + 0.01) {
       throw new BadRequestException(
@@ -144,7 +155,10 @@ export class PayrollService {
         description: dto.description?.trim(),
         annualCtc: dto.annualCtc,
         components: {
-          create: components.map((component) => ({ organizationId, ...component })),
+          create: components.map((component) => ({
+            organizationId,
+            ...component,
+          })),
         },
       },
       include: { components: { orderBy: { displayOrder: 'asc' } } },
@@ -180,27 +194,49 @@ export class PayrollService {
     }
     const template = dto.templateId
       ? await this.prisma.salaryTemplate.findFirst({
-          where: { id: dto.templateId, organizationId, deletedAt: null, isActive: true },
+          where: {
+            id: dto.templateId,
+            organizationId,
+            deletedAt: null,
+            isActive: true,
+          },
           include: { components: { orderBy: { displayOrder: 'asc' } } },
         })
       : null;
     if (dto.templateId && !template) {
       throw new NotFoundException('Salary template not found');
     }
-    const sourceComponents: ReturnType<PayrollService['normalizeComponents']> = dto.components?.length
-      ? this.normalizeComponents(dto.components)
-      : (template?.components.map(({ id: _id, templateId: _templateId, organizationId: _organizationId, createdAt: _createdAt, updatedAt: _updatedAt, ...component }) => component) ?? []) as ReturnType<PayrollService['normalizeComponents']>;
-    const annualCtc = dto.annualCtc ?? template?.annualCtc ??
+    const sourceComponents: ReturnType<PayrollService['normalizeComponents']> =
+      dto.components?.length
+        ? this.normalizeComponents(dto.components)
+        : ((template?.components.map(
+            ({
+              id: _id,
+              templateId: _templateId,
+              organizationId: _organizationId,
+              createdAt: _createdAt,
+              updatedAt: _updatedAt,
+              ...component
+            }) => component,
+          ) ?? []) as ReturnType<PayrollService['normalizeComponents']>);
+    const annualCtc =
+      dto.annualCtc ??
+      template?.annualCtc ??
       ((dto.basic ?? 0) + (dto.hra ?? 0) + (dto.allowances ?? 0)) * 12;
     if (sourceComponents.length) this.validateCtc(annualCtc, sourceComponents);
     const findAmount = (code: string) =>
-      sourceComponents.find((component) => component.code === code)?.monthlyAmount;
+      sourceComponents.find((component) => component.code === code)
+        ?.monthlyAmount;
     const findManualAmount = (code: string) =>
       sourceComponents.find(
         (component) => component.code === code && component.isManualOverride,
       )?.monthlyAmount;
     const otherEarnings = sourceComponents
-      .filter((component) => component.category === 'EARNING' && !['BASIC', 'HRA'].includes(component.code))
+      .filter(
+        (component) =>
+          component.category === 'EARNING' &&
+          !['BASIC', 'HRA'].includes(component.code),
+      )
       .reduce((sum, component) => sum + component.monthlyAmount, 0);
 
     // Deactivate previous active structures
@@ -220,10 +256,14 @@ export class PayrollService {
         templateId: template?.id,
         employeeId: dto.employeeId,
         annualCtc,
-        effectiveFrom: dto.effectiveFrom ? new Date(dto.effectiveFrom) : new Date(),
+        effectiveFrom: dto.effectiveFrom
+          ? new Date(dto.effectiveFrom)
+          : new Date(),
         basic: findAmount('BASIC') ?? dto.basic ?? 0,
         hra: findAmount('HRA') ?? dto.hra ?? 0,
-        allowances: sourceComponents.length ? otherEarnings : dto.allowances ?? 0,
+        allowances: sourceComponents.length
+          ? otherEarnings
+          : (dto.allowances ?? 0),
         deductions: dto.deductions ?? 0,
         pf: dto.pf ?? 0,
         esi: dto.esi ?? 0,
@@ -237,10 +277,19 @@ export class PayrollService {
         manualOtherDeductions:
           dto.manualOtherDeductions ?? findManualAmount('OTHER_DEDUCTION'),
         components: sourceComponents.length
-          ? { create: sourceComponents.map((component) => ({ organizationId, ...component })) }
+          ? {
+              create: sourceComponents.map((component) => ({
+                organizationId,
+                ...component,
+              })),
+            }
           : undefined,
       },
-      include: { employee: true, components: { orderBy: { displayOrder: 'asc' } }, template: true },
+      include: {
+        employee: true,
+        components: { orderBy: { displayOrder: 'asc' } },
+        template: true,
+      },
     });
 
     await this.invalidateDashboardCache();
@@ -306,7 +355,11 @@ export class PayrollService {
         professionalTax: dto.professionalTax ?? activeStructure.professionalTax,
         tds: dto.tds ?? activeStructure.tds,
       },
-      include: { employee: true, components: { orderBy: { displayOrder: 'asc' } }, template: true },
+      include: {
+        employee: true,
+        components: { orderBy: { displayOrder: 'asc' } },
+        template: true,
+      },
     });
 
     await this.invalidateDashboardCache();
@@ -576,7 +629,9 @@ export class PayrollService {
     const organizationId = this.validateOrganization(user);
     const cycle = await this.prisma.payrollCycle.findFirst({
       where: { id: cycleId, deletedAt: null, organizationId },
-      include: { entries: { where: { deletedAt: null }, select: { status: true } } },
+      include: {
+        entries: { where: { deletedAt: null }, select: { status: true } },
+      },
     });
     if (!cycle) {
       throw new NotFoundException('Payroll cycle not found');

@@ -1,15 +1,19 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { getCustomers, type Customer } from '@/api/customersApi';
 import { createClientUser } from '@/api/clientPortalApi';
 import { getProjects, type Project } from '@/api/projectsApi';
+import { CustomerPickerModal } from '@/components/quotes/CustomerPickerModal';
+import { CustomerSelectField } from '@/components/customers/CustomerSelectField';
 
 const field = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-100';
+const CLIENT_CUSTOMER_RETURN_STORAGE_KEY = 'client-user-customer-return-draft';
 
 export default function AddClientPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [customerId, setCustomerId] = useState('');
@@ -20,6 +24,8 @@ export default function AddClientPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
+  const createdCustomerId = searchParams.get('createdCustomerId');
 
   useEffect(() => {
     Promise.all([getCustomers(), getProjects()])
@@ -31,6 +37,32 @@ export default function AddClientPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (!createdCustomerId) return;
+
+    const savedDraft = sessionStorage.getItem(CLIENT_CUSTOMER_RETURN_STORAGE_KEY);
+    if (savedDraft) {
+      try {
+        const draft = JSON.parse(savedDraft) as {
+          email?: string;
+          template?: string;
+          projectIds?: number[];
+          projectMode?: 'all' | 'working';
+        };
+        if (draft.email !== undefined) setEmail(draft.email);
+        if (draft.template !== undefined) setTemplate(draft.template);
+        if (draft.projectIds !== undefined) setProjectIds(draft.projectIds);
+        if (draft.projectMode !== undefined) setProjectMode(draft.projectMode);
+      } catch {
+        setError('Unable to restore the client invitation draft.');
+      }
+    }
+
+    setCustomerId(createdCustomerId);
+    sessionStorage.removeItem(CLIENT_CUSTOMER_RETURN_STORAGE_KEY);
+    window.history.replaceState({}, '', '/dashboard/clients/add');
+  }, [createdCustomerId]);
+
   const visibleProjects = useMemo(
     () => projectMode === 'working' ? projects.filter((project) => !['COMPLETED', 'BLOCKED_CANCELLED', 'POSTPONED'].includes(project.status)) : projects,
     [projectMode, projects],
@@ -38,6 +70,17 @@ export default function AddClientPage() {
 
   function toggleProject(projectId: number) {
     setProjectIds((current) => current.includes(projectId) ? current.filter((id) => id !== projectId) : [...current, projectId]);
+  }
+
+  function handleCreateCustomer() {
+    sessionStorage.setItem(CLIENT_CUSTOMER_RETURN_STORAGE_KEY, JSON.stringify({
+      email,
+      template,
+      projectIds,
+      projectMode,
+    }));
+    setCustomerPickerOpen(false);
+    router.push('/dashboard/customers/add?returnTo=%2Fdashboard%2Fclients%2Fadd');
   }
 
   async function submit(event: React.FormEvent) {
@@ -66,19 +109,15 @@ export default function AddClientPage() {
           <h1 className="mt-1 text-2xl font-semibold text-slate-950">Add client user</h1>
           <p className="mt-1 text-sm text-slate-500">Invite a customer to selected projects.</p>
         </div>
-        <button type="button" onClick={() => router.push('/dashboard/customers/add')} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">+ Add Customer</button>
       </div>
 
       {error && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
       {loading ? <p className="text-sm text-slate-500">Loading onboarding options...</p> : (
         <form onSubmit={submit} className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <label className="block text-sm font-medium text-slate-700">Customer
-            <select className={`${field} mt-1`} value={customerId} onChange={(event) => setCustomerId(event.target.value)}>
-              <option value="">Select customer</option>
-                          {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.customerName} - {customer.customerType === 'BUSINESS' ? 'Business' : 'Individual'}</option>)}
-              <button type="button" onClick={() => router.push('/dashboard/customers/add')} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">+ Add Customer</button>
-            </select>
-          </label>
+          <CustomerSelectField
+            selectedName={customers.find((customer) => String(customer.id) === customerId)?.customerName ?? ''}
+            onClick={() => setCustomerPickerOpen(true)}
+          />
           <label className="block text-sm font-medium text-slate-700">Email ID
             <input className={`${field} mt-1`} type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="client@example.com" />
           </label>
@@ -102,6 +141,20 @@ export default function AddClientPage() {
           </div>
         </form>
       )}
+      <CustomerPickerModal
+        open={customerPickerOpen}
+        customers={customers}
+        selectedId={Number(customerId) || undefined}
+        loading={loading}
+        error={error || null}
+        nameOnly
+        onClose={() => setCustomerPickerOpen(false)}
+        onSelect={(customer) => {
+          setCustomerId(String(customer.id));
+          setCustomerPickerOpen(false);
+        }}
+        onCreateCustomer={handleCreateCustomer}
+      />
     </main>
   );
 }

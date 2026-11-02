@@ -23,7 +23,6 @@ type LoginResult = {
   authHeaders: Record<string, string>;
 };
 
-// Helper function to extract a cookie value from set-cookie headers
 function extractCookieValue(
   setCookieHeaders: string[],
   cookieName: string,
@@ -36,6 +35,31 @@ function extractCookieValue(
     }
   }
   return undefined;
+}
+
+function getLoginTokens(response: Response) {
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(`Test login failed with HTTP ${response.status}`);
+  }
+
+  const setCookie = response.headers['set-cookie'];
+  const cookies = Array.isArray(setCookie)
+    ? setCookie
+    : setCookie
+      ? [setCookie]
+      : [];
+  const accessToken =
+    extractCookieValue(cookies, 'enterprise_access_token') ??
+    response.body?.data?.access_token;
+  const refreshToken =
+    extractCookieValue(cookies, 'enterprise_refresh_token') ??
+    response.body?.data?.refresh_token;
+
+  if (typeof accessToken !== 'string' || accessToken.length === 0) {
+    throw new Error('Test login response did not contain an access token');
+  }
+
+  return { accessToken, refreshToken };
 }
 
 export class AuthHelper {
@@ -85,18 +109,7 @@ export class AuthHelper {
         password: 'password123',
       });
 
-    // Extract tokens from cookies since they are set in cookies instead of response body
-    const setCookie = loginResponse.headers['set-cookie'];
-    const cookies = Array.isArray(setCookie)
-      ? setCookie
-      : setCookie
-        ? [setCookie]
-        : [];
-    const accessToken = extractCookieValue(cookies, 'enterprise_access_token');
-    const refreshToken = extractCookieValue(
-      cookies,
-      'enterprise_refresh_token',
-    );
+    const { accessToken, refreshToken } = getLoginTokens(loginResponse);
 
     return {
       user,
@@ -119,17 +132,7 @@ export class AuthHelper {
       .post('/api/v1/auth/login')
       .send({ email, password });
 
-    const setCookie = response.headers['set-cookie'];
-    const cookies = Array.isArray(setCookie)
-      ? setCookie
-      : setCookie
-        ? [setCookie]
-        : [];
-    const accessToken = extractCookieValue(cookies, 'enterprise_access_token');
-    const refreshToken = extractCookieValue(
-      cookies,
-      'enterprise_refresh_token',
-    );
+    const { accessToken, refreshToken } = getLoginTokens(response);
 
     return {
       accessToken,
@@ -184,17 +187,7 @@ export class AuthHelper {
         password: 'password123',
       });
 
-    const setCookie = loginResponse.headers['set-cookie'];
-    const cookies = Array.isArray(setCookie)
-      ? setCookie
-      : setCookie
-        ? [setCookie]
-        : [];
-    const accessToken = extractCookieValue(cookies, 'enterprise_access_token');
-    const refreshToken = extractCookieValue(
-      cookies,
-      'enterprise_refresh_token',
-    );
+    const { accessToken, refreshToken } = getLoginTokens(loginResponse);
 
     return {
       user,

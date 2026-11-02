@@ -107,6 +107,11 @@ export function AuthProvider({
 
     async function bootstrapAuth() {
       const priorUserId = getAuthSessionSnapshot().user?.id;
+      if (priorUserId == null) {
+        setLoading(false);
+        return;
+      }
+
       const selectedOrganizationId = getActiveOrganizationId();
       try {
         const current = await getCurrentUser();

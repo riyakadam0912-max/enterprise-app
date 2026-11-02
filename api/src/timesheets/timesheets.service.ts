@@ -76,17 +76,35 @@ export class TimesheetsService {
     user: AuthUser,
   ) {
     if (projectId == null && taskId == null) return;
-    const related = await this.organizationScopeService.getRelatedOrganizationIds(organizationId);
-    const privileged = user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN || user.role === Role.HR;
-    const projectMembership: Prisma.ProjectWhereInput = privileged ? {} : { OR: [
-      { managerId: user.userId }, { coManagers: { some: { id: user.userId } } },
-      ...(user.employeeId ? [{ assignedEmployees: { some: { id: user.employeeId } } }] : []),
-    ] };
+    const related =
+      await this.organizationScopeService.getRelatedOrganizationIds(
+        organizationId,
+      );
+    const privileged =
+      user.role === Role.ADMIN ||
+      user.role === Role.SUPER_ADMIN ||
+      user.role === Role.HR;
+    const projectMembership: Prisma.ProjectWhereInput = privileged
+      ? {}
+      : {
+          OR: [
+            { managerId: user.userId },
+            { coManagers: { some: { id: user.userId } } },
+            ...(user.employeeId
+              ? [{ assignedEmployees: { some: { id: user.employeeId } } }]
+              : []),
+          ],
+        };
     if (projectId != null) {
       const project = await this.prisma.project.findFirst({
-        where: { id: projectId, deletedAt: null, OR: [
-          { organizationId }, { organizationId: { in: related }, ...projectMembership },
-        ] },
+        where: {
+          id: projectId,
+          deletedAt: null,
+          OR: [
+            { organizationId },
+            { organizationId: { in: related }, ...projectMembership },
+          ],
+        },
         select: { id: true },
       });
       if (!project) {
@@ -97,13 +115,25 @@ export class TimesheetsService {
     }
     if (taskId != null) {
       const task = await this.prisma.task.findFirst({
-        where: { id: taskId, deletedAt: null, OR: [
-          { organizationId },
-          { organizationId: { in: related }, ...(privileged ? {} : { OR: [
-            { assignedToUserId: user.userId }, { assignedByUserId: user.userId },
-            { projectRef: projectMembership },
-          ] }) },
-        ] },
+        where: {
+          id: taskId,
+          deletedAt: null,
+          OR: [
+            { organizationId },
+            {
+              organizationId: { in: related },
+              ...(privileged
+                ? {}
+                : {
+                    OR: [
+                      { assignedToUserId: user.userId },
+                      { assignedByUserId: user.userId },
+                      { projectRef: projectMembership },
+                    ],
+                  }),
+            },
+          ],
+        },
         select: { id: true },
       });
       if (!task) {
@@ -305,7 +335,7 @@ export class TimesheetsService {
       dto.projectId,
       dto.taskId,
       organizationId,
-          user,
+      user,
     );
     const userId = user.userId ?? user.id;
     const date = new Date(dto.date);
@@ -390,7 +420,7 @@ export class TimesheetsService {
       dto.projectId === undefined ? existing.projectId : dto.projectId,
       dto.taskId === undefined ? existing.taskId : dto.taskId,
       existing.organizationId,
-          user,
+      user,
     );
     const updatedDate =
       dto.date !== undefined ? new Date(dto.date) : new Date(existing.date);

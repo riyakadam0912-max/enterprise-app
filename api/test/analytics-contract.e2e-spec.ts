@@ -141,10 +141,14 @@ describe('Analytics summary and API envelope contracts (e2e)', () => {
     await request(app!.getHttpServer())
       .delete('/api/v1/leads/8')
       .expect(404)
-      .expect({
-        success: false,
-        message: 'Lead #8 not found',
-        data: null,
+      .expect(({ body }: { body: unknown }) => {
+        expect(body).toMatchObject({
+          success: false,
+          message: 'The requested record could not be found.',
+          code: 'NOT_FOUND',
+          requestId: expect.stringMatching(/^ERR-/),
+          data: null,
+        });
       });
   });
 });

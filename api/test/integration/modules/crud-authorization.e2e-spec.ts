@@ -104,12 +104,11 @@ describe('CRUD authorization audit (e2e)', () => {
     const createResp2 = await request(server)
       .post('/api/v1/projects')
       .set(managerUser.authHeaders)
-      .set('X-Organization-Id', String(org.id))
       .send({
-        name: 'Manager Project',
-        code: `MP-${Date.now()}`,
+        projectName: 'Manager Project',
+        projectCode: `MP-${Date.now()}`,
         description: 'Should create',
-        status: 'PLANNING',
+        status: 'NOT_STARTED',
         managerId: managerUser.user.id,
       });
 

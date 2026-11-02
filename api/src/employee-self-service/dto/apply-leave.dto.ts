@@ -40,8 +40,8 @@ export class ApplyLeaveDto {
   @ApiPropertyOptional({ enum: ['FULL_DAY', 'HALF_DAY'], default: 'FULL_DAY' })
   duration?: 'FULL_DAY' | 'HALF_DAY';
 
-  @ValidateIf((request: ApplyLeaveDto) =>
-    (request.requestType ?? 'LEAVE') === 'LEAVE',
+  @ValidateIf(
+    (request: ApplyLeaveDto) => (request.requestType ?? 'LEAVE') === 'LEAVE',
   )
   @IsNotEmpty()
   @IsString()

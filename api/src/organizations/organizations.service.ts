@@ -918,6 +918,7 @@ export class OrganizationsService {
        * Non-platform admins are always scoped to their own org as parent.
        */
       parentId?: number;
+      activeOrganizationId?: number;
     },
   ): Promise<OrganizationSummary[]> {
     const isPlatformAdmin = this.isPlatformAdmin(user);
@@ -941,10 +942,15 @@ export class OrganizationsService {
     }
 
     if (isPlatformAdmin) {
-      // Platform admins should see the full global list by default. An explicit
-      // parentId still narrows the results to a specific org tree.
+      // An active organization context scopes platform admins to its children.
+      // Without one, they see the global list unless parentId was requested.
       if (options?.parentId != null && options.parentId > 0) {
         scopeParentId = options.parentId;
+      } else if (
+        options?.activeOrganizationId != null &&
+        options.activeOrganizationId > 0
+      ) {
+        scopeParentId = options.activeOrganizationId;
       }
     } else {
       const homeOrganizationId = user.homeOrganizationId ?? user.organizationId;

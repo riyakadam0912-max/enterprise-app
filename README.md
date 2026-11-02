@@ -43,12 +43,12 @@ npm run dev
 
 - [api](./api)
 - [web](./web)
-- [docs](./docs)
+- [docs](./api/docs)
 
 ## Documentation
 
-- [Documentation home](./docs/README.md)
-- [Getting started](./docs/02-Getting-Started/README.md)
-- [Architecture overview](./docs/03-Architecture/README.md)
-- [Troubleshooting guide](./docs/09-Troubleshooting/README.md)
-- [Archive](./docs/Archive/README.md)
+- [Documentation home](./api/docs/README.md)
+- [Getting started](./api/docs/02-Getting-Started/README.md)
+- [Architecture overview](./api/docs/03-Architecture/README.md)
+- [Troubleshooting guide](./api/docs/09-Troubleshooting/README.md)
+- [Archive](./api/docs/Archive/README.md)

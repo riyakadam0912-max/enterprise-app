@@ -7,17 +7,42 @@ import { Role } from '../common/enums/role.enum';
 
 describe('Attendance audit fixes', () => {
   it('hydrates only the requested page when summary and derived filters are absent', async () => {
-    const db = { organization: { findUnique: jest.fn().mockResolvedValue({ timezone: 'UTC' }) }, employee: { count: jest.fn().mockResolvedValue(2000) } };
-    const service = new AttendanceService(db as any, {} as any, {} as any, {} as any, {} as any);
+    const db = {
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({ timezone: 'UTC' }),
+      },
+      employee: { count: jest.fn().mockResolvedValue(2000) },
+    };
+    const service = new AttendanceService(
+      db as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
     jest.spyOn(service as any, 'resolveOrganizationId').mockResolvedValue(1);
-    jest.spyOn(service as any, 'getScopedEmployeeFilter').mockResolvedValue(null);
-    jest.spyOn(service as any, 'dailyEmployeeWhere').mockResolvedValue({ organizationId: 1 });
-    const snapshot = jest.spyOn(service as any, 'buildDailySnapshot').mockResolvedValue({ rows: [{ employeeId: 11 }] });
-    const response = await service.findAll({ page: 2, limit: 10, summaryMode: 'none' }, { userId: 1, role: Role.ADMIN, organizationId: 1 });
+    jest
+      .spyOn(service as any, 'getScopedEmployeeFilter')
+      .mockResolvedValue(null);
+    jest
+      .spyOn(service as any, 'dailyEmployeeWhere')
+      .mockResolvedValue({ organizationId: 1 });
+    const snapshot = jest
+      .spyOn(service as any, 'buildDailySnapshot')
+      .mockResolvedValue({ rows: [{ employeeId: 11 }] });
+    const response = await service.findAll(
+      { page: 2, limit: 10, summaryMode: 'none' },
+      { userId: 1, role: Role.ADMIN, organizationId: 1 },
+    );
     expect(response.total).toBe(2000);
     expect(response.summary).toBeUndefined();
     expect(snapshot).toHaveBeenCalledTimes(1);
-    expect(snapshot).toHaveBeenCalledWith(expect.any(Date), null, expect.anything(), expect.objectContaining({ offset: 10, limit: 10 }));
+    expect(snapshot).toHaveBeenCalledWith(
+      expect.any(Date),
+      null,
+      expect.anything(),
+      expect.objectContaining({ offset: 10, limit: 10 }),
+    );
   });
   it.each([
     { month: 13 },

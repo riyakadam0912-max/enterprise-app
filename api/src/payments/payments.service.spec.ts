@@ -176,7 +176,6 @@ describe('PaymentsService', () => {
     });
 
     it('should reject when invoice is not found in the organization', async () => {
-      const paymentDelegate = getPrismaDelegate(mockPrisma, 'payment');
       const invoiceDelegate = getPrismaDelegate(mockPrisma, 'invoice');
 
       invoiceDelegate.findUnique.mockResolvedValueOnce(null);
@@ -202,7 +201,9 @@ describe('PaymentsService', () => {
         status: 'ISSUED',
       });
 
-      await expect(service.findByInvoice(1, mockAdminUser)).resolves.toMatchObject({
+      await expect(
+        service.findByInvoice(1, mockAdminUser),
+      ).resolves.toMatchObject({
         paidAmount: 45,
         remainingAmount: 55,
       });

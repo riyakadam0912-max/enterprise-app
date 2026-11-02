@@ -11,6 +11,7 @@ import { reportError } from '@/lib/error-handling';
 import { formatInr, quoteLineTotal, sumLineItems } from '@/utils/finance';
 import { useAuthSession } from '@/stores/auth-store';
 import { CustomerPickerModal } from '@/components/quotes/CustomerPickerModal';
+import { CustomerSelectField } from '@/components/customers/CustomerSelectField';
 import { ServicePickerModal } from '@/components/quotes/ServicePickerModal';
 
 interface ItemRow {
@@ -338,12 +339,10 @@ export default function AddQuotePage() {
       <form onSubmit={handleSubmit} className="space-y-6">
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <label className="space-y-2 text-sm">
-              <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Customer</span>
-              <button type="button" onClick={() => setCustomerModalOpen(true)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-left outline-none transition hover:border-orange-400 focus:border-orange-400">
-                {customers.find((customer) => String(customer.id) === customerId)?.customerName ?? 'Select customer'}
-              </button>
-            </label>
+            <CustomerSelectField
+              selectedName={customers.find((customer) => String(customer.id) === customerId)?.customerName ?? ''}
+              onClick={() => setCustomerModalOpen(true)}
+            />
             <label className="space-y-2 text-sm">
               <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Quote date</span>
               <input type="date" value={quoteDate} onChange={(event) => setQuoteDate(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none transition focus:border-orange-400" />
@@ -441,7 +440,7 @@ export default function AddQuotePage() {
           </button>
         </div>
       </form>
-      <CustomerPickerModal open={customerModalOpen} customers={customers} selectedId={customerId ? Number(customerId) : undefined} loading={metadataLoading} error={metadataError} onClose={() => setCustomerModalOpen(false)} onSelect={selectCustomer} onCreateCustomer={handleCreateCustomer} />
+      <CustomerPickerModal open={customerModalOpen} customers={customers} selectedId={customerId ? Number(customerId) : undefined} loading={metadataLoading} error={metadataError} nameOnly onClose={() => setCustomerModalOpen(false)} onSelect={selectCustomer} onCreateCustomer={handleCreateCustomer} />
       <ServicePickerModal open={serviceModalIndex !== null} products={products} selectedId={serviceModalIndex === null ? undefined : items[serviceModalIndex]?.productId} canCreate={canCreateService} canEdit={canEditService} onClose={() => setServiceModalIndex(null)} onSelect={handleCreatedService} onUpdate={handleUpdatedService} onRemoveSelected={removeSelectedItem} />
     </div>
   );

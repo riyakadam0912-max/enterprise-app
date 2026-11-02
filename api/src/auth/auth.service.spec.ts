@@ -263,7 +263,7 @@ describe('AuthService', () => {
         .spyOn(console, 'error')
         .mockImplementation(() => undefined);
 
-      userDelegate.findUnique.mockResolvedValue(user);
+      userDelegate.findFirst.mockResolvedValue(user);
       userDelegate.update.mockResolvedValue({
         id: user.id,
         refreshToken: 'hashed-refresh-token',
@@ -274,8 +274,15 @@ describe('AuthService', () => {
       mockAudit.logLogin.mockResolvedValue(undefined);
       compareMock.mockResolvedValue(true);
 
-      await service.login(user.email, 'password');
+      await service.login(` ${user.email.toUpperCase()} `, 'password');
 
+      expect(userDelegate.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            email: { equals: user.email, mode: 'insensitive' },
+          },
+        }),
+      );
       expect(logSpy).not.toHaveBeenCalled();
       expect(errorSpy).not.toHaveBeenCalled();
       logSpy.mockRestore();
@@ -286,7 +293,7 @@ describe('AuthService', () => {
       const user = createLoginUser(null);
       const userDelegate = getMockPrismaDelegate(mockPrisma, 'user');
 
-      userDelegate.findUnique.mockResolvedValue(user);
+      userDelegate.findFirst.mockResolvedValue(user);
       userDelegate.update.mockResolvedValue({
         id: user.id,
         refreshToken: 'hashed-refresh-token',
@@ -315,7 +322,7 @@ describe('AuthService', () => {
       const user = createLoginUser(7);
       const userDelegate = getMockPrismaDelegate(mockPrisma, 'user');
       const sessionDelegate = getMockPrismaDelegate(mockPrisma, 'authSession');
-      userDelegate.findUnique.mockResolvedValue(user);
+      userDelegate.findFirst.mockResolvedValue(user);
       sessionDelegate.create.mockResolvedValue({});
       mockJwt.sign
         .mockReturnValueOnce('access-token-one')
@@ -341,7 +348,7 @@ describe('AuthService', () => {
       const user = createLoginUser(7);
       const userDelegate = getMockPrismaDelegate(mockPrisma, 'user');
 
-      userDelegate.findUnique.mockResolvedValue(user);
+      userDelegate.findFirst.mockResolvedValue(user);
       userDelegate.update.mockResolvedValue({
         id: user.id,
         refreshToken: 'hashed-refresh-token',
@@ -370,7 +377,7 @@ describe('AuthService', () => {
       const user = createLoginUser(null);
       const userDelegate = getMockPrismaDelegate(mockPrisma, 'user');
 
-      userDelegate.findUnique.mockResolvedValue(user);
+      userDelegate.findFirst.mockResolvedValue(user);
       userDelegate.update.mockResolvedValue({
         id: user.id,
         refreshToken: 'hashed-refresh-token',

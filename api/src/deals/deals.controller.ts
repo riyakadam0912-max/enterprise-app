@@ -139,7 +139,11 @@ export class DealsController {
     @Body() dto: ReassignDealOwnerDto,
     @Req() req: { user: AuthUser },
   ) {
-    return this.dealsService.reassignOwner(id, dto.ownerUserId ?? null, req.user);
+    return this.dealsService.reassignOwner(
+      id,
+      dto.ownerUserId ?? null,
+      req.user,
+    );
   }
 
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.EMPLOYEE)

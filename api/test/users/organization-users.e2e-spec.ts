@@ -14,7 +14,7 @@ describe('Organization users (SUPER_ADMIN) (e2e)', () => {
   async function expectUsersAccess(
     authHeaders: Record<string, string>,
     organizationId: number,
-    expectedStatus: number,
+    expectedStatus: number | [number, number, number],
     userId?: number,
   ) {
     const requests = [
@@ -38,9 +38,12 @@ describe('Organization users (SUPER_ADMIN) (e2e)', () => {
     }
 
     const responses = await Promise.all(requests);
-    for (const response of responses) {
-      expect(response.status).toBe(expectedStatus);
-    }
+    const expectedStatuses = Array.isArray(expectedStatus)
+      ? expectedStatus
+      : requests.map(() => expectedStatus);
+    expect(responses.map((response) => response.status)).toEqual(
+      expectedStatuses,
+    );
   }
 
   beforeAll(async () => {
@@ -90,7 +93,7 @@ describe('Organization users (SUPER_ADMIN) (e2e)', () => {
     expect(persisted?.organizationId).toBe(org.id);
   });
 
-  it('allows ADMIN and denies HR, MANAGER, and EMPLOYEE for user-management endpoints', async () => {
+  it('enforces user-management roles and per-route HR permissions', async () => {
     const adminCtx = await AuthHelper.createTestUserAndLogin(app);
     const adminOrgId = adminCtx.organizationId;
 
@@ -109,7 +112,12 @@ describe('Organization users (SUPER_ADMIN) (e2e)', () => {
       password: 'password123',
     });
     const hrAuth = await AuthHelper.login(app, hrUser.email, 'password123');
-    await expectUsersAccess(hrAuth.authHeaders, hrOrg.id, 403, hrUser.id);
+    await expectUsersAccess(
+      hrAuth.authHeaders,
+      hrOrg.id,
+      [200, 403, 200],
+      hrUser.id,
+    );
 
     const managerOrg = await OrganizationFactory.create();
     const managerUser = await UserFactory.create({

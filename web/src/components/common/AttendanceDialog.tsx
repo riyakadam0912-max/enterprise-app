@@ -14,7 +14,9 @@ export default function AttendanceDialog({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const close = useRef(onClose);
-  close.current = onClose;
+  useEffect(() => {
+    close.current = onClose;
+  }, [onClose]);
   useEffect(() => {
     const dialog = ref.current;
     const previous = document.activeElement as HTMLElement | null;

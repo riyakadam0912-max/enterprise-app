@@ -21,6 +21,7 @@ import {
 import type { Product } from "@/types/entities";
 import { useAuthSession } from "@/stores/auth-store";
 import { CustomerPickerModal } from "@/components/quotes/CustomerPickerModal";
+import { CustomerSelectField } from "@/components/customers/CustomerSelectField";
 import { ServicePickerModal } from "@/components/quotes/ServicePickerModal";
 import { formatInr } from "@/utils/finance";
 
@@ -588,18 +589,10 @@ export default function InvoiceEditor({ invoiceId }: { invoiceId?: number }) {
               className="h-10 w-full rounded-md border border-slate-200 px-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
             />
           </label>
-          <label className="space-y-1.5 text-sm">
-            <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Customer
-            </span>
-            <button
-              type="button"
-              onClick={() => setCustomerModalOpen(true)}
-              className="h-10 w-full truncate rounded-md border border-slate-200 px-3 text-left text-slate-700 hover:border-orange-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-100"
-            >
-              {selectedCustomer?.customerName ?? "Choose a customer"}
-            </button>
-          </label>
+          <CustomerSelectField
+            selectedName={selectedCustomer?.customerName ?? ""}
+            onClick={() => setCustomerModalOpen(true)}
+          />
           <label className="space-y-1.5 text-sm">
             <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
               Billing email
@@ -1006,6 +999,7 @@ export default function InvoiceEditor({ invoiceId }: { invoiceId?: number }) {
         selectedId={customerId ? Number(customerId) : undefined}
         loading={metadataLoading}
         error={metadataError}
+        nameOnly
         onClose={() => setCustomerModalOpen(false)}
         onSelect={selectCustomer}
         onCreateCustomer={openNewCustomer}

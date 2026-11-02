@@ -102,6 +102,7 @@ const navConfig: NavItem[] = [
     ],
   },
   { type: 'link', label: 'Quotes', href: '/dashboard/quotes', icon: <QuoteIcon /> },
+  { type: 'link', label: 'Items', href: '/dashboard/items', icon: <TagIcon /> },
   { type: 'link', label: 'Invoices', href: '/dashboard/invoices', icon: <FileTextIcon /> },
   {
     type: 'dropdown', id: 'accounts', label: 'Accounts', icon: <CoinsIcon />,
@@ -357,7 +358,7 @@ export default function Sidebar({ currentPath }: SidebarProps) {
       }
       return role === 'ADMIN'
         ? flattenNavigation(navConfig)
-        : flattenNavigation(navConfig.filter((item) => item.label !== 'Organization'));
+        : flattenNavigation(navConfig.filter((item) => item.label !== 'Organization' && item.label !== 'Items'));
     },
     [role, session.isBusinessUnitAdmin],
   );

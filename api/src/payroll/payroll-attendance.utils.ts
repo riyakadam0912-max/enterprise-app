@@ -336,10 +336,7 @@ export async function getPayrollAttendanceMetrics(
         workFromHomeCredit !== undefined
           ? workFromHomeCredit
           : Math.min(creditedHours / 8, eligibleFraction);
-      if (
-        workFromHomeCredit === undefined &&
-        attendance?.status === 'ABSENT'
-      ) {
+      if (workFromHomeCredit === undefined && attendance?.status === 'ABSENT') {
         absentDays += eligibleFraction;
       }
       continue;

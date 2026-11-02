@@ -318,7 +318,9 @@ export class LeadsService {
       const updated = await tx.lead.update({
         where: { id, organizationId },
         data: {
-          ownerUser: owner ? { connect: { id: owner.id } } : { disconnect: true },
+          ownerUser: owner
+            ? { connect: { id: owner.id } }
+            : { disconnect: true },
           assignedEmployee: owner?.employee
             ? { connect: { id: owner.employee.id } }
             : { disconnect: true },
@@ -410,9 +412,8 @@ export class LeadsService {
             take: 2,
           })
         : [];
-      const existingCustomer = matchingCustomers.length === 1
-        ? matchingCustomers[0]
-        : null;
+      const existingCustomer =
+        matchingCustomers.length === 1 ? matchingCustomers[0] : null;
 
       const contact = await tx.contact.create({
         data: {

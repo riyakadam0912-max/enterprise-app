@@ -1,5 +1,13 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsDateString, IsInt, IsNumber, IsOptional, Min, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsDateString,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SalaryComponentDto } from './salary-component.dto';
 

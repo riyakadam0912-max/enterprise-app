@@ -195,7 +195,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     this.flexibleTaskTimeCutoverDate();
-    if (process.env.VERCEL === '1') return;
+    if (process.env.NODE_ENV === 'test' || process.env.VERCEL === '1') return;
 
     this.runScheduledAutomation().catch((error: unknown) => {
       this.logger.error('Initial attendance automation failed', error);

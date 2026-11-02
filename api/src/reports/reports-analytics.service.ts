@@ -10,6 +10,7 @@ import {
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { PrismaService } from '../prisma/prisma.service';
+import { OrganizationScopeService } from '../organizations/organization-scope.service';
 
 export interface ReportsUserContext {
   userId: number;
@@ -37,6 +38,7 @@ interface ScopeInfo {
   employeeIds?: number[];
   requestedEmployeeId?: number;
   organizationId?: number;
+  organizationIds?: number[];
 }
 
 interface DateRange {
@@ -85,6 +87,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+    private readonly organizationScope: OrganizationScopeService,
   ) {}
 
   onModuleInit() {
@@ -440,17 +443,25 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
         newHires,
         resignations,
       ] = await Promise.all([
-        this.prisma.employee.count({ where: employeeWhere }),
         this.prisma.employee.count({
           where: {
             ...employeeWhere,
-            createdAt: { lt: dateRange.start },
+            hireDate: { lte: dateRange.end },
+            OR: [{ exitDate: null }, { exitDate: { gt: dateRange.end } }],
           },
         }),
         this.prisma.employee.count({
           where: {
             ...employeeWhere,
-            createdAt: { lte: dateRange.end },
+            hireDate: { lt: dateRange.start },
+            OR: [{ exitDate: null }, { exitDate: { gte: dateRange.start } }],
+          },
+        }),
+        this.prisma.employee.count({
+          where: {
+            ...employeeWhere,
+            hireDate: { lte: dateRange.end },
+            OR: [{ exitDate: null }, { exitDate: { gt: dateRange.end } }],
           },
         }),
         this.prisma.employee.count({
@@ -571,6 +582,8 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
 
       const topPerformers = performerRows.slice(0, 5);
       const lowPerformers = [...performerRows].reverse().slice(0, 5);
+      const performanceDistribution =
+        this.toPerformanceDistribution(performerRows);
 
       const completedGoals = goalRows.filter(
         (goal) => goal.status === 'COMPLETED',
@@ -584,6 +597,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
         avgRating: Number((avgAgg._avg.rating ?? 0).toFixed(2)),
         topPerformers,
         lowPerformers,
+        performanceDistribution,
         goalCompletionRate,
       };
     });
@@ -685,11 +699,6 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
       }),
     ]);
 
-    const performanceDistribution = this.toPerformanceDistribution(
-      performanceSummary.topPerformers,
-      performanceSummary.lowPerformers,
-    );
-
     const payload = {
       generatedAt: new Date().toISOString(),
       dataQualityWarnings: [
@@ -717,7 +726,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
         attendanceTrend,
         payrollCost: payrollTrend,
         employeeGrowth,
-        performanceDistribution,
+        performanceDistribution: performanceSummary.performanceDistribution,
       },
       tables: {
         topPerformers: performanceSummary.topPerformers,
@@ -809,6 +818,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
             hireDate: {
               lte: monthEnd,
             },
+            OR: [{ exitDate: null }, { exitDate: { gt: monthEnd } }],
           },
         });
 
@@ -822,10 +832,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
     return data;
   }
 
-  private toPerformanceDistribution(
-    topPerformers: Array<{ rating: number }>,
-    lowPerformers: Array<{ rating: number }>,
-  ) {
+  private toPerformanceDistribution(performers: Array<{ rating: number }>) {
     const buckets = [
       { bucket: '1-2', count: 0 },
       { bucket: '2-3', count: 0 },
@@ -833,7 +840,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
       { bucket: '4-5', count: 0 },
     ];
 
-    for (const item of [...topPerformers, ...lowPerformers]) {
+    for (const item of performers) {
       const value = item.rating;
       if (value < 2) buckets[0].count += 1;
       else if (value < 3) buckets[1].count += 1;
@@ -858,8 +865,18 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
         : undefined;
     const platformAdministrator = isPlatformAdministrator(user);
     if (!organizationId && !platformAdministrator) {
-      throw new ForbiddenException('Organization context missing');
+        throw new ForbiddenException('Organization context missing');
     }
+
+    const organizationIds = organizationId
+        ? user.role === 'ADMIN' ||
+          user.role === 'HR' ||
+          platformAdministrator
+        ? await this.organizationScope.getDescendantOrganizationIds(
+            organizationId,
+          )
+        : [organizationId]
+      : undefined;
 
     const requestedEmployeeId = filters.employeeId
       ? Number(filters.employeeId)
@@ -879,9 +896,10 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
           employeeIds: [requestedEmployeeId],
           requestedEmployeeId,
           organizationId,
+          organizationIds,
         };
       }
-      return { role: user.role, organizationId };
+      return { role: user.role, organizationId, organizationIds };
     }
 
     if (user.role === 'EMPLOYEE') {
@@ -900,6 +918,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
         employeeIds: [user.employeeId],
         requestedEmployeeId: user.employeeId,
         organizationId,
+        organizationIds,
       };
     }
 
@@ -935,6 +954,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
         employeeIds: [requestedEmployeeId],
         requestedEmployeeId,
         organizationId,
+        organizationIds,
       };
     }
 
@@ -942,6 +962,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
       role: user.role,
       employeeIds: distinctTeamEmployeeIds,
       organizationId,
+      organizationIds,
     };
   }
 
@@ -1032,7 +1053,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
     role?: string,
   ) {
     return {
-      organizationId: scope.organizationId,
+      organizationId: this.organizationIdWhere(scope),
       date: {
         gte: dateRange.start,
         lte: dateRange.end,
@@ -1043,7 +1064,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
           }
         : undefined,
       employee: {
-        organizationId: scope.organizationId,
+        organizationId: this.organizationIdWhere(scope),
         department: department || undefined,
         user: role
           ? {
@@ -1061,7 +1082,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
     role?: string,
   ) {
     return {
-      organizationId: scope.organizationId,
+      organizationId: this.organizationIdWhere(scope),
       ...this.payrollCyclePeriodWhere(dateRange),
       employeeId: scope.employeeIds?.length
         ? {
@@ -1069,7 +1090,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
           }
         : undefined,
       employee: {
-        organizationId: scope.organizationId,
+        organizationId: this.organizationIdWhere(scope),
         department: department || undefined,
         user: role
           ? {
@@ -1124,7 +1145,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
 
   private employeeWhere(scope: ScopeInfo, department?: string, role?: string) {
     return {
-      organizationId: scope.organizationId,
+      organizationId: this.organizationIdWhere(scope),
       id: scope.employeeIds?.length
         ? {
             in: scope.employeeIds,
@@ -1137,6 +1158,12 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
           }
         : undefined,
     };
+  }
+
+  private organizationIdWhere(scope: ScopeInfo) {
+    if (scope.organizationIds === undefined) return undefined;
+    if (scope.organizationIds.length === 1) return scope.organizationIds[0];
+    return { in: scope.organizationIds };
   }
 
   private async withCache<T>(

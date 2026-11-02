@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsOptional, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional } from 'class-validator';
 
 export const TASK_DEPENDENCY_TYPES = [
   'FINISH_TO_START',

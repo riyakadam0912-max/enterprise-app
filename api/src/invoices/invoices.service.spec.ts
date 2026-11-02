@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { ConfigService } from '@nestjs/config';
+import { FileManagementService } from '../file-management/file-management.service';
 import {
   createMockPrismaService,
   createMockMailService,
@@ -80,6 +81,12 @@ describe('InvoicesService', () => {
         { provide: MailService, useValue: mockMailService },
         { provide: AuditLogsService, useValue: mockAuditLogsService },
         { provide: ConfigService, useValue: mockConfigService },
+        {
+          provide: FileManagementService,
+          useValue: {
+            getOrganizationLogoBuffer: jest.fn().mockResolvedValue(null),
+          },
+        },
       ],
     }).compile();
 

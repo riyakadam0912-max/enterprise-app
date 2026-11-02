@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: enterprise_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d enterprise_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/enterprise_test
+      JWT_SECRET: ci-only-shared-secret-not-for-production
+      JWT_ACCESS_SECRET: ci-only-access-secret-not-for-production
+      JWT_REFRESH_SECRET: ci-only-refresh-secret-not-for-production
+      JWT_ISSUER: http://localhost:3000
+      JWT_AUDIENCE: enterprise-api-test
+      FRONTEND_URL: http://localhost:3001
+      FRONTEND_URLS: http://127.0.0.1:3001
+      FRONTEND_ORIGIN: http://localhost:3001
+      FRONTEND_ORIGINS: http://127.0.0.1:3001
+      REDIS_ENABLED: "false"
+      WEBSOCKET_ENABLED: "false"
+      EMAIL_PROVIDER: NONE
+      COOKIE_SECURE: "false"
+      COOKIE_SAME_SITE: lax
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            api/package-lock.json
+            web/package-lock.json
+            app/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm --prefix api ci
+          npm --prefix web ci
+          npm --prefix app ci
+
+      - name: Install Chromium for browser tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Prepare test environment
+        run: cp api/.env.test.example api/.env.test
+
+      - name: Validate database schema and migrations
+        run: |
+          npm --prefix api run prisma:validate
+          npm --prefix api run prisma:migrate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: API end-to-end tests
+        run: npm --prefix api run test:e2e
+
+      - name: Production builds
+        run: npm run build
+
+      - name: Critical dependency audit
+        run: |
+          npm audit --audit-level=critical
+          npm --prefix api audit --audit-level=critical
+          npm --prefix web audit --audit-level=critical
+          npm --prefix app audit --audit-level=critical
+
+      - name: Tracked secret scan
+        shell: bash
+        run: |
+          if git grep -nE '(JWT_(ACCESS|REFRESH)_SECRET|DATABASE_URL|SMTP_PASS|AWS_S3_SECRET_ACCESS_KEY)=.{8,}' -- '*.env' '*.env.local' '*.env.production' '*.env.test'; then
+            echo 'Credential-like assignments are tracked in Git.' >&2
+            exit 1
+          fi

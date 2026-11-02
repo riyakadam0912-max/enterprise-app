@@ -90,10 +90,13 @@ export function createRejectionState(
   userRole: string,
   userId: number,
   reason?: string,
-): Pick<ApprovalStateWrite, 'status' | 'approvedBy' | 'approvalTrail'> {
+): Pick<ApprovalStateWrite, 'status' | 'approvedBy' | 'approvalTrail'> & {
+  rejectionReason: string | null;
+} {
   return {
     status: 'REJECTED',
     approvedBy: `${userRole}:${userId} (Rejected)`,
+    rejectionReason: reason?.trim() || null,
     approvalTrail: appendTrail(
       trail,
       'REJECTED',

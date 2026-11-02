@@ -77,8 +77,12 @@ describe('TasksService', () => {
     // Create fresh mocks for each test!
     mockPrisma = createMockPrismaService();
     mockWorkflowEngine = createMockWorkflowEngineService();
-    mockWorkflowEngine.forTransaction = jest.fn().mockReturnValue(mockWorkflowEngine);
-    mockPrisma.$transaction.mockImplementation((callback) => callback(mockPrisma));
+    mockWorkflowEngine.forTransaction = jest
+      .fn()
+      .mockReturnValue(mockWorkflowEngine);
+    mockPrisma.$transaction.mockImplementation((callback) =>
+      callback(mockPrisma),
+    );
     mockNotifications = createMockNotificationsService();
     mockBusinessUnitsService = {
       resolveScope: jest.fn().mockResolvedValue({
@@ -104,7 +108,10 @@ describe('TasksService', () => {
       providers: [
         TasksService,
         { provide: CACHE_MANAGER, useValue: { del: jest.fn() } },
-        { provide: AttendanceTaskHoursService, useValue: { recomputeTimesheetHours: jest.fn() } },
+        {
+          provide: AttendanceTaskHoursService,
+          useValue: { recomputeTimesheetHours: jest.fn() },
+        },
         { provide: PrismaService, useValue: mockPrisma },
         { provide: WorkflowEngineService, useValue: mockWorkflowEngine },
         { provide: NotificationsService, useValue: mockNotifications },
@@ -153,15 +160,17 @@ describe('TasksService', () => {
     });
 
     it('does not allow employees to create tasks in projects they are not assigned to', async () => {
-      getPrismaDelegate(mockPrisma, 'project').findUnique.mockResolvedValueOnce({
-        id: 1,
-        organizationId: 1,
-        projectName: 'Restricted project',
-        businessUnitId: null,
-        managerId: 2,
-        coManagers: [],
-        assignedEmployees: [],
-      });
+      getPrismaDelegate(mockPrisma, 'project').findUnique.mockResolvedValueOnce(
+        {
+          id: 1,
+          organizationId: 1,
+          projectName: 'Restricted project',
+          businessUnitId: null,
+          managerId: 2,
+          coManagers: [],
+          assignedEmployees: [],
+        },
+      );
 
       await expect(
         service.create(
@@ -169,7 +178,9 @@ describe('TasksService', () => {
           mockEmployeeUser,
         ),
       ).rejects.toThrow(ForbiddenException);
-      expect(getPrismaDelegate(mockPrisma, 'task').create).not.toHaveBeenCalled();
+      expect(
+        getPrismaDelegate(mockPrisma, 'task').create,
+      ).not.toHaveBeenCalled();
     });
 
     it('does not allow employees to create projectless tasks', async () => {
@@ -179,7 +190,9 @@ describe('TasksService', () => {
           mockEmployeeUser,
         ),
       ).rejects.toThrow(ForbiddenException);
-      expect(getPrismaDelegate(mockPrisma, 'task').create).not.toHaveBeenCalled();
+      expect(
+        getPrismaDelegate(mockPrisma, 'task').create,
+      ).not.toHaveBeenCalled();
     });
 
     it.each(['APPROVED', 'REJECTED', 'COMPLETED'])(
@@ -792,7 +805,10 @@ describe('TasksService', () => {
     it('blocks moving a task that has an active timer', async () => {
       const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
       const projectDelegate = getPrismaDelegate(mockPrisma, 'project');
-      getPrismaDelegate(mockPrisma, 'taskTimerSession').findFirst.mockResolvedValueOnce({
+      getPrismaDelegate(
+        mockPrisma,
+        'taskTimerSession',
+      ).findFirst.mockResolvedValueOnce({
         id: 51,
       });
       taskDelegate.findFirst.mockResolvedValueOnce({
@@ -1368,7 +1384,9 @@ describe('TasksService', () => {
 
       await expect(
         (service as any).assertUserIsWorking(mockEmployeeUser),
-      ).rejects.toThrow('Check in and end any break before starting a task timer');
+      ).rejects.toThrow(
+        'Check in and end any break before starting a task timer',
+      );
     });
 
     it('blocks flexible task tracking while a break is open', async () => {
@@ -1380,7 +1398,11 @@ describe('TasksService', () => {
       getPrismaDelegate(
         mockPrisma,
         'attendance',
-      ).findFirst.mockResolvedValueOnce({ id: 10, breaks: [{ endedAt: null }], shift: { type: 'FLEXIBLE' } });
+      ).findFirst.mockResolvedValueOnce({
+        id: 10,
+        breaks: [{ endedAt: null }],
+        shift: { type: 'FLEXIBLE' },
+      });
 
       await expect(
         (service as any).assertUserIsWorking(mockEmployeeUser),

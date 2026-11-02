@@ -332,7 +332,9 @@ export class DealsService {
       const updated = await tx.deal.update({
         where: { id, organizationId },
         data: {
-          ownerUser: owner ? { connect: { id: owner.id } } : { disconnect: true },
+          ownerUser: owner
+            ? { connect: { id: owner.id } }
+            : { disconnect: true },
           assignedEmployee: owner?.employee
             ? { connect: { id: owner.employee.id } }
             : { disconnect: true },
@@ -403,9 +405,7 @@ export class DealsService {
           assignedEmployee: assignedEmployeeId
             ? { connect: { id: assignedEmployeeId } }
             : undefined,
-          ownerUser: ownerUserId
-            ? { connect: { id: ownerUserId } }
-            : undefined,
+          ownerUser: ownerUserId ? { connect: { id: ownerUserId } } : undefined,
           pipeline: typeof r.pipeline === 'string' ? r.pipeline : undefined,
           lead:
             typeof r.leadId === 'number'

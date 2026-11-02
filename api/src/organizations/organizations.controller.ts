@@ -97,6 +97,7 @@ export class OrganizationsController {
       page: page ? Number(page) : 1,
       limit: limit ? Number(limit) : 20,
       parentId: parentId ? Number(parentId) : undefined,
+      activeOrganizationId: req.organizationId ?? undefined,
     });
   }
 

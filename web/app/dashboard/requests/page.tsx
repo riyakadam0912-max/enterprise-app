@@ -42,8 +42,26 @@ function getLatestTrailText(req: LeaveRequest) {
   const latest = req.approvalTrail?.[req.approvalTrail.length - 1];
   if (!latest) return null;
 
-  const label = latest.action.replaceAll('_', ' ').toLowerCase();
-  return latest.reason ? `${label}: ${latest.reason}` : label;
+  const label = latest.action
+    .replaceAll('_', ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const reason = typeof latest.reason === 'string' && !/^(jsonnull|null|undefined)$/i.test(latest.reason.trim())
+    ? latest.reason.trim()
+    : null;
+  return reason ? `${label} · ${reason}` : label;
+}
+
+function formatApprover(value: string | null) {
+  if (!value) return null;
+  const normalized = value.trim();
+  if (!normalized || /^(jsonnull|null|undefined)$/i.test(normalized)) return null;
+
+  const match = normalized.match(/^([A-Z_]+)(?::\d+)?(?:\s*\(Rejected\))?$/i);
+  if (!match) return normalized;
+
+  const role = match[1].toLowerCase().replaceAll('_', ' ');
+  return `${role.replace(/\b\w/g, (letter) => letter.toUpperCase())} reviewer`;
 }
 
 export default function AllRequestsPage() {
@@ -192,7 +210,7 @@ export default function AllRequestsPage() {
                       </td>
                       <td className="px-4 py-3 text-gray-600">{formatDate(req.appliedOn)}</td>
                       <td className="px-4 py-3 text-gray-600">
-                        <div>{req.approvedBy ?? '-'}</div>
+                        <div className="font-medium text-gray-700">{formatApprover(req.approvedBy) ?? '—'}</div>
                         {getLatestTrailText(req) && (
                           <div className="mt-1 text-[11px] text-gray-400">{getLatestTrailText(req)}</div>
                         )}

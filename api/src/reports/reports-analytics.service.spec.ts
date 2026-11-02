@@ -57,11 +57,22 @@ describe('ReportsAnalyticsService', () => {
     set: jest.fn().mockResolvedValue(undefined),
   };
 
+  const organizationScope = {
+    getDescendantOrganizationIds: jest.fn(),
+  };
+
   let service: ReportsAnalyticsService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new ReportsAnalyticsService(prisma as any, cacheManager as any);
+    organizationScope.getDescendantOrganizationIds.mockImplementation(
+      async (organizationId: number) => [organizationId],
+    );
+    service = new ReportsAnalyticsService(
+      prisma as any,
+      cacheManager as any,
+      organizationScope as any,
+    );
   });
 
   it('scopes attendance and employee analytics to the active organization', async () => {
@@ -101,6 +112,58 @@ describe('ReportsAnalyticsService', () => {
     expect(prisma.employee.count).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ organizationId: 42 }),
+      }),
+    );
+  });
+
+  it('includes every active descendant in a parent organization report', async () => {
+    organizationScope.getDescendantOrganizationIds.mockResolvedValue([
+      42, 43, 44,
+    ]);
+    prisma.attendance.count.mockResolvedValue(12);
+    prisma.attendance.aggregate.mockResolvedValue({
+      _sum: { overtimeHours: 0 },
+    });
+
+    await service.getAttendanceReport(
+      {
+        userId: 1,
+        role: 'ADMIN',
+        organizationId: 42,
+      } as any,
+      {},
+    );
+
+    expect(prisma.attendance.count).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId: { in: [42, 43, 44] },
+          employee: expect.objectContaining({
+            organizationId: { in: [42, 43, 44] },
+          }),
+        }),
+      }),
+    );
+
+    const scope = await service['resolveScope'](
+      { userId: 1, role: 'ADMIN', organizationId: 42 } as any,
+      {},
+    );
+    const dateRange = {
+      start: new Date('2026-10-01T00:00:00.000Z'),
+      end: new Date('2026-10-31T23:59:59.999Z'),
+      monthLabel: '2026-10',
+    };
+
+    expect(service['employeeWhere'](scope)).toEqual(
+      expect.objectContaining({ organizationId: { in: [42, 43, 44] } }),
+    );
+    expect(service['payrollWhere'](dateRange, scope)).toEqual(
+      expect.objectContaining({
+        organizationId: { in: [42, 43, 44] },
+        employee: expect.objectContaining({
+          organizationId: { in: [42, 43, 44] },
+        }),
       }),
     );
   });

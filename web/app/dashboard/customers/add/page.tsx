@@ -41,6 +41,14 @@ export default function AddCustomerPage() {
       const returnTo = searchParams.get('returnTo');
       if (returnTo === '/dashboard/quotes/add') {
         router.push(`${returnTo}?createdCustomerId=${customer.id}`);
+      } else if (returnTo === '/dashboard/clients/add') {
+        router.push(`${returnTo}?createdCustomerId=${customer.id}`);
+      } else if (returnTo === '/dashboard/invoices/add') {
+        router.push(`${returnTo}?createdCustomerId=${customer.id}`);
+      } else if (returnTo === '/dashboard/projects') {
+        router.push(`${returnTo}?create=1&createdCustomerId=${customer.id}`);
+      } else if (/^\/dashboard\/projects\/\d+$/.test(returnTo ?? '')) {
+        router.push(`${returnTo}?edit=1&createdCustomerId=${customer.id}`);
       } else {
         router.push('/dashboard/customers');
       }

@@ -37,13 +37,7 @@ describe('getPayrollAttendanceMetrics work-from-home credit', () => {
       taskTimerInterval: { findMany: jest.fn().mockResolvedValue([]) },
     } as unknown as PrismaService;
 
-    const metrics = await getPayrollAttendanceMetrics(
-      prisma,
-      9,
-      10,
-      2026,
-      1,
-    );
+    const metrics = await getPayrollAttendanceMetrics(prisma, 9, 10, 2026, 1);
 
     expect(metrics.presentDays).toBe(2.5);
     expect(metrics.totalWorkedHours).toBe(0);
@@ -53,16 +47,33 @@ describe('getPayrollAttendanceMetrics work-from-home credit', () => {
 
   it('caps paid leave at 1.5 days per calendar month and treats the remainder as unpaid', async () => {
     const prisma = {
-      employee: { findFirst: jest.fn().mockResolvedValue({
-        hireDate: null,
-        shift: { type: 'FIXED', requiredHours: 8, weeklyHolidayDay: 0, workingDays: [1, 2, 3, 4, 5] },
-        shiftAssignments: [],
-        organization: { timezone: 'UTC' },
-      }) },
+      employee: {
+        findFirst: jest.fn().mockResolvedValue({
+          hireDate: null,
+          shift: {
+            type: 'FIXED',
+            requiredHours: 8,
+            weeklyHolidayDay: 0,
+            workingDays: [1, 2, 3, 4, 5],
+          },
+          shiftAssignments: [],
+          organization: { timezone: 'UTC' },
+        }),
+      },
       attendance: { findMany: jest.fn().mockResolvedValue([]) },
-      leaveRequest: { findMany: jest.fn().mockResolvedValue([
-        { employeeId: 9, requestType: 'LEAVE', status: 'APPROVED', startDate: new Date('2026-10-01T00:00:00.000Z'), endDate: new Date('2026-10-02T00:00:00.000Z'), duration: 'FULL_DAY', isPaid: true },
-      ]) },
+      leaveRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            employeeId: 9,
+            requestType: 'LEAVE',
+            status: 'APPROVED',
+            startDate: new Date('2026-10-01T00:00:00.000Z'),
+            endDate: new Date('2026-10-02T00:00:00.000Z'),
+            duration: 'FULL_DAY',
+            isPaid: true,
+          },
+        ]),
+      },
       holiday: { findMany: jest.fn().mockResolvedValue([]) },
       timesheet: { findMany: jest.fn().mockResolvedValue([]) },
       organization: { findMany: jest.fn().mockResolvedValue([]) },

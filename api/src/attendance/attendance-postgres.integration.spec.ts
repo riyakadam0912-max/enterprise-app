@@ -23,7 +23,7 @@ if (
 }
 
 (url ? describe : describe.skip)('Attendance PostgreSQL acceptance', () => {
-  const db = new PrismaClient({ datasources: { db: { url } } });
+  let db: PrismaClient;
   let service: AttendanceService;
   let employeeId: number;
   let organizationId: number;
@@ -43,6 +43,7 @@ if (
     stopActiveTimerForEmployee: jest.fn(async () => null),
   };
   beforeAll(async () => {
+    db = new PrismaClient({ datasources: { db: { url: url! } } });
     const organization = await db.organization.create({
       data: {
         name: 'Attendance acceptance',
@@ -387,26 +388,77 @@ if (
   });
 
   it('recovers an unambiguous legacy record without inventing a checkout', async () => {
-    const flexible = await db.shift.create({ data: { name: 'Legacy recovery', type: 'FLEXIBLE', organizationId } });
-    await db.employee.update({ where: { id: employeeId }, data: { shiftId: flexible.id } });
+    const flexible = await db.shift.create({
+      data: { name: 'Legacy recovery', type: 'FLEXIBLE', organizationId },
+    });
+    await db.employee.update({
+      where: { id: employeeId },
+      data: { shiftId: flexible.id },
+    });
     const start = new Date(Date.now() - 3 * 3600000);
-    const record = await db.attendance.create({ data: { employeeId, organizationId, shiftId: flexible.id, date: new Date(start.toISOString().slice(0, 10)), checkIn: start, status: 'PRESENT' } });
+    const record = await db.attendance.create({
+      data: {
+        employeeId,
+        organizationId,
+        shiftId: flexible.id,
+        date: new Date(start.toISOString().slice(0, 10)),
+        checkIn: start,
+        status: 'PRESENT',
+      },
+    });
     const recovered = await service.recoverLegacySession(record.id, user);
     expect(recovered.startedAt).toEqual(start);
     expect(recovered.endedAt).toBeNull();
-    expect((await db.attendance.findUniqueOrThrow({ where: { id: record.id } })).checkOut).toBeNull();
+    expect(
+      (await db.attendance.findUniqueOrThrow({ where: { id: record.id } }))
+        .checkOut,
+    ).toBeNull();
     await service.checkOut({}, user);
-    expect((await db.attendanceSession.findUniqueOrThrow({ where: { id: recovered.id } })).endedAt).not.toBeNull();
+    expect(
+      (
+        await db.attendanceSession.findUniqueOrThrow({
+          where: { id: recovered.id },
+        })
+      ).endedAt,
+    ).not.toBeNull();
   });
 
   it('refuses legacy reconstruction when later-day source history overlaps the open interval', async () => {
-    const flexible = await db.shift.create({ data: { name: 'Legacy overlap', type: 'FLEXIBLE', organizationId } });
-    await db.employee.update({ where: { id: employeeId }, data: { shiftId: flexible.id } });
+    const flexible = await db.shift.create({
+      data: { name: 'Legacy overlap', type: 'FLEXIBLE', organizationId },
+    });
+    await db.employee.update({
+      where: { id: employeeId },
+      data: { shiftId: flexible.id },
+    });
     const start = new Date(Date.now() - 3 * 86400000);
-    const record = await db.attendance.create({ data: { employeeId, organizationId, shiftId: flexible.id, date: new Date(start.toISOString().slice(0, 10)), checkIn: start, status: 'PRESENT' } });
-    await db.attendanceSession.create({ data: { employeeId, organizationId, shiftId: flexible.id, startedAt: new Date(start.getTime() + 86400000), endedAt: new Date(start.getTime() + 90000000) } });
-    await expect(service.recoverLegacySession(record.id, user)).rejects.toThrow('history is inconsistent');
-    expect(await db.attendanceSession.count({ where: { employeeId, endedAt: null } })).toBe(0);
+    const record = await db.attendance.create({
+      data: {
+        employeeId,
+        organizationId,
+        shiftId: flexible.id,
+        date: new Date(start.toISOString().slice(0, 10)),
+        checkIn: start,
+        status: 'PRESENT',
+      },
+    });
+    await db.attendanceSession.create({
+      data: {
+        employeeId,
+        organizationId,
+        shiftId: flexible.id,
+        startedAt: new Date(start.getTime() + 86400000),
+        endedAt: new Date(start.getTime() + 90000000),
+      },
+    });
+    await expect(service.recoverLegacySession(record.id, user)).rejects.toThrow(
+      'history is inconsistent',
+    );
+    expect(
+      await db.attendanceSession.count({
+        where: { employeeId, endedAt: null },
+      }),
+    ).toBe(0);
   });
 
   it('creates a policy revision while historical attendance retains the previous policy', async () => {

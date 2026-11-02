@@ -125,7 +125,9 @@ describe('Shared authentication throttle storage', () => {
   });
 
   it('does not call legacy url.parse when initializing the production shared store', () => {
-    const legacyUrl = require('node:url') as typeof import('node:url');
+    const legacyUrl = jest.requireActual(
+      'node:url',
+    ) as typeof import('node:url');
     const parse = jest.spyOn(legacyUrl, 'parse').mockImplementation(() => {
       throw new Error('Legacy URL parser must not be called');
     });

@@ -124,7 +124,11 @@ export class LeadsController {
     @Body() dto: ReassignLeadOwnerDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.leadsService.reassignOwner(id, dto.ownerUserId ?? null, req.user);
+    return this.leadsService.reassignOwner(
+      id,
+      dto.ownerUserId ?? null,
+      req.user,
+    );
   }
 
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER, Role.EMPLOYEE)

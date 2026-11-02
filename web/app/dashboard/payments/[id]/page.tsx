@@ -15,28 +15,39 @@ export default function PaymentDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const paymentId = Number(params.id);
-  const [payment, setPayment] = useState<Payment | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<{
+    id: number;
+    payment?: Payment;
+    error?: string;
+  } | null>(null);
+  const validPaymentId = Number.isSafeInteger(paymentId) && paymentId > 0;
+  const loading = validPaymentId && result?.id !== paymentId;
+  const payment = result?.id === paymentId ? result.payment : null;
+  const error = !validPaymentId
+    ? 'Payment not found'
+    : result?.id === paymentId
+      ? result.error
+      : null;
 
   useEffect(() => {
+    if (!validPaymentId) return;
     let active = true;
-    setLoading(true);
-    setError(null);
     getPayment(paymentId)
       .then((value) => {
-        if (active) setPayment(value);
+        if (active) setResult({ id: paymentId, payment: value });
       })
       .catch((value: unknown) => {
-        if (active) setError(value instanceof Error ? value.message : 'Payment not found');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
+        if (active) {
+          setResult({
+            id: paymentId,
+            error: value instanceof Error ? value.message : 'Payment not found',
+          });
+        }
       });
     return () => {
       active = false;
     };
-  }, [paymentId]);
+  }, [paymentId, validPaymentId]);
 
   if (loading) {
     return <div className="p-6 text-sm text-slate-400">Loading payment…</div>;

@@ -66,6 +66,7 @@ function fixture() {
   const org = {
     getOrganizationIds: jest.fn().mockResolvedValue([20, 21]),
     getRelatedOrganizationIds: jest.fn().mockResolvedValue([10, 11]),
+    getDescendantOrganizationIds: jest.fn().mockResolvedValue([20, 21]),
   };
   return {
     prisma,
@@ -81,7 +82,7 @@ function fixture() {
       {} as any,
     ),
     projects: new ProjectsService(prisma as any, bu as any, org as any),
-    reports: new ReportsAnalyticsService(prisma as any, {} as any),
+    reports: new ReportsAnalyticsService(prisma as any, {} as any, org as any),
   };
 }
 
@@ -229,7 +230,11 @@ describe('Super-admin organization management', () => {
         .fn()
         .mockResolvedValue({ cachedAt: Date.now(), payload: { cached: true } }),
     };
-    const reports = new ReportsAnalyticsService({} as any, cache as any);
+    const reports = new ReportsAnalyticsService(
+      {} as any,
+      cache as any,
+      { getDescendantOrganizationIds: jest.fn() } as any,
+    );
     await reports.getDashboardSummary(identity(), { month: '2026-10' });
     await reports.getDashboardSummary(identity({ organizationId: 30 }), {
       month: '2026-10',

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-require-imports -- Standalone CommonJS smoke runner. */
 /* global require, __dirname, process, console */
 const assert = require('node:assert/strict');
 const path = require('node:path');

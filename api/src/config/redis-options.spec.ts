@@ -85,7 +85,9 @@ describe('Redis structured connection options', () => {
   );
 
   it('constructs the real ioredis client without invoking legacy url.parse', () => {
-    const legacyUrl = require('node:url') as typeof import('node:url');
+    const legacyUrl = jest.requireActual(
+      'node:url',
+    ) as typeof import('node:url');
     const parse = jest.spyOn(legacyUrl, 'parse').mockImplementation(() => {
       throw new Error('Legacy URL parser must not be called');
     });

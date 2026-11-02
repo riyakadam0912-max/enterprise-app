@@ -76,10 +76,11 @@ const branch = git(['branch', '--show-current']);
 const workingTree = git(['status', '--porcelain']);
 
 addCheck('Repository typecheck', npm(['run', 'typecheck']));
-addCheck('Repository tests', npm(['test']));
+addCheck('Repository unit and end-to-end tests', npm(['run', 'test:ci']));
 addCheck('Repository lint', npm(['run', 'lint']));
 addCheck('Prisma schema validation', npm(['--prefix', 'api', 'run', 'prisma:validate']));
 addCheck('Prisma migration status', npm(['--prefix', 'api', 'run', 'prisma:migrate:status']));
+addCheck('Critical dependency audit', npm(['run', 'audit:dependencies']));
 
 const secretScanPassed = trackedSecretScan();
 checks.push({

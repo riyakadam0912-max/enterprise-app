@@ -198,7 +198,12 @@ describe('PayrollService', () => {
         data: expect.objectContaining({
           name: 'Engineering',
           components: {
-            create: [expect.objectContaining({ code: 'BASIC_PAY', annualAmount: 600000 })],
+            create: [
+              expect.objectContaining({
+                code: 'BASIC_PAY',
+                annualAmount: 600000,
+              }),
+            ],
           },
         }),
       }),

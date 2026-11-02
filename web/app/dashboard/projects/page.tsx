@@ -32,6 +32,8 @@ import { createTask, getTaskMessages, reviewTask, sendTaskMessage, submitTaskWor
 import { apiClient } from '@/api/apiClient';
 import { createTimesheet, getTimesheetsReport } from '@/api/timesheetsApi';
 import { TaskDetailPanel } from '@/components/tasks/TaskDetailPanel';
+import { CustomerPickerModal } from '@/components/quotes/CustomerPickerModal';
+import { CustomerSelectField } from '@/components/customers/CustomerSelectField';
 import {
   TaskTimerSessionsCell,
   TASK_TIMER_STATE_CHANGED_EVENT,
@@ -46,6 +48,26 @@ import { formatHoursDuration } from '@/lib/time-format';
 import { Ellipsis } from 'lucide-react';
 
 type ProjectTab = 'overview' | 'tasks' | 'users' | 'reports' | 'issues' | 'timeLogs' | 'chat';
+type ProjectCustomerPickerTarget = 'create' | 'edit';
+
+type ProjectEditDraft = {
+  projectName: string;
+  startDate: string;
+  endDate: string;
+  customerId: string;
+  category: string;
+  projectType: string;
+  specificTask: string;
+  priority: string;
+  budget: string;
+  remarks: string;
+  finalDeliverablesLink: string;
+  description: string;
+  driveLink: string;
+  ownerIds: string[];
+};
+
+const PROJECT_CUSTOMER_RETURN_STORAGE_KEY = 'project-customer-return-draft';
 
 type TaskPanelData = {
   id: number;
@@ -94,7 +116,7 @@ const tabs: Array<{ id: ProjectTab; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'tasks', label: 'Tasks' },
   { id: 'chat', label: 'Chat' },
-  { id: 'users', label: 'Users' },
+  { id: 'users', label: 'Team' },
   { id: 'reports', label: 'Reports' },
   { id: 'issues', label: 'Issues' },
   { id: 'timeLogs', label: 'Time Logs' },
@@ -307,11 +329,15 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     tags: '',
   });
   const [customerOptions, setCustomerOptions] = useState<Customer[]>([]);
+  const [customerLoading, setCustomerLoading] = useState(false);
+  const [customerOptionsError, setCustomerOptionsError] = useState<string | null>(null);
+  const [customerPickerTarget, setCustomerPickerTarget] = useState<ProjectCustomerPickerTarget | null>(null);
   const [createProjectBusy, setCreateProjectBusy] = useState(false);
   const [projectNameDraft, setProjectNameDraft] = useState('');
   const [projectStartDateDraft, setProjectStartDateDraft] = useState('');
   const [projectEndDateDraft, setProjectEndDateDraft] = useState('');
   const [projectClientNameDraft, setProjectClientNameDraft] = useState('');
+  const [projectCustomerIdDraft, setProjectCustomerIdDraft] = useState('');
   const [projectCategoryDraft, setProjectCategoryDraft] = useState('');
   const [projectTypeDraft, setProjectTypeDraft] = useState('');
   const [projectSpecificTaskDraft, setProjectSpecificTaskDraft] = useState('');
@@ -379,6 +405,10 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
   const [busy, setBusy] = useState(false);
   const searchParams = useSearchParams();
   const projectRequestId = useRef(0);
+  const restoredCustomerReturnRef = useRef<string | null>(null);
+  const createdCustomerId = searchParams.get('createdCustomerId');
+  const returnToCreate = searchParams.get('create') === '1';
+  const returnToEdit = searchParams.get('edit') === '1';
 
   const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN';
   const isManager = role === 'MANAGER';
@@ -399,6 +429,15 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
   const canViewChat = isAdmin || isManager || isAssignedEmployee || hasAssignedTask;
   const projectOwnerName = getProjectOwnerNames(projectDetails);
   const projectManagerName = projectDetails?.managerUser?.name || projectDetails?.manager || 'Unassigned';
+  const createCustomerName = customerOptions.find(
+    (customer) => String(customer.id) === projectCreateForm.customerId,
+  )?.customerName ?? '';
+  const projectCustomerName = customerOptions.find(
+    (customer) => customer.id === projectDetails?.customerId,
+  )?.customerName ?? projectDetails?.customer?.customerName ?? projectDetails?.clientName ?? projectDetails?.client ?? '';
+  const editCustomerName = customerOptions.find(
+    (customer) => String(customer.id) === projectCustomerIdDraft,
+  )?.customerName ?? projectDetails?.customer?.customerName ?? (projectClientNameDraft || projectDetails?.client || '');
 
 
 
@@ -413,6 +452,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     setProjectStartDateDraft(details.startDate?.slice(0, 10) ?? '');
     setProjectEndDateDraft((details.endDate ?? details.deadline)?.slice(0, 10) ?? '');
     setProjectClientNameDraft(details.clientName ?? '');
+    setProjectCustomerIdDraft(details.customerId == null ? '' : String(details.customerId));
     setProjectCategoryDraft(details.category ?? '');
     setProjectTypeDraft(details.projectType ?? '');
     setProjectSpecificTaskDraft(details.specificTask ?? '');
@@ -637,13 +677,105 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
 
     if (!canLoadCustomers) {
       setCustomerOptions([]);
+      setCustomerOptionsError(null);
       return;
     }
 
+    let cancelled = false;
+    setCustomerLoading(true);
+    setCustomerOptionsError(null);
     getCustomers()
-      .then(setCustomerOptions)
-      .catch(() => setCustomerOptions([]));
+      .then((customers) => {
+        if (!cancelled) setCustomerOptions(customers);
+      })
+      .catch((loadError: unknown) => {
+        if (!cancelled) {
+          setCustomerOptions([]);
+          setCustomerOptionsError('Unable to load customers. Please try again.');
+          reportError(loadError, 'Unable to load project customers');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCustomerLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [role]);
+
+  useEffect(() => {
+    if (!createdCustomerId || !returnToCreate) return;
+
+    let restoredForm: Partial<typeof projectCreateForm> = {};
+    const savedDraft = sessionStorage.getItem(PROJECT_CUSTOMER_RETURN_STORAGE_KEY);
+    if (savedDraft) {
+      try {
+        const draft = JSON.parse(savedDraft) as {
+          mode?: string;
+          form?: Partial<typeof projectCreateForm>;
+        };
+        if (draft.mode === 'create' && draft.form) restoredForm = draft.form;
+      } catch (restoreError: unknown) {
+        reportError(restoreError, 'Unable to restore project creation draft');
+      }
+    }
+
+    setProjectCreateForm((current) => ({
+      ...current,
+      ...restoredForm,
+      customerId: createdCustomerId,
+    }));
+    setShowProjectCreate(true);
+    sessionStorage.removeItem(PROJECT_CUSTOMER_RETURN_STORAGE_KEY);
+    window.history.replaceState({}, '', '/dashboard/projects?create=1');
+  }, [createdCustomerId, returnToCreate]);
+
+  useEffect(() => {
+    if (!createdCustomerId || !returnToEdit || !projectDetails) return;
+    const returnKey = `${projectDetails.id}:${createdCustomerId}`;
+    if (restoredCustomerReturnRef.current === returnKey) return;
+
+    let restoredDraft: Partial<ProjectEditDraft> = {};
+    const savedDraft = sessionStorage.getItem(PROJECT_CUSTOMER_RETURN_STORAGE_KEY);
+    if (savedDraft) {
+      try {
+        const draft = JSON.parse(savedDraft) as {
+          mode?: string;
+          projectId?: number;
+          form?: Partial<ProjectEditDraft>;
+        };
+        if (
+          draft.mode === 'edit' &&
+          draft.projectId === projectDetails.id &&
+          draft.form
+        ) {
+          restoredDraft = draft.form;
+        }
+      } catch (restoreError: unknown) {
+        reportError(restoreError, 'Unable to restore project editing draft');
+      }
+    }
+
+    if (restoredDraft.projectName !== undefined) setProjectNameDraft(restoredDraft.projectName);
+    if (restoredDraft.startDate !== undefined) setProjectStartDateDraft(restoredDraft.startDate);
+    if (restoredDraft.endDate !== undefined) setProjectEndDateDraft(restoredDraft.endDate);
+    if (restoredDraft.category !== undefined) setProjectCategoryDraft(restoredDraft.category);
+    if (restoredDraft.projectType !== undefined) setProjectTypeDraft(restoredDraft.projectType);
+    if (restoredDraft.specificTask !== undefined) setProjectSpecificTaskDraft(restoredDraft.specificTask);
+    if (restoredDraft.priority !== undefined) setProjectPriorityDraft(restoredDraft.priority);
+    if (restoredDraft.budget !== undefined) setProjectBudgetDraft(restoredDraft.budget);
+    if (restoredDraft.remarks !== undefined) setProjectRemarksDraft(restoredDraft.remarks);
+    if (restoredDraft.finalDeliverablesLink !== undefined) setProjectFinalDeliverablesDraft(restoredDraft.finalDeliverablesLink);
+    if (restoredDraft.description !== undefined) setProjectDescriptionDraft(restoredDraft.description);
+    if (restoredDraft.driveLink !== undefined) setProjectDriveLinkDraft(restoredDraft.driveLink);
+    if (restoredDraft.ownerIds !== undefined) setProjectOwnerIdsDraft(restoredDraft.ownerIds);
+    setProjectCustomerIdDraft(createdCustomerId);
+    setShowProjectEdit(true);
+    restoredCustomerReturnRef.current = returnKey;
+    sessionStorage.removeItem(PROJECT_CUSTOMER_RETURN_STORAGE_KEY);
+    window.history.replaceState({}, '', `/dashboard/projects/${projectDetails.id}`);
+  }, [createdCustomerId, projectDetails, returnToEdit]);
 
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -832,11 +964,15 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     if (!selectedProjectId) return;
     setBusy(true);
     try {
+      const selectedCustomer = customerOptions.find(
+        (customer) => String(customer.id) === projectCustomerIdDraft,
+      );
       await updateProject(selectedProjectId, {
         projectName: projectNameDraft.trim(),
         startDate: projectStartDateDraft || undefined,
         endDate: projectEndDateDraft || undefined,
-        clientName: projectClientNameDraft.trim() || undefined,
+        clientName: selectedCustomer?.customerName ?? (projectClientNameDraft.trim() || undefined),
+        customerId: projectCustomerIdDraft ? Number(projectCustomerIdDraft) : null,
         category: projectCategoryDraft.trim() || undefined,
         projectType: projectTypeDraft || undefined,
         specificTask: projectSpecificTaskDraft.trim() || undefined,
@@ -874,6 +1010,9 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     setActionFeedback(null);
 
     try {
+      const selectedCustomer = customerOptions.find(
+        (customer) => String(customer.id) === projectCreateForm.customerId,
+      );
       const createdProject = await createProject({
         projectName: projectCreateForm.projectName.trim(),
         startDate: projectCreateForm.startDate || undefined,
@@ -884,7 +1023,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
         status: projectCreateForm.status || undefined,
         description: projectCreateForm.description.trim() || undefined,
         client: projectCreateForm.client.trim() || undefined,
-        clientName: projectCreateForm.clientName.trim() || undefined,
+        clientName: selectedCustomer?.customerName || undefined,
         category: projectCreateForm.category.trim() || undefined,
         projectType: projectCreateForm.projectType || undefined,
         specificTask: projectCreateForm.specificTask.trim() || undefined,
@@ -1105,6 +1244,40 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
     } finally {
       setBusy(false);
     }
+  }
+
+  function onCreateCustomerFromProject() {
+    if (!customerPickerTarget) return;
+
+    const isEditing = customerPickerTarget === 'edit' && selectedProjectId != null;
+    const returnTo = isEditing
+      ? `/dashboard/projects/${selectedProjectId}`
+      : '/dashboard/projects';
+    const draft = isEditing
+      ? {
+          mode: 'edit',
+          projectId: selectedProjectId,
+          form: {
+            projectName: projectNameDraft,
+            startDate: projectStartDateDraft,
+            endDate: projectEndDateDraft,
+            customerId: projectCustomerIdDraft,
+            category: projectCategoryDraft,
+            projectType: projectTypeDraft,
+            specificTask: projectSpecificTaskDraft,
+            priority: projectPriorityDraft,
+            budget: projectBudgetDraft,
+            remarks: projectRemarksDraft,
+            finalDeliverablesLink: projectFinalDeliverablesDraft,
+            description: projectDescriptionDraft,
+            driveLink: projectDriveLinkDraft,
+            ownerIds: projectOwnerIdsDraft,
+          },
+        }
+      : { mode: 'create', form: projectCreateForm };
+    sessionStorage.setItem(PROJECT_CUSTOMER_RETURN_STORAGE_KEY, JSON.stringify(draft));
+    setCustomerPickerTarget(null);
+    router.push(`/dashboard/customers/add?returnTo=${encodeURIComponent(returnTo)}`);
   }
 
   async function onAddEmployee() {
@@ -1343,7 +1516,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
           {(isAdmin || isManager) && (
             <button
               onClick={() => setShowProjectCreate(true)}
-              className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600"
+              className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white! hover:bg-orange-600"
             >
               + Create Project
             </button>
@@ -1396,7 +1569,10 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                   <div className="space-y-3">
                     <input value={projectCreateForm.projectName} onChange={(event) => setProjectCreateForm((current) => ({ ...current, projectName: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Project name" />
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <input value={projectCreateForm.clientName} onChange={(event) => setProjectCreateForm((current) => ({ ...current, clientName: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Client name" />
+                      <CustomerSelectField
+                        selectedName={createCustomerName}
+                        onClick={() => setCustomerPickerTarget('create')}
+                      />
                       <select value={projectCreateForm.category} onChange={(event) => setProjectCreateForm((current) => ({ ...current, category: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
                         <option value="">Category</option>
                         {PROJECT_CATEGORY_OPTIONS.map((option) => (
@@ -1404,7 +1580,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                         ))}
                       </select>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
                       <select value={projectCreateForm.projectType} onChange={(event) => setProjectCreateForm((current) => ({ ...current, projectType: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
                         <option value="">Project type</option>
                         <option value="EVENT_MANAGEMENT">Event management</option>
@@ -1414,7 +1590,6 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                         <option value="PRODUCTION_OTHER">Production other</option>
                         <option value="TECH_PROJECTS">Tech projects</option>
                       </select>
-                      <input value={projectCreateForm.client} onChange={(event) => setProjectCreateForm((current) => ({ ...current, client: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Client reference" />
                     </div>
                   </div>
                 </div>
@@ -1455,12 +1630,6 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                         ))}
                       </select>
                     </div>
-                    <select value={projectCreateForm.customerId} onChange={(event) => setProjectCreateForm((current) => ({ ...current, customerId: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
-                      <option value="">No customer linked</option>
-                      {customerOptions.map((customer) => (
-                        <option key={customer.id} value={String(customer.id)}>{customer.customerName}</option>
-                      ))}
-                    </select>
                   </div>
                 </div>
 
@@ -1589,7 +1758,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
               <div>
                 <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{projectDetails.projectName}</h1>
                 <p className="mt-2 text-sm text-slate-500">
-                  Project ID {projectDetails.id} · {projectDetails.clientName ?? projectDetails.client ?? 'No client'} · Owner: {projectOwnerName} · Managed by: {projectManagerName}
+                  Project ID {projectDetails.id} · Customer: {projectCustomerName || 'No customer'} · Owner: {projectOwnerName} · Managed by: {projectManagerName}
                 </p>
                 {projectDetails.managerId != null && (
                   <p className="mt-1 text-xs text-slate-500">
@@ -1692,6 +1861,17 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
             <div className="relative">
               <button
                 type="button"
+                onClick={() => { setActiveTab('users'); setIsProjectMenuOpen(false); }}
+                className={`mr-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                  activeTab === 'users'
+                    ? 'border-slate-900 bg-slate-900 text-white'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
+                }`}
+              >
+                Team
+              </button>
+              <button
+                type="button"
                 aria-label="Choose project section"
                 title="Choose project section"
                 onClick={() => setIsProjectMenuOpen((open) => !open)}
@@ -1729,7 +1909,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                     <span className="font-semibold text-slate-700">Project summary</span>
                   </div>
                   <div className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
-                    <p><span className="text-slate-400">Client</span><br /><span className="font-medium text-slate-800">{projectDetails.clientName ?? projectDetails.client ?? 'Not set'}</span></p>
+                    <p><span className="text-slate-400">Customer</span><br /><span className="font-medium text-slate-800">{projectCustomerName || 'Not set'}</span></p>
                     <p><span className="text-slate-400">Project type</span><br /><span className="font-medium text-slate-800">{projectDetails.projectType?.replaceAll('_', ' ') ?? 'Not set'}</span></p>
                     <p><span className="text-slate-400">Start date</span><br /><span className="font-medium text-slate-800">{formatDate(projectDetails.startDate)}</span></p>
                     <p><span className="text-slate-400">Deadline</span><br /><span className="font-medium text-slate-800">{formatDate(projectDetails.deadline ?? projectDetails.endDate)}</span></p>
@@ -1763,7 +1943,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                     <p>Deadline: {formatDate(projectDetails.deadline ?? projectDetails.endDate)}</p>
                     <p>Status: {projectDetails.status}</p>
                     <p>Budget: {formatBudget(projectDetails.budget)}</p>
-                    {projectDetails.clientName && <p>Client: {projectDetails.clientName}</p>}
+                    {projectCustomerName && <p>Customer: {projectCustomerName}</p>}
                     {projectDetails.category && <p>Category: {projectDetails.category}</p>}
                     {projectDetails.projectType && <p>Type: {projectDetails.projectType}</p>}
                     {projectDetails.priority && <p>Priority: {projectDetails.priority}</p>}
@@ -1921,7 +2101,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                     <p className="text-xs text-slate-500">Deadline time uses your device&apos;s local timezone.</p>
                     <button
                       disabled={taskSubmitting}
-                      className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                      className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white! disabled:opacity-50"
                     >
                       {taskSubmitting ? 'Saving…' : 'Assign Task'}
                     </button>
@@ -2234,7 +2414,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                     <button
                       onClick={onAddCoManager}
                       disabled={!coManagerSelection || busy}
-                      className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                      className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white! disabled:opacity-50"
                     >
                       Add
                     </button>
@@ -2318,7 +2498,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                       <button
                         onClick={onAddEmployee}
                         disabled={!selectedEmployeeId || busy}
-                        className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                        className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white! disabled:opacity-50"
                       >
                         Add Selected Employee
                       </button>
@@ -2408,7 +2588,10 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                     <div className="space-y-3">
                       <input value={projectNameDraft} onChange={(event) => setProjectNameDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Project name" />
                       <div className="grid gap-3 sm:grid-cols-2">
-                        <input value={projectClientNameDraft} onChange={(event) => setProjectClientNameDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Client name" />
+                        <CustomerSelectField
+                          selectedName={editCustomerName}
+                          onClick={() => setCustomerPickerTarget('edit')}
+                        />
                         <select value={projectCategoryDraft} onChange={(event) => setProjectCategoryDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
                           <option value="">Category</option>
                           {PROJECT_CATEGORY_OPTIONS.map((option) => (
@@ -2416,7 +2599,7 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                           ))}
                         </select>
                       </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
                         <select value={projectTypeDraft} onChange={(event) => setProjectTypeDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
                           <option value="">Project type</option>
                           <option value="EVENT_MANAGEMENT">Event management</option>
@@ -2426,7 +2609,6 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
                           <option value="PRODUCTION_OTHER">Production other</option>
                           <option value="TECH_PROJECTS">Tech projects</option>
                         </select>
-                        <input value={projectClientDraft} onChange={(event) => setProjectClientDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Client reference" />
                       </div>
                     </div>
                   </div>
@@ -2490,6 +2672,28 @@ export default function ProjectsWorkflowPage({ initialProjectId, dedicated = fal
         )}
         </>
       )}
+      <CustomerPickerModal
+        open={customerPickerTarget !== null}
+        customers={customerOptions}
+        selectedId={
+          customerPickerTarget === 'create'
+            ? Number(projectCreateForm.customerId) || undefined
+            : Number(projectCustomerIdDraft) || undefined
+        }
+        loading={customerLoading}
+        error={customerOptionsError}
+        nameOnly
+        onClose={() => setCustomerPickerTarget(null)}
+        onSelect={(customer) => {
+          if (customerPickerTarget === 'create') {
+            setProjectCreateForm((current) => ({ ...current, customerId: String(customer.id) }));
+          } else {
+            setProjectCustomerIdDraft(String(customer.id));
+          }
+          setCustomerPickerTarget(null);
+        }}
+        onCreateCustomer={onCreateCustomerFromProject}
+      />
     </div>
   );
 }

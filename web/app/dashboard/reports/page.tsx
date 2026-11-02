@@ -47,6 +47,13 @@ function toMonthInputValue(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function formatMonthLabel(value: string) {
+  if (!value) return 'Selected period';
+  const [year, month] = value.split('-').map(Number);
+  if (!year || !month) return value;
+  return new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric' }).format(new Date(year, month - 1, 1));
+}
+
 function formatINR(value: number) {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -58,7 +65,7 @@ function formatINR(value: number) {
 
 function MetricCard({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white/95 px-5 py-4 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
       <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">{label}</p>
       <p className="mt-1 text-2xl font-semibold text-slate-900">{value}</p>
       {note ? <p className="mt-1 text-xs text-slate-500">{note}</p> : null}
@@ -321,21 +328,40 @@ function ReportsPage() {
   // Older API deployments may omit this optional quality metadata field.
   // Treat a missing value as an empty warning list so the report remains usable.
   const dataQualityWarnings = data?.dataQualityWarnings ?? [];
+  const periodLabel = formatMonthLabel(month);
+  const attendanceRows = data?.tables.attendanceBreakdown ?? [];
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 md:p-8">
+    <div className="min-h-screen bg-[#f7f8fa] p-4 md:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+        <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-4 border-b border-slate-100 px-5 py-5 sm:px-7 md:flex-row md:items-start md:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Insights</p>
-              <h1 className="mt-1 text-3xl font-semibold text-slate-900">Reports & Analytics</h1>
-              <p className="mt-1 text-sm text-slate-600">
-                Decision-ready workforce reporting for the selected period.
-              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-600">Insights</p>
+                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">Live workforce view</span>
+              </div>
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 md:text-3xl">Reports & Analytics</h1>
+              <p className="mt-1 text-sm text-slate-600">Decision-ready workforce reporting for <span className="font-semibold text-slate-800">{periodLabel}</span>.</p>
             </div>
+            <button
+              type="button"
+              onClick={exportReport}
+              disabled={!data || loading}
+              className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <span aria-hidden="true">↓</span> Export CSV
+            </button>
+          </div>
 
-            <div className="grid w-full gap-3 md:w-auto md:grid-cols-2 xl:grid-cols-4">
+          <div className="bg-slate-50/70 px-5 py-4 sm:px-7">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Report scope</p>
+              {(month !== toMonthInputValue() || department || selectedEmployeeId || selectedRole) ? (
+                <button type="button" onClick={() => { setMonth(toMonthInputValue()); setDepartment(''); setSelectedEmployeeId(''); setSelectedRole(''); }} className="text-xs font-semibold text-orange-600 transition hover:text-orange-700">Reset filters</button>
+              ) : null}
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <label className="text-xs font-medium text-slate-700">
                 Month
                 <input
@@ -363,15 +389,6 @@ function ReportsPage() {
                     ))}
                   </select>
                 </label>
-              ) : null}
-
-              {canUseOrgFilters && selectedEmployeeId ? (
-                <Link
-                  href={`/dashboard/attendance/employee/${selectedEmployeeId}?month=${month}`}
-                  className="mt-5 inline-flex items-center justify-center rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-600"
-                >
-                  Open detailed attendance
-                </Link>
               ) : null}
 
               {canUseOrgFilters ? (
@@ -407,14 +424,11 @@ function ReportsPage() {
                 </label>
               ) : null}
             </div>
-            <button
-              type="button"
-              onClick={exportReport}
-              disabled={!data || loading}
-              className="inline-flex h-10 items-center justify-center rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Export CSV
-            </button>
+            {canUseOrgFilters && selectedEmployeeId ? (
+              <Link href={`/dashboard/attendance/employee/${selectedEmployeeId}?month=${month}`} className="mt-3 inline-flex items-center text-xs font-semibold text-orange-600 transition hover:text-orange-700">
+                Open detailed attendance <span className="ml-1" aria-hidden="true">→</span>
+              </Link>
+            ) : null}
           </div>
         </section>
 
@@ -426,8 +440,8 @@ function ReportsPage() {
         {!loading && !error && data ? (
           <>
             <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <MetricCard label="Total Employees" value={String(data.summaryCards.totalEmployees)} />
-              <MetricCard label="Present Today" value={String(data.summaryCards.presentToday)} />
+              <MetricCard label="Total Employees" value={String(data.summaryCards.totalEmployees)} note="Active workforce in scope" />
+              <MetricCard label="Present Today" value={String(data.summaryCards.presentToday)} note="Attendance recorded today" />
               <MetricCard
                 label="Monthly Payroll Cost"
                 value={formatINR(data.summaryCards.monthlyPayrollCost)}
@@ -435,7 +449,7 @@ function ReportsPage() {
               <MetricCard
                 label="Attrition Rate"
                 value={`${data.summaryCards.attritionRate.toFixed(2)}%`}
-                note={`${data.turnoverSummary.resignations} resignations this period`}
+                note={`${data.turnoverSummary.resignations} resignations in this period`}
               />
             </section>
 
@@ -512,13 +526,13 @@ function ReportsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {data.tables.topPerformers.map((item) => (
+                      {data.tables.topPerformers.length ? data.tables.topPerformers.map((item) => (
                         <tr key={item.employeeId} className="border-t border-slate-100">
                           <td className="px-4 py-2 text-slate-800">{item.name}</td>
                           <td className="px-4 py-2 text-slate-600">{item.department}</td>
                           <td className="px-4 py-2 font-medium text-emerald-700">{item.rating.toFixed(2)}</td>
                         </tr>
-                      ))}
+                      )) : <tr><td colSpan={3} className="px-4 py-8 text-center text-xs text-slate-500">No performance records for this period.</td></tr>}
                     </tbody>
                   </table>
                 </article>
@@ -536,7 +550,7 @@ function ReportsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {data.tables.recentHires.map((item) => (
+                      {data.tables.recentHires.length ? data.tables.recentHires.map((item) => (
                         <tr key={item.id} className="border-t border-slate-100">
                           <td className="px-4 py-2 text-slate-800">{item.name}</td>
                           <td className="px-4 py-2 text-slate-600">{item.department ?? '-'}</td>
@@ -544,7 +558,7 @@ function ReportsPage() {
                             {item.hireDate ? formatDate(new Date(item.hireDate)) : '-'}
                           </td>
                         </tr>
-                      ))}
+                      )) : <tr><td colSpan={3} className="px-4 py-8 text-center text-xs text-slate-500">No new hires in this period.</td></tr>}
                     </tbody>
                   </table>
                 </article>
@@ -563,7 +577,7 @@ function ReportsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {data.performanceSummary.lowPerformers.map((item) => (
+                      {data.performanceSummary.lowPerformers.length ? data.performanceSummary.lowPerformers.map((item) => (
                         <tr key={item.employeeId} className="border-t border-slate-100">
                           <td className="px-4 py-2 text-slate-800">{item.name}</td>
                           <td className="px-4 py-2 text-slate-600">{item.department}</td>
@@ -578,7 +592,7 @@ function ReportsPage() {
                             </button>
                           </td>
                         </tr>
-                      ))}
+                      )) : <tr><td colSpan={4} className="px-4 py-8 text-center text-xs text-slate-500">No low performance alerts.</td></tr>}
                     </tbody>
                   </table>
                 </article>
@@ -602,16 +616,16 @@ function ReportsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.tables.attendanceBreakdown.map((item, idx) => (
+                    {attendanceRows.length ? attendanceRows.map((item, idx) => (
                       <tr key={`${item.date}-${item.employeeId ?? idx}`} className="border-t border-slate-100">
                         <td className="px-4 py-2 text-slate-700">{formatDate(new Date(item.date))}</td>
                         <td className="px-4 py-2 text-slate-800">{item.employeeName}</td>
                         <td className="px-4 py-2 text-slate-600">{item.department}</td>
-                        <td className="px-4 py-2 text-slate-700">{item.status}</td>
+                        <td className="px-4 py-2"><span className="inline-flex rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{item.status}</span></td>
                         <td className="px-4 py-2 text-slate-700">{item.lateMinutes} mins</td>
                         <td className="px-4 py-2 text-slate-700">{formatHoursDuration(item.overtimeHours)}</td>
                       </tr>
-                    ))}
+                    )) : <tr><td colSpan={6} className="px-4 py-10 text-center text-xs text-slate-500">No attendance records match the selected scope.</td></tr>}
                   </tbody>
                 </table>
               </div>

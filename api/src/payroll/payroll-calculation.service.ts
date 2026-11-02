@@ -231,7 +231,8 @@ export class PayrollCalculationService {
     attendanceData: NonNullable<PayrollCalculationInput['attendanceData']>,
   ) {
     const basic = salaryStructure.basic || 0;
-    const pfEmployee = salaryStructure.manualPf ?? this.calculatePF(basic, true);
+    const pfEmployee =
+      salaryStructure.manualPf ?? this.calculatePF(basic, true);
     const pfEmployer = this.calculatePF(basic, false);
     const esi = salaryStructure.manualEsi ?? this.calculateESI(grossEarnings);
     const professionalTax =
@@ -244,8 +245,7 @@ export class PayrollCalculationService {
     );
 
     // TDS is calculated monthly based on annual tax projection
-    const tds =
-      salaryStructure.manualTds ?? (salaryStructure.tds || 0) / 12;
+    const tds = salaryStructure.manualTds ?? (salaryStructure.tds || 0) / 12;
 
     return {
       pfEmployee: Math.round(pfEmployee * 100) / 100,
@@ -256,7 +256,8 @@ export class PayrollCalculationService {
       lossOfPay: Math.round(lossOfPay * 100) / 100,
       latePenalty: Math.round(latePenalty * 100) / 100,
       advance: 0, // Would be fetched from actual advance records
-      other: Math.round((salaryStructure.manualOtherDeductions ?? 0) * 100) / 100,
+      other:
+        Math.round((salaryStructure.manualOtherDeductions ?? 0) * 100) / 100,
     };
   }
 

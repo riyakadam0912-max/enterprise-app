@@ -4,6 +4,9 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const API_PREFIX = '/api/v1';
+// Keep browser requests same-origin on localhost while forwarding them to the
+// deployed API. This lets local development authenticate against production
+// without exposing cross-origin auth cookies to the browser.
 const DEFAULT_API_TARGET = 'https://enterprise-app-1phv.vercel.app';
 const HOP_BY_HOP_HEADERS = [
   'connection',

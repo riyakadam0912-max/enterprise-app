@@ -53,12 +53,12 @@ export function buildApprovedWorkFromHomeCredits(
 
   const credits = new Map<string, number>();
   for (const [employeeMonthKey, dates] of datesByEmployeeMonth) {
-    const employeeId = Number(employeeMonthKey.slice(0, employeeMonthKey.indexOf(':')));
-    [...dates]
-      .sort()
-      .forEach((dateKey, index) => {
-        credits.set(`${employeeId}:${dateKey}`, index < 2 ? 1 : 0.5);
-      });
+    const employeeId = Number(
+      employeeMonthKey.slice(0, employeeMonthKey.indexOf(':')),
+    );
+    [...dates].sort().forEach((dateKey, index) => {
+      credits.set(`${employeeId}:${dateKey}`, index < 2 ? 1 : 0.5);
+    });
   }
   return credits;
 }

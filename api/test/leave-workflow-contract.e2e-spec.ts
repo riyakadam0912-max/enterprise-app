@@ -12,6 +12,9 @@ import { LeaveRequestsService } from '../src/leave-requests/leave-requests.servi
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { WorkflowEngineService } from '../src/workflows/workflow-engine.service';
+import { BusinessUnitsService } from '../src/business-units/business-units.service';
+import { OrganizationScopeService } from '../src/organizations/organization-scope.service';
+import { LeaveEntitlementsService } from '../src/leave-requests/leave-entitlements.service';
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -168,6 +171,32 @@ describe('Leave workflow contract (e2e)', () => {
         { provide: CACHE_MANAGER, useValue: cacheManagerMock },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: WorkflowEngineService, useValue: workflowEngineMock },
+        {
+          provide: BusinessUnitsService,
+          useValue: {
+            resolveScope: jest.fn().mockResolvedValue({
+              organizationId: 1,
+              allUnits: true,
+              unitIds: [],
+              assignedUnitId: null,
+            }),
+            buildEmployeeBUWhere: jest.fn().mockReturnValue({}),
+            assertRecordAccessible: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: OrganizationScopeService,
+          useValue: { getOrganizationIds: jest.fn().mockResolvedValue([1]) },
+        },
+        {
+          provide: LeaveEntitlementsService,
+          useValue: {
+            countScheduledLeaveDays: jest.fn().mockResolvedValue(0),
+            getScheduledLeaveDates: jest.fn().mockResolvedValue([]),
+            getAvailableBalance: jest.fn().mockResolvedValue(12),
+            recordUsage: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     })
       .overrideGuard(JwtAuthGuard)

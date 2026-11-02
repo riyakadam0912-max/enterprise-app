@@ -1,4 +1,12 @@
-import { IsArray, IsDateString, IsIn, IsInt, IsOptional, Min, ArrayMinSize } from 'class-validator';
+import {
+  IsArray,
+  IsDateString,
+  IsIn,
+  IsInt,
+  IsOptional,
+  Min,
+  ArrayMinSize,
+} from 'class-validator';
 
 export class BulkUpdateTasksDto {
   @IsArray()
@@ -7,7 +15,14 @@ export class BulkUpdateTasksDto {
   taskIds!: number[];
 
   @IsOptional()
-  @IsIn(['PENDING', 'IN_PROGRESS', 'SUBMITTED', 'APPROVED', 'REJECTED', 'COMPLETED'])
+  @IsIn([
+    'PENDING',
+    'IN_PROGRESS',
+    'SUBMITTED',
+    'APPROVED',
+    'REJECTED',
+    'COMPLETED',
+  ])
   status?: string;
 
   @IsOptional()

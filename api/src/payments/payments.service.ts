@@ -32,7 +32,9 @@ export class PaymentsService {
       !options.allowClosed &&
       ['CANCELLED', 'VOIDED'].includes(String(invoice.status).toUpperCase())
     ) {
-      throw new BadRequestException('Payments cannot be recorded for this invoice');
+      throw new BadRequestException(
+        'Payments cannot be recorded for this invoice',
+      );
     }
     return invoice;
   }
@@ -43,7 +45,9 @@ export class PaymentsService {
     }
   }
 
-  private calculatePaidAmount(payments: Array<{ amount: number; status: string }>) {
+  private calculatePaidAmount(
+    payments: Array<{ amount: number; status: string }>,
+  ) {
     return payments.reduce((sum, payment) => {
       const status = String(payment.status ?? 'COMPLETED').toUpperCase();
       if (status === 'FAILED' || status === 'PENDING') return sum;
@@ -81,9 +85,13 @@ export class PaymentsService {
 
   async findByInvoice(invoiceId: number, user: AuthUser) {
     const organizationId = this.validateOrganization(user);
-    const invoice = await this.getInvoiceForOrganization(invoiceId, organizationId, {
-      allowClosed: true,
-    });
+    const invoice = await this.getInvoiceForOrganization(
+      invoiceId,
+      organizationId,
+      {
+        allowClosed: true,
+      },
+    );
     const payments = await this.prisma.payment.findMany({
       where: { invoiceId, organizationId },
       orderBy: { createdAt: 'desc' },

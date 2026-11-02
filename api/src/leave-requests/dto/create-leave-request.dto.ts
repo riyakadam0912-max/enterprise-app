@@ -45,8 +45,9 @@ export class CreateLeaveRequestDto {
   @ApiPropertyOptional({ enum: LEAVE_DURATIONS, default: 'FULL_DAY' })
   duration?: LeaveDuration;
 
-  @ValidateIf((request: CreateLeaveRequestDto) =>
-    (request.requestType ?? 'LEAVE') === 'LEAVE',
+  @ValidateIf(
+    (request: CreateLeaveRequestDto) =>
+      (request.requestType ?? 'LEAVE') === 'LEAVE',
   )
   @IsString()
   @IsIn(LEAVE_TYPES)

@@ -24,3 +24,7 @@ export function createProduct(data: ProductInput): Promise<Product> {
 export function updateProduct(id: number, data: ProductInput): Promise<Product> {
   return apiClient<Product>(`/products/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 }
+
+export function deleteProduct(id: number): Promise<void> {
+  return apiClient<void>(`/products/${id}`, { method: 'DELETE' });
+}

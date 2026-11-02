@@ -90,7 +90,14 @@ export function useAttendanceToday() {
     }
   }, [scopeKey, enabled]);
 
-  useEffect(() => { void fetch(); return () => { sequence.current++; }; }, [fetch]);
+  const invalidatePendingRequests = useCallback(() => {
+    sequence.current++;
+  }, []);
+
+  useEffect(() => {
+    void fetch();
+    return invalidatePendingRequests;
+  }, [fetch, invalidatePendingRequests]);
 
   return { data: enabled && dataScope === scopeKey ? data : null, loading: enabled && (loading || dataScope !== scopeKey && !error), error: enabled ? error : null, refetch: fetch };
 }

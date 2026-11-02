@@ -140,6 +140,10 @@ export async function apiClient<T>(
         config,
       );
 
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
     const payload = response.data;
 
     if (

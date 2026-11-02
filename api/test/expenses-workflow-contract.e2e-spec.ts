@@ -11,6 +11,9 @@ import { RolesGuard } from '../src/common/guards/roles.guard';
 import { TransformInterceptor } from '../src/common/interceptors/transform.interceptor';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { WorkflowEngineService } from '../src/workflows/workflow-engine.service';
+import { BusinessUnitsService } from '../src/business-units/business-units.service';
+import { OrganizationScopeService } from '../src/organizations/organization-scope.service';
+import { FILE_STORAGE_PROVIDER } from '../src/file-management/file-management.constants';
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -146,6 +149,23 @@ describe('Expenses workflow contract (e2e)', () => {
           provide: WorkflowEngineService,
           useValue: workflowEngineMock,
         },
+        {
+          provide: BusinessUnitsService,
+          useValue: {
+            resolveScope: jest.fn().mockResolvedValue({
+              organizationId: 1,
+              allUnits: true,
+              unitIds: [],
+              assignedUnitId: null,
+            }),
+            assertRecordAccessible: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: OrganizationScopeService,
+          useValue: { getOrganizationIds: jest.fn().mockResolvedValue([1]) },
+        },
+        { provide: FILE_STORAGE_PROVIDER, useValue: {} },
       ],
     })
       .overrideGuard(JwtAuthGuard)

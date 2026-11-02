@@ -8,8 +8,9 @@
     "build": "next build",
     "start": "next start --port 3001",
     "lint": "eslint",
-    "test": "npm run typecheck",
+    "test": "npm run typecheck && npm run test:rich-text && npm run test:ui",
     "test:rich-text": "node --test test/sanitize-rich-text.test.cjs",
+    "test:ui": "node --test test/ui-e2e.test.cjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

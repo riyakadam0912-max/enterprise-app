@@ -42,6 +42,7 @@ describe('Organizations management (e2e)', () => {
 
     const orgAdmin = await AuthHelper.createTestUserAndLogin(app);
     expect(orgAdmin.accessToken).toBeDefined();
+    const otherOrg = await OrganizationFactory.create();
 
     // Org admins now get a scoped list (200) instead of 403.
     const adminList = await request(server)
@@ -52,18 +53,18 @@ describe('Organizations management (e2e)', () => {
 
     // Org admin cannot view, patch, or delete arbitrary orgs by ID (platform admin only).
     const nonAdminGet = await request(server)
-      .get('/api/v1/organizations/1')
+      .get(`/api/v1/organizations/${otherOrg.id}`)
       .set('Authorization', `Bearer ${orgAdmin.accessToken}`);
     expect(nonAdminGet.status).toBe(403);
 
     const nonAdminPatch = await request(server)
-      .patch('/api/v1/organizations/1')
+      .patch(`/api/v1/organizations/${otherOrg.id}`)
       .set('Authorization', `Bearer ${orgAdmin.accessToken}`)
       .send({ name: `New Name ${Date.now()}` });
     expect(nonAdminPatch.status).toBe(403);
 
     const nonAdminDelete = await request(server)
-      .delete('/api/v1/organizations/1')
+      .delete(`/api/v1/organizations/${otherOrg.id}`)
       .set('Authorization', `Bearer ${orgAdmin.accessToken}`);
     expect(nonAdminDelete.status).toBe(403);
   });
@@ -75,15 +76,26 @@ describe('Organizations management (e2e)', () => {
 
     const ownOrganization = await request(server)
       .get('/api/v1/organizations/me')
-      .set(admin.authHeaders)
-      .set('X-Organization-Id', String(otherOrg.id));
+      .set(admin.authHeaders);
     expect(ownOrganization.status).toBe(200);
     expect(ownOrganization.body.data.id).toBe(ownOrg.id);
+
+    const crossContextRead = await request(server)
+      .get('/api/v1/organizations/me')
+      .set(admin.authHeaders)
+      .set('X-Organization-Id', String(otherOrg.id));
+    expect(crossContextRead.status).toBe(403);
+
+    const crossContextUpdate = await request(server)
+      .patch('/api/v1/organizations/me')
+      .set(admin.authHeaders)
+      .set('X-Organization-Id', String(otherOrg.id))
+      .send({ name: 'Must not update sibling organization' });
+    expect(crossContextUpdate.status).toBe(403);
 
     const updated = await request(server)
       .patch('/api/v1/organizations/me')
       .set(admin.authHeaders)
-      .set('X-Organization-Id', String(otherOrg.id))
       .send({ name: 'Own organization updated' });
     expect(updated.status).toBe(200);
     expect(updated.body.data.id).toBe(ownOrg.id);

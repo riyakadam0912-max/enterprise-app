@@ -74,8 +74,8 @@ export class AttendanceTaskHoursService {
       );
     }
 
-    const [timesheetHours, timerIntervals, timerTimesheets] =
-      await Promise.all([
+    const [timesheetHours, timerIntervals, timerTimesheets] = await Promise.all(
+      [
         transaction.timesheet.aggregate({
           where: {
             employeeId,
@@ -115,17 +115,15 @@ export class AttendanceTaskHoursService {
             },
           },
         }),
-      ]);
+      ],
+    );
 
     const intervalHours = timerIntervals.reduce((total, interval) => {
       const overlapStart = Math.max(
         interval.startedAt.getTime(),
         dayStart.getTime(),
       );
-      const overlapEnd = Math.min(
-        interval.endedAt.getTime(),
-        dayEnd.getTime(),
-      );
+      const overlapEnd = Math.min(interval.endedAt.getTime(), dayEnd.getTime());
       return total + Math.max(0, overlapEnd - overlapStart) / 3_600_000;
     }, 0);
     const legacyTimerHours = timerTimesheets
@@ -148,8 +146,7 @@ export class AttendanceTaskHoursService {
         date,
         shiftId: shiftAssignment?.shiftId ?? employee.shiftId,
         requiredHours:
-          shiftAssignment?.shift.requiredHours ??
-          employee.shift?.requiredHours,
+          shiftAssignment?.shift.requiredHours ?? employee.shift?.requiredHours,
         status: 'NOT_STARTED',
         taskHours,
       },

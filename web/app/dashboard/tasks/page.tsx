@@ -235,7 +235,7 @@ function TaskDetailModal({
     }, 0);
 
     return () => window.clearTimeout(timeout);
-  }, [task?.id, task?.status]);
+  }, [task?.id, task?.status, task?.checklistItems, task?.watchers]);
 
   const taskStatus = normalizeTaskStatus(task?.status);
   const activeTaskId = task?.id;
@@ -1458,7 +1458,7 @@ function AllTasksPage() {
                         aria-label="Select all tasks"
                       />
                     </th>
-                    {visibleTaskColumnList.map((column, index) => (
+                    {visibleTaskColumnList.map((column) => (
                       <th
                         key={column.key}
                         className={cn(

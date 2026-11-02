@@ -56,7 +56,8 @@ export class UsersService {
       return { organizationId: user.organizationId };
     }
 
-    const organizationIds = await this.organizationScopeService.getOrganizationIds(user);
+    const organizationIds =
+      await this.organizationScopeService.getOrganizationIds(user);
     return organizationIds && organizationIds.length > 0
       ? { organizationId: { in: organizationIds } }
       : { organizationId: user.organizationId };
