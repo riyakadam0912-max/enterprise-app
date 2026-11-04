@@ -307,7 +307,12 @@ axiosClient.interceptors.response.use(
     if (
       typeof window !== 'undefined' &&
       status &&
-      status !== 401
+      status !== 401 &&
+      !(
+        status === 400 &&
+        originalRequest?.url?.split('?')[0].endsWith('/projects/query') &&
+        /^property (?:page|pageSize|search|status|priority|managerId|startFrom|endTo|sortBy|sortDirection) should not exist/.test(message)
+      )
     ) {
 
       toast.error(

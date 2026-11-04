@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Project } from '@/api/projectsApi';
 import { deleteProject } from '@/api/projectsApi';
 
@@ -20,8 +20,8 @@ const DEFAULT_COLUMNS: GridColumn[] = [
   { key: 'managerAssignedBy', label: 'Manager assigned by', width: 190, getValue: (project) => project.managerAssignedBy?.name ?? (project.managerId ? 'Unknown (historical)' : '—') },
   { key: 'status', label: 'Status', width: 150, getValue: (project) => project.status.replaceAll('_', ' ') },
   { key: 'tasks', label: 'Tasks', width: 90, getValue: (project) => String(project.tasksCount ?? project._count?.tasks ?? project.tasks?.length ?? 0) },
-  { key: 'phases', label: 'Phases', width: 90, getValue: () => '0' },
-  { key: 'issues', label: 'Issues', width: 90, getValue: () => '0' },
+  { key: 'phases', label: 'Phases', width: 90, getValue: (project) => String(project._count?.milestones ?? 0) },
+  { key: 'issues', label: 'Issues', width: 90, getValue: (project) => String(project._count?.issues ?? 0) },
   { key: 'startDate', label: 'Start Date', width: 130, getValue: (project) => project.startDate ? new Date(project.startDate).toLocaleDateString() : '—' },
   { key: 'endDate', label: 'End Date', width: 130, getValue: (project) => project.endDate ? new Date(project.endDate).toLocaleDateString() : '—' },
   { key: 'tags', label: 'Tags', width: 150, getValue: (project) => project.tags?.join(', ') || '—' },
@@ -79,7 +79,20 @@ function FilterIcon() {
   );
 }
 
-export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted, onDeleteError }: { projects: Project[]; selectedProjectId: number | null; onSelect: (id: number) => void; onDeleted?: (ids: number[]) => void | Promise<void>; onDeleteError?: (message: string) => void }) {
+export type ProjectGridQuery = { search: string; status: string; page: number };
+
+export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted, onDeleteError, loading, page, pageSize, total, onQueryChange }: {
+  projects: Project[];
+  selectedProjectId: number | null;
+  onSelect: (id: number) => void;
+  onDeleted?: (ids: number[]) => void | Promise<void>;
+  onDeleteError?: (message: string) => void;
+  loading: boolean;
+  page: number;
+  pageSize: number;
+  total: number;
+  onQueryChange: (query: ProjectGridQuery) => void;
+}) {
   const initialPreferences = useMemo(() => getSavedTablePreferences(), []);
   const [visible, setVisible] = useState<Record<string, boolean>>(initialPreferences.visible);
   const [widths, setWidths] = useState<Record<string, number>>(initialPreferences.widths);
@@ -88,32 +101,33 @@ export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted, 
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
-  const statusOptions = ['ALL', 'IN_PROGRESS', 'COMPLETED', 'BLOCKED_CANCELLED', 'IN_APPROVAL'];
+  const statusOptions = ['ALL', 'NOT_STARTED', 'IN_PROGRESS', 'IN_APPROVAL', 'BLOCKED_CANCELLED', 'POSTPONED', 'COMPLETED'];
+  const queryChangeRef = useRef(onQueryChange);
+  const queryEffectInitialized = useRef(false);
+
+  useEffect(() => {
+    queryChangeRef.current = onQueryChange;
+  }, [onQueryChange]);
 
   useEffect(() => {
     if (Object.keys(visible).length > 0) localStorage.setItem('erp-table-preferences:projects', JSON.stringify({ visible, widths }));
   }, [visible, widths]);
 
+  useEffect(() => {
+    if (!queryEffectInitialized.current) {
+      queryEffectInitialized.current = true;
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setSelectedIds([]);
+      queryChangeRef.current({ search: searchTerm.trim(), status: statusFilter, page: 1 });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [searchTerm, statusFilter]);
+
   const columns = useMemo(() => DEFAULT_COLUMNS.filter((column) => visible[column.key] !== false), [visible]);
 
-  const filteredProjects = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-
-    return projects.filter((project) => {
-      const matchesSearch =
-        term.length === 0 ||
-        project.projectName.toLowerCase().includes(term) ||
-        (project.customer?.customerName ?? project.clientName ?? project.client ?? '').toLowerCase().includes(term) ||
-        (project.organization?.name ?? '').toLowerCase().includes(term) ||
-        (project.owners ?? []).some((owner) => owner.name.toLowerCase().includes(term)) ||
-        (project.managerUser?.name ?? project.manager ?? '').toLowerCase().includes(term) ||
-        (project.managerAssignedBy?.name ?? '').toLowerCase().includes(term) ||
-        project.status.toLowerCase().includes(term);
-
-      const matchesStatus = statusFilter === 'ALL' || project.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
-  }, [projects, searchTerm, statusFilter]);
+  const filteredProjects = projects;
 
   function resetColumns() {
     setVisible(Object.fromEntries(DEFAULT_COLUMNS.map((column) => [column.key, true])));
@@ -126,10 +140,16 @@ export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted, 
 
   function exportSelected() {
     const rows = projects.filter((project) => selectedIds.includes(project.id));
-    const csv = ['ID,Project Name,Organization,Customer,Owner,Managed by,Manager assigned by,Status', ...rows.map((project) => [project.id, project.projectName, columnValue('organization', project), columnValue('customer', project), columnValue('owner', project), columnValue('manager', project), columnValue('managerAssignedBy', project), project.status].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','))].join('\n');
+    const csv = ['ID,Project Name,Organization,Customer,Owner,Managed by,Manager assigned by,Status', ...rows.map((project) => [project.id, project.projectName, columnValue('organization', project), columnValue('customer', project), columnValue('owner', project), columnValue('manager', project), columnValue('managerAssignedBy', project), project.status].map(csvCell).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'projects.csv'; anchor.click(); URL.revokeObjectURL(url);
+  }
+
+  function csvCell(value: string | number): string {
+    const text = String(value);
+    const safeText = /^[\u0000-\u0020]*[=+\-@]/.test(text) ? `'${text}` : text;
+    return `"${safeText.replaceAll('"', '""')}"`;
   }
 
   function columnValue(key: string, project: Project) {
@@ -138,12 +158,23 @@ export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted, 
 
   async function deleteSelected() {
     if (selectedIds.length === 0 || !window.confirm(`Delete ${selectedIds.length} selected project(s)?`)) return;
-    try {
-      await Promise.all(selectedIds.map((id) => deleteProject(id)));
-      await onDeleted?.(selectedIds);
-      setSelectedIds([]);
-    } catch (error) {
-      onDeleteError?.(error instanceof Error ? error.message : 'Failed to delete selected projects');
+    const results = await Promise.allSettled(selectedIds.map((id) => deleteProject(id)));
+    const deletedIds = selectedIds.filter((_, index) => results[index].status === 'fulfilled');
+    const failedIds = selectedIds.filter((_, index) => results[index].status === 'rejected');
+    if (deletedIds.length > 0) {
+      try {
+        await onDeleted?.(deletedIds);
+      } catch (error) {
+        onDeleteError?.(error instanceof Error ? error.message : 'Projects were deleted, but the list could not be refreshed.');
+      }
+    }
+    setSelectedIds(failedIds);
+    if (failedIds.length > 0) {
+      const firstFailure = results.find((result) => result.status === 'rejected');
+      const failureMessage = firstFailure?.status === 'rejected' && firstFailure.reason instanceof Error
+        ? firstFailure.reason.message
+        : 'Request failed';
+      onDeleteError?.(`${deletedIds.length} project(s) deleted; ${failedIds.length} failed. ${failureMessage}`);
     }
   }
 
@@ -231,11 +262,19 @@ export function ProjectGrid({ projects, selectedProjectId, onSelect, onDeleted, 
 
       <div className="overflow-x-auto">
         <table className="min-w-max border-collapse text-sm">
-          <thead className="sticky top-0 z-10 bg-slate-50"><tr><th className="sticky left-0 z-30 w-12 border-b border-slate-200 bg-slate-50 px-3 py-3"><input type="checkbox" checked={projects.length > 0 && selectedIds.length === projects.length} onChange={(event) => setSelectedIds(event.target.checked ? projects.map((project) => project.id) : [])} aria-label="Select all projects" /></th>{columns.map((column) => <th key={column.key} style={{ width: widths[column.key] ?? column.width }} className={`relative whitespace-nowrap border-b border-slate-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 ${column.key === 'id' ? 'sticky left-12 z-30 w-16 bg-slate-50' : column.key === 'projectName' ? 'sticky left-28 z-30 min-w-[18rem] bg-slate-50' : ''}`}><span className="block">{column.label}</span><span role="separator" aria-label={`Resize ${column.label}`} onMouseDown={(event) => { const start = event.clientX; const initial = widths[column.key] ?? column.width; const move = (moveEvent: MouseEvent) => setWidths((current) => ({ ...current, [column.key]: Math.max(70, initial + moveEvent.clientX - start) })); const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); }; window.addEventListener('mousemove', move); window.addEventListener('mouseup', up); }} className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-orange-400" /></th>)}</tr></thead>
+          <thead className="sticky top-0 z-10 bg-slate-50"><tr><th className="sticky left-0 z-30 w-12 border-b border-slate-200 bg-slate-50 px-3 py-3"><input type="checkbox" checked={projects.length > 0 && projects.every((project) => selectedIds.includes(project.id))} onChange={(event) => setSelectedIds(event.target.checked ? projects.map((project) => project.id) : [])} aria-label="Select all projects on this page" /></th>{columns.map((column) => <th key={column.key} style={{ width: widths[column.key] ?? column.width }} className={`relative whitespace-nowrap border-b border-slate-200 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 ${column.key === 'id' ? 'sticky left-12 z-30 w-16 bg-slate-50' : column.key === 'projectName' ? 'sticky left-28 z-30 min-w-[18rem] bg-slate-50' : ''}`}><span className="block">{column.label}</span><span role="separator" aria-label={`Resize ${column.label}`} onMouseDown={(event) => { const start = event.clientX; const initial = widths[column.key] ?? column.width; const move = (moveEvent: MouseEvent) => setWidths((current) => ({ ...current, [column.key]: Math.max(70, initial + moveEvent.clientX - start) })); const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); }; window.addEventListener('mousemove', move); window.addEventListener('mouseup', up); }} className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-orange-400" /></th>)}</tr></thead>
           <tbody className="divide-y divide-slate-100">{filteredProjects.map((project) => <tr key={project.id} tabIndex={0} onClick={() => onSelect(project.id)} onKeyDown={(event) => { if (event.key === 'Enter') onSelect(project.id); }} className={`cursor-pointer transition hover:bg-orange-50/50 ${selectedProjectId === project.id ? 'bg-orange-50' : ''}`}><td className="sticky left-0 z-20 w-12 bg-white px-3 py-3" onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={selectedIds.includes(project.id)} onChange={() => toggleSelected(project.id)} aria-label={`Select project ${project.projectName}`} /></td>{columns.map((column) => <td key={column.key} className={`whitespace-nowrap px-4 py-3 text-slate-700 ${column.key === 'id' ? 'sticky left-12 z-20 w-16 bg-white' : column.key === 'projectName' ? 'sticky left-28 z-20 min-w-[18rem] bg-white' : ''}`}>{column.key === 'projectName' ? <span className="font-semibold text-slate-900">{column.getValue(project)}</span> : column.key === 'status' ? <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusClass[project.status] ?? 'bg-slate-100 text-slate-600'}`}>{column.getValue(project)}</span> : column.getValue(project)}</td>)}</tr>)}</tbody>
         </table>
-        {filteredProjects.length === 0 && <p className="px-4 py-10 text-center text-sm text-slate-500">No matching projects found.</p>}
+        {loading ? <p className="px-4 py-10 text-center text-sm text-slate-500">Loading projects…</p> : filteredProjects.length === 0 ? <p className="px-4 py-10 text-center text-sm text-slate-500">No matching projects found.</p> : null}
       </div>
+      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-sm text-slate-600">
+        <span>Showing {total === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total}</span>
+        <div className="flex items-center gap-2">
+          <button type="button" disabled={loading || page <= 1} onClick={() => { setSelectedIds([]); onQueryChange({ search: searchTerm.trim(), status: statusFilter, page: page - 1 }); }} className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40">Previous</button>
+          <span>Page {page} of {Math.max(1, Math.ceil(total / pageSize))}</span>
+          <button type="button" disabled={loading || page * pageSize >= total} onClick={() => { setSelectedIds([]); onQueryChange({ search: searchTerm.trim(), status: statusFilter, page: page + 1 }); }} className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40">Next</button>
+        </div>
+      </footer>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { apiClient } from './apiClient';
+import { ApiError, apiClient } from './apiClient';
 import type { TaskTimerSession } from './tasksApi';
 
 export interface Project {
@@ -42,7 +42,7 @@ export interface Project {
   tasksCount?: number;
   phasesCount?: number;
   issuesCount?: number;
-  _count?: { tasks: number; clientAccess?: number };
+  _count?: { tasks: number; issues?: number; milestones?: number; clientAccess?: number };
   links?: ProjectLink[];
   coManagers?: Array<{
     id: number;
@@ -249,17 +249,7 @@ export interface ProjectWorkspace {
     parentTaskId: number | null;
     assignedToUser: { id: number; name: string; email: string } | null;
   }>;
-  issues: Array<{
-    id: number;
-    title: string;
-    description: string | null;
-    status: string;
-    priority: string;
-    severity: string | null;
-    dueDate: string | null;
-    reportedBy: { id: number; name: string; email: string };
-    assignedTo: { id: number; name: string; email: string } | null;
-  }>;
+  issues: ProjectIssue[];
 }
 
 export interface ProjectMilestone {
@@ -287,11 +277,13 @@ export interface ProjectIssue {
   taskId?: number | null;
   title: string;
   description: string | null;
-  status: string;
-  priority: string;
+  status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   severity: string | null;
   assignedToId?: number | null;
   dueDate: string | null;
+  reportedBy: { id: number; name: string; email: string };
+  assignedTo: { id: number; name: string; email: string } | null;
 }
 
 export interface CreateMilestonePayload {
@@ -331,13 +323,130 @@ export async function getProjects(): Promise<Project[]> {
   return apiClient<Project[]>('/projects');
 }
 
+const UNSUPPORTED_PROJECT_QUERY_FIELDS =
+  /property (?:page|pageSize|search|status|priority|managerId|startFrom|endTo|sortBy|sortDirection) should not exist/;
+
+function filterProjectsLocally(
+  projects: Project[],
+  query: ProjectQuery,
+): ProjectQueryResult {
+  const search = query.search?.trim().toLocaleLowerCase();
+  const managerId = query.managerId;
+  const startFrom = query.startFrom;
+  const endTo = query.endTo;
+  const sortFields = new Set([
+    'createdAt',
+    'updatedAt',
+    'projectName',
+    'startDate',
+    'endDate',
+    'priority',
+    'status',
+  ]);
+  const sortBy = sortFields.has(query.sortBy ?? '')
+    ? query.sortBy!
+    : 'createdAt';
+
+  const filtered = projects.filter((project) => {
+    if (search) {
+      const searchableValues = [
+        project.projectName,
+        project.projectCode,
+        project.clientName,
+        project.client,
+        project.manager,
+        project.managerUser?.name,
+        project.managerAssignedBy?.name,
+        project.organization?.name,
+        project.customer?.customerName,
+        project.status,
+        ...(project.owners ?? []).map((owner) => owner.name),
+      ];
+      if (!searchableValues.some((value) => value?.toLocaleLowerCase().includes(search))) {
+        return false;
+      }
+    }
+
+    if (query.status && project.status !== query.status) return false;
+    if (query.priority && project.priority !== query.priority) return false;
+    if (managerId != null && project.managerId !== managerId) return false;
+    if (startFrom && (!project.startDate || project.startDate < startFrom)) {
+      return false;
+    }
+    if (endTo && (!project.startDate || project.startDate > endTo)) {
+      return false;
+    }
+    return true;
+  });
+
+  const valueForSort = (project: Project): string | number | null => {
+    switch (sortBy) {
+      case 'updatedAt':
+      case 'createdAt':
+        return project[sortBy];
+      case 'projectName':
+      case 'startDate':
+      case 'endDate':
+      case 'priority':
+      case 'status':
+        return project[sortBy] ?? null;
+      default:
+        return project.createdAt;
+    }
+  };
+  const direction = query.sortDirection === 'asc' ? 1 : -1;
+  filtered.sort((left, right) => {
+    const leftValue = valueForSort(left);
+    const rightValue = valueForSort(right);
+    if (leftValue == null || rightValue == null) {
+      return leftValue == null
+        ? rightValue == null ? 0 : 1
+        : -1;
+    }
+    return direction * (
+      typeof leftValue === 'number' && typeof rightValue === 'number'
+        ? leftValue - rightValue
+        : String(leftValue).localeCompare(String(rightValue), undefined, {
+            numeric: true,
+            sensitivity: 'base',
+          })
+    );
+  });
+
+  const page = Math.max(1, Math.floor(Number(query.page) || 1));
+  const pageSize = Math.min(
+    100,
+    Math.max(1, Math.floor(Number(query.pageSize) || 25)),
+  );
+  const total = filtered.length;
+  return {
+    items: filtered.slice((page - 1) * pageSize, page * pageSize),
+    total,
+    page,
+    pageSize,
+    totalPages: Math.ceil(total / pageSize),
+  };
+}
+
 export async function queryProjects(query: ProjectQuery = {}): Promise<ProjectQueryResult> {
   const params = new URLSearchParams();
   Object.entries(query).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') params.set(key, String(value));
   });
   const suffix = params.toString() ? `?${params.toString()}` : '';
-  return apiClient<ProjectQueryResult>(`/projects/query${suffix}`);
+  try {
+    return await apiClient<ProjectQueryResult>(`/projects/query${suffix}`);
+  } catch (error) {
+    if (
+      !(error instanceof ApiError) ||
+      error.status !== 400 ||
+      !UNSUPPORTED_PROJECT_QUERY_FIELDS.test(error.message)
+    ) {
+      throw error;
+    }
+
+    return filterProjectsLocally(await getProjects(), query);
+  }
 }
 
 export async function getProject(id: number): Promise<Project> {

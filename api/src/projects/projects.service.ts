@@ -146,6 +146,30 @@ export class ProjectsService {
     return employee?.id ?? null;
   }
 
+  private async getEmployeeTaskScope(
+    projectId: number,
+    user: AuthUser,
+  ): Promise<Prisma.TaskWhereInput> {
+    const scopedUser = await this.getScopedUser(user);
+    const employeeId = await this.resolveEmployeeId(user, scopedUser);
+    return {
+      projectId,
+      OR: [
+        { assignedToUserId: user.userId },
+        ...(employeeId != null ? [{ assignedToId: employeeId }] : []),
+        ...(employeeId != null
+          ? [
+              {
+                projectRef: {
+                  assignedEmployees: { some: { id: employeeId } },
+                },
+              },
+            ]
+          : []),
+      ],
+    };
+  }
+
   async getProjectAccessWhere(
     user: AuthUser,
   ): Promise<Prisma.ProjectWhereInput> {
@@ -625,7 +649,14 @@ export class ProjectsService {
         }),
       },
       include: {
-        _count: { select: { tasks: true, clientAccess: true } },
+        _count: {
+          select: {
+            tasks: { where: { deletedAt: null } },
+            clientAccess: true,
+            milestones: true,
+            issues: true,
+          },
+        },
         managerUser: { select: { id: true, name: true, email: true } },
         managerAssignedBy: { select: { id: true, name: true, email: true } },
         owners: { select: { id: true, name: true, email: true, role: true } },
@@ -738,7 +769,14 @@ export class ProjectsService {
     return this.db.project.findMany({
       where,
       include: {
-        _count: { select: { tasks: true, clientAccess: true } },
+        _count: {
+          select: {
+            tasks: { where: { deletedAt: null } },
+            clientAccess: true,
+            milestones: true,
+            issues: true,
+          },
+        },
         managerUser: { select: { id: true, name: true, email: true } },
         managerAssignedBy: { select: { id: true, name: true, email: true } },
         owners: { select: { id: true, name: true, email: true, role: true } },
@@ -768,14 +806,14 @@ export class ProjectsService {
   }
 
   async query(query: ProjectQueryDto, user: AuthUser) {
-    const page = Math.max(1, Number.parseInt(query.page ?? '1', 10) || 1);
+    const page = Math.max(1, Number(query.page ?? 1) || 1);
     const pageSize = Math.min(
       100,
-      Math.max(1, Number.parseInt(query.pageSize ?? '25', 10) || 25),
+      Math.max(1, Number(query.pageSize ?? 25) || 25),
     );
     const and: Prisma.ProjectWhereInput[] = [await this.getProjectScope(user)];
-    const numberFilter = (value?: string) => {
-      const parsed = value == null ? NaN : Number.parseInt(value, 10);
+    const numberFilter = (value?: number) => {
+      const parsed = value == null ? NaN : Number(value);
       return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
     };
     const managerId = numberFilter(query.managerId);
@@ -785,7 +823,27 @@ export class ProjectsService {
         OR: [
           { projectName: { contains: search, mode: 'insensitive' } },
           { projectCode: { contains: search, mode: 'insensitive' } },
+          { client: { contains: search, mode: 'insensitive' } },
           { clientName: { contains: search, mode: 'insensitive' } },
+          { status: { contains: search, mode: 'insensitive' } },
+          { manager: { contains: search, mode: 'insensitive' } },
+          { managerUser: { name: { contains: search, mode: 'insensitive' } } },
+          {
+            managerAssignedBy: {
+              name: { contains: search, mode: 'insensitive' },
+            },
+          },
+          { organization: { name: { contains: search, mode: 'insensitive' } } },
+          {
+            owners: {
+              some: { name: { contains: search, mode: 'insensitive' } },
+            },
+          },
+          {
+            customer: {
+              customerName: { contains: search, mode: 'insensitive' },
+            },
+          },
         ],
       });
     }
@@ -827,17 +885,41 @@ export class ProjectsService {
           id: true,
           projectName: true,
           projectCode: true,
+          client: true,
+          clientName: true,
+          tags: true,
+          description: true,
           status: true,
           priority: true,
           startDate: true,
           endDate: true,
           managerId: true,
-          clientName: true,
+          customer: {
+            select: { id: true, customerName: true, customerType: true },
+          },
+          organization: { select: { id: true, name: true } },
+          owners: {
+            select: { id: true, name: true, email: true, role: true },
+          },
+          createdById: true,
+          createdBy: { select: { id: true, name: true, email: true } },
+          manager: true,
           budget: true,
           createdAt: true,
           updatedAt: true,
           managerUser: { select: { id: true, name: true, email: true } },
-          _count: { select: { tasks: true, issues: true, milestones: true } },
+          managerAssignedById: true,
+          managerAssignedBy: {
+            select: { id: true, name: true, email: true },
+          },
+          _count: {
+            select: {
+              tasks: { where: { deletedAt: null } },
+              issues: true,
+              milestones: true,
+              clientAccess: true,
+            },
+          },
         },
       }),
     ]);
@@ -851,7 +933,6 @@ export class ProjectsService {
   }
 
   async findOne(id: number, user: AuthUser) {
-    const organizationId = user.organizationId;
     const hasAccess = await this.canViewProject(id, user);
     if (!hasAccess) {
       throw new ForbiddenException('You can only access allowed projects');
@@ -859,22 +940,7 @@ export class ProjectsService {
 
     const tasksWhere =
       user.role === Role.EMPLOYEE
-        ? {
-            projectId: id,
-            OR: [
-              { assignedToUserId: user.userId },
-              ...(user.employeeId ? [{ assignedToId: user.employeeId }] : []),
-              ...(user.employeeId
-                ? [
-                    {
-                      projectRef: {
-                        assignedEmployees: { some: { id: user.employeeId } },
-                      },
-                    },
-                  ]
-                : []),
-            ],
-          }
+        ? await this.getEmployeeTaskScope(id, user)
         : {
             projectId: id,
           };
@@ -905,6 +971,7 @@ export class ProjectsService {
       },
     });
     if (!project) throw new NotFoundException(`Project #${id} not found`);
+    const organizationId = project.organizationId;
 
     const tasks = await this.db.task.findMany({
       where: tasksWhere,
@@ -962,22 +1029,7 @@ export class ProjectsService {
     if (!project) throw new NotFoundException(`Project #${id} not found`);
     const taskScope =
       user.role === Role.EMPLOYEE
-        ? {
-            projectId: id,
-            OR: [
-              { assignedToUserId: user.userId },
-              ...(user.employeeId ? [{ assignedToId: user.employeeId }] : []),
-              ...(user.employeeId
-                ? [
-                    {
-                      projectRef: {
-                        assignedEmployees: { some: { id: user.employeeId } },
-                      },
-                    },
-                  ]
-                : []),
-            ],
-          }
+        ? await this.getEmployeeTaskScope(id, user)
         : { projectId: id };
     const [milestones, taskLists, issues] = await this.db.$transaction([
       this.db.projectMilestone.findMany({
@@ -2275,7 +2327,6 @@ export class ProjectsService {
         assignedToUser: { select: { id: true, name: true } },
       },
     });
-    const taskIds = new Set(tasks.map((task) => task.id));
     const dependencies = await this.db.taskDependency.findMany({
       where: { projectId, organizationId: project.organizationId },
       select: {
@@ -2285,19 +2336,19 @@ export class ProjectsService {
         lagDays: true,
       },
     });
-    const incoming = new Map<number, number[]>();
-    const outgoing = new Map<number, number[]>();
-    dependencies.forEach((edge) => {
-      if (!taskIds.has(edge.predecessorId) || !taskIds.has(edge.successorId))
-        return;
-      incoming.set(edge.successorId, [
-        ...(incoming.get(edge.successorId) ?? []),
-        edge.predecessorId,
-      ]);
+    const taskById = new Map(tasks.map((task) => [task.id, task]));
+    const projectDependencies = dependencies.filter(
+      (edge) =>
+        taskById.has(edge.predecessorId) && taskById.has(edge.successorId),
+    );
+    const outgoing = new Map<number, (typeof projectDependencies)[number][]>();
+    const indegree = new Map(tasks.map((task) => [task.id, 0]));
+    projectDependencies.forEach((edge) => {
       outgoing.set(edge.predecessorId, [
         ...(outgoing.get(edge.predecessorId) ?? []),
-        edge.successorId,
+        edge,
       ]);
+      indegree.set(edge.successorId, (indegree.get(edge.successorId) ?? 0) + 1);
     });
     const durations = new Map(
       tasks.map((task) => {
@@ -2310,42 +2361,77 @@ export class ProjectsService {
         return [task.id, duration] as const;
       }),
     );
-    const memo = new Map<number, { duration: number; path: number[] }>();
-    const visiting = new Set<number>();
-    const longest = (taskId: number): { duration: number; path: number[] } => {
-      const cached = memo.get(taskId);
-      if (cached) return cached;
-      if (visiting.has(taskId))
-        return { duration: durations.get(taskId) ?? 0, path: [taskId] };
-      visiting.add(taskId);
-      let best = { duration: 0, path: [] as number[] };
-      for (const predecessorId of incoming.get(taskId) ?? []) {
-        const candidate = longest(predecessorId);
-        if (candidate.duration > best.duration) best = candidate;
+    const earliestStart = new Map(tasks.map((task) => [task.id, 0]));
+    const criticalPredecessor = new Map<number, number>();
+    const ready = tasks
+      .filter((task) => indegree.get(task.id) === 0)
+      .map((task) => task.id);
+    let processed = 0;
+    while (ready.length > 0) {
+      const taskId = ready.shift()!;
+      processed += 1;
+      for (const edge of outgoing.get(taskId) ?? []) {
+        const predecessorDuration = durations.get(taskId) ?? 0;
+        const successorDuration = durations.get(edge.successorId) ?? 0;
+        const lag = edge.lagDays * 86400000;
+        const relationshipOffset =
+          edge.dependencyType === 'START_TO_START'
+            ? lag
+            : edge.dependencyType === 'FINISH_TO_FINISH'
+              ? predecessorDuration + lag - successorDuration
+              : edge.dependencyType === 'START_TO_FINISH'
+                ? lag - successorDuration
+                : predecessorDuration + lag;
+        const candidateStart = Math.max(
+          0,
+          (earliestStart.get(taskId) ?? 0) + relationshipOffset,
+        );
+        const currentStart = earliestStart.get(edge.successorId) ?? 0;
+        if (
+          candidateStart > currentStart ||
+          (candidateStart === currentStart &&
+            !criticalPredecessor.has(edge.successorId) &&
+            relationshipOffset >= 0)
+        ) {
+          earliestStart.set(edge.successorId, candidateStart);
+          criticalPredecessor.set(edge.successorId, taskId);
+        }
+
+        const remainingIndegree = (indegree.get(edge.successorId) ?? 0) - 1;
+        indegree.set(edge.successorId, remainingIndegree);
+        if (remainingIndegree === 0) ready.push(edge.successorId);
       }
-      visiting.delete(taskId);
-      const result = {
-        duration: best.duration + (durations.get(taskId) ?? 0),
-        path: [...best.path, taskId],
-      };
-      memo.set(taskId, result);
-      return result;
-    };
-    let critical = { duration: 0, path: [] as number[] };
-    tasks.forEach((task) => {
-      const candidate = longest(task.id);
-      if (candidate.duration > critical.duration) critical = candidate;
-    });
-    const taskById = new Map(tasks.map((task) => [task.id, task]));
+    }
+    if (processed !== tasks.length) {
+      throw new BadRequestException(
+        'Project task dependencies contain a cycle',
+      );
+    }
+
+    let finalTaskId: number | null = null;
+    let projectDuration = 0;
+    for (const task of tasks) {
+      const finish =
+        (earliestStart.get(task.id) ?? 0) + (durations.get(task.id) ?? 0);
+      if (finish > projectDuration) {
+        projectDuration = finish;
+        finalTaskId = task.id;
+      }
+    }
+    const criticalPath: number[] = [];
+    while (finalTaskId != null) {
+      criticalPath.unshift(finalTaskId);
+      finalTaskId = criticalPredecessor.get(finalTaskId) ?? null;
+    }
     return {
       projectId,
-      taskIds: critical.path,
-      durationHours: Math.round((critical.duration / 3600000) * 100) / 100,
-      tasks: critical.path.map((id) => taskById.get(id)).filter(Boolean),
-      dependencies: dependencies.filter(
+      taskIds: criticalPath,
+      durationHours: Math.round((projectDuration / 3600000) * 100) / 100,
+      tasks: criticalPath.map((id) => taskById.get(id)).filter(Boolean),
+      dependencies: projectDependencies.filter(
         (edge) =>
-          critical.path.includes(edge.predecessorId) &&
-          critical.path.includes(edge.successorId),
+          criticalPath.includes(edge.predecessorId) &&
+          criticalPath.includes(edge.successorId),
       ),
     };
   }

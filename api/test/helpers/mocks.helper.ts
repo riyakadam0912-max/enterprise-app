@@ -111,6 +111,7 @@ export type MockPrismaService = Partial<
   taskMessage: DelegateMock;
   project: DelegateMock;
   projectLink: DelegateMock;
+  taskDependency: DelegateMock;
   lead: DelegateMock;
   deal: DelegateMock;
   contact: DelegateMock;
@@ -204,6 +205,7 @@ export const createMockPrismaService = (): MockPrismaService => ({
   taskMessage: createDelegateMock(),
   project: createDelegateMock(),
   projectLink: createDelegateMock(),
+  taskDependency: createDelegateMock(),
   lead: createDelegateMock(),
   deal: createDelegateMock(),
   contact: createDelegateMock(),

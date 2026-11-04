@@ -28,7 +28,7 @@ async function findFreePort() {
   return port;
 }
 
-async function waitForServer(port) {
+async function waitForServer() {
   const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
     if (server.exitCode !== null) {
@@ -70,7 +70,7 @@ before(async () => {
     serverOutput = `${serverOutput}${chunk}`.slice(-4000);
   });
 
-  await waitForServer(port);
+  await waitForServer();
   browser = await chromium.launch({ headless: true });
 });
 

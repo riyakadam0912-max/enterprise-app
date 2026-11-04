@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import ProjectsWorkflowPage from '../page';
+import { ProjectsWorkflowPage } from '@/components/projects/ProjectsWorkflowPage';
 
 export default function ProjectWorkspacePage() {
   const params = useParams<{ id: string }>();

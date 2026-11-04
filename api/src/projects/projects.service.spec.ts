@@ -15,6 +15,7 @@ import { AuthUser } from '../common/types/auth';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { CreateProjectLinkDto } from './dto/create-project-link.dto';
+import { ProjectQueryDto } from './dto/project-query.dto';
 import { BusinessUnitsService } from '../business-units/business-units.service';
 import { OrganizationScopeService } from '../organizations/organization-scope.service';
 
@@ -704,6 +705,186 @@ describe('ProjectsService', () => {
         tasks: mockTasks,
         teamMembers: mockTeamMembers,
       });
+    });
+  });
+
+  describe('employee task scope', () => {
+    it('resolves the employee record when the authenticated user has no employeeId', async () => {
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      const employeeDelegate = getPrismaDelegate(mockPrisma, 'employee');
+      userDelegate.findUnique.mockResolvedValueOnce({
+        id: mockEmployeeUser.userId,
+        role: Role.EMPLOYEE,
+        managerId: null,
+        employeeId: null,
+      });
+      employeeDelegate.findFirst.mockResolvedValueOnce({ id: 501 });
+
+      await expect(
+        (service as any).getEmployeeTaskScope(42, {
+          ...mockEmployeeUser,
+          employeeId: null,
+        }),
+      ).resolves.toEqual({
+        projectId: 42,
+        OR: [
+          { assignedToUserId: mockEmployeeUser.userId },
+          { assignedToId: 501 },
+          { projectRef: { assignedEmployees: { some: { id: 501 } } } },
+        ],
+      });
+      expect(employeeDelegate.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            organizationId: 1,
+            user: { id: mockEmployeeUser.userId },
+            deletedAt: null,
+          },
+        }),
+      );
+    });
+  });
+
+  describe('project query search', () => {
+    it('matches project status and manager-assignment attribution', async () => {
+      jest
+        .spyOn(service as any, 'getProjectScope')
+        .mockResolvedValue({ organizationId: 1, deletedAt: null });
+      mockPrisma.$transaction.mockResolvedValueOnce([0, []]);
+
+      await service.query(
+        { search: 'active' } satisfies ProjectQueryDto,
+        mockAdminUser,
+      );
+
+      expect(
+        getPrismaDelegate(mockPrisma, 'project').findMany,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            AND: [
+              { organizationId: 1, deletedAt: null },
+              {
+                OR: expect.arrayContaining([
+                  { status: { contains: 'active', mode: 'insensitive' } },
+                  {
+                    managerAssignedBy: {
+                      name: { contains: 'active', mode: 'insensitive' },
+                    },
+                  },
+                ]),
+              },
+            ],
+          },
+        }),
+      );
+    });
+  });
+
+  describe('critical path', () => {
+    const setupCriticalPath = (
+      tasks: Array<{
+        id: number;
+        taskName: string;
+        status: string;
+        startDate: null;
+        dueDate: null;
+        estimatedHours: number;
+        completionPercent: number;
+        assignedToUser: null;
+      }>,
+      dependencies: Array<{
+        predecessorId: number;
+        successorId: number;
+        dependencyType: string;
+        lagDays: number;
+      }>,
+    ) => {
+      jest
+        .spyOn(service as any, 'getAccessibleProject')
+        .mockResolvedValue({ id: 1, organizationId: 1 });
+      getPrismaDelegate(mockPrisma, 'task').findMany.mockResolvedValueOnce(
+        tasks,
+      );
+      getPrismaDelegate(
+        mockPrisma,
+        'taskDependency',
+      ).findMany.mockResolvedValueOnce(dependencies);
+    };
+
+    it('applies each dependency type and lag when finding the critical path', async () => {
+      const tasks = [1, 2, 3, 4, 5].map((id) => ({
+        id,
+        taskName: `Task ${id}`,
+        status: 'PENDING',
+        startDate: null,
+        dueDate: null,
+        estimatedHours: 1,
+        completionPercent: 0,
+        assignedToUser: null,
+      }));
+      setupCriticalPath(tasks, [
+        {
+          predecessorId: 1,
+          successorId: 2,
+          dependencyType: 'FINISH_TO_START',
+          lagDays: 1,
+        },
+        {
+          predecessorId: 2,
+          successorId: 3,
+          dependencyType: 'START_TO_START',
+          lagDays: 1,
+        },
+        {
+          predecessorId: 3,
+          successorId: 4,
+          dependencyType: 'FINISH_TO_FINISH',
+          lagDays: 1,
+        },
+        {
+          predecessorId: 4,
+          successorId: 5,
+          dependencyType: 'START_TO_FINISH',
+          lagDays: 1,
+        },
+      ]);
+
+      const result = await service.getCriticalPath(1, mockAdminUser);
+
+      expect(result.taskIds).toEqual([1, 2, 3, 4, 5]);
+      expect(result.durationHours).toBe(97);
+    });
+
+    it('rejects cyclic task dependencies instead of returning a misleading path', async () => {
+      const tasks = [1, 2].map((id) => ({
+        id,
+        taskName: `Task ${id}`,
+        status: 'PENDING',
+        startDate: null,
+        dueDate: null,
+        estimatedHours: 1,
+        completionPercent: 0,
+        assignedToUser: null,
+      }));
+      setupCriticalPath(tasks, [
+        {
+          predecessorId: 1,
+          successorId: 2,
+          dependencyType: 'FINISH_TO_START',
+          lagDays: 0,
+        },
+        {
+          predecessorId: 2,
+          successorId: 1,
+          dependencyType: 'FINISH_TO_START',
+          lagDays: 0,
+        },
+      ]);
+
+      await expect(service.getCriticalPath(1, mockAdminUser)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
