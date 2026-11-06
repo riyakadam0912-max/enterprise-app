@@ -5,6 +5,12 @@ import { MetricsService } from '../common/services/metrics.service';
 import { DASHBOARD_CACHE_KEY } from '../common/utils/cache-keys';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../common/types/auth';
+import { OrganizationScopeService } from '../organizations/organization-scope.service';
+import { Role } from '../common/enums/role.enum';
+import {
+  attendanceDateFromKey,
+  dateKeyInTimezone,
+} from '../attendance/attendance-time.utils';
 
 type WorkflowAction =
   | 'SUBMITTED'
@@ -116,6 +122,7 @@ export class DashboardService {
     private readonly prisma: PrismaService,
     private readonly metricsService: MetricsService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+    private readonly organizationScope: OrganizationScopeService,
   ) {}
 
   private async resolveOrganizationId(user: AuthUser): Promise<number> {
@@ -152,8 +159,9 @@ export class DashboardService {
     await this.cacheManager.del(DASHBOARD_CACHE_KEY);
   }
 
-  private async loadRecentLeaveActivities(user: AuthUser) {
-    const organizationId = await this.resolveOrganizationId(user);
+  private async loadRecentLeaveActivities(organizationFilter: {
+    in: number[];
+  }) {
     const baseSelect = {
       id: true,
       requestType: true,
@@ -170,7 +178,8 @@ export class DashboardService {
           status: {
             in: ['PENDING_MANAGER', 'PENDING_HR', 'APPROVED', 'REJECTED'],
           },
-          organizationId,
+          deletedAt: null,
+          organizationId: organizationFilter,
         },
         orderBy: { updatedAt: 'desc' },
         take: 4,
@@ -189,7 +198,8 @@ export class DashboardService {
           status: {
             in: ['PENDING_MANAGER', 'PENDING_HR', 'APPROVED', 'REJECTED'],
           },
-          organizationId,
+          deletedAt: null,
+          organizationId: organizationFilter,
         },
         orderBy: { updatedAt: 'desc' },
         take: 4,
@@ -200,6 +210,18 @@ export class DashboardService {
 
   async getStats(user: AuthUser) {
     const organizationId = await this.resolveOrganizationId(user);
+    const includeDescendants =
+      user.role === Role.ADMIN ||
+      user.role === Role.HR ||
+      user.role === Role.SUPER_ADMIN ||
+      user.isPlatformAdmin === true ||
+      user.isSuperAdmin === true;
+    const organizationIds = includeDescendants
+      ? await this.organizationScope.getDescendantOrganizationIds(
+          organizationId,
+        )
+      : [organizationId];
+    const organizationFilter = { in: organizationIds };
     const now = new Date();
     const ageingCutoff = new Date(
       now.getTime() - WORKFLOW_AGEING_HOURS * 60 * 60 * 1000,
@@ -207,12 +229,13 @@ export class DashboardService {
     const overdueCutoff = new Date(
       now.getTime() - WORKFLOW_OVERDUE_HOURS * 60 * 60 * 1000,
     );
-    const today = new Date(new Date().setHours(0, 0, 0, 0));
-    const monthStart = new Date(
-      new Date().getFullYear(),
-      new Date().getMonth(),
-      1,
-    );
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { timezone: true },
+    });
+    const todayKey = dateKeyInTimezone(now, organization?.timezone);
+    const today = attendanceDateFromKey(todayKey);
+    const monthStart = attendanceDateFromKey(`${todayKey.slice(0, 7)}-01`);
 
     const [
       totalEmployees,
@@ -245,128 +268,165 @@ export class DashboardService {
       recentExpenseActivities,
     ] = await Promise.all([
       this.prisma.employee.count({
-        where: { organizationId },
+        where: { deletedAt: null, organizationId: organizationFilter },
       }),
       this.prisma.lead.count({
-        where: { organizationId },
+        where: { deletedAt: null, organizationId: organizationFilter },
       }),
       this.prisma.lead.count({
-        where: { status: 'CONVERTED', organizationId },
+        where: {
+          deletedAt: null,
+          status: 'CONVERTED',
+          organizationId: organizationFilter,
+        },
       }),
       this.prisma.task.count({
-        where: { organizationId },
+        where: { deletedAt: null, organizationId: organizationFilter },
       }),
       this.prisma.invoice.count({
-        where: { organizationId },
+        where: { deletedAt: null, organizationId: organizationFilter },
       }),
       this.prisma.attendance.count({
-        where: { organizationId },
+        where: { deletedAt: null, organizationId: organizationFilter },
       }),
       this.prisma.attendance.count({
-        where: { status: 'ABSENT', organizationId },
+        where: {
+          deletedAt: null,
+          status: 'ABSENT',
+          organizationId: organizationFilter,
+        },
       }),
       this.prisma.invoice.aggregate({
         _sum: { totalAmount: true },
-        where: { organizationId },
+        where: { deletedAt: null, organizationId: organizationFilter },
       }),
       this.prisma.task.groupBy({
         by: ['status'],
         _count: { status: true },
-        where: { organizationId },
+        where: { deletedAt: null, organizationId: organizationFilter },
       }),
       this.prisma.lead.groupBy({
         by: ['status'],
         _count: { status: true },
-        where: { organizationId },
+        where: { deletedAt: null, organizationId: organizationFilter },
       }),
       this.prisma.deal.groupBy({
         by: ['stage'],
         _count: { stage: true },
-        where: { organizationId },
+        where: { deletedAt: null, organizationId: organizationFilter },
       }),
       this.prisma.deal.count({
-        where: { organizationId },
+        where: { deletedAt: null, organizationId: organizationFilter },
       }),
       this.prisma.deal.count({
-        where: { stage: 'WON', organizationId },
+        where: {
+          deletedAt: null,
+          stage: 'WON',
+          organizationId: organizationFilter,
+        },
       }),
       this.prisma.deal.count({
-        where: { stage: 'LOST', organizationId },
+        where: {
+          deletedAt: null,
+          stage: 'LOST',
+          organizationId: organizationFilter,
+        },
       }),
       this.prisma.deal.aggregate({
         _sum: { value: true },
         where: {
+          deletedAt: null,
           stage: { notIn: ['WON', 'LOST'] },
-          organizationId,
+          organizationId: organizationFilter,
         },
       }),
       this.prisma.deal.findMany({
-        where: { stage: 'WON', organizationId },
+        where: {
+          deletedAt: null,
+          stage: 'WON',
+          organizationId: organizationFilter,
+        },
         select: { value: true, actualCloseDate: true, closeDate: true },
       }),
       this.prisma.leaveRequest.count({
         where: {
+          deletedAt: null,
           status: 'PENDING_MANAGER',
-          organizationId,
+          organizationId: organizationFilter,
         },
       }),
       this.prisma.leaveRequest.count({
-        where: { status: 'PENDING_HR', organizationId },
+        where: {
+          deletedAt: null,
+          status: 'PENDING_HR',
+          organizationId: organizationFilter,
+        },
       }),
       this.prisma.expense.count({
         where: {
+          deletedAt: null,
           status: { in: ['PENDING', 'PENDING_MANAGER', 'PENDING_HR'] },
-          organizationId,
+          organizationId: organizationFilter,
         },
       }),
       this.prisma.leaveRequest.count({
         where: {
+          deletedAt: null,
           status: 'APPROVED',
           updatedAt: { gte: monthStart },
-          organizationId,
+          organizationId: organizationFilter,
         },
       }),
       this.prisma.leaveRequest.count({
         where: {
+          deletedAt: null,
           status: 'REJECTED',
           updatedAt: { gte: monthStart },
-          organizationId,
+          organizationId: organizationFilter,
         },
       }),
       this.prisma.attendance.groupBy({
         by: ['status'],
         _count: { status: true },
-        where: { date: today, organizationId },
-      }),
-      this.prisma.leaveRequest.count({
         where: {
-          status: { in: [...PENDING_LEAVE_STATUSES] },
-          updatedAt: { lt: ageingCutoff },
-          organizationId,
-        },
-      }),
-      this.prisma.expense.count({
-        where: {
-          status: { in: [...PENDING_EXPENSE_STATUSES] },
-          updatedAt: { lt: ageingCutoff },
-          organizationId,
+          deletedAt: null,
+          date: today,
+          organizationId: organizationFilter,
         },
       }),
       this.prisma.leaveRequest.count({
         where: {
+          deletedAt: null,
           status: { in: [...PENDING_LEAVE_STATUSES] },
-          updatedAt: { lt: overdueCutoff },
-          organizationId,
+          updatedAt: { lt: ageingCutoff },
+          organizationId: organizationFilter,
         },
       }),
       this.prisma.expense.count({
         where: {
+          deletedAt: null,
           status: { in: [...PENDING_EXPENSE_STATUSES] },
-          updatedAt: { lt: overdueCutoff },
-          organizationId,
+          updatedAt: { lt: ageingCutoff },
+          organizationId: organizationFilter,
         },
       }),
-      this.loadRecentLeaveActivities(user),
+      this.prisma.leaveRequest.count({
+        where: {
+          deletedAt: null,
+          status: { in: [...PENDING_LEAVE_STATUSES] },
+          updatedAt: { lt: overdueCutoff },
+          organizationId: organizationFilter,
+        },
+      }),
+      this.prisma.expense.count({
+        where: {
+          deletedAt: null,
+          status: { in: [...PENDING_EXPENSE_STATUSES] },
+          updatedAt: { lt: overdueCutoff },
+          organizationId: organizationFilter,
+        },
+      }),
+      this.loadRecentLeaveActivities(organizationFilter),
       this.prisma.expense.findMany({
         where: {
           status: {
@@ -378,7 +438,8 @@ export class DashboardService {
               'REJECTED',
             ],
           },
-          organizationId,
+          deletedAt: null,
+          organizationId: organizationFilter,
         },
         orderBy: { updatedAt: 'desc' },
         take: 4,
@@ -546,7 +607,11 @@ export class DashboardService {
       },
     };
 
-    await this.cacheManager.set(DASHBOARD_CACHE_KEY, payload, 300);
+    await this.cacheManager.set(
+      `${DASHBOARD_CACHE_KEY}:${organizationId}`,
+      payload,
+      300,
+    );
     return payload;
   }
 }

@@ -3329,6 +3329,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       }));
       return {
         id: row.id,
+        // The edit endpoint requires this optimistic-lock token. Keep it on
+        // every attendance list response, including the employee history path.
+        version: row.version,
         employeeId,
         employee: row.employee,
         date: row.date.toISOString(),

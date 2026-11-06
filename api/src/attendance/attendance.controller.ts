@@ -438,10 +438,11 @@ export class AttendanceController {
     @Body() dto: UpdateAttendanceDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    if (dto.expectedVersion == null)
-      throw new BadRequestException(
-        'Refresh attendance before saving; expectedVersion is required',
-      );
+    // Keep this endpoint compatible with older clients that do not send the
+    // optimistic-lock token. New clients still send expectedVersion and the
+    // service rejects stale versions; the service also owns record lookup and
+    // scope validation, so the controller should not turn a valid edit into a
+    // generic 400 solely because the optional field is absent.
     return this.attendanceService.update(id, dto, this.scopedUser(req));
   }
 

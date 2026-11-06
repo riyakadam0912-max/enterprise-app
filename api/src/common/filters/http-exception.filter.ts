@@ -46,7 +46,11 @@ function safeMessage(message: string, fallback: string): string {
   return isSafeClientMessage(message) ? message : fallback;
 }
 
-function extractMessage(exception: unknown, statusCode: number): string {
+function extractMessage(
+  exception: unknown,
+  statusCode: number,
+  requestPath?: string,
+): string {
   if (exception instanceof Prisma.PrismaClientKnownRequestError) {
     if (exception.code === 'P2002') return 'This record already exists.';
     if (exception.code === 'P2025')
@@ -64,11 +68,15 @@ function extractMessage(exception: unknown, statusCode: number): string {
         : 'Something went wrong. Please try again.';
     }
     if (statusCode === HttpStatus.UNAUTHORIZED) {
-      if (
-        typeof response === 'string' &&
-        /invalid email or password/i.test(response)
-      ) {
-        return response;
+      const isLoginRequest = /\/auth\/login(?:\?|$)/i.test(requestPath ?? '');
+      if (isLoginRequest && typeof response === 'string') {
+        return safeMessage(response, 'Invalid email or password');
+      }
+      if (isLoginRequest && typeof response === 'object' && response !== null) {
+        const loginMessage = (response as Record<string, unknown>).message;
+        if (typeof loginMessage === 'string') {
+          return safeMessage(loginMessage, 'Invalid email or password');
+        }
       }
       return 'Your session has expired. Please sign in again.';
     }
@@ -122,7 +130,11 @@ function extractMessage(exception: unknown, statusCode: number): string {
   return 'Something went wrong. Please try again.';
 }
 
-function classifyError(exception: unknown, statusCode: number): string {
+function classifyError(
+  exception: unknown,
+  statusCode: number,
+  requestPath?: string,
+): string {
   if (statusCode === 409 && exception instanceof HttpException) {
     const response = exception.getResponse();
     const code =
@@ -136,7 +148,11 @@ function classifyError(exception: unknown, statusCode: number): string {
       return code;
   }
   if (statusCode === 400 || statusCode === 422) return 'VALIDATION_ERROR';
-  if (statusCode === 401) return 'SESSION_EXPIRED';
+  if (statusCode === 401) {
+    return /\/auth\/login(?:\?|$)/i.test(requestPath ?? '')
+      ? 'AUTHENTICATION_FAILED'
+      : 'SESSION_EXPIRED';
+  }
   if (statusCode === 403) return 'FORBIDDEN';
   if (statusCode === 404) return 'NOT_FOUND';
   if (statusCode === 409) return 'CONFLICT';
@@ -178,8 +194,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     const statusCode = getStatusCode(exception);
     const requestId = createRequestId(request);
-    const message = extractMessage(exception, statusCode);
-    const code = classifyError(exception, statusCode);
+    const message = extractMessage(exception, statusCode, request.originalUrl);
+    const code = classifyError(exception, statusCode, request.originalUrl);
     const isUnexpected = statusCode >= HttpStatus.INTERNAL_SERVER_ERROR;
 
     if (isUnexpected) {

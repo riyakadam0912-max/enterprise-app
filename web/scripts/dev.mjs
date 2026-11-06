@@ -18,6 +18,18 @@ async function waitForBackend(timeoutMs = 120000, intervalMs = 1500) {
   const apiOrigin = (process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:3000').replace(/\/$/, '');
   const healthUrl = `${apiOrigin}/api/v1/health`;
 
+  // A production API is intentionally used by local development in this
+  // project. Do not block the Next server on a server-side health probe: the
+  // developer's browser/runtime may have network access even when the shell
+  // process is running in a restricted environment (CI, sandbox, VPN, etc.).
+  // The proxy will surface an actionable 502 if the upstream is unavailable.
+  const target = new URL(apiOrigin);
+  const isLoopback = ['localhost', '127.0.0.1', '::1'].includes(target.hostname);
+  if (!isLoopback) {
+    logStep('WEB', `Using external API target ${apiOrigin}; skipping local health wait`, COLORS.yellow);
+    return;
+  }
+
   logStep('WEB', `Waiting for backend health at ${healthUrl}`, COLORS.cyan);
 
   while (Date.now() - startedAt < timeoutMs) {

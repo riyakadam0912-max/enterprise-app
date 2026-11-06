@@ -638,6 +638,7 @@ function EditAttendanceModal(props: {
   const [status, setStatus] = useState<AttendanceStatus>('PRESENT');
   const [breaks, setBreaks] = useState<{ startedAt: string; endedAt: string }[]>([]);
   const [editingBreaks, setEditingBreaks] = useState(false);
+  const [breaksChanged, setBreaksChanged] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -655,6 +656,7 @@ function EditAttendanceModal(props: {
         endedAt: interval.endedAt ? dateTimeInZone(interval.endedAt, timeZone) : '',
       })));
       setEditingBreaks(false);
+      setBreaksChanged(false);
       setFormError(null);
     }, 0);
 
@@ -677,6 +679,7 @@ function EditAttendanceModal(props: {
     if (source) {
       setCheckIn(dateTimeInZone(source.startedAt, timeZone)); setCheckOut(dateTimeInZone(source.endedAt, timeZone));
       setBreaks(source.breaks.map(interval => ({ startedAt: dateTimeInZone(interval.startedAt, timeZone), endedAt: dateTimeInZone(interval.endedAt, timeZone) })));
+      setBreaksChanged(false);
     }
   }
   if (!record) return null;
@@ -688,7 +691,7 @@ function EditAttendanceModal(props: {
       const end = changedInstant(checkOut, selectedSession?.endedAt ?? record!.checkOut, timeZone) ?? selectedSession?.endedAt ?? record!.checkOut;
       if (start && end && end < start && !reopenAsWorking) throw new Error('Check-out must be after check-in. Include the next date for overnight work.');
     let normalizedBreaks: { startedAt: string; endedAt: string | null }[] | undefined;
-    if (canEditBreaks && editingBreaks) {
+    if (canEditBreaks && breaksChanged) {
       normalizedBreaks = [];
       for (const [index, interval] of breaks.entries()) {
         const startedAt = instantFromZone(interval.startedAt, timeZone);
@@ -825,11 +828,11 @@ function EditAttendanceModal(props: {
                 <div className="mt-3 space-y-2">
                   {breaks.map((interval, index) => (
                     <div key={index} className="grid min-w-0 grid-cols-1 gap-2 rounded-xl bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2rem] sm:items-end">
-                      <AttendanceDateTimeInput id={`break-${index}-start`} label={`Break ${index + 1} start`} value={interval.startedAt} onChange={(value) => setBreaks((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, startedAt: value } : item))} />
-                      <AttendanceDateTimeInput id={`break-${index}-end`} label={`Break ${index + 1} end`} value={interval.endedAt} onChange={(value) => setBreaks((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, endedAt: value } : item))} />
+                      <AttendanceDateTimeInput id={`break-${index}-start`} label={`Break ${index + 1} start`} value={interval.startedAt} onChange={(value) => { setBreaksChanged(true); setBreaks((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, startedAt: value } : item)); }} />
+                      <AttendanceDateTimeInput id={`break-${index}-end`} label={`Break ${index + 1} end`} value={interval.endedAt} onChange={(value) => { setBreaksChanged(true); setBreaks((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, endedAt: value } : item)); }} />
                       <button
                         type="button"
-                        onClick={() => setBreaks((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                        onClick={() => { setBreaksChanged(true); setBreaks((current) => current.filter((_, itemIndex) => itemIndex !== index)); }}
                         aria-label={`Remove break ${index + 1}`}
                         title={`Remove break ${index + 1}`}
                         className="inline-flex h-8 w-8 items-center justify-center justify-self-end rounded-lg text-slate-500 hover:bg-white hover:text-rose-600 sm:justify-self-center"
@@ -840,7 +843,7 @@ function EditAttendanceModal(props: {
                   ))}
                   <button
                     type="button"
-                    onClick={() => setBreaks((current) => [...current, { startedAt: '', endedAt: '' }])}
+                    onClick={() => { setBreaksChanged(true); setBreaks((current) => [...current, { startedAt: '', endedAt: '' }]); }}
                     disabled={breaks.length >= 20}
                     className="rounded-lg px-2 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >

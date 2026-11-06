@@ -1,6 +1,8 @@
 import { Injectable, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { OrganizationScopeService } from '../organizations/organization-scope.service';
+import { Role } from '../common/enums/role.enum';
 import type { AuthUser } from '../common/types/auth';
 import {
   AnalyticsSummaryDto,
@@ -11,7 +13,23 @@ import {
 } from './dto/analytics-summary.dto';
 @Injectable()
 export class AnalyticsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly organizationScope: OrganizationScopeService,
+  ) {}
+
+  private async resolveOrganizationIds(user: AuthUser): Promise<number[]> {
+    const organizationId = await this.resolveOrganizationId(user);
+    const canInheritDescendants =
+      user.role === Role.ADMIN ||
+      user.role === Role.HR ||
+      user.role === Role.SUPER_ADMIN ||
+      user.isPlatformAdmin === true ||
+      user.isSuperAdmin === true;
+    return canInheritDescendants
+      ? this.organizationScope.getDescendantOrganizationIds(organizationId)
+      : [organizationId];
+  }
 
   private async resolveOrganizationId(user: AuthUser): Promise<number> {
     if (
@@ -60,21 +78,21 @@ export class AnalyticsService {
   }
 
   async getAbsenteeismRate(user: AuthUser): Promise<AbsenteeismSummaryDto> {
-    const resolvedOrganizationId = await this.resolveOrganizationId(user);
+    const organizationIds = await this.resolveOrganizationIds(user);
     const { start, end } = this.getDayRange();
 
     const [totalEmployees, presentEmployees] = await Promise.all([
       this.prisma.employee.count({
-        where: { deletedAt: null, organizationId: resolvedOrganizationId },
+        where: { deletedAt: null, organizationId: { in: organizationIds } },
       }),
       this.prisma.attendance.groupBy({
         by: ['employeeId'],
         where: {
           deletedAt: null,
-          organizationId: resolvedOrganizationId,
+          organizationId: { in: organizationIds },
           date: { gte: start, lt: end },
           checkIn: { not: null },
-          employee: { deletedAt: null, organizationId: resolvedOrganizationId },
+          employee: { deletedAt: null, organizationId: { in: organizationIds } },
         },
       } satisfies Prisma.AttendanceGroupByArgs),
     ]);
@@ -97,7 +115,7 @@ export class AnalyticsService {
   }
 
   async getBurnRate(user: AuthUser): Promise<BurnRateSummaryDto> {
-    const resolvedOrganizationId = await this.resolveOrganizationId(user);
+    const organizationIds = await this.resolveOrganizationIds(user);
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
@@ -108,10 +126,10 @@ export class AnalyticsService {
         _sum: { netPay: true },
         where: {
           deletedAt: null,
-          organizationId: resolvedOrganizationId,
+          organizationId: { in: organizationIds },
           payrollCycle: {
             deletedAt: null,
-            organizationId: resolvedOrganizationId,
+            organizationId: { in: organizationIds },
             month: currentMonth,
             year: currentYear,
           },
@@ -121,7 +139,7 @@ export class AnalyticsService {
         _sum: { amount: true },
         where: {
           deletedAt: null,
-          organizationId: resolvedOrganizationId,
+          organizationId: { in: organizationIds },
           OR: [
             { expenseDate: { gte: start, lte: end } },
             {
@@ -144,11 +162,11 @@ export class AnalyticsService {
   }
 
   async getRevenueVelocity(user: AuthUser): Promise<RevenueVelocitySummaryDto> {
-    const resolvedOrganizationId = await this.resolveOrganizationId(user);
+    const organizationIds = await this.resolveOrganizationIds(user);
     const wonDeals = await this.prisma.deal.findMany({
       where: {
         deletedAt: null,
-        organizationId: resolvedOrganizationId,
+        organizationId: { in: organizationIds },
         stage: 'WON',
       },
       select: {

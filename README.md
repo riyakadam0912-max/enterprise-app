@@ -1,54 +1,54 @@
 # Enterprise ERP
 
-## Overview
+Enterprise ERP is a multi-organization business system for sales, people operations, projects, finance, and internal administration. It serves platform operators, organization administrators, HR teams, managers, employees, and selected clients through a web application and a smaller mobile application.
 
-Enterprise ERP is a modular business platform for people, sales, finance, projects, notifications, and reporting. The repository is organized as a monorepo with a NestJS API, a Next.js frontend, and a Prisma-backed relational database.
-
-## Key features
-
-- HR and employee workflows
-- CRM and sales tracking
-- Finance and accounting workflows
-- Project and task coordination
-- Notifications and approvals
-- Reporting and analytics
-
-## Technology stack
-
-- Frontend: Next.js
-- Backend: NestJS
-- Data layer: Prisma + SQL database
-- Authentication: JWT and role-based access
+The repository contains a NestJS API, a Next.js web client, and an Expo mobile client. PostgreSQL is the system of record. Features include CRM, quotes and invoices, projects and tasks, attendance and leave, expenses, payroll, recruitment, performance, notifications, files, reports, and audit history. Coverage differs between web and mobile; see the [module reference](docs/03-modules-apis-and-data.md).
 
 ## Quick start
 
-```bash
+Prerequisites: Node.js 20.19.4 or newer, npm 9 or newer, and PostgreSQL. These versions satisfy the strictest checked-in client requirement.
+
+```powershell
+npm install
+npm --prefix api install
+npm --prefix web install
+npm --prefix app install
+Copy-Item api/.env.example api/.env
+# Edit api/.env and set DATABASE_URL plus distinct JWT secrets.
+npm run prisma:generate
+npm run prisma:migrate
+npm --prefix api run seed
 npm run dev
 ```
 
-## Runtime contract
+The development launcher expects the API at `http://localhost:3000` and web client at `http://localhost:3001`. Open `http://localhost:3001`. Development-only Swagger documentation is available at `http://localhost:3000/api`; health is at `http://localhost:3000/health`.
 
-- API: http://localhost:3000
-- Web: http://localhost:3001
-- API prefix: /api/v1
-
-## Environment variables
-
-- API environment template: [api/.env.example](api/.env.example)
-- Web environment template: [web/.env.example](web/.env.example)
-- Copy each template to `.env` in the matching package before local development or deployment.
-- Replace placeholder values with real production settings before pushing to GitHub or deploying.
-
-## Project structure
-
-- [api](./api)
-- [web](./web)
-- [docs](./api/docs)
+These commands match the package scripts and configuration. They were not executed during this documentation-only rewrite because migration and seed commands change the configured database. See the [development guide](docs/04-development-testing-and-deployment.md) before using a non-empty database.
 
 ## Documentation
 
-- [Documentation home](./api/docs/README.md)
-- [Getting started](./api/docs/02-Getting-Started/README.md)
-- [Architecture overview](./api/docs/03-Architecture/README.md)
-- [Troubleshooting guide](./api/docs/09-Troubleshooting/README.md)
-- [Archive](./api/docs/Archive/README.md)
+- [Product guide](docs/01-product-guide.md) — business purpose, roles, terms, and common journeys.
+- [Architecture and codebase](docs/02-architecture-and-codebase.md) — runtime design, repository map, request flow, security, and extension points.
+- [Modules, APIs, and data](docs/03-modules-apis-and-data.md) — implemented-module reference, routes, endpoints, models, and workflows.
+- [Development, testing, and deployment](docs/04-development-testing-and-deployment.md) — setup, environment, scripts, change workflow, tests, and operations.
+- [Troubleshooting and handover](docs/05-troubleshooting-and-handover.md) — limitations, diagnosis, history, incoming-developer context, and open questions.
+
+## Suggested reading paths
+
+| Reader | Start here | Then read |
+|---|---|---|
+| Business reader | [Product guide](docs/01-product-guide.md) | [Module reference](docs/03-modules-apis-and-data.md) |
+| Beginner | [Product guide](docs/01-product-guide.md) | [Architecture](docs/02-architecture-and-codebase.md), then [development](docs/04-development-testing-and-deployment.md) |
+| Developer or coding agent | [Handover](docs/05-troubleshooting-and-handover.md) | [Architecture](docs/02-architecture-and-codebase.md), [module reference](docs/03-modules-apis-and-data.md), then [development](docs/04-development-testing-and-deployment.md) |
+
+## Repository map
+
+| Path | Purpose |
+|---|---|
+| `api/` | NestJS REST API, Prisma schema and migrations, background/event work, and API tests |
+| `web/` | Next.js App Router web application |
+| `app/` | Expo Router mobile application |
+| `scripts/` | Root development, release-audit, and port-management utilities |
+| `docs/` | Maintained handover documentation |
+
+Documentation describes verified behavior as of 4 November 2026. Source code and the Prisma schema take precedence when behavior changes.

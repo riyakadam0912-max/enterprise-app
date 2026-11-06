@@ -1,10 +1,11 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Building2, CheckCircle2, ShieldCheck, TrendingUp, Users, Loader2 } from 'lucide-react';
+import { Building2, ShieldCheck, TrendingUp, Users, Loader2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
 import { getPlatformStats, type PlatformStats } from '@/api/organizationsApi';
+import { useAuthSession } from '@/stores/auth-store';
 
 function formatNumber(num: number): string {
   if (num >= 1000) {
@@ -32,10 +33,10 @@ function buildStats(data: PlatformStats | null | undefined) {
       tone: 'from-emerald-500 to-teal-500',
     },
     {
-      label: 'Healthy Tenants',
-      value: fallback ? '—' : formatNumber(data.organizations.healthy),
-      subtitle: fallback ? 'Loading data...' : `${data.organizations.active.toLocaleString()} active organizations`,
-      icon: CheckCircle2,
+      label: 'Active Organizations',
+      value: fallback ? '—' : formatNumber(data.organizations.active),
+      subtitle: fallback ? 'Loading data...' : `${data.organizations.total.toLocaleString()} total organizations`,
+      icon: Building2,
       tone: 'from-violet-500 to-fuchsia-500',
     },
     {
@@ -49,6 +50,7 @@ function buildStats(data: PlatformStats | null | undefined) {
 }
 
 export function SuperAdminOverviewCards() {
+  const session = useAuthSession();
   const { data, isLoading, error } = useQuery({
     queryKey: ['platform-stats'],
     queryFn: getPlatformStats,
@@ -57,8 +59,16 @@ export function SuperAdminOverviewCards() {
 
   const stats = buildStats(data);
 
+  const scopeLabel = session.organizationId
+    ? `${session.organizationName ?? 'Selected organization'} and active child organizations`
+    : 'All platform organizations';
+
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 text-sm text-indigo-950">
+        <span className="font-semibold">Dashboard scope:</span> {scopeLabel}. Counts include the parent organization and its descendants.
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       {stats.map((stat, index) => {
         const Icon = stat.icon;
         const loading = isLoading;
@@ -79,6 +89,7 @@ export function SuperAdminOverviewCards() {
           </motion.div>
         );
       })}
+      </div>
     </div>
   );
 }

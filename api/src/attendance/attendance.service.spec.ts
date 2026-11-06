@@ -3006,6 +3006,33 @@ describe('AttendanceService', () => {
     expect(leaveRow.status).toBe(AttendanceStatus.LEAVE);
   });
 
+  it('includes the attendance version on editable daily rows', () => {
+    const row = (service as any).toDailyRow(
+      {
+        id: 7,
+        name: 'Ava',
+        department: 'Sales',
+        designation: 'Associate',
+        shift: null,
+      },
+      new Date('2026-03-13T00:00:00.000Z'),
+      {
+        id: 1331,
+        version: 4,
+        checkIn: new Date('2026-03-13T09:00:00.000Z'),
+        checkOut: new Date('2026-03-13T18:00:00.000Z'),
+        workingHours: 8,
+        lateMinutes: 0,
+        overtimeHours: 0,
+        shortfallHours: 0,
+        status: AttendanceStatus.PRESENT,
+      },
+      false,
+    );
+
+    expect(row).toEqual(expect.objectContaining({ id: 1331, version: 4 }));
+  });
+
   it('uses planning statuses for future and before-shift days', () => {
     jest.setSystemTime(new Date('2026-03-13T08:00:00.000Z'));
     const shift = {
