@@ -1,6 +1,7 @@
 'use client';
 
 import { AttendanceDateTimeInput } from '@/components/common/AttendanceDateTimeInput';
+import { AddEntryButton } from '@/components/common/AddEntryButton';
 
 import Link from 'next/link';
 import AttendanceDialog from '@/components/common/AttendanceDialog';
@@ -2043,9 +2044,7 @@ function AttendancePageContent() {
                 <p className="text-xs text-slate-500">{shifts.length} configured {shifts.length === 1 ? 'shift' : 'shifts'}</p>
               </div>
             </div>
-            <button onClick={() => setShowCreateShift(true)} className="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600">
-              <Plus aria-hidden="true" className="h-4 w-4" /> New shift
-            </button>
+            <AddEntryButton label="Add shift" onClick={() => setShowCreateShift(true)} />
           </div>
 
           <div className="mt-3 grid min-w-0 grid-cols-1 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 sm:grid-cols-2 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
@@ -2116,9 +2115,7 @@ function AttendancePageContent() {
               </div>
             </div>
             {!showHolidayForm && (
-              <button type="button" onClick={handleStartAddHoliday} className="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600">
-                <Plus aria-hidden="true" className="h-4 w-4" />Add holiday
-              </button>
+              <AddEntryButton label="Add holiday" onClick={handleStartAddHoliday} />
             )}
           </div>
 

@@ -19,6 +19,7 @@ import {
   type BusinessUnitStatus,
 } from '@/api/businessUnitsApi';
 import { Button } from '@/components/ui/button';
+import { AddEntryButton } from '@/components/common/AddEntryButton';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -247,7 +248,7 @@ function BusinessUnitAdminPage() {
         </div>
         <div className="flex items-center gap-3">
           {session.organizationName ? <span className="text-sm font-medium text-slate-600">{session.organizationName}</span> : null}
-          {canManageAssignments ? <Button type="button" onClick={openCreateUnit} disabled={loading}><Plus className="h-4 w-4" />Create Business Unit</Button> : null}
+          {canManageAssignments ? <AddEntryButton label="Create business unit" onClick={openCreateUnit} disabled={loading} /> : null}
         </div>
       </header>
 

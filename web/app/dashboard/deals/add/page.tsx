@@ -81,23 +81,22 @@ export default function AddDealPage() {
   const labelCls = 'w-44 shrink-0 text-sm text-gray-600 font-medium pt-1.5';
 
   return (
-    <div className="space-y-6 p-6">
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+    <main className="mx-auto w-full max-w-4xl space-y-6 px-4 py-6 sm:px-6 lg:py-9">
+      <header className="flex items-end justify-between gap-4 border-b border-slate-200 pb-5">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
               <button onClick={() => router.push('/dashboard/deals')} className="text-slate-400 transition-colors hover:text-slate-600" aria-label="Back">‹</button>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-600">New Deal</p>
             </div>
-            <h1 className="mt-2 text-3xl font-semibold text-slate-900">Create a deal that is ready to close</h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-500">Keep the form aligned to sales workflow: value, stage, owner, and next milestone first.</p>
+            <h1 className="mt-2 text-2xl font-semibold text-slate-950">Add deal</h1>
+            <p className="mt-1 text-sm text-slate-500">Capture value, stage, ownership, and close timing.</p>
           </div>
-          <Link href="/dashboard/deals/pipeline" className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100">Pipeline View</Link>
+          <Link href="/dashboard/deals/pipeline" className="hidden text-sm font-medium text-slate-500 transition hover:text-slate-900 sm:inline">Pipeline view →</Link>
         </div>
-      </section>
+      </header>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
-        <form onSubmit={handleSubmit} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <div className="grid gap-4 md:grid-cols-2">
             {error && (
               <p className="md:col-span-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
@@ -191,19 +190,7 @@ export default function AddDealPage() {
               Reset
             </button>
           </div>
-        </form>
-
-        <aside className="space-y-4">
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-semibold text-slate-800">Deal hygiene</p>
-            <p className="mt-2 text-sm text-slate-500">Deal records work best when stage, probability, owner, and close date are always populated.</p>
-          </div>
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-semibold text-slate-800">Why this layout</p>
-            <p className="mt-2 text-sm text-slate-500">Salesforce-style screens lead with forecast fields first because leadership wants to know what is closing and who owns it.</p>
-          </div>
-        </aside>
-      </div>
-    </div>
+      </form>
+    </main>
   );
 }

@@ -7,6 +7,7 @@ import { useAuthSession } from '@/stores/auth-store';
 import { useEmployees, removeEmployee } from '@/hooks/useEmployees';
 import TableActions from '@/components/common/TableActions';
 import { UserAvatar } from '@/components/common/UserAvatar';
+import { AddEntryButton } from '@/components/common/AddEntryButton';
 
 export default function EmployeesPage() {
   const session = useAuthSession();
@@ -37,7 +38,7 @@ export default function EmployeesPage() {
     <div className="min-h-full bg-slate-50/60 p-4 sm:p-6">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div><h1 className="text-2xl font-semibold tracking-tight text-slate-950">Employee Management</h1><p className="mt-1 text-sm text-slate-500">People, employment details, and account access in one place.</p></div>
-        <div className="flex items-center gap-2">{!isManager && <Link href="/dashboard/employees/add" className="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-orange-600"><span className="text-base leading-none">+</span>Add employee</Link>}<TableActions moduleKey="employees" rows={employees} onRefresh={refetch} /></div>
+        <div className="flex items-center gap-2">{!isManager && <AddEntryButton href="/dashboard/employees/add" label="Add employee" />}<TableActions moduleKey="employees" rows={employees} onRefresh={refetch} /></div>
       </div>
 
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">{[['Total people', employees.length], ['Active employees', activeEmployees], ['Linked accounts', linkedAccounts]].map(([label, value]) => <div key={label} className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm"><p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p><p className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{value}</p></div>)}</div>

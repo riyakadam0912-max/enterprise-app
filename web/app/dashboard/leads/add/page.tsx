@@ -64,36 +64,21 @@ export default function AddLeadPage() {
   const inputCls = 'w-full px-4 py-2.5 rounded-lg border border-slate-300 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition text-sm';
 
   return (
-    <div className="space-y-6 p-6">
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+    <main className="mx-auto w-full max-w-4xl space-y-6 px-4 py-6 sm:px-6 lg:py-9">
+      <header className="border-b border-slate-200 pb-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex items-center gap-3">
               <Link href="/dashboard/leads" className="text-slate-400 transition-colors hover:text-slate-600" aria-label="Back">←</Link>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-600">New Lead</p>
             </div>
-            <h1 className="mt-2 text-3xl font-semibold text-slate-900">Capture the next opportunity cleanly</h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-500">Use this form to capture enough context for follow-up, scoring, and assignment without making the user think like an admin.</p>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Capture</p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">Source + owner</p>
-            </div>
-            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Qualify</p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">Score + status</p>
-            </div>
-            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Next step</p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">Follow-up date</p>
-            </div>
+            <h1 className="mt-2 text-2xl font-semibold text-slate-950">Add lead</h1>
+            <p className="mt-1 text-sm text-slate-500">Capture the essentials for qualification and follow-up.</p>
           </div>
         </div>
-      </section>
+      </header>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           {error && (
             <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
           )}
@@ -232,24 +217,7 @@ export default function AddLeadPage() {
               </button>
             </div>
           </form>
-        </div>
-
-        <aside className="space-y-4">
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-semibold text-slate-800">Why this matters</p>
-            <p className="mt-2 text-sm text-slate-500">A better lead capture form speeds qualification, keeps ownership clear, and gives the follow-up queue enough signal to work like a CRM.</p>
-          </div>
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-semibold text-slate-800">Recommended data</p>
-            <ul className="mt-3 space-y-2 text-sm text-slate-600">
-              <li>Source: where the lead came from.</li>
-              <li>Status: the current stage of qualification.</li>
-              <li>Next follow-up: when the owner should act next.</li>
-              <li>Lead score: priority signal for the sales team.</li>
-            </ul>
-          </div>
-        </aside>
       </div>
-    </div>
+    </main>
   );
 }

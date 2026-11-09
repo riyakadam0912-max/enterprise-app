@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { getContacts, deleteContact, Contact } from '@/api/contactsApi';
 import TableActions from '@/components/common/TableActions';
+import { AddEntryButton } from '@/components/common/AddEntryButton';
 
 export default function AllContactsPage() {
   const router = useRouter();
@@ -28,12 +29,7 @@ export default function AllContactsPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold text-gray-900">All Contacts</h1>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => router.push('/dashboard/contacts/add')}
-            className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-          >
-            + Add Contact
-          </button>
+          <AddEntryButton label="Add contact" onClick={() => router.push('/dashboard/contacts/add')} />
           <TableActions moduleKey="contacts" rows={contacts} onRefresh={() => getContacts().then(setContacts)} />
         </div>
       </div>

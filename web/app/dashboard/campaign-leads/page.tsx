@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { AddEntryButton } from '@/components/common/AddEntryButton';
 import { getCampaignLeads, CampaignLeadRow } from '@/api/campaignLeadsApi';
 import TableActions from '@/components/common/TableActions';
 import { reportError } from '@/lib/error-handling';
@@ -90,14 +91,7 @@ export default function CampaignLeadsPage() {
               <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
             </svg>
           </button>
-          <button
-            onClick={() => router.push('/dashboard/campaign-leads/add')}
-            className="w-7 h-7 rounded-full bg-orange-500 hover:bg-orange-600 text-white flex items-center justify-center transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/>
-            </svg>
-          </button>
+          <AddEntryButton label="Add campaign lead" onClick={() => router.push('/dashboard/campaign-leads/add')} />
           <TableActions moduleKey="campaign-leads" rows={rows} onRefresh={() => getCampaignLeads().then((data) => { setRows(data); setTotal(data.length); })} />
         </div>
       </div>

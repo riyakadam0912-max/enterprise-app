@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { AddEntryButton } from '@/components/common/AddEntryButton';
 import Link from 'next/link';
 import { addPayment, updatePayment, usePayments } from '@/hooks/usePayments';
 import { getInvoices, type Invoice } from '@/api/invoicesApi';
@@ -138,14 +139,7 @@ export default function PaymentsPage() {
             <p className="mt-2 max-w-2xl text-sm text-slate-500">{isManager ? 'View payment history and reconciliation status.' : 'Capture manual receipts, inspect gateway metadata, and reconcile collections against invoices in one finance ledger.'}</p>
           </div>
           {canEditPayments && (
-            <button
-              type="button"
-              onClick={() => setShowModal(true)}
-              className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-medium text-white shadow-sm shadow-orange-200 transition-colors hover:bg-orange-600"
-            >
-              <span className="text-base leading-none">+</span>
-              Record Payment
-            </button>
+            <AddEntryButton label="Record payment" onClick={() => setShowModal(true)} />
           )}
         </div>
 

@@ -13,6 +13,7 @@ import {
 } from "@/api/timesheetsApi";
 import { reportError } from "@/lib/error-handling";
 import { useAuthSession } from "@/stores/auth-store";
+import { AddEntryButton } from "@/components/common/AddEntryButton";
 import { formatHoursDuration } from "@/lib/time-format";
 
 const STATUS_COLOR: Record<string, string> = {
@@ -265,15 +266,7 @@ export default function TimesheetsPage() {
               Work logs and review status
             </p>
           </div>
-          <Link
-            href="/dashboard/timesheets/add"
-            className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700"
-          >
-            <span aria-hidden="true" className="mr-2 text-lg leading-none">
-              +
-            </span>
-            New entry
-          </Link>
+          <AddEntryButton href="/dashboard/timesheets/add" label="Add timesheet entry" />
         </div>
 
         <nav

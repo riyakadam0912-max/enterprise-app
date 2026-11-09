@@ -10,6 +10,7 @@ import {
 import TableActions from '@/components/common/TableActions';
 import { formatInrCurrency } from '@/utils/formatCurrency';
 import { reportError } from '@/lib/error-handling';
+import { AddEntryButton } from '@/components/common/AddEntryButton';
 
 export default function LedgerEntriesPage() {
   const router = useRouter();
@@ -86,15 +87,7 @@ export default function LedgerEntriesPage() {
               className="pl-7 pr-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:border-orange-400 w-52"
             />
           </div>
-          <button
-            onClick={() => router.push('/dashboard/ledger-entries/add')}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white text-sm rounded hover:bg-orange-600"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-            Add Entry
-          </button>
+          <AddEntryButton label="Add ledger entry" onClick={() => router.push('/dashboard/ledger-entries/add')} />
           <TableActions moduleKey="ledger-entries" rows={filtered} onRefresh={() => getLedgerEntries().then(setEntries)} />
         </div>
       </div>

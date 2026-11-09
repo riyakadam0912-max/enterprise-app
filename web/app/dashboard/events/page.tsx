@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { getEvents, deleteEvent, Event } from '@/api/eventsApi';
 import TableActions from '@/components/common/TableActions';
 import { useAuthSession } from '@/stores/auth-store';
+import { AddEntryButton } from '@/components/common/AddEntryButton';
 
 function fmtDateTime(d: string | null) {
   if (!d) return '—';
@@ -58,12 +59,7 @@ export default function AllEventsPage() {
         <div className="flex items-center gap-2">
           {canManageEvents && (
             <>
-              <button
-                onClick={() => router.push('/dashboard/events/add')}
-                className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-              >
-                + Add Event
-              </button>
+              <AddEntryButton label="Add event" onClick={() => router.push('/dashboard/events/add')} />
               <TableActions moduleKey="events" rows={events} onRefresh={() => getEvents().then(setEvents)} />
             </>
           )}

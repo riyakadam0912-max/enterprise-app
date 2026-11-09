@@ -10,6 +10,7 @@ import {
 import TableActions from '@/components/common/TableActions';
 import { formatInrCurrency } from '@/utils/formatCurrency';
 import { reportError } from '@/lib/error-handling';
+import { AddEntryButton } from '@/components/common/AddEntryButton';
 
 const CHANNEL_COLOR: Record<string, string> = {
   'Event':       'bg-teal-500 text-white',
@@ -64,12 +65,7 @@ export default function AllMarketingCampaignsPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold text-gray-900">All Marketing Campaigns</h1>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => router.push('/dashboard/marketing-campaigns/add')}
-            className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-          >
-            + Add Campaign
-          </button>
+          <AddEntryButton label="Add marketing campaign" onClick={() => router.push('/dashboard/marketing-campaigns/add')} />
           <TableActions
             moduleKey="marketing-campaigns"
             rows={campaigns}

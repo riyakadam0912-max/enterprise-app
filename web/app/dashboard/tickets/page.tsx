@@ -6,6 +6,7 @@ import { getTickets, deleteTicket, Ticket, TicketStatus } from '../../../src/api
 import TableActions from '@/components/common/TableActions';
 import { formatInrCurrency } from '@/utils/formatCurrency';
 import { reportError } from '@/lib/error-handling';
+import { AddEntryButton } from '@/components/common/AddEntryButton';
 
 const STATUS_COLOR: Record<TicketStatus, string> = {
   RESERVED:  'bg-blue-100 text-blue-700',
@@ -81,12 +82,7 @@ export default function AllTicketsPage() {
             placeholder="Search tickets…"
             className="px-3 py-1.5 text-sm border border-gray-300 rounded outline-none focus:ring-1 focus:ring-orange-400 w-56"
           />
-          <button
-            onClick={() => router.push('/dashboard/tickets/add')}
-            className="px-3 py-1.5 text-sm bg-orange-500 text-white rounded hover:bg-orange-600"
-          >
-            + Add Ticket
-          </button>
+          <AddEntryButton label="Add ticket" onClick={() => router.push('/dashboard/tickets/add')} />
           <button
             onClick={() => router.push('/dashboard/tickets/ticket-types')}
             className="px-3 py-1.5 text-sm border border-gray-300 rounded text-gray-600 hover:bg-gray-50"

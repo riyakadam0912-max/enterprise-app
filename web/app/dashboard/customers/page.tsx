@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getCustomers, type Customer } from '@/api/customersApi';
+import { AddEntryButton } from '@/components/common/AddEntryButton';
 
 export default function CustomersPage() {
   const router = useRouter();
@@ -21,9 +22,7 @@ export default function CustomersPage() {
           <h1 className="mt-1 text-2xl font-semibold text-slate-950">Customers</h1>
           <p className="mt-1 text-sm text-slate-500">Manage business and individual customers.</p>
         </div>
-        <button type="button" onClick={() => router.push('/dashboard/customers/add')} className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600">
-          + Add Customer
-        </button>
+        <AddEntryButton label="Add customer" onClick={() => router.push('/dashboard/customers/add')} />
       </div>
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full text-left text-sm">

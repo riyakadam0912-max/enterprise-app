@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { AddEntryButton } from '@/components/common/AddEntryButton';
 import {
   deleteLeaveRequest,
   getLeaveRequests,
@@ -143,13 +144,7 @@ export default function AllRequestsPage() {
             />
           </div>
 
-          <button
-            onClick={() => router.push('/dashboard/requests/add')}
-            className="w-7 h-7 flex items-center justify-center bg-orange-500 hover:bg-orange-600 text-white rounded text-lg leading-none font-bold"
-            title="Add Request"
-          >
-            +
-          </button>
+          <AddEntryButton label="Add request" onClick={() => router.push('/dashboard/requests/add')} />
           <TableActions
             moduleKey="requests"
             rows={filtered}

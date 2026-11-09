@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { AddEntryButton } from '@/components/common/AddEntryButton';
 import { useRouter } from 'next/navigation';
 import { deleteProduct, getProducts } from '@/api/productsApi';
 import type { Product } from '@/types/entities';
@@ -99,13 +100,7 @@ export default function ItemsPage() {
           <h1 className="text-2xl font-semibold text-slate-900">Items</h1>
           <p className="mt-1 text-sm text-slate-500">Manage the goods and services available when creating quotes and invoices.</p>
         </div>
-        <button
-          type="button"
-          onClick={() => { setEditingProduct(null); setFormOpen(true); setNotice(null); }}
-          className="rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600"
-        >
-          + Add item
-        </button>
+        <AddEntryButton label="Add item" onClick={() => { setEditingProduct(null); setFormOpen(true); setNotice(null); }} />
       </header>
 
       {notice ? <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</p> : null}

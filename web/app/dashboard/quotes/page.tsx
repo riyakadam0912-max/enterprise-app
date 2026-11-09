@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useQuotes, useDeleteQuote, useConvertQuoteToInvoice } from '@/hooks/useQuotes';
 import TableActions from '@/components/common/TableActions';
+import { AddEntryButton } from '@/components/common/AddEntryButton';
 import {
   QUOTE_STATUS_STYLES,
   deriveQuoteStatus,
@@ -170,13 +171,7 @@ export default function QuotesPage() {
         </div>
         <div className="flex items-center gap-2 self-start sm:self-auto">
           <TableActions moduleKey="quotes" rows={filteredQuotes} onRefresh={refetch} />
-          <Link
-            href="/dashboard/quotes/add"
-            className="inline-flex h-10 items-center gap-2 rounded-md bg-orange-600 px-3.5 text-sm font-medium text-white transition hover:bg-orange-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2"
-          >
-            <FilePlus2 size={16} aria-hidden="true" />
-            New quote
-          </Link>
+          <AddEntryButton href="/dashboard/quotes/add" label="Add quote" />
         </div>
       </header>
 

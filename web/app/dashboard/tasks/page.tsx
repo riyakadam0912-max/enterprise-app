@@ -1,6 +1,7 @@
 'use client';
 
 import { isSuperAdminSession } from '@/stores/auth-store';
+import { AddEntryButton } from '@/components/common/AddEntryButton';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -1218,14 +1219,7 @@ function AllTasksPage() {
           </div>
 
           {['SUPER_ADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE'].includes(role) && (
-            <button
-              type="button"
-              onClick={() => setShowCreateTask(true)}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-orange-600"
-            >
-              <span className="text-xl leading-none">+</span>
-              <span>Create Task</span>
-            </button>
+            <AddEntryButton label="Add task" onClick={() => setShowCreateTask(true)} />
           )}
         </div>
       </div>

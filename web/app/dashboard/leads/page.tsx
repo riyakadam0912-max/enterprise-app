@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import { Eye, MoreHorizontal, Pencil, Search, Trash2, UserRound } from 'lucide-react';
 import { useLeads, removeLead } from '@/hooks/useLeads';
 import { reassignLeadOwner } from '@/api/leadsApi';
 import type { LeadScope } from '@/api/leadsApi';
@@ -10,6 +12,7 @@ import { getEmployees } from '@/api/employeesApi';
 import type { Employee } from '@/api/employeesApi';
 import { useStableNow } from '@/hooks/useStableNow';
 import TableActions from '@/components/common/TableActions';
+import { AddEntryButton } from '@/components/common/AddEntryButton';
 
 const SOURCE_STYLES: Record<string, string> = {
   Direct:        'bg-purple-600 text-white',
@@ -56,6 +59,47 @@ function getInitials(name: string) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? '')
     .join('');
+}
+
+type LeadRowActionsProps = {
+  leadId: number;
+  leadName: string;
+  owners: Employee[];
+  saving: boolean;
+  deleting: boolean;
+  onOwnerChange: (ownerUserId: number | null) => void;
+  onDelete: () => void;
+};
+
+function LeadRowActions({ leadId, leadName, owners, saving, deleting, onOwnerChange, onDelete }: LeadRowActionsProps) {
+  const itemClass = 'flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-sm text-slate-700 outline-none hover:bg-slate-50 focus:bg-slate-50';
+
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button type="button" disabled={saving || deleting} aria-label={`Actions for ${leadName}`} className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 disabled:opacity-40">
+          <MoreHorizontal size={18} aria-hidden="true" />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content align="end" sideOffset={6} className="z-50 min-w-48 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+          <DropdownMenu.Item asChild className={itemClass}><Link href={`/dashboard/leads/${leadId}`}><Eye size={15} aria-hidden="true" />Open lead</Link></DropdownMenu.Item>
+          <DropdownMenu.Item asChild className={itemClass}><Link href={`/dashboard/leads/edit/${leadId}`}><Pencil size={15} aria-hidden="true" />Edit lead</Link></DropdownMenu.Item>
+          <DropdownMenu.Sub>
+            <DropdownMenu.SubTrigger className={`${itemClass} justify-between`}><span className="flex items-center gap-2.5"><UserRound size={15} aria-hidden="true" />Assign owner</span><span className="text-slate-400">›</span></DropdownMenu.SubTrigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.SubContent sideOffset={6} className="z-50 max-h-72 min-w-48 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                <DropdownMenu.Item onSelect={() => onOwnerChange(null)} className={itemClass}>Unassigned</DropdownMenu.Item>
+                {owners.filter((employee) => employee.user?.id).map((employee) => <DropdownMenu.Item key={employee.user!.id} onSelect={() => onOwnerChange(employee.user!.id)} className={itemClass}>{employee.name}</DropdownMenu.Item>)}
+              </DropdownMenu.SubContent>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Sub>
+          <DropdownMenu.Separator className="my-1 h-px bg-slate-100" />
+          <DropdownMenu.Item onSelect={onDelete} className={`${itemClass} text-rose-700 hover:bg-rose-50 focus:bg-rose-50`}><Trash2 size={15} aria-hidden="true" />Delete lead</DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
 }
 
 export default function LeadsReportPage() {
@@ -114,125 +158,49 @@ export default function LeadsReportPage() {
       const followUpDate = new Date(lead.nextFollowUp).getTime();
       return !Number.isNaN(followUpDate) && followUpDate <= currentTime;
     });
-    const qualified = leads.filter((lead) => (lead.status ?? '').toLowerCase().includes('qualified'));
-    const won = leads.filter((lead) => (lead.status ?? '').toLowerCase().includes('won'));
-
     return {
       total: leads.length,
       open: openLeads.length,
       dueFollowUps: dueFollowUps.length,
-      qualified: qualified.length,
-      won: won.length,
     };
   }, [leads, currentTime]);
 
-  const followUpQueue = useMemo(
-    () =>
-      [...filtered]
-        .filter((lead) => Boolean(lead.nextFollowUp))
-        .sort((a, b) => new Date(a.nextFollowUp ?? 0).getTime() - new Date(b.nextFollowUp ?? 0).getTime())
-        .slice(0, 5),
-    [filtered],
-  );
-
-  const hotLeads = useMemo(
-    () => [...filtered].filter((lead) => (lead.leadScore ?? 0) >= 80).slice(0, 4),
-    [filtered],
-  );
-
   return (
-    <div className="space-y-6 p-6">
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-600">Lead Command Center</p>
-            <h1 className="mt-1 text-3xl font-semibold text-slate-900">Qualify, prioritize, and convert faster</h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-500">
-              A CRM-style lead workspace that shows the next follow-up, pipeline state, and high-value opportunities in one glance.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => router.push('/dashboard/leads/add')}
-              className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-medium text-white shadow-sm shadow-orange-200 transition-colors hover:bg-orange-600"
-            >
-              <span className="text-base leading-none">+</span>
-              New Lead
-            </button>
-            <TableActions moduleKey="leads" rows={filtered} onRefresh={refetch} />
-          </div>
+    <main className="mx-auto w-full max-w-360 space-y-7 px-4 py-6 sm:px-6 lg:px-8 lg:py-9">
+      <header className="flex flex-col gap-5 border-b border-slate-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-orange-700">CRM</p>
+          <h1 className="mt-1 text-2xl font-semibold text-slate-950">Leads</h1>
+          <p className="mt-2 flex flex-wrap items-center gap-x-2 text-sm text-slate-500">
+            <span>{leadStats.total} total</span><span aria-hidden="true" className="text-slate-300">·</span>
+            <span>{leadStats.open} open</span><span aria-hidden="true" className="text-slate-300">·</span>
+            <span>{leadStats.dueFollowUps} follow-ups due</span>
+          </p>
         </div>
-
-        <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-end">
-          <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Search leads</label>
-            <input
-              type="text"
-              placeholder="Search by name, source, owner, or note"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-100"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Owner view</label>
-            <select
-              value={ownerScope ?? 'all'}
-              onChange={(event) => setOwnerScope(event.target.value === 'all' ? undefined : event.target.value as LeadScope)}
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-100"
-            >
-              <option value="all">All owners</option>
-              <option value="mine">My leads</option>
-              <option value="my_team">My team</option>
-              <option value="unassigned">Unassigned</option>
-            </select>
-          </div>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <TableActions moduleKey="leads" rows={filtered} onRefresh={refetch} />
+          <AddEntryButton label="Add lead" onClick={() => router.push('/dashboard/leads/add')} />
         </div>
+      </header>
 
-        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total leads</p>
-            <p className="mt-2 text-3xl font-semibold text-slate-900">{leadStats.total}</p>
-          </div>
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Open pipeline</p>
-            <p className="mt-2 text-3xl font-semibold text-slate-900">{leadStats.open}</p>
-          </div>
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Follow-ups due</p>
-            <p className="mt-2 text-3xl font-semibold text-slate-900">{leadStats.dueFollowUps}</p>
-          </div>
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Qualified</p>
-            <p className="mt-2 text-3xl font-semibold text-slate-900">{leadStats.qualified}</p>
-          </div>
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Won</p>
-            <p className="mt-2 text-3xl font-semibold text-slate-900">{leadStats.won}</p>
-          </div>
-        </div>
-
-        <div className="mt-5 flex flex-wrap gap-2">
-          {STATUS_FILTERS.map((filter) => (
-            <button
-              key={filter}
-              type="button"
-              onClick={() => setStatusFilter(filter)}
-              className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-                statusFilter === filter
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {filter}
-            </button>
-          ))}
+      <section aria-label="Lead filters" className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <label className="relative block w-full lg:max-w-md">
+          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+          <span className="sr-only">Search leads</span>
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search leads, sources or owners" className="h-10 w-full rounded-md border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)} aria-label="Filter by status" className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
+            {STATUS_FILTERS.map((filter) => <option key={filter} value={filter}>{filter === 'All' ? 'All statuses' : filter}</option>)}
+          </select>
+          <select value={ownerScope ?? 'all'} onChange={(event) => setOwnerScope(event.target.value === 'all' ? undefined : event.target.value as LeadScope)} aria-label="Filter by owner" className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
+            <option value="all">All owners</option><option value="mine">My leads</option><option value="my_team">My team</option><option value="unassigned">Unassigned</option>
+          </select>
+          <span className="hidden text-sm text-slate-500 sm:inline">{filtered.length} results</span>
         </div>
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <section aria-label="Leads" className="border-t border-slate-200">
         {loading ? (
           <div className="flex items-center justify-center py-20 text-slate-400">Loading…</div>
         ) : error ? (
@@ -247,28 +215,28 @@ export default function LeadsReportPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-100">
-              <thead className="bg-slate-50">
+            <table className="min-w-full divide-y divide-slate-100 text-left text-sm">
+              <thead>
                 <tr>
-                  {['Lead','Status','Source','Owner','Next Follow-up','Score','Actions'].map((col) => (
-                    <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 whitespace-nowrap">{col}</th>
-                  ))}
+                  <th className="py-3 pr-4 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Lead</th>
+                  <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status</th>
+                  <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Source</th>
+                  <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Follow-up</th>
+                  <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Owner</th>
+                  <th className="w-12 py-3 pl-4"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {visibleLeads.map((lead) => (
-                  <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-4">
+                  <tr key={lead.id} className="group transition-colors hover:bg-slate-50/70">
+                    <td className="py-4 pr-4">
                       <div className="flex items-start gap-3">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-100 text-sm font-semibold text-orange-700">
                           {getInitials(lead.name)}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-slate-900">{lead.name}</p>
-                          <p className="mt-0.5 text-xs text-slate-500">
-                            {lead.leadOwner ?? 'Unassigned'}{lead.assignedTo ? ` · ${lead.assignedTo}` : ''}
-                          </p>
-                          <p className="mt-1 max-w-xs truncate text-xs text-slate-400">{lead.notes ?? 'No notes yet'}</p>
+                          <Link href={`/dashboard/leads/${lead.id}`} className="text-sm font-medium text-slate-900 decoration-slate-300 underline-offset-4 hover:text-orange-700 hover:underline">{lead.name}</Link>
+                          <p className="mt-1 max-w-xs truncate text-xs text-slate-500">{lead.notes ?? `Score ${lead.leadScore ?? '—'}`}</p>
                         </div>
                       </div>
                     </td>
@@ -285,39 +253,13 @@ export default function LeadsReportPage() {
                       ) : '—'}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
-                      <select
-                        aria-label={`Owner for ${lead.name}`}
-                        value={lead.ownerUserId ?? ''}
-                        disabled={savingOwner === lead.id || owners.length === 0}
-                        onChange={(event) => handleOwnerChange(lead.id, event.target.value ? Number(event.target.value) : null)}
-                        className="max-w-40 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-600 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-100 disabled:opacity-50"
-                      >
-                        <option value="">Unassigned</option>
-                        {owners.filter((employee) => employee.user?.id).map((employee) => (
-                          <option key={employee.user!.id} value={employee.user!.id}>{employee.name}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
                       <div>
                         <p className="text-sm text-slate-600">{fmtDate(lead.nextFollowUp)}</p>
                         <p className="text-xs text-slate-400">{fmtRelativeDate(lead.nextFollowUp, currentTime)}</p>
                       </div>
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-slate-800">{lead.leadScore ?? '—'}</td>
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <Link href={`/dashboard/leads/${lead.id}`} className="text-xs font-medium text-blue-600 transition-colors hover:text-blue-700">View</Link>
-                        <Link href={`/dashboard/leads/edit/${lead.id}`} className="text-xs font-medium text-slate-600 transition-colors hover:text-orange-600">Edit</Link>
-                        <button
-                          onClick={() => handleDelete(lead.id)}
-                          disabled={deleting === lead.id}
-                          className="text-xs font-medium text-red-500 transition-colors hover:text-red-700 disabled:opacity-50"
-                        >
-                          {deleting === lead.id ? '…' : 'Delete'}
-                        </button>
-                      </div>
-                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-600">{lead.leadOwner ?? lead.assignedTo ?? 'Unassigned'}</td>
+                    <td className="py-2 pl-4 text-right"><LeadRowActions leadId={lead.id} leadName={lead.name} owners={owners} saving={savingOwner === lead.id} deleting={deleting === lead.id} onOwnerChange={(ownerUserId) => void handleOwnerChange(lead.id, ownerUserId)} onDelete={() => void handleDelete(lead.id)} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -336,63 +278,7 @@ export default function LeadsReportPage() {
             </div>
           </div>
         )}
-      </div>
-
-        <aside className="space-y-4">
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-slate-800">Follow-up queue</p>
-                <p className="text-xs text-slate-500">Leads needing attention next</p>
-              </div>
-              <span className="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-700">{followUpQueue.length}</span>
-            </div>
-            <div className="mt-4 space-y-3">
-              {followUpQueue.length === 0 ? (
-                <p className="text-sm text-slate-400">No follow-ups scheduled.</p>
-              ) : (
-                followUpQueue.map((lead) => (
-                  <Link
-                    key={lead.id}
-                    href={`/dashboard/leads/${lead.id}`}
-                    className="block rounded-2xl border border-slate-100 bg-slate-50 p-3 transition-colors hover:bg-slate-100"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-900 truncate">{lead.name}</p>
-                        <p className="mt-1 text-xs text-slate-500">{lead.status ?? 'New'} · {lead.source ?? 'No source'}</p>
-                      </div>
-                      <span className="whitespace-nowrap text-xs font-medium text-slate-500">{fmtRelativeDate(lead.nextFollowUp, currentTime)}</span>
-                    </div>
-                  </Link>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-semibold text-slate-800">High-score leads</p>
-            <p className="text-xs text-slate-500">Likely to convert first</p>
-            <div className="mt-4 space-y-3">
-              {hotLeads.length === 0 ? (
-                <p className="text-sm text-slate-400">No high-score leads yet.</p>
-              ) : (
-                hotLeads.map((lead) => (
-                  <div key={lead.id} className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="min-w-0 truncate text-sm font-semibold text-slate-900">{lead.name}</p>
-                      <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                        {lead.leadScore ?? 0}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500">{lead.assignedTo ?? lead.leadOwner ?? 'Unassigned'}</p>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </aside>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }

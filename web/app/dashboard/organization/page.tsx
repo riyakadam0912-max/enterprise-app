@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { AddEntryButton } from '@/components/common/AddEntryButton';
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -398,10 +399,7 @@ export default function OrganizationPage() {
               ) : null}
             </div>
           </div>
-          <button type="button" onClick={() => { setEditingChild(null); setCreateOpen(true); }}
-            className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700">
-            <Plus className="h-4 w-4" />Create organization
-          </button>
+          <AddEntryButton label="Create organization" onClick={() => { setEditingChild(null); setCreateOpen(true); }} />
         </div>
 
         {error ? <div className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
@@ -526,10 +524,7 @@ export default function OrganizationPage() {
           </div>
         </div>
 
-        <button type="button" onClick={() => { setEditingChild(null); setCreateOpen(true); }}
-          className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-orange-600">
-          <Plus className="h-4 w-4" />Add sub-organization
-        </button>
+        <AddEntryButton label="Add sub-organization" onClick={() => { setEditingChild(null); setCreateOpen(true); }} />
       </div>
 
       {error ? <div className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
@@ -736,10 +731,7 @@ export default function OrganizationPage() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Directory</p>
             <h2 className="mt-1 text-lg font-semibold tracking-tight text-slate-900">Sub-organizations</h2>
           </div>
-          <button type="button" onClick={() => { setEditingChild(null); setCreateOpen(true); }}
-            className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-orange-600">
-            <Plus className="h-4 w-4" />Add sub-organization
-          </button>
+          <AddEntryButton label="Add sub-organization" onClick={() => { setEditingChild(null); setCreateOpen(true); }} />
         </div>
         {childOrgs.length === 0 ? (
           <p className="text-sm text-slate-500">No sub-organizations yet.</p>
