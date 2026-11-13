@@ -688,9 +688,14 @@ function EditAttendanceModal(props: {
 
   function submitChanges() {
     try {
+      // Clearing an existing checkout is a reopen operation, even if the
+      // timestamp control was cleared directly instead of using the checkbox.
+      // Never send that state through the ordinary PATCH endpoint.
+      const clearingCheckout = Boolean(record!.checkOut) && !checkOut;
+      const shouldReopen = reopenAsWorking || clearingCheckout;
       const start = changedInstant(checkIn, selectedSession?.startedAt ?? record!.checkIn, timeZone) ?? selectedSession?.startedAt ?? record!.checkIn;
       const end = changedInstant(checkOut, selectedSession?.endedAt ?? record!.checkOut, timeZone) ?? selectedSession?.endedAt ?? record!.checkOut;
-      if (start && end && end < start && !reopenAsWorking) throw new Error('Check-out must be after check-in. Include the next date for overnight work.');
+      if (start && end && end < start && !shouldReopen) throw new Error('Check-out must be after check-in. Include the next date for overnight work.');
     let normalizedBreaks: { startedAt: string; endedAt: string | null }[] | undefined;
     if (canEditBreaks && breaksChanged) {
       normalizedBreaks = [];
@@ -701,7 +706,7 @@ function EditAttendanceModal(props: {
           setFormError(`Enter valid start and end times for break ${index + 1}.`);
           return;
         }
-        if (!endedAt && checkOut && !reopenAsWorking) {
+        if (!endedAt && checkOut && !shouldReopen) {
           setFormError('Add an end time for every break before checking out.');
           return;
         }
@@ -714,18 +719,18 @@ function EditAttendanceModal(props: {
       sessionId: selectedSession?.id,
       expectedSessionUpdatedAt: selectedSession?.updatedAt,
       checkIn: changedInstant(checkIn, selectedSession?.startedAt ?? record!.checkIn, timeZone) ?? '',
-      checkOut: reopenAsWorking ? '' : changedInstant(checkOut, selectedSession?.endedAt ?? record!.checkOut, timeZone) ?? '',
-      reopenAsWorking,
+      checkOut: shouldReopen ? '' : changedInstant(checkOut, selectedSession?.endedAt ?? record!.checkOut, timeZone) ?? '',
+      reopenAsWorking: shouldReopen,
       reopenReason: reopenReason.trim() || undefined,
       status,
-      breaks: reopenAsWorking ? undefined : normalizedBreaks,
+      breaks: shouldReopen ? undefined : normalizedBreaks,
     });
     } catch (reason) { setFormError(reason instanceof Error ? reason.message : 'Check the entered dates and times.'); }
   }
 
   return (
     <AttendanceDialog label="Edit attendance" onClose={onClose} busy={loading}>
-      <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+      <div className="flex w-full flex-col overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Edit Attendance</h2>
@@ -1214,9 +1219,12 @@ function AttendancePageContent() {
           `Reopen attendance for ${editingRecord.employee.name}? This clears the checkout, leaves attendance open, and requires the employee to start a new task timer and check out when finished.`,
         );
         if (!confirmed) return;
-        await updateAttendanceMutation.reopen(editingRecord.id, {
+        const reopened = await updateAttendanceMutation.reopen(editingRecord.id, {
           reason: payload.reopenReason,
         });
+        if (reopened.checkOut !== null) {
+          throw new Error('Attendance reopen completed without clearing checkout. Reload and try again.');
+        }
       } else if (payload.sessionId) {
         await correctAttendanceSession(payload.sessionId, { checkIn: payload.checkIn || undefined, checkOut: payload.checkOut || undefined,
           breaks: payload.breaks, expectedSessionUpdatedAt: payload.expectedSessionUpdatedAt });
@@ -2224,7 +2232,7 @@ function AttendancePageContent() {
 
       {showCreateShift && (
         <AttendanceDialog label="Create shift" onClose={() => setShowCreateShift(false)} busy={shiftBusy}>
-          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          <div className="w-full overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <div><h3 className="text-lg font-semibold text-slate-900">New shift</h3><p className="mt-1 text-xs text-slate-500">Set the working hours and weekly holiday.</p></div>
               <button type="button" disabled={shiftBusy} onClick={() => setShowCreateShift(false)} aria-label="Close new shift modal" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X aria-hidden="true" className="h-5 w-5" /></button>
@@ -2270,7 +2278,7 @@ function AttendancePageContent() {
 
       {editingShift && (
         <AttendanceDialog label="Edit shift" onClose={() => setEditingShift(null)} busy={shiftBusy}>
-          <div className="w-full max-w-2xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_80px_-24px_rgba(15,23,42,0.35)]">
+          <div className="w-full overflow-hidden">
             <div className="flex items-start justify-between border-b border-slate-200 bg-linear-to-r from-orange-50 via-white to-slate-50 px-5 py-4 sm:px-6">
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-orange-100 text-lg text-orange-600 shadow-sm ring-1 ring-orange-200">⏰</div>

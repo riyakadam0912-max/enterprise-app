@@ -6753,12 +6753,48 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     dto: ReopenAttendanceDto,
     user: AttendanceUser,
   ) {
-    return this.updateAttendance(
-      id,
-      { reopenAsWorking: true, reopenReason: dto.reason },
-      user,
-      true,
-    );
+    try {
+      return await this.updateAttendance(
+        id,
+        { reopenAsWorking: true, reopenReason: dto.reason },
+        user,
+        true,
+      );
+    } catch (error) {
+      // Reopen mutations are transactional, so rejected attempts leave no
+      // trace in the normal REOPEN_ATTENDANCE audit event. Persist a separate
+      // diagnostic event without masking the original HTTP error.
+      try {
+        const identity = await this.prisma.attendance.findUnique({
+          where: { id },
+          select: { organizationId: true, employeeId: true },
+        });
+        if (identity) {
+          await this.prisma.auditLog.create({
+            data: {
+              userId: user.userId,
+              userRole: user.role,
+              organizationId: identity.organizationId,
+              module: 'ATTENDANCE',
+              entityType: 'Attendance',
+              entityId: id,
+              action: 'REOPEN_ATTENDANCE_FAILED',
+              fieldName: 'checkOut',
+              oldValue: { employeeId: identity.employeeId },
+              newValue: {
+                reason: dto.reason?.trim() || null,
+                error: error instanceof Error ? error.message : String(error),
+              },
+              description: `Failed to reopen attendance #${id}`,
+              status: 'FAILURE',
+            },
+          });
+        }
+      } catch {
+        // Diagnostics must never replace the original reopen failure.
+      }
+      throw error;
+    }
   }
 
   async recoverLegacySession(id: number, user: AttendanceUser) {
@@ -7411,23 +7447,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
             user,
             dto.reopenReason,
           );
-        }
-        if (reopening) {
-          const otherOpenAttendance = await tx.attendance.findFirst({
-            where: {
-              employeeId: record.employeeId,
-              organizationId: record.organizationId,
-              id: { not: id },
-              checkIn: { not: null },
-              checkOut: null,
-            },
-            select: { id: true },
-          });
-          if (otherOpenAttendance) {
-            throw new ConflictException(
-              'Employee already has another open attendance record',
-            );
-          }
         }
         if (dto.breaks !== undefined || attendanceDateShiftMs !== 0) {
           await tx.attendanceBreak.deleteMany({ where: { attendanceId: id } });

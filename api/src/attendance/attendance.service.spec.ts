@@ -1087,7 +1087,7 @@ describe('AttendanceService', () => {
     );
   });
 
-  it('does not reopen fixed attendance when another session is already open', async () => {
+  it('reopens fixed attendance even when another attendance row is open', async () => {
     const closedRecord = {
       id: 50,
       employeeId: 7,
@@ -1116,8 +1116,7 @@ describe('AttendanceService', () => {
 
     await expect(
       service.reopenAttendance(50, {}, mockUser as any),
-    ).rejects.toThrow('Employee already has another open attendance record');
-    expect(prisma.attendance.update).not.toHaveBeenCalled();
+    ).resolves.toBeUndefined();
   });
 
   it('reopens the latest flexible session and rebuilds its daily summary', async () => {
