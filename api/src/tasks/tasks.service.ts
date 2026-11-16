@@ -81,7 +81,15 @@ export class TasksService {
     const afterCommit: Array<() => Promise<unknown>> = [];
     const result = await this.prisma.$transaction(async (tx) => {
       if (id != null) {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(137702::integer, ${id}::integer)`;
+        // Project the void-returning lock function to a supported scalar.
+        // Prisma cannot deserialize PostgreSQL's `void` type and otherwise
+        // raises P2010 before the task transaction can begin.
+        await tx.$queryRaw<Array<{ acquired: boolean }>>`
+          SELECT pg_advisory_xact_lock(
+            137702::integer,
+            ${id}::integer
+          ) IS NULL AS acquired
+        `;
       }
       const scoped = new TasksService(
         this.prisma,

@@ -1233,6 +1233,12 @@ describe('TasksService', () => {
         mockEmployeeUser,
       );
       expect(result.status).toEqual('IN_PROGRESS');
+      const [queryParts, lockedTaskId] = mockPrisma.$queryRaw.mock.calls[0] as [
+        TemplateStringsArray,
+        number,
+      ];
+      expect(queryParts.join('')).toContain('IS NULL AS acquired');
+      expect(lockedTaskId).toBe(1);
     });
   });
 
