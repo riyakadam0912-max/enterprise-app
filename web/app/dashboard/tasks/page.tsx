@@ -38,6 +38,7 @@ import {
 import CreateTaskDrawer from '@/components/tasks/CreateTaskDrawer';
 import { TaskDetailHeader, TaskDetailMetadata } from '@/components/tasks/TaskDetailPresentation';
 import { dateTimeLocalToIso, toDateTimeLocalValue } from '@/utils/dateUtils';
+import { getUserFacingError } from '@/lib/api-errors';
 import { Check, ClipboardList, Ellipsis, ExternalLink, FileText, MessageCircle, Play, Send, X } from 'lucide-react';
 
 type DashboardRole = AuthRole;
@@ -1023,14 +1024,25 @@ function AllTasksPage() {
   }
 
   function handleTaskActionError(error: unknown) {
+    const userFacingError = getUserFacingError(error, 'Something went wrong. Please try again.');
+    const message = userFacingError.requestId
+      ? `${userFacingError.message} Reference: ${userFacingError.requestId}`
+      : userFacingError.message;
+
     if (isForbiddenTaskError(error)) {
-      console.error('Task update forbidden', error);
-      toast.error('Permission denied', 'Could not update task. Please refresh and try again.');
+      console.error('Task update forbidden', {
+        error,
+        requestId: userFacingError.requestId,
+      });
+      toast.error('Permission denied', message);
       return;
     }
 
-    console.error('Task update failed', error);
-    toast.error('Action failed', 'Something went wrong. Please try again.');
+    console.error('Task update failed', {
+      error,
+      requestId: userFacingError.requestId,
+    });
+    toast.error(userFacingError.title, message);
   }
 
   async function handleStart(taskId: number) {
