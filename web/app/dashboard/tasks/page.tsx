@@ -1026,12 +1026,11 @@ function AllTasksPage() {
     if (isForbiddenTaskError(error)) {
       console.error('Task update forbidden', error);
       toast.error('Permission denied', 'Could not update task. Please refresh and try again.');
-      return true;
+      return;
     }
 
     console.error('Task update failed', error);
     toast.error('Action failed', 'Something went wrong. Please try again.');
-    return false;
   }
 
   async function handleStart(taskId: number) {
@@ -1042,9 +1041,7 @@ function AllTasksPage() {
       toast.success('Task started', 'Task status updated to IN PROGRESS');
       void loadTasks();
     } catch (error) {
-      if (!handleTaskActionError(error)) {
-        throw error;
-      }
+      handleTaskActionError(error);
     } finally {
       setBusy(false);
     }
@@ -1065,9 +1062,7 @@ function AllTasksPage() {
       toast.success('Work submitted', 'Task has been submitted for review');
       void loadTasks();
     } catch (error) {
-      if (!handleTaskActionError(error)) {
-        throw error;
-      }
+      handleTaskActionError(error);
     } finally {
       setBusy(false);
     }
@@ -1102,9 +1097,7 @@ function AllTasksPage() {
       );
       void loadTasks();
     } catch (error) {
-      if (!handleTaskActionError(error)) {
-        throw error;
-      }
+      handleTaskActionError(error);
     } finally {
       setBusy(false);
     }
@@ -1118,9 +1111,7 @@ function AllTasksPage() {
       toast.success('Status updated', `Task status changed to ${status.replace('_', ' ')}`);
       void loadTasks();
     } catch (error) {
-      if (!handleTaskActionError(error)) {
-        throw error;
-      }
+      handleTaskActionError(error);
     } finally {
       setBusy(false);
     }
@@ -1146,7 +1137,7 @@ function AllTasksPage() {
       toast.success('Task updated', 'Task details saved successfully');
       void loadTasks();
     } catch (error) {
-      if (!handleTaskActionError(error)) throw error;
+      handleTaskActionError(error);
     } finally {
       setBusy(false);
     }
