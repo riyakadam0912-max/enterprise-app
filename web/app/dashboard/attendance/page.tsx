@@ -8,7 +8,7 @@ import AttendanceDialog from '@/components/common/AttendanceDialog';
 import { changedInstant, dateTimeInZone, instantFromZone, csvCell, shiftNumber } from '@/lib/attendance-format';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ArrowRight, CalendarDays, CalendarRange, Clock3, Pencil, Plus, Trash2, UsersRound, X } from 'lucide-react';
+import { ArrowRight, CalendarDays, CalendarRange, Clock3, Pencil, Trash2, UsersRound, X } from 'lucide-react';
 import { refreshAttendanceViews } from '@/lib/attendance-refresh';
 import { recoverAttendanceSession, getAttendanceJobStatus, AttendanceJobStatus, getAttendanceSessions, correctAttendanceSession, AttendanceSessionRecord, assignShift, AttendanceRecord, AttendanceStatus, createAttendanceForEmployeeDate, createHoliday, createShift, DailyTaskWorkSummary, deleteHoliday, deleteShift, getHolidays, getMonthlyAttendanceReport, getMyAttendanceHistory, getMyTaskWorkSummary, getShifts, getTeamWeeklyWorkHours, getWorkHourBalances, HolidayRecord, MyAttendanceResponse, ShiftRecord, startAttendanceBreak, stopAttendanceBreak, TeamWeeklyWorkHours, updateHoliday, updateShift, WorkHourBalances, MonthlyAttendanceReportResponse } from '@/api/attendanceApi';
 import { useAttendance, useCheckIn, useCheckOut, useMyAttendanceSnapshot, useTodayAttendance, useUpdateAttendance } from '@/hooks/useAttendance';
