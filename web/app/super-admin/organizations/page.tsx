@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Card } from '@/components/ui/card';
-import { setActiveOrganization } from '@/stores/auth-store';
+import { clearActiveOrganization, setActiveOrganization } from '@/stores/auth-store';
 import { listOrganizations, type Organization } from '@/api/organizationsApi';
 import { OrganizationCreateModal } from '@/components/super-admin/OrganizationCreateModal';
 import { SuperAdminPageShell } from '@/components/super-admin/SuperAdminPageShell';
@@ -70,6 +70,9 @@ export default function SuperAdminOrganizations() {
 
   useEffect(() => {
     let active = true;
+    // This is a platform-level selector. Never scope its organization request
+    // to the tenant the Super Admin was previously operating inside.
+    clearActiveOrganization();
     const loadOrganizations = async () => {
       try {
         setLoadError(null);

@@ -25,6 +25,7 @@ export default function ImpersonationBanner() {
   const displayName = session.organizationName ?? `Organisation #${activeOrganizationId}`;
 
   const handleSwitchOrganization = () => {
+    clearActiveOrganization();
     router.push('/super-admin/organizations');
   };
 

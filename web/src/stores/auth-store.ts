@@ -382,11 +382,17 @@ export function setActiveOrganization(organizationId: number): void {
     return;
   }
 
+  const previousOrganizationId = getActiveOrganizationId();
+  const organizationChanged = previousOrganizationId !== organizationId;
+
   try {
     window.sessionStorage.setItem(
       'activeOrganization',
       JSON.stringify({ id: organizationId }),
     );
+    if (organizationChanged) {
+      window.sessionStorage.removeItem(ACTIVE_BUSINESS_UNIT_KEY);
+    }
   } catch (e) {
     console.warn('[auth-store] Failed to persist active organization:', e);
   }
@@ -399,6 +405,9 @@ export function setActiveOrganization(organizationId: number): void {
     organizationName: null,
     organizationLogo: null,
     organizationSlug: null,
+    activeBusinessUnitId: organizationChanged
+      ? null
+      : cachedSession.activeBusinessUnitId,
   };
 
   saveSessionToStorage(cachedSession);
@@ -450,6 +459,7 @@ export function clearActiveOrganization(): void {
 
   try {
     window.sessionStorage.removeItem('activeOrganization');
+    window.sessionStorage.removeItem(ACTIVE_BUSINESS_UNIT_KEY);
   } catch (e) {
     console.warn('[auth-store] Failed to clear active organization:', e);
   }
@@ -460,6 +470,7 @@ export function clearActiveOrganization(): void {
     organizationName: null,
     organizationLogo: null,
     organizationSlug: null,
+    activeBusinessUnitId: null,
   };
 
   saveSessionToStorage(cachedSession);
