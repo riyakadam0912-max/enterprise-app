@@ -2260,7 +2260,7 @@ export class TasksService {
           'Employees can only update their assigned tasks',
         );
       }
-    } else {
+    } else if (!this.isTaskActor(task, user)) {
       const canManage = await this.canManageTask(id, user);
       if (!canManage) {
         throw new ForbiddenException(
@@ -2271,7 +2271,7 @@ export class TasksService {
 
     const normalizedStatus = this.normalizeTaskStatus(status);
     if (normalizedStatus === 'SUBMITTED')
-      return this.submitWork(id, { submissionLink: '', note: '' }, user, false);
+      return this.submitWork(id, { submissionLink: '', note: '' }, user, true);
     if (normalizedStatus === 'APPROVED' || normalizedStatus === 'REJECTED') {
       if (task.status !== 'SUBMITTED') {
         this.ensureTransitionAllowed(task.status, normalizedStatus, user.role);

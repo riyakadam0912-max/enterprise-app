@@ -1330,6 +1330,45 @@ describe('TasksService', () => {
       expect(queryParts.join('')).toContain('IS NULL AS acquired');
       expect(lockedTaskId).toBe(1);
     });
+
+    it('allows an assigned manager to submit their own task', async () => {
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      taskDelegate.findFirst
+        .mockResolvedValueOnce({
+          id: 1,
+          organizationId: 1,
+          status: 'IN_PROGRESS',
+          assignedToUserId: mockManagerUser.userId,
+          assignedToId: null,
+          projectId: 1,
+          taskType: 'GENERAL',
+          shootCrew: [],
+        })
+        .mockResolvedValueOnce({
+          id: 1,
+          organizationId: 1,
+          status: 'IN_PROGRESS',
+          assignedToUserId: mockManagerUser.userId,
+          assignedToId: null,
+          projectId: 1,
+          taskType: 'GENERAL',
+          projectRef: { managerId: 99 },
+        });
+      taskDelegate.update.mockResolvedValueOnce({
+        id: 1,
+        status: 'SUBMITTED',
+      });
+      (
+        mockWorkflowEngine.getInstanceByEntity as jest.Mock
+      ).mockResolvedValueOnce(null);
+      (mockWorkflowEngine.submitWorkflow as jest.Mock).mockResolvedValueOnce(
+        {},
+      );
+
+      await expect(
+        service.updateStatus(1, 'SUBMITTED', mockManagerUser),
+      ).resolves.toEqual(expect.objectContaining({ status: 'SUBMITTED' }));
+    });
   });
 
   describe('submitWork', () => {
