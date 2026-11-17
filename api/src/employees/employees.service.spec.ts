@@ -4,7 +4,6 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
-  NotFoundException,
 } from '@nestjs/common';
 import { EmployeesService } from './employees.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -466,6 +465,36 @@ describe('EmployeesService', () => {
   });
 
   describe('validation guardrails (prevents orphans and duplicates)', () => {
+    it('rejects an unavailable shift with an actionable validation error before writing', async () => {
+      const shift = getDelegate(mockPrisma, 'shift');
+      shift.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.create(
+          { name: 'Employee', shiftId: 99 },
+          createMockAuthUser(Role.ADMIN),
+        ),
+      ).rejects.toThrow(
+        'The selected shift is unavailable in this organization.',
+      );
+      expect(shift.findFirst).toHaveBeenCalledWith({
+        where: { id: 99, organizationId: 1, isActive: true },
+        select: { id: true },
+      });
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unavailable Business Unit before writing', async () => {
+      mockPrisma.businessUnit = { findFirst: jest.fn(async () => null) };
+      await expect(
+        service.create(
+          { name: 'Employee', businessUnitId: 99 },
+          createMockAuthUser(Role.ADMIN),
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
     it('throws BadRequestException when password provided without email', async () => {
       const authUser = createMockAuthUser(Role.ADMIN);
 
@@ -494,7 +523,7 @@ describe('EmployeesService', () => {
       );
     });
 
-    it('throws NotFoundException when managerId does not exist in the org', async () => {
+    it('rejects an unavailable manager as invalid input before creating records', async () => {
       const authUser = createMockAuthUser(Role.ADMIN, { organizationId: 5 });
       const userDelegate = getDelegate(mockPrisma, 'user');
 
@@ -510,7 +539,8 @@ describe('EmployeesService', () => {
           },
           authUser,
         ),
-      ).rejects.toThrow(NotFoundException);
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
     });
 
     it('creates an employee with multiple reporting managers', async () => {

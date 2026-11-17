@@ -247,8 +247,8 @@ export class EmployeesService {
     });
 
     if (managers.length !== managerIds.length) {
-      throw new NotFoundException(
-        'One or more selected reporting managers were not found in the organization.',
+      throw new BadRequestException(
+        'One or more selected reporting managers are unavailable in this organization. Refresh and select reporting managers again.',
       );
     }
 
@@ -393,8 +393,8 @@ export class EmployeesService {
         select: { id: true },
       });
       if (!businessUnit) {
-        throw new NotFoundException(
-          'Selected Business Unit not found in the organization.',
+        throw new BadRequestException(
+          'The selected Business Unit is unavailable in this organization. Refresh and select a Business Unit again.',
         );
       }
       const callerScope = await this.businessUnitsService.resolveScope(
@@ -407,7 +407,7 @@ export class EmployeesService {
       );
     }
 
-    if (createEmployeeDto.shiftId !== undefined) {
+    if (createEmployeeDto.shiftId != null) {
       const shift = await this.prisma.shift.findFirst({
         where: {
           id: createEmployeeDto.shiftId,
@@ -417,8 +417,8 @@ export class EmployeesService {
         select: { id: true },
       });
       if (!shift) {
-        throw new NotFoundException(
-          'Selected shift not found or is inactive in the organization.',
+        throw new BadRequestException(
+          'The selected shift is unavailable in this organization. Refresh and select an active shift again.',
         );
       }
     }

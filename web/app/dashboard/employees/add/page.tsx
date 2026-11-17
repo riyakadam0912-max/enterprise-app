@@ -47,21 +47,28 @@ export default function AddEmployeePage() {
   });
 
   useEffect(() => {
+    let cancelled = false;
+    setManagerOptions([]);
+    setShifts([]);
+    setForm((previous) => ({ ...previous, reportingManagerIds: [], shiftId: '' }));
     if (typeof window === 'undefined' || !canAccessUsers(currentRole)) {
-      setManagerOptions([]);
       return;
     }
 
     apiClient<ManagerOption[]>('/users/reporting-managers')
-      .then(setManagerOptions)
+      .then((options) => { if (!cancelled) setManagerOptions(options); })
       .catch((error) => {
+        if (cancelled) return;
         reportError(error, 'Unable to load manager options');
         setManagerOptions([]);
       });
 
-    getShifts().then(setShifts).catch(() => setShifts([]));
+    getShifts()
+      .then((options) => { if (!cancelled) setShifts(options); })
+      .catch(() => { if (!cancelled) setShifts([]); });
 
-  }, [auth.organizationId, currentRole]);
+    return () => { cancelled = true; };
+  }, [auth.organizationId, auth.activeBusinessUnitId, currentRole]);
 
   const inputCls = 'w-full px-4 py-2.5 rounded-lg border border-slate-300 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition text-sm';
   const selectCls = inputCls;

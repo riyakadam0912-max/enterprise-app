@@ -4,9 +4,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const API_PREFIX = '/api/v1';
-// Keep browser requests same-origin on localhost while forwarding them to the
-// deployed API. This lets local development authenticate against production
-// without exposing cross-origin auth cookies to the browser.
+// Keep API requests same-origin in development and production, including
+// deployments where the platform rewrite does not take precedence.
 const DEFAULT_API_TARGET = 'https://enterprise-app-1phv.vercel.app';
 const HOP_BY_HOP_HEADERS = [
   'connection',
@@ -43,14 +42,6 @@ function getTargetUrl(requestUrl: string): URL {
 }
 
 async function proxyApiRequest(request: NextRequest): Promise<Response> {
-  if (process.env.NODE_ENV !== 'development') {
-    return NextResponse.json(
-      { success: false, message: 'Not found', code: 'NOT_FOUND' },
-      { status: 404 },
-    );
-  }
-
-  const targetUrl = getTargetUrl(request.url);
   const requestHeaders = new Headers(request.headers);
   requestHeaders.delete('origin');
   for (const header of HOP_BY_HOP_HEADERS) {
@@ -66,6 +57,10 @@ async function proxyApiRequest(request: NextRequest): Promise<Response> {
   }
 
   try {
+    const targetUrl = getTargetUrl(request.url);
+    if (targetUrl.origin === new URL(request.url).origin) {
+      throw new Error('API_PROXY_TARGET must point to a separate API origin');
+    }
     const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
     const upstream = await fetch(targetUrl, {
       method: request.method,
