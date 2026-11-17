@@ -109,6 +109,7 @@ export async function getPayrollAttendanceMetrics(
         organizationId,
         date: { gte: startDate, lt: nextMonthStart },
         source: { not: 'TASK_TIMER' },
+        status: { not: 'REJECTED' },
         deletedAt: null,
       },
       select: { date: true, hours: true },
@@ -325,7 +326,7 @@ export async function getPayrollAttendanceMetrics(
             : 0;
       const creditedHours =
         dateKey < cutoverDate
-          ? legacyAttendanceHours + dayTimesheetHours
+          ? legacyAttendanceHours
           : sumIntervalSeconds(taskIntervals, dayStart, dayEnd) / 3600 +
             dayTimesheetHours;
       totalWorkedHours += creditedHours;

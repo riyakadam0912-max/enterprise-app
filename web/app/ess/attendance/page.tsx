@@ -172,9 +172,9 @@ function EmployeeESSAttendancePage() {
             {today && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 pt-6 border-t border-gray-200">
                 <div>
-                  <p className="text-xs text-gray-600 uppercase">Working Hours</p>
+                  <p className="text-xs text-gray-600 uppercase">Attendance Hours</p>
                   <p className="text-lg font-bold text-gray-900">
-                    {formatHoursDuration(today.workingHours ?? 0)}
+                    {formatHoursDuration(today.attendanceHours ?? today.workingHours ?? 0)}
                   </p>
                 </div>
                 {today.lateMinutes !== undefined && today.lateMinutes > 0 && (
@@ -349,7 +349,9 @@ function EmployeeESSAttendancePage() {
                         {record.checkOut ? new Date(record.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}
                       </td>
                       <td className="px-4 py-3 font-medium">
-                        {record.workingHours != null ? formatHoursDuration(record.workingHours) : '-'}
+                        {record.attendanceHours != null || record.workingHours != null
+                          ? formatHoursDuration(record.attendanceHours ?? record.workingHours ?? 0)
+                          : '-'}
                       </td>
                       <td className="px-4 py-3">
                         {record.lateMinutes > 0 ? (

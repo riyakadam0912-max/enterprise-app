@@ -42,6 +42,11 @@ export type AttendanceToday = {
   checkIn: string | null;
   checkOut: string | null;
   workingHours?: number | null;
+  attendanceHours?: number | null;
+  creditedWorkHours?: number;
+  taskTrackedHours?: number;
+  untrackedAttendanceHours?: number;
+  calculationMode?: "FIXED_ATTENDANCE" | "LEGACY_FLEXIBLE" | "TASK_TRACKED";
   creditedWorkSeconds?: number;
   workFromHomeCredit?: number;
   breaks?: { startedAt: string; endedAt: string | null }[];
@@ -68,6 +73,11 @@ export type AttendanceRecord = {
   checkIn: string | null;
   checkOut: string | null;
   workingHours: number | null;
+  attendanceHours?: number | null;
+  creditedWorkHours?: number;
+  taskTrackedHours?: number;
+  untrackedAttendanceHours?: number;
+  calculationMode?: "FIXED_ATTENDANCE" | "LEGACY_FLEXIBLE" | "TASK_TRACKED";
   creditedWorkSeconds?: number;
   workFromHomeCredit?: number;
   breaks?: { startedAt: string; endedAt: string | null }[];

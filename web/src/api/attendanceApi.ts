@@ -54,6 +54,7 @@ export interface AttendanceRecord {
   checkoutSource?: 'USER' | 'ADMIN_EDIT' | 'AUTO' | null;
   checkoutActorName?: string | null;
   workingHours: number | null;
+  attendanceHours?: number | null;
   taskHours?: number;
   creditedWorkSeconds?: number;
   workFromHomeCredit?: number;
@@ -93,6 +94,7 @@ export interface EmployeeAttendanceDay {
   checkIn: string | null;
   checkOut: string | null;
   workingHours: number | null;
+  attendanceHours?: number | null;
   taskHours?: number;
   creditedWorkSeconds?: number;
   workFromHomeCredit?: number;

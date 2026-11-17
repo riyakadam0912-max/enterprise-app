@@ -1063,7 +1063,7 @@ function AttendancePageContent() {
           0,
         ),
         worked: overviewRows.reduce(
-          (total, row) => total + (row.workingHours ?? 0) + (row.taskHours ?? 0),
+          (total, row) => total + (row.workingHours ?? 0),
           0,
         ),
         task: overviewRows.reduce((total, row) => total + (row.taskHours ?? 0), 0),
@@ -2681,13 +2681,13 @@ function AttendancePageContent() {
                     <div>
                       {row.workingHours != null || (row.taskHours ?? 0) > 0
                         ? formatHoursDuration(
-                            (row.workingHours ?? 0) + (row.taskHours ?? 0),
+                            row.workingHours ?? 0,
                           )
                         : '—'}
                     </div>
                     {row.taskHours != null && row.taskHours > 0 && (
                       <p className="mt-1 text-xs text-slate-500">
-                        Attendance time · {formatHoursDuration(row.workingHours ?? 0)}
+                        Attendance time · {formatHoursDuration(row.attendanceHours ?? row.workingHours ?? 0)}
                       </p>
                     )}
                     {row.creditedWorkSeconds !== undefined && (

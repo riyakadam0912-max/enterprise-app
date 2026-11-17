@@ -269,7 +269,7 @@ export default function EmployeeAttendancePage() {
                         )}
                         {(day.taskHours ?? 0) > 0 && (
                           <p className="text-xs text-slate-500">
-                            Attendance time · {formatHoursDuration(day.workingHours ?? 0)}
+                            Attendance time · {formatHoursDuration(day.attendanceHours ?? day.workingHours ?? 0)}
                           </p>
                         )}
                         {(day.taskHours ?? 0) > 0 && (
@@ -317,7 +317,7 @@ export default function EmployeeAttendancePage() {
                     </div>
                     <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
                       <div><p className="text-xs text-slate-500">Status</p><p className="mt-1 font-semibold text-slate-900">{statusLabel(selectedDay.status)}</p></div>
-                      <div><p className="text-xs text-slate-500">Attendance time</p><p className="mt-1 font-semibold text-slate-900">{formatHoursDuration(selectedDay.workingHours ?? 0)}</p></div>
+                      <div><p className="text-xs text-slate-500">Attendance time</p><p className="mt-1 font-semibold text-slate-900">{formatHoursDuration(selectedDay.attendanceHours ?? selectedDay.workingHours ?? 0)}</p></div>
                       <div><p className="text-xs text-slate-500">Task hours</p><p className="mt-1 font-semibold text-slate-900">{formatHoursDuration(selectedDay.taskHours ?? 0)}</p></div>
                       <div><p className="text-xs text-slate-500">Late / overtime</p><p className="mt-1 font-semibold text-slate-900">{selectedDay.lateMinutes}m / {formatHoursDuration(selectedDay.overtimeHours ?? 0)}</p></div>
                       <div><p className="text-xs text-slate-500">Timezone</p><p className="mt-1 font-semibold text-slate-900">{data?.timezone ?? 'Local time'}</p></div>

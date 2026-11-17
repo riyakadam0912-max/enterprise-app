@@ -639,7 +639,7 @@ export default function Attendance() {
         <Text style={{ color: "#64748b", marginTop: 6 }}>
           {today.data?.creditedWorkSeconds !== undefined
             ? `Flexible credited time: ${formatHoursDuration(today.data.creditedWorkSeconds / 3600)}`
-            : `Working hours: ${formatHoursDuration(today.data?.workingHours ?? 0)}`}{" "}
+            : `Attendance hours: ${formatHoursDuration(today.data?.attendanceHours ?? today.data?.workingHours ?? 0)}`}{" "}
           · Overtime: {formatHoursDuration(today.data?.overtimeHours ?? 0)} ·
           Late: {today.data?.lateMinutes ?? 0} min
         </Text>
@@ -837,7 +837,7 @@ export default function Attendance() {
           <Text style={{ color: "#64748b", marginTop: 5 }}>
             {record.creditedWorkSeconds !== undefined
               ? `Flexible credited: ${formatHoursDuration(record.creditedWorkSeconds / 3600)}`
-              : `Hours: ${record.workingHours != null ? formatHoursDuration(record.workingHours) : "—"}`}{" "}
+              : `Hours: ${record.attendanceHours != null || record.workingHours != null ? formatHoursDuration(record.attendanceHours ?? record.workingHours ?? 0) : "—"}`}{" "}
             · Late: {record.lateMinutes} min
           </Text>
           {record.breaks?.map((interval) => (

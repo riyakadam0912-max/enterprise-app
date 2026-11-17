@@ -97,6 +97,20 @@ function recordFromApi(value: unknown): AttendanceRecord | null {
     checkOut: typeof row.checkOut === "string" ? row.checkOut : null,
     workingHours:
       typeof row.workingHours === "number" ? row.workingHours : null,
+    attendanceHours:
+      typeof row.attendanceHours === "number" ? row.attendanceHours : null,
+    creditedWorkHours:
+      typeof row.creditedWorkHours === "number" ? row.creditedWorkHours : undefined,
+    taskTrackedHours:
+      typeof row.taskTrackedHours === "number" ? row.taskTrackedHours : undefined,
+    untrackedAttendanceHours:
+      typeof row.untrackedAttendanceHours === "number"
+        ? row.untrackedAttendanceHours
+        : undefined,
+    calculationMode:
+      typeof row.calculationMode === "string"
+        ? (row.calculationMode as AttendanceRecord["calculationMode"])
+        : undefined,
     creditedWorkSeconds:
       typeof row.creditedWorkSeconds === "number"
         ? row.creditedWorkSeconds
@@ -195,6 +209,20 @@ export async function attendanceToday(): Promise<AttendanceToday> {
     checkOut: typeof value.checkOut === "string" ? value.checkOut : null,
     workingHours:
       typeof value.workingHours === "number" ? value.workingHours : null,
+    attendanceHours:
+      typeof value.attendanceHours === "number" ? value.attendanceHours : null,
+    creditedWorkHours:
+      typeof value.creditedWorkHours === "number" ? value.creditedWorkHours : undefined,
+    taskTrackedHours:
+      typeof value.taskTrackedHours === "number" ? value.taskTrackedHours : undefined,
+    untrackedAttendanceHours:
+      typeof value.untrackedAttendanceHours === "number"
+        ? value.untrackedAttendanceHours
+        : undefined,
+    calculationMode:
+      typeof value.calculationMode === "string"
+        ? (value.calculationMode as AttendanceToday["calculationMode"])
+        : undefined,
     creditedWorkSeconds:
       typeof value.creditedWorkSeconds === "number"
         ? value.creditedWorkSeconds

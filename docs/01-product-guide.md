@@ -103,6 +103,8 @@ flowchart TD
 
 Attendance and payroll contain date, timezone, concurrency, and approval rules. Treat the [module reference](03-modules-apis-and-data.md#people-operations) and tests as the contract before changing calculations.
 
+Attendance exposes three deliberately separate measurements. **Attendance hours** are check-in through check-out minus breaks. **Task-tracked hours** are eligible timer intervals and non-rejected manual timesheets. **Credited work hours** are the single value used by progress, summaries, and payroll: fixed shifts and flexible shifts before the configured cutover use attendance hours, while flexible shifts on or after the cutover use task-tracked hours. Task time attributes attendance and is never added a second time to attendance hours. Reports may also show untracked attendance hours so employees can resolve missing task attribution.
+
 ## How modules work together
 
 **Example: an agency engagement.** A lead from a campaign is assigned to a salesperson. Calls and meetings are stored as activities. After qualification, the lead becomes a deal and customer. Sales sends a quote; acceptance creates the basis for an invoice. Delivery creates a project, assigns a project manager and employees, and schedules tasks. Employees record time and task progress; the client sees only projects explicitly shared with their account. Payments close the financial loop, while notifications and audit history record important actions.

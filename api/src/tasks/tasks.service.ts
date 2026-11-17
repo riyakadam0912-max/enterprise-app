@@ -1078,10 +1078,13 @@ export class TasksService {
         throw new BadRequestException('Only a running timer can be paused');
       }
       const startedAt = session.startedAt;
-      const elapsedSeconds = Math.max(
+      const elapsedMilliseconds = Math.max(
         0,
-        Math.floor((now.getTime() - startedAt.getTime()) / 1000),
+        now.getTime() - startedAt.getTime(),
       );
+      const accumulatedMilliseconds =
+        (session.subsecondMilliseconds ?? 0) + elapsedMilliseconds;
+      const elapsedSeconds = Math.floor(accumulatedMilliseconds / 1000);
       await this.prisma.$transaction(async (tx) => {
         const updated = await tx.taskTimerSession.updateMany({
           where: {
@@ -1093,17 +1096,18 @@ export class TasksService {
             status: 'PAUSED',
             startedAt: null,
             totalSeconds: session.totalSeconds + elapsedSeconds,
+            subsecondMilliseconds: accumulatedMilliseconds % 1000,
           },
         });
         if (updated.count !== 1) {
           throw new ConflictException('Timer changed; refresh and try again');
         }
-        if (elapsedSeconds > 0) {
+        if (elapsedMilliseconds > 0) {
           await tx.taskTimerInterval.create({
             data: {
               timerSessionId: session.id,
               startedAt,
-              endedAt: new Date(startedAt.getTime() + elapsedSeconds * 1000),
+              endedAt: now,
             },
           });
         }
@@ -1174,12 +1178,12 @@ export class TasksService {
     });
     if (!session) return null;
 
-    const elapsedSeconds = session.startedAt
-      ? Math.max(
-          0,
-          Math.floor((now.getTime() - session.startedAt.getTime()) / 1000),
-        )
+    const elapsedMilliseconds = session.startedAt
+      ? Math.max(0, now.getTime() - session.startedAt.getTime())
       : 0;
+    const accumulatedMilliseconds =
+      (session.subsecondMilliseconds ?? 0) + elapsedMilliseconds;
+    const elapsedSeconds = Math.floor(accumulatedMilliseconds / 1000);
     const pause = async (tx: Prisma.TransactionClient) => {
       const updated = await tx.taskTimerSession.updateMany({
         where: {
@@ -1191,19 +1195,18 @@ export class TasksService {
           status: 'PAUSED',
           startedAt: null,
           totalSeconds: session.totalSeconds + elapsedSeconds,
+          subsecondMilliseconds: accumulatedMilliseconds % 1000,
         },
       });
       if (updated.count !== 1) {
         throw new ConflictException('Timer changed; refresh and try again');
       }
-      if (session.startedAt && elapsedSeconds > 0) {
+      if (session.startedAt && elapsedMilliseconds > 0) {
         await tx.taskTimerInterval.create({
           data: {
             timerSessionId: session.id,
             startedAt: session.startedAt,
-            endedAt: new Date(
-              session.startedAt.getTime() + elapsedSeconds * 1000,
-            ),
+            endedAt: now,
           },
         });
       }
@@ -1445,6 +1448,7 @@ export class TasksService {
       durationSeconds: number;
       remainingSeconds: number;
       totalSeconds: number;
+      subsecondMilliseconds?: number;
       createdAt: Date;
       task?: {
         id: number;
@@ -1466,13 +1470,13 @@ export class TasksService {
     notes?: string,
     transaction?: Prisma.TransactionClient,
   ) {
-    const elapsedSeconds =
+    const elapsedMilliseconds =
       session.status === 'RUNNING' && session.startedAt
-        ? Math.max(
-            0,
-            Math.floor((now.getTime() - session.startedAt.getTime()) / 1000),
-          )
+        ? Math.max(0, now.getTime() - session.startedAt.getTime())
         : 0;
+    const accumulatedMilliseconds =
+      (session.subsecondMilliseconds ?? 0) + elapsedMilliseconds;
+    const elapsedSeconds = Math.floor(accumulatedMilliseconds / 1000);
     const totalSeconds = session.totalSeconds + elapsedSeconds;
     const finish = async (tx: Prisma.TransactionClient) => {
       const updated = await tx.taskTimerSession.updateMany({
@@ -1486,6 +1490,7 @@ export class TasksService {
           remainingSeconds: 0,
           startedAt: null,
           totalSeconds,
+          subsecondMilliseconds: accumulatedMilliseconds % 1000,
         },
       });
       if (updated.count !== 1) {
@@ -1494,15 +1499,13 @@ export class TasksService {
       if (
         session.status === 'RUNNING' &&
         session.startedAt &&
-        elapsedSeconds > 0
+        elapsedMilliseconds > 0
       ) {
         await tx.taskTimerInterval.create({
           data: {
             timerSessionId: session.id,
             startedAt: session.startedAt,
-            endedAt: new Date(
-              session.startedAt.getTime() + elapsedSeconds * 1000,
-            ),
+            endedAt: now,
           },
         });
       }

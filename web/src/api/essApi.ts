@@ -15,6 +15,11 @@ export interface CheckOutResponse {
   checkIn: string;
   checkOut: string;
   workingHours: number;
+  attendanceHours?: number | null;
+  creditedWorkHours?: number;
+  taskTrackedHours?: number;
+  untrackedAttendanceHours?: number;
+  calculationMode?: 'FIXED_ATTENDANCE' | 'LEGACY_FLEXIBLE' | 'TASK_TRACKED';
   overtimeHours: number;
   late: boolean;
   lateMinutes: number;
@@ -28,6 +33,11 @@ export interface AttendanceStatus {
   checkIn: string | null;
   checkOut: string | null;
   workingHours: number;
+  attendanceHours?: number | null;
+  creditedWorkHours?: number;
+  taskTrackedHours?: number;
+  untrackedAttendanceHours?: number;
+  calculationMode?: 'FIXED_ATTENDANCE' | 'LEGACY_FLEXIBLE' | 'TASK_TRACKED';
   breaks?: { startedAt: string; endedAt: string | null }[];
   onBreak?: boolean;
   lateMinutes?: number;
@@ -47,6 +57,11 @@ export interface AttendanceRecord {
   checkIn: string | null;
   checkOut: string | null;
   workingHours: number | null;
+  attendanceHours?: number | null;
+  creditedWorkHours?: number;
+  taskTrackedHours?: number;
+  untrackedAttendanceHours?: number;
+  calculationMode?: 'FIXED_ATTENDANCE' | 'LEGACY_FLEXIBLE' | 'TASK_TRACKED';
   lateMinutes: number;
   overtimeHours: number;
   shift: {
@@ -267,6 +282,7 @@ export async function checkOut(): Promise<CheckOutResponse> {
   const checkInValue = getString(result.checkIn) ?? '';
   const checkOutValue = getString(result.checkOut) ?? '';
   const workingHours = getNumber(result.workingHours) ?? 0;
+  const attendanceHours = getNumber(result.attendanceHours);
   const overtimeHours = getNumber(result.overtimeHours) ?? 0;
   const lateMinutes = getNumber(result.lateMinutes) ?? 0;
 
@@ -274,6 +290,11 @@ export async function checkOut(): Promise<CheckOutResponse> {
     checkIn: checkInValue,
     checkOut: checkOutValue,
     workingHours,
+    attendanceHours,
+    creditedWorkHours: getNumber(result.creditedWorkHours) ?? workingHours,
+    taskTrackedHours: getNumber(result.taskTrackedHours) ?? 0,
+    untrackedAttendanceHours: getNumber(result.untrackedAttendanceHours) ?? 0,
+    calculationMode: getString(result.calculationMode) as AttendanceStatus['calculationMode'],
     overtimeHours,
     late: lateMinutes > 0,
     lateMinutes,
@@ -361,6 +382,11 @@ export async function getAttendanceHistory(): Promise<AttendanceRecord[]> {
       checkIn: getString(row.checkIn),
       checkOut: getString(row.checkOut),
       workingHours: getNumber(row.workingHours),
+      attendanceHours: getNumber(row.attendanceHours),
+      creditedWorkHours: getNumber(row.creditedWorkHours) ?? undefined,
+      taskTrackedHours: getNumber(row.taskTrackedHours) ?? undefined,
+      untrackedAttendanceHours: getNumber(row.untrackedAttendanceHours) ?? undefined,
+      calculationMode: getString(row.calculationMode) as AttendanceRecord['calculationMode'],
       lateMinutes: getNumber(row.lateMinutes) ?? 0,
       overtimeHours: getNumber(row.overtimeHours) ?? 0,
       shift: normalizeCompactShift(row.shiftDetails ?? row.shift),

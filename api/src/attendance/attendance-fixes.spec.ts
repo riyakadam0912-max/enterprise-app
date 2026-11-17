@@ -108,7 +108,7 @@ describe('Attendance audit fixes', () => {
       11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
     ]);
     expect(response.summary!.present).toBe(102);
-    expect(response.summary!.totalWorkedHours).toBe(816.01);
+    expect(response.summary!.totalWorkedHours).toBe(816);
     expect(response.summary!.totalTaskHours).toBe(0.01);
     expect(snapshot).toHaveBeenNthCalledWith(
       2,

@@ -2070,6 +2070,29 @@ describe('AttendanceService', () => {
     ]);
   });
 
+  it('rejects a zero-duration flexible attendance session', async () => {
+    const startedAt = new Date('2026-10-23T09:00:00.000Z');
+
+    await expect(
+      (service as any).closeFlexibleAttendanceSession(
+        {
+          id: 44,
+          employeeId: 7,
+          organizationId: 1,
+          shiftId: 2,
+          startedAt,
+          breaks: [],
+          shift: { id: 2, type: 'FLEXIBLE', requiredHours: 8 },
+        },
+        { organizationId: 1 },
+        startedAt,
+        'UTC',
+        mockUser,
+      ),
+    ).rejects.toThrow('Check-out time must be later than check-in time');
+    expect(prisma.attendanceSession.updateMany).not.toHaveBeenCalled();
+  });
+
   it('credits flexible attendance hours when no task timer was recorded that day', async () => {
     jest.setSystemTime(new Date('2026-10-16T12:00:00.000Z'));
     const employee = {
@@ -3436,7 +3459,7 @@ describe('AttendanceService', () => {
 
     expect(result.totalExpectedHours).toBe(24);
     expect(result.totalTaskHours).toBe(1.5);
-    expect(result.totalWorkedHours).toBe(10);
+    expect(result.totalWorkedHours).toBe(8.5);
   });
 
   it('uses flexible task-time day equivalents in monthly summaries', async () => {
@@ -3706,7 +3729,7 @@ describe('AttendanceService', () => {
         workingDays: 15,
         presentCount: 1,
         totalExpectedHours: 120,
-        totalWorkedHours: 9.25,
+        totalWorkedHours: 8,
         attendancePercent: 6.67,
       }),
     );

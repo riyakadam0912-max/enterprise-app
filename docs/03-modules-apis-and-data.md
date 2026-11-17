@@ -76,6 +76,9 @@ Project status transitions and task review rules are enforced in services, not o
 - Write versions and reconciliation jobs protect or repair concurrent/stateful changes; administrative reopening and session recovery are explicit actions.
 - Vercel automation uses a secret-protected endpoint. Realtime or Redis does not replace scheduled reconciliation.
 - `ATTENDANCE_FLEXIBLE_TASK_CUTOVER_DATE` changes how task work contributes around the configured cutover. Treat it as a data-migration boundary.
+- Attendance responses distinguish `attendanceHours`, `taskTrackedHours`, `creditedWorkHours`, `untrackedAttendanceHours`, and `calculationMode`. Fixed and legacy-flexible credit uses attendance duration; post-cutover flexible credit uses eligible task time. These values must not be summed together.
+- Task timer intervals preserve sub-second carry across pause/resume boundaries and round only the aggregate duration to whole seconds.
+- Reconcile stored task-hour projections with `npm run attendance:reconcile-task-hours -- --from=YYYY-MM-DD --to=YYYY-MM-DD`. The command is a dry run unless `--apply` is supplied; applied changes create attendance audit records. An optional `--organization=ID` limits scope.
 
 ### Approval transitions
 

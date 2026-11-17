@@ -840,6 +840,7 @@ model TaskTimerSession {
   remainingSeconds Int
   startedAt        DateTime?
   totalSeconds     Int                 @default(0)
+  subsecondMilliseconds Int            @default(0)
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
   task             Task                @relation(fields: [taskId], references: [id], onDelete: Cascade)

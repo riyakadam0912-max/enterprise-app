@@ -50,6 +50,10 @@ import {
 } from './attendance-time.utils';
 import { calculateNetWorkingHours } from './attendance-work-time.utils';
 import {
+  calculateAttendanceCredit,
+  resolveCreditedWorkHours,
+} from './attendance-credit.utils';
+import {
   getFlexibleTaskTimeCutoverDate,
   sumIntervalSeconds,
 } from './task-work-time.utils';
@@ -105,8 +109,13 @@ type DailyAttendanceRow = {
   checkoutSource: AttendanceCheckoutSource | null;
   checkoutActorName: string | null;
   workingHours: number | null;
+  attendanceHours?: number | null;
   taskHours?: number;
   creditedWorkSeconds?: number;
+  creditedWorkHours?: number;
+  taskTrackedHours?: number;
+  untrackedAttendanceHours?: number;
+  calculationMode?: 'FIXED_ATTENDANCE' | 'LEGACY_FLEXIBLE' | 'TASK_TRACKED';
   breaks: { startedAt: string; endedAt: string | null }[];
   breakHours: number;
   onBreak: boolean;
@@ -383,7 +392,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         if (row.lateMinutes > 0) acc.lateCount += 1;
         acc.overtimeHours += row.overtimeHours ?? 0;
         acc.shortfallHours += row.shortfallHours ?? 0;
-        acc.totalWorkedHours += (row.workingHours ?? 0) + (row.taskHours ?? 0);
+        acc.totalWorkedHours += resolveCreditedWorkHours({
+          attendanceHours: row.workingHours,
+          taskTrackedHours: row.taskHours,
+          creditedWorkSeconds: row.creditedWorkSeconds,
+        });
         acc.totalTaskHours += row.taskHours ?? 0;
         const requiredHours = row.shiftDetails?.requiredHours ?? 8;
         if (
@@ -843,9 +856,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     timezone: string,
     user: AttendanceUser,
   ) {
-    if (checkOutTime.getTime() < session.startedAt.getTime()) {
+    if (checkOutTime.getTime() <= session.startedAt.getTime()) {
       throw new BadRequestException(
-        'Check-out time cannot be earlier than check-in time',
+        'Check-out time must be later than check-in time',
       );
     }
 
@@ -866,9 +879,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           'Attendance session changed; refresh and try again',
         );
       }
-      if (checkOutTime.getTime() < currentSession.startedAt.getTime()) {
+      if (checkOutTime.getTime() <= currentSession.startedAt.getTime()) {
         throw new BadRequestException(
-          'Check-out time cannot be earlier than check-in time',
+          'Check-out time must be later than check-in time',
         );
       }
       const breaks = currentSession.breaks.map((interval) => ({
@@ -1334,6 +1347,21 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         : workFromHomeCredit === 1
           ? AttendanceStatus.PRESENT
           : AttendanceStatus.HALF_DAY);
+    const attendanceHours = attendance?.checkIn
+      ? calculateNetWorkingHours(
+          attendance.checkIn,
+          attendance.checkOut ?? new Date(),
+          attendance.breaks ?? [],
+        )
+      : 0;
+    const credit = calculateAttendanceCredit({
+      attendanceHours,
+      taskTrackedHours: attendance?.taskHours ?? 0,
+      creditedWorkSeconds,
+      shiftType: shift?.type,
+      dateKey: day.toISOString().slice(0, 10),
+      flexibleTaskCutoverDate: this.flexibleTaskTimeCutoverDate(),
+    });
     return {
       id: attendance?.id ?? null,
       version: attendance?.version,
@@ -1363,7 +1391,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
                   attendance.breaks ?? [],
                 )
               : null)),
+      attendanceHours: attendance?.checkIn ? attendanceHours : null,
       taskHours: attendance?.taskHours ?? 0,
+      taskTrackedHours: credit.taskTrackedHours,
+      creditedWorkHours: credit.creditedWorkHours,
+      untrackedAttendanceHours: credit.untrackedAttendanceHours,
+      calculationMode: credit.calculationMode,
       ...(creditedWorkSeconds !== undefined ? { creditedWorkSeconds } : {}),
       breaks: (attendance?.breaks ?? []).map((interval) => ({
         startedAt: interval.startedAt.toISOString(),
@@ -2429,9 +2462,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         throw new ConflictException('Employee has already checked out');
       }
 
-      if (checkOutTime.getTime() < new Date(record.checkIn).getTime()) {
+      if (checkOutTime.getTime() <= new Date(record.checkIn).getTime()) {
         throw new BadRequestException(
-          'Check-out time cannot be earlier than check-in time',
+          'Check-out time must be later than check-in time',
         );
       }
 
@@ -3327,6 +3360,20 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         startedAt: interval.startedAt.toISOString(),
         endedAt: interval.endedAt?.toISOString() ?? null,
       }));
+      const attendanceHours = row.checkIn
+        ? calculateNetWorkingHours(
+            row.checkIn,
+            row.checkOut ?? new Date(),
+            row.breaks,
+          )
+        : 0;
+      const credit = calculateAttendanceCredit({
+        attendanceHours,
+        taskTrackedHours: row.taskHours ?? 0,
+        shiftType: shift?.type,
+        dateKey: row.date.toISOString().slice(0, 10),
+        flexibleTaskCutoverDate: this.flexibleTaskTimeCutoverDate(),
+      });
       return {
         id: row.id,
         // The edit endpoint requires this optimistic-lock token. Keep it on
@@ -3340,7 +3387,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         checkoutSource: row.checkoutSource,
         checkoutActorName: null,
         workingHours: row.workingHours,
+        attendanceHours: row.checkIn ? attendanceHours : null,
         taskHours: row.taskHours ?? 0,
+        taskTrackedHours: credit.taskTrackedHours,
+        creditedWorkHours: credit.creditedWorkHours,
+        untrackedAttendanceHours: credit.untrackedAttendanceHours,
+        calculationMode: credit.calculationMode,
         breaks,
         breakHours: row.breaks.reduce((totalBreakHours, interval) => {
           const end =
@@ -3839,6 +3891,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       checkIn: string | null;
       checkOut: string | null;
       workingHours: number | null;
+      attendanceHours?: number | null;
+      creditedWorkHours?: number;
+      taskTrackedHours?: number;
+      untrackedAttendanceHours?: number;
+      calculationMode?: 'FIXED_ATTENDANCE' | 'LEGACY_FLEXIBLE' | 'TASK_TRACKED';
       taskHours: number;
       creditedWorkSeconds?: number;
       breaks: { startedAt: string; endedAt: string | null }[];
@@ -3981,6 +4038,21 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
               now,
             ).seconds
           : undefined;
+      const attendanceHours = attendance?.checkIn
+        ? calculateNetWorkingHours(
+            attendance.checkIn,
+            attendance.checkOut ?? now,
+            attendance.breaks ?? [],
+          )
+        : 0;
+      const credit = calculateAttendanceCredit({
+        attendanceHours,
+        taskTrackedHours: attendance?.taskHours ?? 0,
+        creditedWorkSeconds,
+        shiftType: shift?.type,
+        dateKey: dayKey,
+        flexibleTaskCutoverDate: this.flexibleTaskTimeCutoverDate(),
+      });
       days.push({
         date: this.startOfDay(day).toISOString(),
         day: dayNumber,
@@ -3996,7 +4068,12 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           creditedWorkSeconds !== undefined
             ? Number((creditedWorkSeconds / 3600).toFixed(2))
             : (attendance?.workingHours ?? null),
+        attendanceHours: attendance?.checkIn ? attendanceHours : null,
         taskHours: attendance?.taskHours ?? 0,
+        taskTrackedHours: credit.taskTrackedHours,
+        creditedWorkHours: credit.creditedWorkHours,
+        untrackedAttendanceHours: credit.untrackedAttendanceHours,
+        calculationMode: credit.calculationMode,
         ...(workFromHomeCredit !== undefined ? { workFromHomeCredit } : {}),
         ...(creditedWorkSeconds !== undefined ? { creditedWorkSeconds } : {}),
         breaks: (attendance?.breaks ?? []).map((interval) => ({
@@ -4125,6 +4202,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
               organizationId: employee.organizationId,
               date: { gte: taskTimesheetRangeStart, lt: taskTimesheetRangeEnd },
               source: { not: 'TASK_TIMER' },
+              status: { not: 'REJECTED' },
               deletedAt: null,
             },
             select: { date: true, hours: true },
@@ -4478,6 +4556,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           measuredStart,
           measuredEnd,
         );
+        for (const timesheet of manualTimesheets) {
+          if (timesheet.date.toISOString().slice(0, 10) === dateKey) {
+            daySeconds += Math.max(0, Math.round(timesheet.hours * 3600));
+          }
+        }
       } else {
         const attendance = attendanceByDate.get(dateKey);
         if (attendance?.workingHours != null && attendance.workingHours > 0) {
@@ -4513,11 +4596,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         legacySeconds += daySeconds;
       }
 
-      for (const timesheet of manualTimesheets) {
-        if (timesheet.date.toISOString().slice(0, 10) === dateKey) {
-          daySeconds += Math.max(0, Math.round(timesheet.hours * 3600));
-        }
-      }
       if (daySeconds > 0) activeDays += 1;
       seconds += daySeconds;
       cursor = dayEnd;
@@ -4808,6 +4886,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
               employeeId: { in: summaryEmployeeIds },
               date: { gte: monthStart, lt: nextMonthStart },
               source: { not: 'TASK_TIMER' },
+              status: { not: 'REJECTED' },
               deletedAt: null,
             },
             select: { employeeId: true, date: true, hours: true },
@@ -5220,9 +5299,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
               row.breaks,
             )
           );
-        }, 0) +
-        flexibleWorkedHours +
-        totalTaskHours
+        }, 0) + flexibleWorkedHours
       ).toFixed(2),
     );
     let totalWorkingDays = 0;
@@ -5429,6 +5506,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           lt: new Date(Date.UTC(targetYear, targetMonth, 1)),
         },
         source: { not: 'TASK_TIMER' },
+        status: { not: 'REJECTED' },
         deletedAt: null,
       },
       select: { employeeId: true, date: true, hours: true },
@@ -5678,7 +5756,10 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       const availableDayFraction = leaveForDay ? 0.5 : 1;
       const requiredHours = row.requiredHours ?? rowShift?.requiredHours ?? 8;
       entry.overtimeHours += row.overtimeHours ?? 0;
-      entry.totalWorkedHours += (row.taskHours ?? 0) + (row.workingHours ?? 0);
+      entry.totalWorkedHours += resolveCreditedWorkHours({
+        attendanceHours: row.workingHours,
+        taskTrackedHours: row.taskHours,
+      });
       const rowShortfall = (row as { shortfallHours?: number }).shortfallHours;
       if (typeof rowShortfall === 'number') {
         entry.shortfallHours += rowShortfall;
@@ -5959,11 +6040,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           ) {
             entry.presentCount += Math.min(dayHours / 8, eligibleFraction);
           }
-          const legacyTaskHours =
-            dayKey < this.flexibleTaskTimeCutoverDate()
-              ? (attendance?.taskHours ?? 0)
-              : 0;
-          entry.totalWorkedHours += dayHours + legacyTaskHours;
+          entry.totalWorkedHours += dayHours;
         }
         const entry = grouped.get(employee.id);
         if (!entry) return;

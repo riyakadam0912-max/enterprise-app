@@ -619,6 +619,41 @@ describe('TasksService per-user task timer sessions', () => {
     });
   });
 
+  it('carries sub-second time across pause boundaries', async () => {
+    const startedAt = new Date(Date.now() - 600);
+    prisma.taskTimerSession.findFirst.mockResolvedValueOnce({
+      id: 101,
+      taskId: 8,
+      userId: 11,
+      status: 'RUNNING',
+      durationSeconds: 0,
+      remainingSeconds: 0,
+      startedAt,
+      totalSeconds: 4,
+      subsecondMilliseconds: 600,
+      createdAt: startedAt,
+    });
+
+    await service.updateTimer(
+      8,
+      { action: 'pause' },
+      makeUser(11, Role.EMPLOYEE, 101),
+    );
+
+    expect(tx.taskTimerSession.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          totalSeconds: 5,
+          subsecondMilliseconds: expect.any(Number),
+        }),
+      }),
+    );
+    const remainder = tx.taskTimerSession.updateMany.mock.calls[0][0].data
+      .subsecondMilliseconds;
+    expect(remainder).toBeGreaterThanOrEqual(100);
+    expect(remainder).toBeLessThan(300);
+  });
+
   it('finalizes a running timer when attendance starts a break', async () => {
     const startedAt = new Date(Date.now() - 30_000);
     tx.taskTimerSession.findMany.mockResolvedValueOnce([
