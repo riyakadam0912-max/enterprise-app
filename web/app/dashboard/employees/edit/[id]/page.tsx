@@ -9,6 +9,7 @@ import { requestPasswordResetCode, resetUserPassword } from '@/api/usersApi';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { useAuthSession } from '@/stores/auth-store';
 import { getShifts, type ShiftRecord } from '@/api/attendanceApi';
+import { EmployeeRoleEditor } from '@/components/employees/EmployeeRoleEditor';
 
 const DEPARTMENTS = ['Sales', 'Finance', 'HR', 'IT', 'Operations', 'Marketing', 'Creative and Production', 'Legal', 'Other'];
 const STATUSES = ['Active', 'On Leave', 'Resigned', 'Terminated'];
@@ -279,6 +280,8 @@ export default function EditEmployeePage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
+          {employee && <EmployeeRoleEditor key={employee.user?.id ?? 'no-account'} user={employee.user} disabled={saving} />}
+
           {/* Name */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Name <span className="text-red-500">*</span></label>

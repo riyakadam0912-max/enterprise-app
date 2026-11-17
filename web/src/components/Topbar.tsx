@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   useAuthSession,
   setAuthSession,
+  getAuthSessionSnapshot,
   setActiveOrganizationDetails,
   isSuperAdminSession,
   getActiveOrganizationId,
@@ -127,7 +128,11 @@ export default function Topbar() {
 
     getMyOrganization()
       .then((org) => {
-        setAuthSession({ organizationName: org.name, organizationLogo: org.logoUrl ?? null });
+        setAuthSession({
+          ...getAuthSessionSnapshot(),
+          organizationName: org.name,
+          organizationLogo: org.logoUrl ?? null,
+        });
       })
       .catch(() => { /* silently ignore */ });
   }, [orgName, session.user, session.role, session.isSuperAdmin]);

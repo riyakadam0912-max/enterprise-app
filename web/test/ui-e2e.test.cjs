@@ -203,6 +203,89 @@ async function loginWithoutOrganization(page) {
   await page.waitForURL('**/select-organization');
 }
 
+async function createEmployeeRolePage({ role = 'ADMIN', linkedUser = { id: 84, role: 'EMPLOYEE' }, failUpdate = false } = {}) {
+  const session = authPayload(role);
+  const roleRequests = [];
+  let account = linkedUser;
+  const result = await createPage({
+    sessionData: session,
+    api: (route, endpoint) => {
+      if (endpoint === '/auth/me') return fulfillJson(route, { success: true, data: session });
+      if (endpoint === '/me/business-units') return fulfillJson(route, {
+        success: true, data: { units: [], canSelectAll: true, assignedUnitId: null, isBusinessUnitAdmin: false },
+      });
+      if (endpoint === '/organizations/me') return fulfillJson(route, {
+        success: true, data: { id: 7, name: 'Test Organization', slug: 'test-org' },
+      });
+      if (endpoint === '/organizations/accessible') return fulfillJson(route, {
+        success: true, data: [{ id: 7, name: 'Test Organization', slug: 'test-org', status: 'ACTIVE' }],
+      });
+      if (/^\/users\/\d+\/role$/.test(endpoint)) {
+        roleRequests.push({ endpoint, method: route.request().method(), body: route.request().postDataJSON() });
+        if (failUpdate) return fulfillJson(route, { success: false, message: 'Role update denied.' }, 403);
+        account = { ...account, role: route.request().postDataJSON().role };
+        return fulfillJson(route, { success: true, data: account });
+      }
+      if (endpoint === '/employees/42') return fulfillJson(route, {
+        success: true, data: { id: 42, name: 'Test Employee', email: 'employee@example.test', status: 'Active', user: account },
+      });
+      return fulfillJson(route, { success: true, data: [] });
+    },
+  });
+  return { ...result, roleRequests };
+}
+
+test('employee role can be promoted to manager from employee edit and persists after reload', { timeout: 120_000 }, async () => {
+  const { context, page, roleRequests, diagnostics } = await createEmployeeRolePage();
+  try {
+    await page.goto(`${baseUrl}/dashboard/employees/edit/42`);
+    await waitForText(page, 'Account role', diagnostics);
+    const selector = page.getByLabel('Role', { exact: true });
+    await selector.selectOption('MANAGER');
+    await page.getByRole('button', { name: 'Update role', exact: true }).click();
+    await page.getByText('Role updated successfully.', { exact: true }).waitFor();
+    assert.deepEqual(roleRequests, [{ endpoint: '/users/84/role', method: 'PATCH', body: { role: 'MANAGER' } }]);
+    assert.equal(new URL(page.url()).pathname, '/dashboard/employees/edit/42');
+    await page.reload();
+    await page.getByRole('heading', { name: 'Account role', exact: true }).waitFor();
+    assert.equal(await selector.inputValue(), 'MANAGER');
+  } finally {
+    await context.close();
+  }
+});
+
+test('employee role prevents self changes, missing accounts and unauthorized edits', { timeout: 120_000 }, async () => {
+  for (const scenario of [
+    { linkedUser: { id: 17, role: 'ADMIN' }, message: 'You cannot change your own role.' },
+    { linkedUser: null, message: 'This employee needs a linked login account before a role can be assigned.' },
+    { role: 'HR', message: 'You do not have permission to change account roles.' },
+  ]) {
+    const { context, page, roleRequests } = await createEmployeeRolePage(scenario);
+    try {
+      await page.goto(`${baseUrl}/dashboard/employees/edit/42`);
+      await page.getByText(scenario.message, { exact: true }).waitFor();
+      assert.equal(await page.getByRole('button', { name: 'Update role', exact: true }).count(), 0);
+      assert.equal(roleRequests.length, 0);
+    } finally {
+      await context.close();
+    }
+  }
+});
+
+test('employee role shows API failures and allows retry without losing the form', { timeout: 120_000 }, async () => {
+  const { context, page } = await createEmployeeRolePage({ failUpdate: true });
+  try {
+    await page.goto(`${baseUrl}/dashboard/employees/edit/42`);
+    await page.getByLabel('Role', { exact: true }).selectOption('MANAGER');
+    await page.getByRole('button', { name: 'Update role', exact: true }).click();
+    await page.getByRole('alert').filter({ hasText: 'Role update denied.' }).waitFor();
+    assert.equal(await page.locator('input[name="name"]').inputValue(), 'Test Employee');
+    assert.equal(await page.getByRole('button', { name: 'Update role', exact: true }).isEnabled(), true);
+  } finally {
+    await context.close();
+  }
+});
+
 async function waitForText(page, text, diagnostics) {
   try {
     await page.getByText(text).waitFor({ timeout: 10_000 });
