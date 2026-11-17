@@ -463,19 +463,18 @@ export class TasksService {
           new Date(),
           employee.organization?.timezone ?? 'UTC',
         );
-      const assignedToAnotherShoot = await this.db.taskCrewAssignment.findFirst(
-        {
-          where: {
-            user: { employeeId },
-            task: {
-              taskType: 'SHOOT',
-              shootDate: date,
-              deletedAt: null,
-            },
-          },
-          select: { id: true },
+      const assignedToAnotherShoot = await this.db.task.findFirst({
+        where: {
+          taskType: 'SHOOT',
+          shootDate: date,
+          deletedAt: null,
+          OR: [
+            { assignedToId: employeeId },
+            { shootCrew: { some: { user: { employeeId } } } },
+          ],
         },
-      );
+        select: { id: true },
+      });
       let attendance = await this.db.attendance.findUnique({
         where: { employeeId_date: { employeeId, date } },
       });
@@ -549,7 +548,9 @@ export class TasksService {
   private assertShootCompletionAllowed(
     task: {
       taskType: string;
+      status?: string;
       assignedToUserId: number | null;
+      assignedToId?: number | null;
       shootCrew?: { userId: number }[];
     },
     status: string,
@@ -561,19 +562,35 @@ export class TasksService {
         'Only shoot tasks can be completed this way',
       );
     }
-    if (user.role !== Role.ADMIN && user.role !== Role.SUPER_ADMIN) {
+    if (!this.isTaskActor(task, user)) {
       throw new ForbiddenException(
-        'Only an assigned admin or super admin can complete a shoot',
+        'Only an assigned task owner or shoot crew member can complete a shoot',
       );
     }
     if (
-      task.assignedToUserId !== user.userId &&
-      !task.shootCrew?.some((member) => member.userId === user.userId)
+      user.role !== Role.ADMIN &&
+      user.role !== Role.SUPER_ADMIN &&
+      this.normalizeTaskStatus(task.status) !== 'IN_PROGRESS'
     ) {
-      throw new ForbiddenException(
-        'Only an assigned admin or super admin can complete a shoot',
+      throw new BadRequestException(
+        'Start the shoot before marking it completed',
       );
     }
+  }
+
+  private isTaskActor(
+    task: {
+      assignedToUserId?: number | null;
+      assignedToId?: number | null;
+      shootCrew?: { userId: number }[];
+    },
+    user: Pick<AuthUser, 'userId' | 'employeeId'>,
+  ) {
+    return (
+      task.assignedToUserId === user.userId ||
+      (user.employeeId != null && task.assignedToId === user.employeeId) ||
+      Boolean(task.shootCrew?.some((member) => member.userId === user.userId))
+    );
   }
 
   async create(dto: CreateTaskDto, user: AuthUser) {
@@ -741,11 +758,10 @@ export class TasksService {
         !dto.shootDate ||
         !dto.shootReportingTime?.trim() ||
         dto.shootEstimatedHours == null ||
-        dto.shootEstimatedHours <= 0 ||
-        !dto.shootCrewUserIds?.length)
+        dto.shootEstimatedHours <= 0)
     ) {
       throw new BadRequestException(
-        'Shoot tasks require client, location, date, reporting time, estimated duration, and at least one crew member',
+        'Shoot tasks require client, location, date, reporting time, and estimated duration',
       );
     }
     if (taskType === 'GENERAL' && dto.shootCrewUserIds?.length) {
@@ -877,9 +893,12 @@ export class TasksService {
     });
     if (taskType === 'SHOOT' && dto.shootDate) {
       await this.syncShootAttendance(
-        shootCrew.flatMap((member) =>
-          member.employeeId == null ? [] : [member.employeeId],
-        ),
+        [
+          ...(assignee.employeeId == null ? [] : [assignee.employeeId]),
+          ...shootCrew.flatMap((member) =>
+            member.employeeId == null ? [] : [member.employeeId],
+          ),
+        ],
         new Date(dto.shootDate),
       );
     }
@@ -1634,9 +1653,6 @@ export class TasksService {
           ? this.shootDay(new Date(dto.shootDate))
           : null
         : existingTask.shootDate;
-    const nextShootCrewIds =
-      dto.shootCrewUserIds ??
-      existingShootCrew.map((assignment) => assignment.userId);
     const nextShootEstimatedHours =
       dto.shootEstimatedHours ?? existingTask.shootEstimatedHours;
     if (
@@ -1646,11 +1662,10 @@ export class TasksService {
         !nextShootDate ||
         !(dto.shootReportingTime ?? existingTask.shootReportingTime)?.trim() ||
         nextShootEstimatedHours == null ||
-        nextShootEstimatedHours <= 0 ||
-        !nextShootCrewIds.length)
+        nextShootEstimatedHours <= 0)
     ) {
       throw new BadRequestException(
-        'Shoot tasks require client, location, date, reporting time, estimated duration, and at least one crew member',
+        'Shoot tasks require client, location, date, reporting time, and estimated duration',
       );
     }
     const actorOrganizationIds =
@@ -1992,6 +2007,10 @@ export class TasksService {
       },
     });
     const affectedShootEmployeeIds = [
+      existingTask.assignedToId,
+      ...(dto.assignedToUserId || dto.employeeId
+        ? [assigneeData.assignedToId]
+        : [existingTask.assignedToId]),
       ...existingShootCrew.map((assignment) => assignment.user.employeeId),
       ...(newShootCrew ?? []).map((member) => member.employeeId),
     ].filter((employeeId): employeeId is number => employeeId != null);
@@ -2039,11 +2058,14 @@ export class TasksService {
     });
     if (existing.taskType === 'SHOOT' && existing.shootDate) {
       await this.syncShootAttendance(
-        (existing.shootCrew ?? []).flatMap((assignment) =>
-          assignment.user.employeeId == null
-            ? []
-            : [assignment.user.employeeId],
-        ),
+        [
+          ...(existing.assignedToId == null ? [] : [existing.assignedToId]),
+          ...(existing.shootCrew ?? []).flatMap((assignment) =>
+            assignment.user.employeeId == null
+              ? []
+              : [assignment.user.employeeId],
+          ),
+        ],
         existing.shootDate,
       );
     }
@@ -2233,11 +2255,7 @@ export class TasksService {
     }
 
     if (user.role === Role.EMPLOYEE) {
-      const isAssignedToCurrentUser =
-        task.assignedToUserId === user.userId ||
-        (user.employeeId != null && task.assignedToId === user.employeeId);
-
-      if (!isAssignedToCurrentUser) {
+      if (!this.isTaskActor(task, user)) {
         throw new ForbiddenException(
           'Employees can only update their assigned tasks',
         );
@@ -2328,6 +2346,7 @@ export class TasksService {
                 {
                   OR: [
                     { assignedToUserId: user.userId },
+                    { shootCrew: { some: { userId: user.userId } } },
                     ...(user.employeeId
                       ? [{ assignedToId: user.employeeId }]
                       : []),

@@ -28,6 +28,7 @@ type TaskLike = {
   driveLink?: string | null;
   assignee?: string | null;
   assignedToUserId?: number | null;
+  assignedToId?: number | null;
   assignedToUser?: { id: number; name: string; email: string } | null;
   assignedByUser?: { id: number; name: string; email: string } | null;
   dueDate?: string | null;
@@ -53,6 +54,7 @@ type TaskDetailPanelProps = {
   open: boolean;
   role: DashboardRole;
   currentUserId: number | null;
+  currentEmployeeId?: number | null;
   onClose: () => void;
   onStartTask: (taskId: number) => Promise<void> | void;
   onSubmitTask: (taskId: number, payload: { submissionLink: string; note: string }) => Promise<void> | void;
@@ -101,6 +103,7 @@ export function TaskDetailPanel({
   open,
   role,
   currentUserId,
+  currentEmployeeId,
   onClose,
   onStartTask,
   onSubmitTask,
@@ -119,6 +122,7 @@ export function TaskDetailPanel({
       task={task}
       role={role}
       currentUserId={currentUserId}
+      currentEmployeeId={currentEmployeeId}
       onClose={onClose}
       onStartTask={onStartTask}
       onSubmitTask={onSubmitTask}
@@ -136,6 +140,7 @@ type TaskDetailPanelBodyProps = {
   task: TaskLike;
   role: DashboardRole;
   currentUserId: number | null;
+  currentEmployeeId?: number | null;
   onClose: () => void;
   onStartTask: (taskId: number) => Promise<void> | void;
   onSubmitTask: (taskId: number, payload: { submissionLink: string; note: string }) => Promise<void> | void;
@@ -160,6 +165,7 @@ function TaskDetailPanelBody({
   task,
   role,
   currentUserId,
+  currentEmployeeId,
   onClose,
   onStartTask,
   onSubmitTask,
@@ -195,23 +201,26 @@ function TaskDetailPanelBody({
 
   const isEmployee = role === 'EMPLOYEE';
   const isManagerOrAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER';
-  const isAssignee = Boolean(currentUserId != null && task.assignedToUserId === currentUserId);
+  const isAssignee = Boolean(
+    (currentUserId != null && task.assignedToUserId === currentUserId) ||
+    (currentEmployeeId != null && task.assignedToId === currentEmployeeId) ||
+    task.shootCrew?.some((assignment) => assignment.userId === currentUserId),
+  );
   const canEmployeeAct = isEmployee && isAssignee;
   const canReview = isManagerOrAdmin && taskStatus === 'SUBMITTED';
   const canEdit =
     Boolean(onEditTask) && isManagerOrAdmin;
-  const isAssignedShootAdmin = Boolean(
+  const isAssignedShootActor = Boolean(
     task.taskType === 'SHOOT' &&
-      (role === 'ADMIN' || role === 'SUPER_ADMIN') &&
-      (task.assignedToUserId === currentUserId ||
-        task.shootCrew?.some((assignment) => assignment.userId === currentUserId)),
+      isAssignee,
   );
   const canChangeStatus =
-    (isManagerOrAdmin || isAssignedShootAdmin) &&
+    isManagerOrAdmin &&
     taskStatus !== 'SUBMITTED' &&
     taskStatus !== 'COMPLETED';
-  const showSubmissionSection = canEmployeeAct && (taskStatus === 'IN_PROGRESS' || taskStatus === 'REJECTED');
+  const showSubmissionSection = canEmployeeAct && task.taskType !== 'SHOOT' && (taskStatus === 'IN_PROGRESS' || taskStatus === 'REJECTED');
   const showStartButton = canEmployeeAct && taskStatus === 'PENDING';
+  const showShootComplete = isAssignedShootActor && taskStatus === 'IN_PROGRESS';
   const showAwaitingReview = taskStatus === 'SUBMITTED';
   const showApproved = taskStatus === 'APPROVED';
   const showRejectResubmit = canEmployeeAct && taskStatus === 'REJECTED';
@@ -556,6 +565,16 @@ function TaskDetailPanelBody({
               </button>
             )}
 
+            {showShootComplete && (
+              <button
+                onClick={() => onUpdateStatus?.(task.id, 'COMPLETED')}
+                disabled={busy}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:opacity-50"
+              >
+                <Check className="h-4 w-4" />Mark Shoot Completed
+              </button>
+            )}
+
             {showSubmissionSection && !showRejectResubmit && !showSubmitForm && (
               <button
                 onClick={() => setShowSubmitForm(true)}
@@ -641,7 +660,7 @@ function TaskDetailPanelBody({
                     <option value="SUBMITTED">SUBMITTED</option>
                     <option value="APPROVED">APPROVED</option>
                     <option value="REJECTED">REJECTED</option>
-                    {isAssignedShootAdmin && <option value="COMPLETED">COMPLETED</option>}
+                    {isAssignedShootActor && <option value="COMPLETED">COMPLETED</option>}
                   </select>
                   <button
                     type="button"

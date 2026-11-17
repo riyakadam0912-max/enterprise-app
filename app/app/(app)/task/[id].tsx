@@ -72,19 +72,19 @@ export default function TaskDetail() {
     data?.assignedToUserId === session?.user.id ||
     (session?.employeeId != null && data?.assignedToId === session.employeeId);
   const assignedToShoot = Boolean(
-    data?.assignedToUserId === session?.user.id ||
+    assigned ||
     data?.shootCrew?.some(
       (member: { userId: number }) => member.userId === session?.user.id,
     ),
   );
   const canCompleteShoot =
     data?.taskType === "SHOOT" &&
-    ["ADMIN", "SUPER_ADMIN"].includes(role) &&
     assignedToShoot &&
-    status !== "COMPLETED";
+    status === "IN_PROGRESS";
   const employeeCanSubmit =
     role === "EMPLOYEE" &&
-    assigned &&
+    assignedToShoot &&
+    data?.taskType !== "SHOOT" &&
     ["IN_PROGRESS", "REJECTED"].includes(status);
   const reviewer =
     ["ADMIN", "MANAGER", "SUPER_ADMIN"].includes(role) &&
@@ -153,7 +153,7 @@ export default function TaskDetail() {
     ? ["approve", "reject"]
     : canCompleteShoot
       ? ["complete"]
-      : role === "EMPLOYEE" && assigned && status === "PENDING"
+      : role === "EMPLOYEE" && assignedToShoot && status === "PENDING"
         ? ["start"]
         : [];
   return (

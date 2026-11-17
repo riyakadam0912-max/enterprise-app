@@ -45,7 +45,7 @@ type DashboardRole = AuthRole;
 type TaskFilter = 'all' | 'mine' | 'needs-review';
 type TaskViewMode = 'list' | 'kanban' | 'calendar' | 'gantt';
 type DetailTab = 'overview' | 'submission' | 'chat';
-type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'COMPLETED';
 
 type ChatMessage = {
   id: string;
@@ -153,6 +153,7 @@ function TaskDetailModal({
   task,
   role,
   currentUserId,
+  currentEmployeeId,
   activeTab,
   onTabChange,
   onClose,
@@ -169,6 +170,7 @@ function TaskDetailModal({
   task: Task | null;
   role: DashboardRole;
   currentUserId: number | null;
+  currentEmployeeId: number | null;
   activeTab: DetailTab;
   onTabChange: (tab: DetailTab) => void;
   onClose: () => void;
@@ -186,7 +188,7 @@ function TaskDetailModal({
     dueDate: string | null;
   }) => Promise<void>;
   onDeleteTask: (taskId: number) => Promise<void>;
-  onUpdateStatus: (taskId: number, status: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED') => Promise<void>;
+  onUpdateStatus: (taskId: number, status: TaskStatus) => Promise<void>;
   onLoadMessages: (taskId: number) => Promise<ChatMessage[]>;
   onSendMessage: (taskId: number, content: string) => Promise<ChatMessage>;
   busy: boolean;
@@ -315,9 +317,14 @@ function TaskDetailModal({
   const category = activeTask.category?.trim() || 'Other';
   const pastDue = isOverdue(activeTask, currentTime);
   const referenceLinks = parseLinks(activeTask.links ?? null);
-  const isAssignee = currentUserId != null && activeTask.assignedToUserId != null && currentUserId === activeTask.assignedToUserId;
-  const showEmployeeStart = isAssignee && taskStatus === 'PENDING';
-  const showEmployeeSubmit = isAssignee && ['IN_PROGRESS', 'REJECTED'].includes(taskStatus);
+  const isAssignee = Boolean(
+    (currentUserId != null && activeTask.assignedToUserId === currentUserId) ||
+    (currentEmployeeId != null && activeTask.assignedToId === currentEmployeeId) ||
+    activeTask.shootCrew?.some((assignment) => assignment.userId === currentUserId),
+  );
+  const showEmployeeStart = role === 'EMPLOYEE' && isAssignee && taskStatus === 'PENDING';
+  const showEmployeeSubmit = role === 'EMPLOYEE' && isAssignee && activeTask.taskType !== 'SHOOT' && ['IN_PROGRESS', 'REJECTED'].includes(taskStatus);
+  const showShootComplete = activeTask.taskType === 'SHOOT' && isAssignee && taskStatus === 'IN_PROGRESS';
   const showAwaitingReview = taskStatus === 'SUBMITTED' && !isAssignee;
   const showApproved = taskStatus === 'APPROVED';
   const canEditTasks = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER';
@@ -601,6 +608,16 @@ function TaskDetailModal({
                       </Button>
                     )}
 
+                    {showShootComplete && (
+                      <Button
+                        onClick={() => onUpdateStatus(activeTask.id, 'COMPLETED')}
+                        disabled={busy}
+                        className="w-full bg-emerald-700 hover:bg-emerald-800"
+                      >
+                        <Check className="mr-2 h-4 w-4" />Mark Shoot Completed
+                      </Button>
+                    )}
+
                     {showEmployeeSubmit && !showSubmitForm && (
                       <Button
                         onClick={() => setShowSubmitForm(true)}
@@ -851,6 +868,7 @@ function AllTasksPage() {
   
   const role = isSuperAdminSession(authSession) ? 'SUPER_ADMIN' : authSession.role;
   const currentUserId = authSession.user?.id ?? null;
+  const currentEmployeeId = authSession.employeeId ?? null;
   
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1115,7 +1133,7 @@ function AllTasksPage() {
     }
   }
 
-  async function handleStatusUpdate(taskId: number, status: 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED') {
+  async function handleStatusUpdate(taskId: number, status: TaskStatus) {
     setBusy(true);
     try {
       await updateTaskStatus(taskId, status);
@@ -1421,7 +1439,7 @@ function AllTasksPage() {
             </div>
           ) : viewMode === 'gantt' ? (
             <div className="space-y-3 overflow-x-auto p-4">
-              <div className="min-w-[720px]">
+              <div className="min-w-180">
                 <div className="mb-2 flex justify-between text-[11px] uppercase tracking-wide text-slate-400">
                   <span>{new Date(ganttWindow.min).toLocaleDateString()}</span>
                   <span>{new Date(ganttWindow.min + ganttWindow.span).toLocaleDateString()}</span>
@@ -1573,6 +1591,7 @@ function AllTasksPage() {
           task={selectedTask}
           role={role}
           currentUserId={currentUserId}
+          currentEmployeeId={currentEmployeeId}
           activeTab={activeTab}
           onTabChange={setActiveTab}
           onClose={() => {

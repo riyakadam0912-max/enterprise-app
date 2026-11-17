@@ -57,6 +57,8 @@ Lead conversion and deal-won flows span several models. Use service methods rath
 
 Project status transitions and task review rules are enforced in services, not only by select options. Task schedules, parent/child relationships, dependencies, timers, timesheets, attendance-derived task work, and project progress interact; change these together.
 
+The normal task assignee is sufficient for a shoot; the shoot-crew list is optional and represents additional workers only. The primary assignee and every listed crew employee receive visibility and task-action authority and may move a shoot from `PENDING` to `IN_PROGRESS` and then to `COMPLETED`; the dedicated completed status remains separate from the ordinary submit/review workflow. Primary user assignment, employee assignment, and optional shoot-crew assignment must use the same actor check across API and clients.
+
 ## People operations
 
 | Module | Purpose and workflow | Web / API | Data, statuses, dependencies |

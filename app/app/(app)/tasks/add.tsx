@@ -94,10 +94,9 @@ export default function AddTask() {
         !form.shootDate ||
         !form.shootReportingTime ||
         !Number.isFinite(shootDuration) ||
-        shootDuration <= 0 ||
-        !form.shootCrewUserIds.length)
+        shootDuration <= 0)
     ) {
-      setError("Complete the shoot details and add at least one crew member.");
+      setError("Complete the required shoot details.");
       return;
     }
     mutation.mutate({
@@ -195,7 +194,7 @@ export default function AddTask() {
             keyboardType="decimal-pad"
           />
           {crewError ? <Text style={styles.error}>{crewError}</Text> : null}
-          <Text style={styles.label}>Shoot crew *</Text>
+          <Text style={styles.label}>Additional shoot crew (optional)</Text>
           {assignableUsers.map((user) => {
             const selected = form.shootCrewUserIds.includes(String(user.id));
             return (

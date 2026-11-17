@@ -129,10 +129,9 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
         !form.shootDate ||
         !form.shootReportingTime ||
         !Number.isFinite(shootDuration) ||
-        shootDuration <= 0 ||
-        !form.shootCrewUserIds.length)
+        shootDuration <= 0)
     ) {
-      setError('Complete the shoot details and add at least one crew member.');
+      setError('Complete the required shoot details.');
       return;
     }
 
@@ -231,7 +230,7 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
               <section className="space-y-4 rounded-xl border border-orange-100 bg-orange-50/40 p-4">
                 <div>
                   <h3 className="text-sm font-semibold text-slate-900">Shoot details</h3>
-                  <p className="mt-1 text-xs text-slate-500">Crew members are credited for attendance on this date without clock-in or clock-out.</p>
+                  <p className="mt-1 text-xs text-slate-500">The task assignee and any optional additional crew are credited for attendance on this date without clock-in or clock-out.</p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="block space-y-1.5">
@@ -256,7 +255,7 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
                   </label>
                 </div>
                 <fieldset className="space-y-2">
-                  <legend className="text-sm font-medium text-slate-700">Shoot crew</legend>
+                  <legend className="text-sm font-medium text-slate-700">Additional shoot crew (optional)</legend>
                   <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2">
                     {assignableUsers.length ? assignableUsers.map((user) => (
                       <label key={user.id} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm text-slate-700 hover:bg-slate-50">
@@ -275,7 +274,7 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
                         <span className="text-xs text-slate-400">{user.role.replace('_', ' ')}</span>
                       </label>
                     )) : (
-                      <p className="px-2 py-3 text-sm text-slate-500">No eligible crew members are available.</p>
+                      <p className="px-2 py-3 text-sm text-slate-500">No additional crew members are available.</p>
                     )}
                   </div>
                   <p className="text-xs text-slate-500">{form.shootCrewUserIds.length} crew member{form.shootCrewUserIds.length === 1 ? '' : 's'} selected</p>
