@@ -80,7 +80,12 @@ describe('EmployeesService', () => {
         },
         {
           provide: OrganizationScopeService,
-          useValue: { getOrganizationIds: jest.fn(async () => [1]) },
+          useValue: {
+            getOrganizationIds: jest.fn(async () => [1]),
+            getRelatedOrganizationIds: jest.fn(
+              async (organizationId: number) => [organizationId],
+            ),
+          },
         },
       ],
     }).compile();
@@ -475,10 +480,15 @@ describe('EmployeesService', () => {
           createMockAuthUser(Role.ADMIN),
         ),
       ).rejects.toThrow(
-        'The selected shift is unavailable in this organization.',
+        'The selected shift is unavailable in this organization family.',
       );
       expect(shift.findFirst).toHaveBeenCalledWith({
-        where: { id: 99, organizationId: 1, isActive: true },
+        where: {
+          id: 99,
+          organizationId: { in: [1] },
+          isActive: true,
+          deletedAt: null,
+        },
         select: { id: true },
       });
       expect(mockPrisma.$transaction).not.toHaveBeenCalled();
@@ -768,6 +778,134 @@ describe('EmployeesService', () => {
           authUser,
         ),
       ).rejects.toThrow(/Simulated DB failure/);
+    });
+  });
+
+  describe('organization family shifts', () => {
+    const familyIds = [3, 5, 6];
+
+    it('allows creating an employee with an active family shift offered by the picker', async () => {
+      const organizationScope = (service as any).organizationScopeService;
+      organizationScope.getRelatedOrganizationIds.mockResolvedValue(familyIds);
+      getDelegate(mockPrisma, 'shift').findFirst.mockResolvedValue({ id: 18 });
+      getDelegate(mockPrisma, 'employee').create.mockResolvedValue({
+        id: 27,
+        organizationId: 5,
+        shiftId: 18,
+        leaveBalance: 0,
+      });
+
+      await service.create(
+        { name: 'Employee', shiftId: 18 },
+        createMockAuthUser(Role.ADMIN, { organizationId: 5 }),
+      );
+
+      expect(organizationScope.getRelatedOrganizationIds).toHaveBeenCalledWith(
+        5,
+      );
+      expect(getDelegate(mockPrisma, 'shift').findFirst).toHaveBeenCalledWith({
+        where: {
+          id: 18,
+          organizationId: { in: familyIds },
+          isActive: true,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      expect(getDelegate(mockPrisma, 'employee').create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ shift: { connect: { id: 18 } } }),
+        }),
+      );
+    });
+
+    it.each([Role.SUPER_ADMIN, Role.ADMIN])(
+      'saves the existing parent shift when editing as %s',
+      async (role) => {
+        const organizationScope = (service as any).organizationScopeService;
+        organizationScope.getRelatedOrganizationIds.mockResolvedValue(
+          familyIds,
+        );
+        const businessUnits = (service as any).businessUnitsService;
+        businessUnits.resolveScope.mockResolvedValue({
+          organizationId: 5,
+          allUnits: true,
+          unitIds: [],
+        });
+        businessUnits.buildEmployeeBUWhere.mockReturnValue({
+          organizationId: 5,
+          deletedAt: null,
+        });
+        organizationScope.getOrganizationIds.mockResolvedValue([5]);
+        const employee = {
+          id: 27,
+          name: 'Employee',
+          organizationId: 5,
+          shiftId: 18,
+          user: null,
+        };
+        getDelegate(mockPrisma, 'employee').findFirst.mockResolvedValue(
+          employee,
+        );
+        getDelegate(mockPrisma, 'employee').update.mockResolvedValue(employee);
+        getDelegate(mockPrisma, 'shift').findFirst.mockResolvedValue({
+          id: 18,
+        });
+
+        await service.update(
+          27,
+          { name: 'Updated Employee', shiftId: 18 },
+          createMockAuthUser(role, { organizationId: 5, roles: [] }),
+        );
+
+        expect(
+          organizationScope.getRelatedOrganizationIds,
+        ).toHaveBeenCalledWith(5);
+        expect(getDelegate(mockPrisma, 'shift').findFirst).toHaveBeenCalledWith(
+          {
+            where: {
+              id: 18,
+              organizationId: { in: familyIds },
+              isActive: true,
+              deletedAt: null,
+            },
+            select: { id: true },
+          },
+        );
+        expect(getDelegate(mockPrisma, 'employee').update).toHaveBeenCalledWith(
+          {
+            where: { id: 27, organizationId: 5 },
+            data: { name: 'Updated Employee', shift: { connect: { id: 18 } } },
+          },
+        );
+      },
+    );
+
+    it('rejects unavailable family shifts before updating any records', async () => {
+      const organizationScope = (service as any).organizationScopeService;
+      organizationScope.getRelatedOrganizationIds.mockResolvedValue(familyIds);
+      jest
+        .spyOn(service, 'findOne')
+        .mockResolvedValue({ id: 27, organizationId: 5, user: null } as any);
+      getDelegate(mockPrisma, 'shift').findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.update(
+          27,
+          { shiftId: 99 },
+          createMockAuthUser(Role.ADMIN, { organizationId: 5 }),
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(getDelegate(mockPrisma, 'shift').findFirst).toHaveBeenCalledWith({
+        where: {
+          id: 99,
+          organizationId: { in: familyIds },
+          isActive: true,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
     });
   });
 

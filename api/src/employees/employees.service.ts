@@ -289,6 +289,28 @@ export class EmployeesService {
     return managers;
   }
 
+  private async validateShift(shiftId: number, organizationId: number) {
+    const familyOrganizationIds =
+      await this.organizationScopeService.getRelatedOrganizationIds(
+        organizationId,
+      );
+    const shift = await this.prisma.shift.findFirst({
+      where: {
+        id: shiftId,
+        organizationId: { in: familyOrganizationIds },
+        isActive: true,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (!shift) {
+      throw new BadRequestException(
+        'The selected shift is unavailable in this organization family. Refresh and select an active shift again.',
+      );
+    }
+    return shift;
+  }
+
   async create(
     createEmployeeDto: CreateEmployeeDto,
     user: AuthUser,
@@ -408,19 +430,7 @@ export class EmployeesService {
     }
 
     if (createEmployeeDto.shiftId != null) {
-      const shift = await this.prisma.shift.findFirst({
-        where: {
-          id: createEmployeeDto.shiftId,
-          organizationId,
-          isActive: true,
-        },
-        select: { id: true },
-      });
-      if (!shift) {
-        throw new BadRequestException(
-          'The selected shift is unavailable in this organization. Refresh and select an active shift again.',
-        );
-      }
+      await this.validateShift(createEmployeeDto.shiftId, organizationId);
     }
 
     const hashedPassword = wantsLoginAccount
@@ -669,6 +679,9 @@ export class EmployeesService {
     const organizationId = employee.organizationId;
     const canPrivilegedEdit =
       user.role === Role.ADMIN ||
+      user.role === Role.SUPER_ADMIN ||
+      user.isPlatformAdmin === true ||
+      user.isSuperAdmin === true ||
       user.role === Role.HR ||
       user.role === Role.MANAGER ||
       (user.roles &&
@@ -715,19 +728,10 @@ export class EmployeesService {
       if (updateEmployeeDto.shiftId === null) {
         data.shift = { disconnect: true };
       } else {
-        const shift = await this.prisma.shift.findFirst({
-          where: {
-            id: updateEmployeeDto.shiftId,
-            organizationId,
-            isActive: true,
-          },
-          select: { id: true },
-        });
-        if (!shift) {
-          throw new NotFoundException(
-            'Selected shift not found or is inactive in the organization.',
-          );
-        }
+        const shift = await this.validateShift(
+          updateEmployeeDto.shiftId,
+          organizationId,
+        );
         data.shift = { connect: { id: shift.id } };
       }
       delete (data as { shiftId?: number | null }).shiftId;
