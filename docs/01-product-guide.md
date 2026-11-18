@@ -90,6 +90,7 @@ flowchart TD
 
 1. A manager creates a project, assigns managers and employees, and adds milestones or task lists.
 2. Tasks are scheduled, assigned, discussed, watched, checked off, timed, and submitted for review.
+   Employees can create personal tasks assigned to themselves without selecting a project. When a project is selected, the employee must belong to that project.
    For shoot tasks, the normal task assignee is the shoot worker; no separate crew selection is required. Optional additional crew members are also actionable assignees, so the assignee or crew employees can start the shoot and mark it completed, while ordinary tasks continue through submission and review.
 3. Timesheets can link time to projects and tasks and move through review.
 4. Project progress, workload, critical path, and baseline variance provide delivery views.

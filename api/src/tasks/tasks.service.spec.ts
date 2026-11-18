@@ -183,16 +183,37 @@ describe('TasksService', () => {
       ).not.toHaveBeenCalled();
     });
 
-    it('does not allow employees to create projectless tasks', async () => {
-      await expect(
-        service.create(
-          { title: 'Unscoped task' } as CreateTaskDto,
-          mockEmployeeUser,
-        ),
-      ).rejects.toThrow(ForbiddenException);
-      expect(
-        getPrismaDelegate(mockPrisma, 'task').create,
-      ).not.toHaveBeenCalled();
+    it('allows employees to create projectless tasks assigned to themselves', async () => {
+      const userDelegate = getPrismaDelegate(mockPrisma, 'user');
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      userDelegate.findUniqueOrThrow.mockResolvedValueOnce({
+        id: mockEmployeeUser.userId,
+        name: 'Employee',
+        role: Role.EMPLOYEE,
+        employeeId: mockEmployeeUser.employeeId,
+        managerId: 2,
+      });
+      taskDelegate.create.mockResolvedValueOnce({
+        id: 10,
+        taskName: 'Personal task',
+      });
+
+      await service.create(
+        { title: 'Personal task' } as CreateTaskDto,
+        mockEmployeeUser,
+      );
+
+      expect(taskDelegate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            organizationId: mockEmployeeUser.organizationId,
+            projectId: undefined,
+            assignedToUserId: mockEmployeeUser.userId,
+            assignedToId: mockEmployeeUser.employeeId,
+            assignedByUserId: mockEmployeeUser.userId,
+          }),
+        }),
+      );
     });
 
     it.each(['APPROVED', 'REJECTED', 'COMPLETED'])(

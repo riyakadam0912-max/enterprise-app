@@ -732,16 +732,12 @@ export class TasksService {
           'Employees can only create tasks assigned to themselves',
         );
       }
-      if (!project) {
-        throw new ForbiddenException(
-          'Employees can create tasks only in projects they belong to',
-        );
-      }
       if (
-        user.employeeId == null ||
-        !project.assignedEmployees.some(
-          (employee) => employee.id === user.employeeId,
-        )
+        project &&
+        (user.employeeId == null ||
+          !project.assignedEmployees.some(
+            (employee) => employee.id === user.employeeId,
+          ))
       ) {
         throw new ForbiddenException(
           'You must be an assigned project member before creating tasks',
