@@ -17,10 +17,16 @@ export function normalizePersistedId(value: number | string | null | undefined):
 const isWeb = Platform.OS === 'web';
 
 function getStoredValue(key: string) {
+  if (isWeb && (key === ACCESS_KEY || key === REFRESH_KEY)) {
+    return Promise.resolve(null);
+  }
   return isWeb ? Promise.resolve(globalThis.localStorage?.getItem(key) ?? null) : SecureStore.getItemAsync(key);
 }
 
 function setStoredValue(key: string, value: string) {
+  if (isWeb && (key === ACCESS_KEY || key === REFRESH_KEY)) {
+    return Promise.resolve();
+  }
   if (isWeb) {
     globalThis.localStorage?.setItem(key, value);
     return Promise.resolve();
@@ -29,6 +35,9 @@ function setStoredValue(key: string, value: string) {
 }
 
 function deleteStoredValue(key: string) {
+  if (isWeb && (key === ACCESS_KEY || key === REFRESH_KEY)) {
+    return Promise.resolve();
+  }
   if (isWeb) {
     globalThis.localStorage?.removeItem(key);
     return Promise.resolve();
@@ -58,7 +67,12 @@ export const contextStore = {
   },
 };
 
-export const api = axios.create({ baseURL: env.apiUrl, timeout: 20000, headers: { 'Content-Type': 'application/json' } });
+export const api = axios.create({
+  baseURL: env.apiUrl,
+  timeout: 20000,
+  withCredentials: isWeb,
+  headers: { 'Content-Type': 'application/json' },
+});
 let refreshing: Promise<string | null> | null = null;
 let onSessionExpired: (() => void) | null = null;
 export function setSessionExpiredHandler(handler: (() => void) | null) { onSessionExpired = handler; }
@@ -70,7 +84,7 @@ api.interceptors.request.use(async (config) => {
   const org = normalizePersistedId(storedOrg);
   const bu = normalizePersistedId(storedBU);
   config.headers = config.headers ?? {};
-  if (access) config.headers.Authorization = `Bearer ${access}`;
+  if (access && access !== 'cookie-session') config.headers.Authorization = `Bearer ${access}`;
   if (org != null) {
     config.headers['X-Organization-Id'] = String(org);
   } else {
@@ -85,6 +99,14 @@ api.interceptors.request.use(async (config) => {
 });
 
 async function refreshAccessToken(): Promise<string | null> {
+  if (isWeb) {
+    await axios.post(
+      `${env.apiUrl}/auth/refresh`,
+      {},
+      { withCredentials: true, timeout: 20000 },
+    );
+    return 'cookie-session';
+  }
   const refresh = await tokenStore.getRefresh();
   if (!refresh) return null;
   const response = await axios.post(`${env.apiUrl}/auth/refresh`, {}, { headers: { Authorization: `Bearer ${refresh}` }, timeout: 20000 });

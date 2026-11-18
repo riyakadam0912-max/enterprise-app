@@ -648,6 +648,14 @@ export class UsersService {
         passwordResetCodeExpiresAt: null,
       },
     });
+    await this.prisma.authSession.updateMany({
+      where: { userId: id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    await this.prisma.user.updateMany({
+      where: { id },
+      data: { refreshToken: null },
+    });
 
     await this.auditLogsService.logCustomAction(
       {

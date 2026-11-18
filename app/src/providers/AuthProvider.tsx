@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import { currentUser, login as loginRequest, logout as logoutRequest } from '@/src/api/auth';
 import { contextStore, setSessionExpiredHandler, tokenStore } from '@/src/api/client';
 import type { Session } from '@/src/types/auth';
@@ -9,7 +10,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export async function initializeAuthSession(): Promise<Session | null> {
   const accessToken = await tokenStore.getAccess();
 
-  if (!accessToken) {
+  if (!accessToken && Platform.OS !== 'web') {
     await contextStore.setOrg(null);
     await contextStore.setBU(null);
     return null;

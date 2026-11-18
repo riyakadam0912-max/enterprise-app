@@ -507,6 +507,53 @@ describe('AuthService', () => {
     });
   });
 
+  describe('resetPassword', () => {
+    it('revokes every session after changing the password', async () => {
+      mockJwt.verifyAsync.mockResolvedValue({
+        sub: 12,
+        tokenType: 'reset',
+      });
+      (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-new-password');
+
+      const userDelegate = getMockPrismaDelegate(mockPrisma, 'user');
+      const authSessionDelegate = getMockPrismaDelegate(
+        mockPrisma,
+        'authSession',
+      );
+      userDelegate.findUnique.mockResolvedValue({
+        id: 12,
+        name: 'Riya',
+        email: 'riya@example.com',
+        role: Role.ADMIN,
+      });
+      userDelegate.findFirst.mockResolvedValue({ id: 12 });
+      userDelegate.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.$transaction.mockImplementation(
+        (callback: (tx: unknown) => unknown) =>
+          callback(mockPrisma as unknown as Parameters<typeof callback>[0]),
+      );
+      userDelegate.update.mockResolvedValue({
+        id: 12,
+        name: 'Riya',
+        email: 'riya@example.com',
+        role: Role.ADMIN,
+      });
+
+      await expect(
+        service.resetPassword('valid-reset-token', 'new-password'),
+      ).resolves.toEqual({ message: 'Password reset successfully' });
+
+      expect(authSessionDelegate.updateMany).toHaveBeenCalledWith({
+        where: { userId: 12, revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
+      });
+      expect(userDelegate.updateMany).toHaveBeenCalledWith({
+        where: { id: 12 },
+        data: { refreshToken: null },
+      });
+    });
+  });
+
   describe('changePassword', () => {
     it('disables self-service password changes', async () => {
       await expect(

@@ -531,6 +531,15 @@ describe('UsersService', () => {
           passwordResetCodeExpiresAt: null,
         },
       });
+      const authSessionDelegate = getPrismaDelegate(mockPrisma, 'authSession');
+      expect(authSessionDelegate.updateMany).toHaveBeenCalledWith({
+        where: { userId: 1, revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
+      });
+      expect(userDelegate.updateMany).toHaveBeenCalledWith({
+        where: { id: 1 },
+        data: { refreshToken: null },
+      });
     });
 
     it('should reject resetting a password for a user outside the tenant', async () => {

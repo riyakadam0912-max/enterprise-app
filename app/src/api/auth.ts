@@ -1,10 +1,15 @@
 import { api, tokenStore, unwrap } from './client';
 import type { AuthPayload, Session } from '@/src/types/auth';
+import { Platform } from 'react-native';
 
 export async function login(email: string, password: string): Promise<AuthPayload> {
   const payload = unwrap<AuthPayload>((await api.post('/auth/login', { email, password })).data);
-  if (!payload.access_token || !payload.refresh_token) throw new Error('The API did not return a mobile session.');
-  await tokenStore.save(payload.access_token, payload.refresh_token);
+  if (Platform.OS !== 'web') {
+    if (!payload.access_token || !payload.refresh_token) {
+      throw new Error('The API did not return a mobile session.');
+    }
+    await tokenStore.save(payload.access_token, payload.refresh_token);
+  }
   return payload;
 }
 export async function currentUser() { return unwrap<Session>((await api.get('/auth/me')).data); }

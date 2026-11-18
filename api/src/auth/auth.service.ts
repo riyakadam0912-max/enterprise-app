@@ -829,23 +829,18 @@ export class AuthService {
       };
     }
 
-    const resetToken = this.jwtService.sign(
-      {
-        sub: user.id,
-        userId: user.id,
-        email: user.email,
-        role: user.role,
-        employeeId: user.employeeId ?? null,
-        tokenType: 'reset',
+    const resetToken = randomBytes(32).toString('hex');
+    const resetTokenHash = createHash('sha256')
+      .update(resetToken)
+      .digest('hex');
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordResetTokenHash: resetTokenHash,
+        passwordResetTokenExpiresAt: new Date(Date.now() + 30 * 60 * 1000),
       },
-      {
-        secret: this.refreshTokenSecret,
-        expiresIn: '1h',
-        issuer: this.jwtIssuer,
-        audience: this.jwtAudience,
-        algorithm: 'HS256' as const,
-      },
-    );
+    });
 
     const frontendUrl =
       this.configService.get<string>('FRONTEND_URL') ??
@@ -857,7 +852,7 @@ export class AuthService {
     await this.mailService.sendEmail({
       to: user.email,
       subject: 'Password reset request',
-      html: `Please click <a href="${resetUrl}">here</a> to reset your password. This link expires in one hour.`,
+      html: `Please click <a href="${resetUrl}">here</a> to reset your password. This link expires in 30 minutes and can only be used once.`,
       metadata: { userId: user.id, template: 'forgot-password' },
     });
 
@@ -1159,37 +1154,55 @@ export class AuthService {
   }
 
   async resetPassword(token: string, newPassword: string) {
-    let payload: any;
-
-    try {
-      payload = await this.jwtService.verifyAsync(token, {
-        secret: this.refreshTokenSecret,
-        issuer: this.jwtIssuer,
-        audience: this.jwtAudience,
-        algorithms: ['HS256'],
-      });
-    } catch {
-      throw new UnauthorizedException('Invalid or expired reset token');
-    }
-
-    if (payload.tokenType !== 'reset') {
+    if (!token) {
       throw new UnauthorizedException('Invalid reset token');
     }
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: payload.sub },
-    });
-
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    // Hash password with bcrypt - exactly once
+    const resetTokenHash = createHash('sha256').update(token).digest('hex');
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    const updatedUser = await this.prisma.user.update({
-      where: { id: user.id },
-      data: { password: hashedPassword },
+    const updatedUser = await this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({
+        where: { passwordResetTokenHash: resetTokenHash },
+        select: { id: true, name: true, email: true, role: true },
+      });
+      if (
+        !user ||
+        !(await tx.user.findFirst({
+          where: {
+            id: user.id,
+            passwordResetTokenExpiresAt: { gt: new Date() },
+          },
+          select: { id: true },
+        }))
+      ) {
+        throw new UnauthorizedException('Invalid, expired, or already used reset token');
+      }
+
+      const result = await tx.user.updateMany({
+        where: {
+          id: user.id,
+          passwordResetTokenHash: resetTokenHash,
+          passwordResetTokenExpiresAt: { gt: new Date() },
+        },
+        data: {
+          password: hashedPassword,
+          passwordResetTokenHash: null,
+          passwordResetTokenExpiresAt: null,
+        },
+      });
+      if (result.count !== 1) {
+        throw new UnauthorizedException('Invalid, expired, or already used reset token');
+      }
+      await tx.authSession.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await tx.user.updateMany({
+        where: { id: user.id },
+        data: { refreshToken: null },
+      });
+      return user;
     });
 
     await this.auditLogsService.logLogin({
