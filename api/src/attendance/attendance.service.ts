@@ -864,234 +864,240 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
     const organizationId = employee.organizationId;
 
-    return this.prisma.$transaction(async (tx) => {
-      await this.lockFlexibleAttendanceForEmployee(
-        session.employeeId,
-        organizationId,
-        tx,
-      );
-      const currentSession = await tx.attendanceSession.findUnique({
-        where: { id: session.id },
-        include: { breaks: true, shift: true },
-      });
-      if (!currentSession || currentSession.endedAt) {
-        throw new ConflictException(
-          'Attendance session changed; refresh and try again',
+    return this.prisma.$transaction(
+      async (tx) => {
+        await this.lockFlexibleAttendanceForEmployee(
+          session.employeeId,
+          organizationId,
+          tx,
         );
-      }
-      if (checkOutTime.getTime() <= currentSession.startedAt.getTime()) {
-        throw new BadRequestException(
-          'Check-out time must be later than check-in time',
-        );
-      }
-      const breaks = currentSession.breaks.map((interval) => ({
-        startedAt: interval.startedAt,
-        endedAt: interval.endedAt ?? checkOutTime,
-      }));
-      const shift = currentSession.shift;
-      const closed = await tx.attendanceSession.updateMany({
-        where: { id: session.id, endedAt: null },
-        data: {
-          endedAt: checkOutTime,
-          checkoutSource: AttendanceCheckoutSource.USER,
-          checkoutActorId: user.userId,
-        },
-      });
-      if (closed.count !== 1) {
-        throw new ConflictException(
-          'Attendance session changed; refresh and try again',
-        );
-      }
-      await tx.attendanceSessionBreak.updateMany({
-        where: { attendanceSessionId: session.id, endedAt: null },
-        data: { endedAt: checkOutTime },
-      });
-      await this.tasksService.stopActiveTimerForEmployee(
-        session.employeeId,
-        organizationId,
-        checkOutTime,
-        tx,
-      );
-
-      const dateSummaries: Array<{
-        date: Date;
-        start: Date;
-        end: Date;
-        hours: number;
-      }> = [];
-      let cursor = session.startedAt;
-      while (cursor.getTime() < checkOutTime.getTime()) {
-        const dateKey = dateKeyInTimezone(cursor, timezone);
-        const dayEnd = localMidnightAfterDateInTimezone(dateKey, timezone);
-        if (!dayEnd) {
-          throw new BadRequestException(
-            'Could not determine local attendance day boundary',
+        const currentSession = await tx.attendanceSession.findUnique({
+          where: { id: session.id },
+          include: { breaks: true, shift: true },
+        });
+        if (!currentSession || currentSession.endedAt) {
+          throw new ConflictException(
+            'Attendance session changed; refresh and try again',
           );
         }
-        const segmentEnd = new Date(
-          Math.min(dayEnd.getTime(), checkOutTime.getTime()),
-        );
-        const hours = calculateNetWorkingHours(cursor, segmentEnd, breaks);
-        dateSummaries.push({
-          date: attendanceDateFromKey(dateKey),
-          start: cursor,
-          end: segmentEnd,
-          hours,
-        });
-        cursor = segmentEnd;
-      }
-
-      let finalAttendance:
-        | (Awaited<ReturnType<typeof tx.attendance.upsert>> & {
-            employee: unknown;
-            shift: unknown;
-          })
-        | null = null;
-      for (const summary of dateSummaries) {
-        const existing = await tx.attendance.findUnique({
-          where: {
-            employeeId_date: {
-              employeeId: session.employeeId,
-              date: summary.date,
-            },
+        if (checkOutTime.getTime() <= currentSession.startedAt.getTime()) {
+          throw new BadRequestException(
+            'Check-out time must be later than check-in time',
+          );
+        }
+        const breaks = currentSession.breaks.map((interval) => ({
+          startedAt: interval.startedAt,
+          endedAt: interval.endedAt ?? checkOutTime,
+        }));
+        const shift = currentSession.shift;
+        const closed = await tx.attendanceSession.updateMany({
+          where: { id: session.id, endedAt: null },
+          data: {
+            endedAt: checkOutTime,
+            checkoutSource: AttendanceCheckoutSource.USER,
+            checkoutActorId: user.userId,
           },
-          select: { checkIn: true, checkOut: true, workingHours: true },
         });
-        const workingHours = Number(
-          (Number(existing?.workingHours ?? 0) + summary.hours).toFixed(2),
-        );
-        const requiredHours = shift?.requiredHours ?? 8;
-        const minPresentHours = shift?.minPresentHours ?? 5;
-        const halfDayLeave = await this.findApprovedLeaveForDay(
+        if (closed.count !== 1) {
+          throw new ConflictException(
+            'Attendance session changed; refresh and try again',
+          );
+        }
+        await tx.attendanceSessionBreak.updateMany({
+          where: { attendanceSessionId: session.id, endedAt: null },
+          data: { endedAt: checkOutTime },
+        });
+        await this.tasksService.stopActiveTimerForEmployee(
           session.employeeId,
-          summary.date,
-          'HALF_DAY',
+          organizationId,
+          checkOutTime,
+          tx,
         );
-        const effectiveRequiredHours = halfDayLeave
-          ? Math.min(requiredHours, 5)
-          : requiredHours;
-        const overtimeHours = Math.max(
-          0,
-          Number((workingHours - effectiveRequiredHours).toFixed(2)),
-        );
-        const shortfallHours = Math.max(
-          0,
-          Number((effectiveRequiredHours - workingHours).toFixed(2)),
-        );
-        finalAttendance = await tx.attendance.upsert({
-          where: {
-            employeeId_date: {
-              employeeId: session.employeeId,
-              date: summary.date,
-            },
-          },
-          create: {
-            employeeId: session.employeeId,
-            organizationId,
-            shiftId: session.shiftId,
-            date: summary.date,
-            deletedAt: null,
-            checkIn: summary.start,
-            checkOut: summary.end,
-            workingHours,
-            requiredHours,
-            overtimeHours,
-            shortfallHours,
-            status: attendanceStatusForWorkedHours(
-              workingHours,
-              Math.min(minPresentHours, effectiveRequiredHours),
-            ),
-            checkoutSource: AttendanceCheckoutSource.USER,
-            checkoutActorId: user.userId,
-          },
-          update: {
-            deletedAt: null,
-            checkIn:
-              existing?.checkIn &&
-              existing.checkIn.getTime() < summary.start.getTime()
-                ? existing.checkIn
-                : summary.start,
-            checkOut:
-              existing?.checkOut &&
-              existing.checkOut.getTime() > summary.end.getTime()
-                ? existing.checkOut
-                : summary.end,
-            workingHours,
-            requiredHours,
-            overtimeHours,
-            shortfallHours,
-            status: attendanceStatusForWorkedHours(
-              workingHours,
-              Math.min(minPresentHours, effectiveRequiredHours),
-            ),
-            checkoutSource: AttendanceCheckoutSource.USER,
-            checkoutActorId: user.userId,
-            isAutoClosed: false,
-          },
-          include: { employee: true, shift: true },
-        });
-        for (const interval of breaks) {
-          const breakStart = new Date(
-            Math.max(interval.startedAt.getTime(), summary.start.getTime()),
+
+        const dateSummaries: Array<{
+          date: Date;
+          start: Date;
+          end: Date;
+          hours: number;
+        }> = [];
+        let cursor = session.startedAt;
+        while (cursor.getTime() < checkOutTime.getTime()) {
+          const dateKey = dateKeyInTimezone(cursor, timezone);
+          const dayEnd = localMidnightAfterDateInTimezone(dateKey, timezone);
+          if (!dayEnd) {
+            throw new BadRequestException(
+              'Could not determine local attendance day boundary',
+            );
+          }
+          const segmentEnd = new Date(
+            Math.min(dayEnd.getTime(), checkOutTime.getTime()),
           );
-          const breakEnd = new Date(
-            Math.min(
-              interval.endedAt?.getTime() ?? checkOutTime.getTime(),
-              summary.end.getTime(),
-            ),
-          );
-          if (breakEnd > breakStart) {
-            await tx.attendanceBreak.create({
-              data: {
-                attendanceId: finalAttendance.id,
-                startedAt: breakStart,
-                endedAt: breakEnd,
+          const hours = calculateNetWorkingHours(cursor, segmentEnd, breaks);
+          dateSummaries.push({
+            date: attendanceDateFromKey(dateKey),
+            start: cursor,
+            end: segmentEnd,
+            hours,
+          });
+          cursor = segmentEnd;
+        }
+
+        let finalAttendance:
+          | (Awaited<ReturnType<typeof tx.attendance.upsert>> & {
+              employee: unknown;
+              shift: unknown;
+            })
+          | null = null;
+        for (const summary of dateSummaries) {
+          const existing = await tx.attendance.findUnique({
+            where: {
+              employeeId_date: {
+                employeeId: session.employeeId,
+                date: summary.date,
               },
-            });
+            },
+            select: { checkIn: true, checkOut: true, workingHours: true },
+          });
+          const workingHours = Number(
+            (Number(existing?.workingHours ?? 0) + summary.hours).toFixed(2),
+          );
+          const requiredHours = shift?.requiredHours ?? 8;
+          const minPresentHours = shift?.minPresentHours ?? 5;
+          const halfDayLeave = await this.findApprovedLeaveForDay(
+            session.employeeId,
+            summary.date,
+            'HALF_DAY',
+          );
+          const effectiveRequiredHours = halfDayLeave
+            ? Math.min(requiredHours, 5)
+            : requiredHours;
+          const overtimeHours = Math.max(
+            0,
+            Number((workingHours - effectiveRequiredHours).toFixed(2)),
+          );
+          const shortfallHours = Math.max(
+            0,
+            Number((effectiveRequiredHours - workingHours).toFixed(2)),
+          );
+          finalAttendance = await tx.attendance.upsert({
+            where: {
+              employeeId_date: {
+                employeeId: session.employeeId,
+                date: summary.date,
+              },
+            },
+            create: {
+              employeeId: session.employeeId,
+              organizationId,
+              shiftId: session.shiftId,
+              date: summary.date,
+              deletedAt: null,
+              checkIn: summary.start,
+              checkOut: summary.end,
+              workingHours,
+              requiredHours,
+              overtimeHours,
+              shortfallHours,
+              status: attendanceStatusForWorkedHours(
+                workingHours,
+                Math.min(minPresentHours, effectiveRequiredHours),
+              ),
+              checkoutSource: AttendanceCheckoutSource.USER,
+              checkoutActorId: user.userId,
+            },
+            update: {
+              deletedAt: null,
+              checkIn:
+                existing?.checkIn &&
+                existing.checkIn.getTime() < summary.start.getTime()
+                  ? existing.checkIn
+                  : summary.start,
+              checkOut:
+                existing?.checkOut &&
+                existing.checkOut.getTime() > summary.end.getTime()
+                  ? existing.checkOut
+                  : summary.end,
+              workingHours,
+              requiredHours,
+              overtimeHours,
+              shortfallHours,
+              status: attendanceStatusForWorkedHours(
+                workingHours,
+                Math.min(minPresentHours, effectiveRequiredHours),
+              ),
+              checkoutSource: AttendanceCheckoutSource.USER,
+              checkoutActorId: user.userId,
+              isAutoClosed: false,
+            },
+            include: { employee: true, shift: true },
+          });
+          for (const interval of breaks) {
+            const breakStart = new Date(
+              Math.max(interval.startedAt.getTime(), summary.start.getTime()),
+            );
+            const breakEnd = new Date(
+              Math.min(
+                interval.endedAt?.getTime() ?? checkOutTime.getTime(),
+                summary.end.getTime(),
+              ),
+            );
+            if (breakEnd > breakStart) {
+              await tx.attendanceBreak.create({
+                data: {
+                  attendanceId: finalAttendance.id,
+                  startedAt: breakStart,
+                  endedAt: breakEnd,
+                },
+              });
+            }
           }
         }
-      }
 
-      if (dateSummaries.length === 0) {
-        const dateKey = dateKeyInTimezone(session.startedAt, timezone);
-        const date = attendanceDateFromKey(dateKey);
-        const requiredHours = shift?.requiredHours ?? 8;
-        finalAttendance = await tx.attendance.upsert({
-          where: {
-            employeeId_date: { employeeId: session.employeeId, date },
-          },
-          create: {
-            employeeId: session.employeeId,
-            organizationId,
-            shiftId: session.shiftId,
-            date,
-            checkIn: session.startedAt,
-            checkOut: checkOutTime,
-            workingHours: 0,
-            requiredHours,
-            overtimeHours: 0,
-            shortfallHours: requiredHours,
-            status: AttendanceStatus.ABSENT,
-            checkoutSource: AttendanceCheckoutSource.USER,
-            checkoutActorId: user.userId,
-          },
-          update: {
-            deletedAt: null,
-            checkOut: checkOutTime,
-            checkoutSource: AttendanceCheckoutSource.USER,
-            checkoutActorId: user.userId,
-          },
-          include: { employee: true, shift: true },
-        });
-      }
+        if (dateSummaries.length === 0) {
+          const dateKey = dateKeyInTimezone(session.startedAt, timezone);
+          const date = attendanceDateFromKey(dateKey);
+          const requiredHours = shift?.requiredHours ?? 8;
+          finalAttendance = await tx.attendance.upsert({
+            where: {
+              employeeId_date: { employeeId: session.employeeId, date },
+            },
+            create: {
+              employeeId: session.employeeId,
+              organizationId,
+              shiftId: session.shiftId,
+              date,
+              checkIn: session.startedAt,
+              checkOut: checkOutTime,
+              workingHours: 0,
+              requiredHours,
+              overtimeHours: 0,
+              shortfallHours: requiredHours,
+              status: AttendanceStatus.ABSENT,
+              checkoutSource: AttendanceCheckoutSource.USER,
+              checkoutActorId: user.userId,
+            },
+            update: {
+              deletedAt: null,
+              checkOut: checkOutTime,
+              checkoutSource: AttendanceCheckoutSource.USER,
+              checkoutActorId: user.userId,
+            },
+            include: { employee: true, shift: true },
+          });
+        }
 
-      if (!finalAttendance) {
-        throw new BadRequestException(
-          'Attendance session must have a positive duration',
-        );
-      }
-      return finalAttendance;
-    });
+        if (!finalAttendance) {
+          throw new BadRequestException(
+            'Attendance session must have a positive duration',
+          );
+        }
+        return finalAttendance;
+      },
+      {
+        maxWait: 10_000,
+        timeout: 30_000,
+      },
+    );
   }
 
   private async getManagerEmployeeIds(userId: number, user: AttendanceUser) {

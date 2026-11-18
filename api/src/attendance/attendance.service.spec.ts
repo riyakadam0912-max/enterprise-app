@@ -2105,6 +2105,10 @@ describe('AttendanceService', () => {
 
     await service.checkOut({ employeeId: 7 }, managerUser);
 
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      maxWait: 10_000,
+      timeout: 30_000,
+    });
     expect(mockTasksService.stopActiveTimerForEmployee).toHaveBeenCalledWith(
       7,
       1,
