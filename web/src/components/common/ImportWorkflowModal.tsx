@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import * as XLSX from 'xlsx';
+import { readSpreadsheet } from '@/lib/spreadsheet';
 import { importData } from '@/api/apiClient';
 import { type ImportFieldConfig } from './moduleActionConfig';
 
@@ -48,11 +48,7 @@ async function parseUpload(file: File): Promise<Record<string, unknown>[]> {
     return parsed.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === 'object' && !Array.isArray(row));
   }
 
-  const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  if (!sheet) return [];
-  return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+  return readSpreadsheet(file);
 }
 
 function asString(value: unknown) {
@@ -238,14 +234,14 @@ export default function ImportWorkflowModal({ isOpen, onClose, onSuccess, endpoi
           <div className="space-y-4">
             {step === 'upload' && (
               <div className="rounded-2xl border-2 border-dashed border-slate-300 p-8 text-center hover:border-orange-400">
-                <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,.json" className="hidden" onChange={(event) => {
+                <input ref={fileRef} type="file" accept=".csv,.xlsx,.json" className="hidden" onChange={(event) => {
                   const file = event.target.files?.[0];
                   if (file) {
                     void handleFile(file);
                   }
                 }} />
                 <p className="text-sm font-semibold text-slate-700">Drop a spreadsheet or CSV file here</p>
-                <p className="mt-1 text-xs text-slate-500">Supported formats: CSV, XLSX, XLS, JSON</p>
+                <p className="mt-1 text-xs text-slate-500">Supported formats: CSV, XLSX, JSON</p>
                 <button onClick={() => fileRef.current?.click()} className="mt-4 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600">Choose File</button>
               </div>
             )}

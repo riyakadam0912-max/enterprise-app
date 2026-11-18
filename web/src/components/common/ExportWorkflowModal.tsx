@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import * as XLSX from 'xlsx';
+import { createXlsxBuffer } from '@/lib/spreadsheet';
 
 interface ExportWorkflowModalProps {
   isOpen: boolean;
@@ -50,17 +50,8 @@ function exportCsv(rows: Record<string, unknown>[], fileName: string) {
   downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `${fileName}.csv`);
 }
 
-function exportXlsx(rows: Record<string, unknown>[], fileName: string) {
-  const sheet = XLSX.utils.json_to_sheet(rows.map((row) => {
-    const entry: Record<string, unknown> = {};
-    Object.entries(row).forEach(([key, value]) => {
-      entry[key] = toPlainValue(value);
-    });
-    return entry;
-  }));
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, sheet, 'Export');
-  const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+async function exportXlsx(rows: Record<string, unknown>[], fileName: string) {
+  const buffer = await createXlsxBuffer(rows);
   downloadBlob(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `${fileName}.xlsx`);
 }
 
@@ -87,7 +78,7 @@ export default function ExportWorkflowModal({ isOpen, onClose, title, fileName, 
     setExporting(true);
     try {
       if (format === 'xlsx') {
-        exportXlsx(exportRows, fileName);
+        void exportXlsx(exportRows, fileName);
       } else {
         exportCsv(exportRows, fileName);
       }

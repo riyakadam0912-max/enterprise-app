@@ -18,7 +18,7 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import * as XLSX from 'xlsx';
+import { createXlsxBuffer } from '@/lib/spreadsheet';
 import { ChevronLeft, ChevronRight, Columns3, Download, MoreHorizontal, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -233,7 +233,7 @@ export function DataTable<TData, TValue>({
     URL.revokeObjectURL(url);
   }
 
-  function exportToExcel() {
+  async function exportToExcel() {
     const columnsForExport = table.getAllLeafColumns().filter((column) => column.id !== 'select' && column.id !== 'actions' && column.getIsVisible());
     const rows = table.getRowModel().rows.map((row) => {
       const record: Record<string, string> = {};
@@ -244,10 +244,17 @@ export function DataTable<TData, TValue>({
       return record;
     });
 
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
-    XLSX.writeFile(workbook, `${exportFileName}.xlsx`);
+    const buffer = await createXlsxBuffer(rows);
+    const url = URL.createObjectURL(
+      new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }),
+    );
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${exportFileName}.xlsx`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   return (

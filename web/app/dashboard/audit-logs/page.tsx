@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import * as XLSX from 'xlsx';
+import { createXlsxBuffer } from '@/lib/spreadsheet';
 import { Download, FileSpreadsheet, Filter, RefreshCw, Search, ShieldAlert, X } from 'lucide-react';
 import { canAccessAuditLogs } from '@/utils/auth/permissions';
 import { AuditLogEntry, AuditLogFilters, getAuditLogs } from '@/api/auditLogsApi';
@@ -137,10 +137,17 @@ export default function AuditLogsPage() {
   };
 
   const exportXlsx = async () => {
-    const worksheet = XLSX.utils.json_to_sheet(exportRows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Audit Logs');
-    XLSX.writeFile(workbook, `audit-logs-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    const buffer = await createXlsxBuffer(exportRows);
+    const url = URL.createObjectURL(
+      new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }),
+    );
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `audit-logs-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   };
 
   const clearFilters = () => {
