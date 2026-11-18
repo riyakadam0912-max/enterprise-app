@@ -791,6 +791,17 @@ export class EmployeesService {
         data,
       });
 
+      if (
+        updateEmployeeDto.name !== undefined &&
+        updateEmployeeDto.name.trim() &&
+        employee.user?.id
+      ) {
+        await tx.user.update({
+          where: { id: employee.user.id, organizationId },
+          data: { name: updateEmployeeDto.name.trim() },
+        });
+      }
+
       if (reportingManagerIds !== undefined && employee.user?.id) {
         await tx.user.update({
           where: { id: employee.user.id, organizationId },

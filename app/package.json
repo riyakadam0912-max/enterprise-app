@@ -58,7 +58,7 @@
     "ios": "expo start --ios",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "jest --runInBand",
+    "test": "jest --runInBand --detectOpenHandles",
     "prebuild:check": "npx expo-doctor",
     "build:android:preview": "eas build --platform android --profile preview",
     "build:android:prod": "eas build --platform android --profile production",

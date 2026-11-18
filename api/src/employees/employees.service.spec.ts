@@ -951,6 +951,37 @@ describe('EmployeesService', () => {
       );
     });
 
+    it('syncs an employee name to the linked login account', async () => {
+      const authUser = createMockAuthUser(Role.ADMIN, {
+        organizationId: 5,
+      });
+      const employeeDelegate = getDelegate(mockPrisma, 'employee');
+      const userDelegate = getDelegate(mockPrisma, 'user');
+      const employee = {
+        id: 80,
+        name: 'Old Name',
+        organizationId: 5,
+        businessUnitId: null,
+        user: { id: 81, managerId: null },
+      };
+      employeeDelegate.findFirst.mockResolvedValue(employee);
+      employeeDelegate.update.mockResolvedValue({
+        ...employee,
+        name: 'New Name',
+      });
+      userDelegate.update.mockResolvedValue({
+        id: 81,
+        name: 'New Name',
+      });
+
+      await service.update(80, { name: 'New Name' }, authUser);
+
+      expect(userDelegate.update).toHaveBeenCalledWith({
+        where: { id: 81, organizationId: 5 },
+        data: { name: 'New Name' },
+      });
+    });
+
     it.each([
       { label: 'zero', ids: [] as number[] },
       { label: 'one', ids: [10] },

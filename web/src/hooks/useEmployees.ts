@@ -52,7 +52,12 @@ export function useEmployee(id: number) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!id) return;
+    if (!Number.isInteger(id) || id <= 0) {
+      setEmployee(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     let cancelled = false;
     getEmployee(id)
       .then((data) => { if (!cancelled) { setEmployee(data); setLoading(false); } })

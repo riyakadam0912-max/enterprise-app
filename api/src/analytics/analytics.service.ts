@@ -89,10 +89,15 @@ export class AnalyticsService {
         by: ['employeeId'],
         where: {
           deletedAt: null,
-          organizationId: { in: organizationIds },
+          organizationId: {
+            in: organizationIds,
+          },
           date: { gte: start, lt: end },
           checkIn: { not: null },
-          employee: { deletedAt: null, organizationId: { in: organizationIds } },
+          employee: {
+            deletedAt: null,
+            organizationId: { in: organizationIds },
+          },
         },
       } satisfies Prisma.AttendanceGroupByArgs),
     ]);

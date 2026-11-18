@@ -2,6 +2,7 @@ import {
   Injectable,
   Logger,
   UnauthorizedException,
+  BadRequestException,
   ConflictException,
   NotFoundException,
   ForbiddenException,
@@ -249,18 +250,31 @@ export class AuthService {
       designation?: string;
     },
   ) {
+    if (data.name !== undefined && !data.name.trim()) {
+      throw new BadRequestException('Name cannot be empty');
+    }
     const updateData: Record<string, string> = {};
-    if (data.name !== undefined) updateData.name = data.name;
+    if (data.name !== undefined) updateData.name = data.name.trim();
     if (data.phone !== undefined) updateData.phone = data.phone;
     if (data.address !== undefined) updateData.address = data.address;
     if (data.designation !== undefined)
       updateData.designation = data.designation;
 
-    const user = await this.prisma.user.update({
-      where: { id: userId },
-      data: updateData,
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.update({
+        where: { id: userId },
+        data: updateData,
+      });
+
+      if (data.name !== undefined && data.name.trim() && user.employeeId) {
+        await tx.employee.update({
+          where: { id: user.employeeId },
+          data: { name: data.name.trim() },
+        });
+      }
+
+      return user;
     });
-    return user;
   }
 
   async changePassword(
@@ -1176,7 +1190,9 @@ export class AuthService {
           select: { id: true },
         }))
       ) {
-        throw new UnauthorizedException('Invalid, expired, or already used reset token');
+        throw new UnauthorizedException(
+          'Invalid, expired, or already used reset token',
+        );
       }
 
       const result = await tx.user.updateMany({
@@ -1192,7 +1208,9 @@ export class AuthService {
         },
       });
       if (result.count !== 1) {
-        throw new UnauthorizedException('Invalid, expired, or already used reset token');
+        throw new UnauthorizedException(
+          'Invalid, expired, or already used reset token',
+        );
       }
       await tx.authSession.updateMany({
         where: { userId: user.id, revokedAt: null },

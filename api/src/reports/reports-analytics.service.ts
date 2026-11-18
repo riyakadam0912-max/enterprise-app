@@ -865,13 +865,11 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
         : undefined;
     const platformAdministrator = isPlatformAdministrator(user);
     if (!organizationId && !platformAdministrator) {
-        throw new ForbiddenException('Organization context missing');
+      throw new ForbiddenException('Organization context missing');
     }
 
     const organizationIds = organizationId
-        ? user.role === 'ADMIN' ||
-          user.role === 'HR' ||
-          platformAdministrator
+      ? user.role === 'ADMIN' || user.role === 'HR' || platformAdministrator
         ? await this.organizationScope.getDescendantOrganizationIds(
             organizationId,
           )
@@ -885,11 +883,7 @@ export class ReportsAnalyticsService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('Invalid employeeId');
     }
 
-    if (
-      platformAdministrator ||
-      user.role === 'ADMIN' ||
-      user.role === 'HR'
-    ) {
+    if (platformAdministrator || user.role === 'ADMIN' || user.role === 'HR') {
       if (requestedEmployeeId) {
         return {
           role: user.role,

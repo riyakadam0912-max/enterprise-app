@@ -67,4 +67,3 @@ export function resolveCreditedWorkHours({
   }
   return Math.max(0, attendanceHours ?? 0);
 }
-

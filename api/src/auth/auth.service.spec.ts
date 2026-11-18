@@ -507,6 +507,29 @@ describe('AuthService', () => {
     });
   });
 
+  describe('updateProfile', () => {
+    it('syncs a profile name to the linked employee record', async () => {
+      const userDelegate = getMockPrismaDelegate(mockPrisma, 'user');
+      const employeeDelegate = getMockPrismaDelegate(mockPrisma, 'employee');
+      mockPrisma.$transaction.mockImplementation(
+        (callback: (tx: unknown) => unknown) =>
+          callback(mockPrisma as unknown as Parameters<typeof callback>[0]),
+      );
+      userDelegate.update.mockResolvedValue({
+        id: 12,
+        employeeId: 27,
+        name: 'New Name',
+      });
+
+      await service.updateProfile(12, { name: 'New Name' });
+
+      expect(employeeDelegate.update).toHaveBeenCalledWith({
+        where: { id: 27 },
+        data: { name: 'New Name' },
+      });
+    });
+  });
+
   describe('resetPassword', () => {
     it('revokes every session after changing the password', async () => {
       mockJwt.verifyAsync.mockResolvedValue({

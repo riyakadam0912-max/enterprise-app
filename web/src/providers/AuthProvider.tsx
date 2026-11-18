@@ -142,7 +142,7 @@ export function AuthProvider({
           setActiveOrganization(selectedOrganizationId);
         }
 
-        await hydrateBusinessUnitAccess();
+        void hydrateBusinessUnitAccess();
 
       }
 
@@ -162,13 +162,7 @@ export function AuthProvider({
       }
 
       finally {
-
-        if (mounted) {
-
-          setLoading(false);
-
-        }
-
+        setLoading(false);
       }
     }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import Topbar from '@/components/Topbar';
@@ -61,8 +61,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const pathname = usePathname();
   const { authenticated, loading, session } = useAuth();
-  const [checked, setChecked] = useState(false);
-  const [, startTransition] = useTransition();
   const mainRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -127,10 +125,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       return;
     }
 
-    startTransition(() => setChecked(true));
-  }, [authenticated, loading, pathname, router, session, session.role, session.roles, session.isSuperAdmin, session.isPlatformAdmin, startTransition]);
+  }, [authenticated, loading, pathname, router, session, session.role, session.roles, session.isSuperAdmin, session.isPlatformAdmin]);
 
-  if (loading || !checked) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500" />

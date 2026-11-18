@@ -86,11 +86,8 @@ jobs:
       - name: Type-check
         run: npm run typecheck
 
-      - name: Unit tests
-        run: npm run test:unit
-
-      - name: API end-to-end tests
-        run: npm --prefix api run test:e2e
+      - name: Test suite
+        run: npm run test:ci
 
       - name: Production builds
         run: npm run build

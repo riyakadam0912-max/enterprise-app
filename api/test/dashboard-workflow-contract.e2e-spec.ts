@@ -10,6 +10,7 @@ import { HttpExceptionFilter } from '../src/common/filters/http-exception.filter
 import { TransformInterceptor } from '../src/common/interceptors/transform.interceptor';
 import { MetricsService } from '../src/common/services/metrics.service';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { OrganizationScopeService } from '../src/organizations/organization-scope.service';
 
 describe('Dashboard workflow contract (e2e)', () => {
   let app: INestApplication<App> | undefined;
@@ -59,6 +60,9 @@ describe('Dashboard workflow contract (e2e)', () => {
   ];
 
   const prismaMock = {
+    organization: {
+      findUnique: jest.fn().mockResolvedValue({ timezone: 'UTC' }),
+    },
     employee: { count: jest.fn().mockResolvedValue(24) },
     lead: {
       count: jest.fn().mockResolvedValueOnce(48).mockResolvedValueOnce(10),
@@ -140,6 +144,13 @@ describe('Dashboard workflow contract (e2e)', () => {
         { provide: PrismaService, useValue: prismaMock },
         { provide: MetricsService, useValue: metricsServiceMock },
         { provide: CACHE_MANAGER, useValue: cacheManagerMock },
+        {
+          provide: OrganizationScopeService,
+          useValue: {
+            getOrganizationIds: jest.fn().mockResolvedValue([1]),
+            getDescendantOrganizationIds: jest.fn().mockResolvedValue([1]),
+          },
+        },
       ],
     })
       .overrideGuard(JwtAuthGuard)

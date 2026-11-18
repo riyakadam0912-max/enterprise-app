@@ -648,8 +648,9 @@ describe('TasksService per-user task timer sessions', () => {
         }),
       }),
     );
-    const remainder = tx.taskTimerSession.updateMany.mock.calls[0][0].data
-      .subsecondMilliseconds;
+    const remainder =
+      tx.taskTimerSession.updateMany.mock.calls[0][0].data
+        .subsecondMilliseconds;
     expect(remainder).toBeGreaterThanOrEqual(100);
     expect(remainder).toBeLessThan(300);
   });

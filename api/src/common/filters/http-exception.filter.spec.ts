@@ -68,6 +68,7 @@ describe('HttpExceptionFilter', () => {
     const host = {
       switchToHttp: () => ({
         getResponse: () => ({ status }),
+        getRequest: () => ({ originalUrl: '/auth/login', method: 'POST' }),
       }),
     };
 

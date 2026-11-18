@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Building2, Pencil, Plus, Save, Search, ShieldCheck, Trash2, UserMinus, UserPlus, X } from 'lucide-react';
+import { Building2, Pencil, Save, Search, ShieldCheck, Trash2, UserMinus, UserPlus, X } from 'lucide-react';
 import {
   assignBusinessUnitAdministrator,
   createBusinessUnit,
