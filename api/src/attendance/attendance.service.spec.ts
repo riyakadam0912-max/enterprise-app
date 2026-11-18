@@ -1805,6 +1805,66 @@ describe('AttendanceService', () => {
     expect(prisma.attendance.create).not.toHaveBeenCalled();
   });
 
+  it('recovers a legacy flexible open record before checking out', async () => {
+    jest.setSystemTime(new Date('2026-11-18T10:00:00.000Z'));
+    const employee = {
+      id: 7,
+      name: 'Legacy Employee',
+      organizationId: 1,
+      shift: { id: 2, name: 'Flexible', type: 'FLEXIBLE', requiredHours: 8 },
+      shiftAssignments: [],
+    };
+    jest
+      .spyOn(service as any, 'resolveAttendanceActionEmployeeId')
+      .mockResolvedValue(7);
+    jest.spyOn(service as any, 'ensureEmployee').mockResolvedValue(employee);
+    prisma.organization.findUnique.mockResolvedValue({ timezone: 'UTC' });
+    jest.spyOn(service as any, 'resolveOpenAttendance').mockResolvedValue({
+      session: null,
+      legacyAttendance: {
+        id: 10,
+        employeeId: 7,
+        organizationId: 1,
+        date: new Date('2026-10-20T00:00:00.000Z'),
+        checkIn: new Date('2026-10-20T09:00:00.000Z'),
+        checkOut: null,
+        shift: employee.shift,
+        breaks: [],
+      },
+    });
+    const recoveredSession = {
+      id: 55,
+      employeeId: 7,
+      organizationId: 1,
+      shiftId: 2,
+      startedAt: new Date('2026-10-20T09:00:00.000Z'),
+      breaks: [],
+      shift: employee.shift,
+    };
+    const recoverSpy = jest
+      .spyOn(service, 'recoverLegacySession')
+      .mockResolvedValue(recoveredSession as any);
+    prisma.attendanceSession.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(recoveredSession);
+    const closeSpy = jest
+      .spyOn(service as any, 'closeFlexibleAttendanceSession')
+      .mockResolvedValue({ id: 10, checkOut: new Date() });
+
+    await expect(service.checkOut({}, mockUser)).resolves.toMatchObject({
+      id: 10,
+    });
+
+    expect(recoverSpy).toHaveBeenCalledWith(10, mockUser);
+    expect(closeSpy).toHaveBeenCalledWith(
+      recoveredSession,
+      employee,
+      expect.any(Date),
+      'UTC',
+      mockUser,
+    );
+  });
+
   it('lets a manager check out an employee and finalize their task timer', async () => {
     jest.setSystemTime(new Date('2026-03-13T14:00:00.000Z'));
     const managerUser = { ...mockUser, employeeId: 5, role: Role.MANAGER };

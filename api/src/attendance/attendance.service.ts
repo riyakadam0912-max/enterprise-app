@@ -2389,6 +2389,38 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       return result;
     }
 
+    const openAttendance = await this.resolveOpenAttendance(
+      employeeId,
+      employee.organizationId ?? user.organizationId,
+    );
+    if (
+      openAttendance.legacyAttendance &&
+      (openAttendance.legacyAttendance.shift?.type === 'FLEXIBLE' ||
+        employee.shift?.type === 'FLEXIBLE')
+    ) {
+      await this.recoverLegacySession(openAttendance.legacyAttendance.id, user);
+      const recoveredSession = await this.prisma.attendanceSession.findFirst({
+        where: {
+          employeeId,
+          organizationId: employee.organizationId ?? user.organizationId,
+          endedAt: null,
+        },
+        include: { breaks: true, shift: true },
+        orderBy: { startedAt: 'desc' },
+      });
+      if (recoveredSession) {
+        const result = await this.closeFlexibleAttendanceSession(
+          recoveredSession,
+          employee,
+          checkOutTime,
+          timezone,
+          user,
+        );
+        await this.invalidateDashboardCache();
+        return result;
+      }
+    }
+
     const transactionResult = await this.prisma.$transaction(async (tx) => {
       await this.lockFlexibleAttendanceForEmployee(
         employeeId,
