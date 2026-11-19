@@ -21,10 +21,10 @@ export default function Dashboard() {
   const isEmployee = role === 'EMPLOYEE';
   const isManager = role === 'MANAGER';
   const isPeopleAdmin = ['HR', 'ADMIN', 'SUPER_ADMIN'].includes(role);
-  const canUsePersonalAttendance = ['EMPLOYEE', 'MANAGER', 'HR'].includes(role) && Boolean(session?.employeeId);
+  const canUsePersonalAttendance = ['EMPLOYEE', 'MANAGER', 'HR'].includes(role);
   const taskQuery = useQuery({ queryKey: ['dashboard-tasks', session?.organizationId, role], queryFn: () => tasks(), enabled: isEmployee || isManager });
   const leaveQuery = useQuery({ queryKey: ['dashboard-leaves', session?.organizationId, role], queryFn: () => leaveRequests(), enabled: isManager || isPeopleAdmin });
-  const balanceQuery = useQuery({ queryKey: ['dashboard-leave-balance', session?.employeeId], queryFn: leaveBalance, enabled: isEmployee && Boolean(session?.employeeId) });
+  const balanceQuery = useQuery({ queryKey: ['dashboard-leave-balance', session?.employeeId], queryFn: leaveBalance, enabled: (isEmployee || isManager) && Boolean(session?.employeeId) });
   const todayQuery = useQuery({ queryKey: ['dashboard-attendance-today', session?.employeeId], queryFn: attendanceToday, enabled: canUsePersonalAttendance });
   const teamQuery = useQuery({ queryKey: ['dashboard-team-attendance', session?.organizationId, activeId], queryFn: () => teamAttendance(), enabled: isManager || isPeopleAdmin });
   const taskStatus = Object.entries(stats?.tasksByStatus ?? {});

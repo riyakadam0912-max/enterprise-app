@@ -305,6 +305,8 @@ function ManagerDashboard() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [todayAttendance, setTodayAttendance] = useState<TodayAttendanceResponse | null>(null);
+  const [personalAttendance, setPersonalAttendance] = useState<MyAttendanceResponse | null>(null);
+  const [actionBusy, setActionBusy] = useState<'check-in' | 'check-out' | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -312,12 +314,13 @@ function ManagerDashboard() {
     setLoading(true);
     setError(null);
 
-    const [statsResult, tasksResult, employeesResult, leavesResult, attendanceResult] = await Promise.allSettled([
+    const [statsResult, tasksResult, employeesResult, leavesResult, attendanceResult, personalAttendanceResult] = await Promise.allSettled([
       getDashboardStats(),
       getTasks(),
       getEmployees(),
       getLeaveRequests(),
       getTodayAttendance(),
+      getMyAttendanceSnapshot(),
     ]);
 
     let nextError: string | null = null;
@@ -326,6 +329,7 @@ function ManagerDashboard() {
     if (employeesResult.status === 'fulfilled') setEmployees(employeesResult.value); else nextError = nextError ?? 'Failed to load employee list';
     if (leavesResult.status === 'fulfilled') setLeaveRequests(leavesResult.value); else nextError = nextError ?? 'Failed to load leave requests';
     if (attendanceResult.status === 'fulfilled') setTodayAttendance(attendanceResult.value); else nextError = nextError ?? 'Failed to load today attendance';
+    if (personalAttendanceResult.status === 'fulfilled') setPersonalAttendance(personalAttendanceResult.value);
 
     setError(nextError);
     setLoading(false);
@@ -341,6 +345,23 @@ function ManagerDashboard() {
   const pendingLeaves = useMemo(() => leaveRequests.filter((request) => request.status === 'PENDING_MANAGER' || request.status === 'PENDING_HR').length, [leaveRequests]);
   const todayRows = todayAttendance?.rows ?? [];
   const todaySummary = todayAttendance?.summary;
+  const hasAssignedShift = Boolean(personalAttendance?.shiftDetails) && personalAttendance?.activeAttendance?.kind !== 'REVIEW_REQUIRED';
+  const canCheckIn = personalAttendance?.capabilities?.canCheckIn ?? (hasAssignedShift && !personalAttendance?.activeSession && (personalAttendance?.shiftDetails?.type === 'FLEXIBLE' || !personalAttendance?.checkIn));
+  const canCheckOut = personalAttendance?.capabilities?.canCheckOut ?? Boolean(personalAttendance?.checkIn && !personalAttendance?.checkOut);
+
+  const handleAttendanceAction = useCallback(async (mode: 'check-in' | 'check-out') => {
+    setActionBusy(mode);
+    try {
+      if (mode === 'check-in') await checkIn({});
+      else await checkOut({});
+      await loadDashboard();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Unable to update attendance right now.');
+      await loadDashboard();
+    } finally {
+      setActionBusy(null);
+    }
+  }, [loadDashboard]);
 
   if (loading && !stats && reviewQueue.length === 0) {
     return <div className="min-h-full bg-slate-50 p-6"><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }).map((_, index) => <CardSkeleton key={index} />)}</div></div>;
@@ -376,37 +397,62 @@ function ManagerDashboard() {
           </div>
         </Panel>
 
-        <Panel title="Team Today" description="Attendance snapshot, late marks, and overtime for the current day.">
-          {todayAttendance ? (
-            <>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <StatCard label="Present" value={String(todaySummary?.present ?? 0)} />
-                <StatCard label="Absent" value={String(todaySummary?.absent ?? 0)} />
-                <StatCard label="Leave" value={String(todaySummary?.leave ?? 0)} />
-                <StatCard label="Half Day" value={String(todaySummary?.halfDay ?? 0)} />
+        <div className="space-y-6">
+          <Panel title="Attendance Toggle" description="Use this card to check in or check out quickly.">
+            <div className="space-y-4">
+              {!hasAssignedShift ? <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Assign an active flexible or fixed shift before checking in.</div> : null}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Check In</p>
+                  <p className="mt-2 text-lg font-semibold text-slate-900">{formatTime(personalAttendance?.checkIn ?? null)}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Check Out</p>
+                  <p className="mt-2 text-lg font-semibold text-slate-900">{formatTime(personalAttendance?.checkOut ?? null)}</p>
+                </div>
               </div>
-              <div className="mt-5 space-y-3">
-                {todayRows.slice(0, 6).map((row) => (
-                  <div key={row.employeeId} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">{row.employee.name}</p>
-                        <p className="mt-1 text-xs text-slate-500">{row.employee.department ?? 'No department'} · {row.employee.designation ?? 'No designation'}</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {canCheckIn ? <button type="button" onClick={() => void handleAttendanceAction('check-in')} disabled={Boolean(actionBusy)} className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50">{actionBusy === 'check-in' ? 'Checking in...' : 'Check In'}</button> : null}
+                {canCheckOut ? <button type="button" onClick={() => void handleAttendanceAction('check-out')} disabled={Boolean(actionBusy)} className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-50">{actionBusy === 'check-out' ? 'Checking out...' : 'Check Out'}</button> : null}
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                Shift: {personalAttendance?.shiftDetails ? `${personalAttendance.shiftDetails.startTime ?? '--'} - ${personalAttendance.shiftDetails.endTime ?? '--'} (${personalAttendance.shiftDetails.type})` : 'Unassigned'}
+              </div>
+            </div>
+          </Panel>
+
+          <Panel title="Team Today" description="Attendance snapshot, late marks, and overtime for the current day.">
+            {todayAttendance ? (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <StatCard label="Present" value={String(todaySummary?.present ?? 0)} />
+                  <StatCard label="Absent" value={String(todaySummary?.absent ?? 0)} />
+                  <StatCard label="Leave" value={String(todaySummary?.leave ?? 0)} />
+                  <StatCard label="Half Day" value={String(todaySummary?.halfDay ?? 0)} />
+                </div>
+                <div className="mt-5 space-y-3">
+                  {todayRows.slice(0, 6).map((row) => (
+                    <div key={row.employeeId} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">{row.employee.name}</p>
+                          <p className="mt-1 text-xs text-slate-500">{row.employee.department ?? 'No department'} · {row.employee.designation ?? 'No designation'}</p>
+                        </div>
+                        <StatusBadge status={row.status} />
                       </div>
-                      <StatusBadge status={row.status} />
+                      <div className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-3">
+                        <p>Check in: {formatTime(row.checkIn)}</p>
+                        <p>Check out: {formatTime(row.checkOut)}</p>
+                        <p>Late: {row.lateMinutes} mins</p>
+                      </div>
                     </div>
-                    <div className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-3">
-                      <p>Check in: {formatTime(row.checkIn)}</p>
-                      <p>Check out: {formatTime(row.checkOut)}</p>
-                      <p>Late: {row.lateMinutes} mins</p>
-                    </div>
-                  </div>
-                ))}
-                {todayRows.length === 0 ? <EmptyState title="No attendance data" description="Today’s attendance snapshot will appear here once records are available." /> : null}
-              </div>
-            </>
-          ) : <EmptyState title="Attendance unavailable" description="Today’s team attendance will appear once the backend responds." />}
-        </Panel>
+                  ))}
+                  {todayRows.length === 0 ? <EmptyState title="No attendance data" description="Today’s attendance snapshot will appear here once records are available." /> : null}
+                </div>
+              </>
+            ) : <EmptyState title="Attendance unavailable" description="Today’s team attendance will appear once the backend responds." />}
+          </Panel>
+        </div>
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.3fr_1fr]">
