@@ -412,7 +412,7 @@ export class UsersService {
     }
 
     try {
-      return await this.prisma.user.update({
+      const updated = await this.prisma.user.update({
         where: { id, organizationId: existing.organizationId },
         data,
         select: {
@@ -428,6 +428,46 @@ export class UsersService {
           createdAt: true,
         },
       });
+
+      if (updateUserDto.name !== undefined) {
+        let employeeId =
+          updated.employeeId ??
+          updateUserDto.employeeId ??
+          existing.employeeId ??
+          null;
+
+        if (!employeeId) {
+          const linkedEmployee = await this.prisma.employee.findFirst({
+            where: {
+              email: updated.email,
+              organizationId: existing.organizationId ?? undefined,
+              deletedAt: null,
+            },
+            select: { id: true },
+            orderBy: { id: 'asc' },
+          });
+          employeeId = linkedEmployee?.id ?? null;
+
+          if (employeeId) {
+            await this.prisma.user.update({
+              where: { id, organizationId: existing.organizationId },
+              data: { employeeId },
+            });
+          }
+        }
+
+        if (employeeId) {
+          await this.prisma.employee.updateMany({
+            where: {
+              id: employeeId,
+              organizationId: existing.organizationId,
+            },
+            data: { name: updateUserDto.name.trim() },
+          });
+        }
+      }
+
+      return updated;
     } catch (err: unknown) {
       if (
         err instanceof Prisma.PrismaClientKnownRequestError &&

@@ -266,11 +266,35 @@ export class AuthService {
         data: updateData,
       });
 
-      if (data.name !== undefined && data.name.trim() && user.employeeId) {
-        await tx.employee.update({
-          where: { id: user.employeeId },
-          data: { name: data.name.trim() },
-        });
+      if (data.name !== undefined && data.name.trim()) {
+        let employeeId = user.employeeId;
+
+        if (!employeeId) {
+          const linkedEmployee = await tx.employee.findFirst({
+            where: {
+              email: user.email,
+              organizationId: user.organizationId ?? undefined,
+              deletedAt: null,
+            },
+            select: { id: true },
+            orderBy: { id: 'asc' },
+          });
+          employeeId = linkedEmployee?.id ?? null;
+
+          if (employeeId) {
+            await tx.user.update({
+              where: { id: userId },
+              data: { employeeId },
+            });
+          }
+        }
+
+        if (employeeId) {
+          await tx.employee.update({
+            where: { id: employeeId },
+            data: { name: data.name.trim() },
+          });
+        }
       }
 
       return user;

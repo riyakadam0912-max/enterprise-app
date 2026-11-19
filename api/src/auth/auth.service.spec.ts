@@ -528,6 +528,43 @@ describe('AuthService', () => {
         data: { name: 'New Name' },
       });
     });
+
+    it('finds and links an employee by email when employeeId is missing', async () => {
+      const userDelegate = getMockPrismaDelegate(mockPrisma, 'user');
+      const employeeDelegate = getMockPrismaDelegate(mockPrisma, 'employee');
+      mockPrisma.$transaction.mockImplementation(
+        (callback: (tx: unknown) => unknown) =>
+          callback(mockPrisma as unknown as Parameters<typeof callback>[0]),
+      );
+      userDelegate.update.mockResolvedValue({
+        id: 12,
+        employeeId: null,
+        email: 'employee@example.com',
+        organizationId: 2,
+        name: 'New Name',
+      });
+      employeeDelegate.findFirst.mockResolvedValue({ id: 27 });
+
+      await service.updateProfile(12, { name: 'New Name' });
+
+      expect(employeeDelegate.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            email: 'employee@example.com',
+            organizationId: 2,
+            deletedAt: null,
+          }),
+        }),
+      );
+      expect(userDelegate.update).toHaveBeenCalledWith({
+        where: { id: 12 },
+        data: { employeeId: 27 },
+      });
+      expect(employeeDelegate.update).toHaveBeenCalledWith({
+        where: { id: 27 },
+        data: { name: 'New Name' },
+      });
+    });
   });
 
   describe('resetPassword', () => {
