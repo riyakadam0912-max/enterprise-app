@@ -1,4 +1,4 @@
-import { Link } from "expo-router";
+﻿import { Link } from "expo-router";
 import { Pressable, Text, View } from "react-native";
 import {
   ModuleListScreen,
@@ -6,8 +6,19 @@ import {
 } from "@/src/components/ModuleListScreen";
 import { apiError } from "@/src/api/client";
 import { invoices } from "@/src/api/invoices";
+import { useAuth } from "@/src/providers/AuthProvider";
 
 export default function Invoices() {
+  const { session } = useAuth();
+  if (session?.role === "MANAGER") {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 20 }}>
+        <Text style={{ color: "#991b1b", fontWeight: "700" }}>
+          You do not have permission to view invoices.
+        </Text>
+      </View>
+    );
+  }
   return (
     <ModuleListScreen
       title="Invoices"

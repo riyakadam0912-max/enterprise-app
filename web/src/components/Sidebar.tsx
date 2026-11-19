@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Link from 'next/link';
@@ -231,7 +231,6 @@ const EMPLOYEE_VISIBLE_LABELS = new Set([
 
 const MANAGER_VISIBLE_LABELS = new Set([
   'Dashboard',
-  'Invoices',
   'Expenses',
   'Attendance',
   'Requests',

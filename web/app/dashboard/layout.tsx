@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
@@ -31,7 +31,6 @@ const MANAGER_ALLOWED_EXACT_PATHS = ['/dashboard', '/dashboard/employees'];
 const MANAGER_ALLOWED_PATH_PREFIXES = [
   '/dashboard/projects',
   '/dashboard/tasks',
-  '/dashboard/invoices',
   '/dashboard/expenses',
   '/dashboard/attendance',
   '/dashboard/events',

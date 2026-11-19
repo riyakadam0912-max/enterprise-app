@@ -1,4 +1,4 @@
-import { Link } from "expo-router";
+﻿import { Link } from "expo-router";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import {
   ClipboardCheck,
@@ -8,7 +8,7 @@ import {
 import { useAuth } from "@/src/providers/AuthProvider";
 export default function Finance() {
   const { session } = useAuth();
-  const canViewInvoices = ["ADMIN", "SUPER_ADMIN", "MANAGER"].includes(
+  const canViewInvoices = ["ADMIN", "SUPER_ADMIN"].includes(
     session?.role ?? "",
   );
   const canViewAccounting = ["ADMIN", "SUPER_ADMIN", "HR", "MANAGER"].includes(

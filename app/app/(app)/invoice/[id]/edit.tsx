@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+﻿import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
@@ -13,7 +13,7 @@ export default function EditInvoice() {
   const { session } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const invoiceId = Number(id);
-  const allowed = can(session, 'invoice.update');
+  const allowed = session?.role !== 'MANAGER' && can(session, 'invoice.update');
   const query = useQuery({ queryKey: ['invoice', invoiceId], queryFn: () => invoice(invoiceId), enabled: allowed && Number.isInteger(invoiceId) && invoiceId > 0 });
   const [form, setForm] = useState({ invoiceNo: '', customer: '', clientEmail: '', totalAmount: '', dueDate: '', notes: '' });
   const [error, setError] = useState('');

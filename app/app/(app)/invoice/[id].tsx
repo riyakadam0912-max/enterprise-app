@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+﻿import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@/src/providers/AuthProvider';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
@@ -12,7 +12,7 @@ export default function InvoiceDetail() {
   const { session } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const invoiceId = Number(id);
-  const canRead = can(session, 'invoice.read');
+  const canRead = session?.role !== 'MANAGER' && can(session, 'invoice.read');
   const query = useQuery({ queryKey: ['invoice', invoiceId], queryFn: () => invoice(invoiceId), enabled: canRead && Number.isInteger(invoiceId) && invoiceId > 0 });
   const sendMutation = useMutation({ mutationFn: () => sendInvoice(invoiceId), onSuccess: () => Alert.alert('Invoice sent', 'The invoice notification was sent.'), onError: (error) => Alert.alert('Unable to send invoice', apiError(error)) });
   const deleteMutation = useMutation({ mutationFn: () => deleteInvoice(invoiceId), onSuccess: () => { void client.invalidateQueries({ queryKey: ['invoices'] }); router.replace('/invoices'); }, onError: (error) => Alert.alert('Unable to delete invoice', apiError(error)) });
