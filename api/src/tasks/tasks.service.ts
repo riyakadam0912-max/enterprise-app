@@ -192,18 +192,7 @@ export class TasksService {
       roleWhere = {
         OR: [
           { assignedToUserId: user.userId },
-          { assignedByUserId: user.userId },
-          { shootCrew: { some: { userId: user.userId } } },
           ...(user.employeeId ? [{ assignedToId: user.employeeId }] : []),
-          ...(user.employeeId
-            ? [
-                {
-                  projectRef: {
-                    assignedEmployees: { some: { id: user.employeeId } },
-                  },
-                },
-              ]
-            : []),
         ],
       } as Prisma.TaskWhereInput;
     }

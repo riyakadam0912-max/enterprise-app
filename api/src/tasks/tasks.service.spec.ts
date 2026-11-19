@@ -774,6 +774,20 @@ describe('TasksService', () => {
 
       const result = await service.findAll(mockEmployeeUser);
       expect(result).toEqual(mockTasks);
+      expect(taskDelegate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            AND: expect.arrayContaining([
+              expect.objectContaining({
+                OR: [
+                  { assignedToUserId: mockEmployeeUser.userId },
+                  { assignedToId: mockEmployeeUser.employeeId },
+                ],
+              }),
+            ]),
+          }),
+        }),
+      );
     });
   });
 
@@ -1205,7 +1219,7 @@ describe('TasksService', () => {
   });
 
   describe('getByPriority', () => {
-    it('should return tasks assigned to or created by an EMPLOYEE', async () => {
+    it('should return only tasks assigned to an EMPLOYEE', async () => {
       const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
       taskDelegate.findMany.mockResolvedValueOnce([]);
 
@@ -1216,18 +1230,10 @@ describe('TasksService', () => {
           where: expect.objectContaining({
             AND: expect.arrayContaining([
               expect.objectContaining({
-                OR: expect.arrayContaining([
+                OR: [
                   { assignedToUserId: mockEmployeeUser.userId },
-                  { assignedByUserId: mockEmployeeUser.userId },
                   { assignedToId: mockEmployeeUser.employeeId },
-                  {
-                    projectRef: {
-                      assignedEmployees: {
-                        some: { id: mockEmployeeUser.employeeId },
-                      },
-                    },
-                  },
-                ]),
+                ],
               }),
             ]),
           }),
