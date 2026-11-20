@@ -50,22 +50,22 @@ export function useEmployee(id: number) {
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const validId = Number.isInteger(id) && id > 0;
 
   useEffect(() => {
-    if (!Number.isInteger(id) || id <= 0) {
-      setEmployee(null);
-      setLoading(false);
-      setError(null);
-      return;
-    }
+    if (!validId) return;
     let cancelled = false;
     getEmployee(id)
       .then((data) => { if (!cancelled) { setEmployee(data); setLoading(false); } })
       .catch((err) => { if (!cancelled) { setError(err instanceof Error ? err.message : 'Failed to fetch employee'); setLoading(false); } });
     return () => { cancelled = true; };
-  }, [id]);
+  }, [id, validId]);
 
-  return { employee, loading, error };
+  return {
+    employee: validId ? employee : null,
+    loading: validId ? loading : false,
+    error: validId ? error : null,
+  };
 }
 
 export function useEmployeesByDepartment() {

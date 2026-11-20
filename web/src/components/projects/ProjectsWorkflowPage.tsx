@@ -2512,6 +2512,8 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
                             {issueMedia[issue.id].map((file) => (
                               <a key={file.id} href={getManagedFileUrl(file)} target="_blank" rel="noreferrer" className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                                 {file.mimeType.startsWith('image/') ? (
+                                  // Managed media URLs can require authenticated API access and cannot use Next's image optimizer.
+                                  // eslint-disable-next-line @next/next/no-img-element
                                   <img src={getManagedFileUrl(file)} alt={file.originalName} className="h-40 w-full object-cover" />
                                 ) : (
                                   <video src={getManagedFileUrl(file)} controls className="h-40 w-full bg-slate-950 object-contain" />

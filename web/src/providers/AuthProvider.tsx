@@ -103,8 +103,6 @@ export function AuthProvider({
 
     bootstrapAttemptedRef.current = true;
 
-    let mounted = true;
-
     async function bootstrapAuth() {
       const priorUserId = getAuthSessionSnapshot().user?.id;
       if (priorUserId == null) {
@@ -167,12 +165,6 @@ export function AuthProvider({
     }
 
     bootstrapAuth();
-
-    return () => {
-
-      mounted = false;
-
-    };
 
   }, [pathname]);
 
