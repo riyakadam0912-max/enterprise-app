@@ -32,6 +32,9 @@ export function uploadProfilePhoto(file: { uri: string; name: string; type: stri
 export function uploadExpenseReceipt(file: { uri: string; name: string; type: string }, expenseId: number) {
 	return uploadManagedFile(file, { module: 'expenses', entityType: 'Expense', entityId: String(expenseId), category: 'Receipt', isPublic: 'false' });
 }
+export function uploadTaskMedia(file: { uri: string; name: string; type: string }, taskId: number) {
+	return uploadManagedFile(file, { module: 'tasks', entityType: 'Task', entityId: String(taskId), category: 'Task Submission', isPublic: 'false' });
+}
 export async function file(id: number) { return unwrap<ManagedFile>((await api.get(`/files/${id}`)).data); }
 export async function previewFile(id: number) { return unwrap<unknown>((await api.get(`/files/preview/${id}`)).data); }
 export async function downloadFile(id: number) { return unwrap<unknown>((await api.get(`/files/download/${id}`)).data); }

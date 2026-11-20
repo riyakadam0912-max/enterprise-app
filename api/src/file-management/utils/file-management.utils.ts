@@ -9,6 +9,10 @@ const ALLOWED_EXTENSIONS = new Set([
   '.jpeg',
   '.gif',
   '.webp',
+  '.mp4',
+  '.mov',
+  '.webm',
+  '.m4v',
   '.doc',
   '.docx',
   '.xls',
@@ -20,7 +24,7 @@ const ALLOWED_EXTENSIONS = new Set([
   '.json',
 ]);
 
-const ALLOWED_MIME_PREFIXES = ['image/', 'text/'];
+const ALLOWED_MIME_PREFIXES = ['image/', 'text/', 'video/'];
 const ALLOWED_MIME_TYPES = new Set([
   'application/pdf',
   'application/zip',
@@ -98,6 +102,7 @@ export function assertSupportedFile(fileName: string, mimeType: string): void {
 
 export function getCategoryFromMime(mimeType: string): string {
   if (mimeType.startsWith('image/')) return 'ASSET_DOCUMENT';
+  if (mimeType.startsWith('video/')) return 'MEDIA';
   if (mimeType === 'application/pdf') return 'GENERAL_ATTACHMENT';
   if (mimeType.includes('spreadsheet') || mimeType === 'text/csv')
     return 'GENERAL_ATTACHMENT';

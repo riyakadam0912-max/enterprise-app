@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { sanitizeRichText } from '@/lib/sanitize-rich-text';
 import { reportError } from '@/lib/error-handling';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getCustomers, type Customer } from '@/api/customersApi';
@@ -52,6 +51,8 @@ import { ProjectGrid, type ProjectGridQuery } from '@/components/projects/Projec
 import { dateTimeLocalToIso, formatDateTime } from '@/utils/dateUtils';
 import { formatHoursDuration } from '@/lib/time-format';
 import { Ellipsis } from 'lucide-react';
+import { getManagedFileUrl, listFilesByEntity, uploadMultipleFiles, type ManagedFile } from '@/api/filesApi';
+import { RichTextContent, RichTextEditor } from '@/components/forms/RichTextEditor';
 
 type ProjectTab = 'overview' | 'tasks' | 'users' | 'reports' | 'issues' | 'timeLogs' | 'chat';
 type ProjectCustomerPickerTarget = 'create' | 'edit';
@@ -178,6 +179,22 @@ function formatBudget(value?: number | null) {
   }).format(value)}`;
 }
 
+async function uploadEntityMedia(files: File[], module: string, entityType: string, entityId: number, category: string) {
+  if (!files.length) return;
+  const data = new FormData();
+  files.forEach((file) => data.append('files', file));
+  data.append('module', module);
+  data.append('entityType', entityType);
+  data.append('entityId', String(entityId));
+  data.append('category', category);
+  data.append('isPublic', 'false');
+  await uploadMultipleFiles(data);
+}
+
+function validMedia(files: File[]) {
+  return files.every((file) => (file.type.startsWith('image/') || file.type.startsWith('video/')) && file.size <= 25 * 1024 * 1024);
+}
+
 function getProjectOwnerNames(project?: Project | null) {
   const names = project?.owners?.map((owner) => owner.name) ?? [];
   if (project?.createdBy?.name && !names.includes(project.createdBy.name)) {
@@ -185,74 +202,6 @@ function getProjectOwnerNames(project?: Project | null) {
   }
   if (!project?.createdBy?.name) names.unshift('Unknown (historical)');
   return [...new Set(names)].join(', ');
-}
-
-function SafeRichText({ value }: { value: string }) {
-  const [html, setHtml] = useState('');
-  useEffect(() => { setHtml(sanitizeRichText(value)); }, [value]);
-  return <div dangerouslySetInnerHTML={{ __html: html }} />;
-}
-
-function RichTextEditor({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) {
-  const editorRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (editorRef.current && editorRef.current.innerHTML !== value) {
-      editorRef.current.innerHTML = sanitizeRichText(value);
-    }
-  }, [value]);
-
-  const applyCommand = (command: string, arg?: string) => {
-    const editor = editorRef.current;
-    if (!editor) return;
-    editor.focus();
-    document.execCommand(command, false, arg);
-    onChange(sanitizeRichText(editor.innerHTML));
-  };
-
-  return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2">
-        {[
-          { label: 'B', command: 'bold', className: 'font-bold' },
-          { label: 'I', command: 'italic', className: 'italic' },
-          { label: 'U', command: 'underline', className: 'underline' },
-          { label: '• List', command: 'insertUnorderedList' },
-          { label: '1. List', command: 'insertOrderedList' },
-        ].map((tool) => (
-          <button
-            key={tool.label}
-            type="button"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => applyCommand(tool.command)}
-            className={`rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:border-slate-300 ${tool.className ?? ''}`}
-          >
-            {tool.label}
-          </button>
-        ))}
-      </div>
-      <div
-        ref={editorRef}
-        contentEditable
-        suppressContentEditableWarning
-        role="textbox"
-        aria-label={placeholder}
-        onPaste={(event) => {
-          event.preventDefault();
-          const html = event.clipboardData.getData('text/html');
-          if (html) {
-            document.execCommand('insertHTML', false, sanitizeRichText(html));
-          } else {
-            document.execCommand('insertText', false, event.clipboardData.getData('text/plain'));
-          }
-          onChange(sanitizeRichText(event.currentTarget.innerHTML));
-        }}
-        onInput={(event) => onChange(sanitizeRichText((event.currentTarget as HTMLDivElement).innerHTML))}
-        className="min-h-30 px-3 py-2.5 text-sm leading-6 text-slate-700 outline-none"
-        data-placeholder={placeholder}
-      />
-    </div>
-  );
 }
 
 function renderProjectMessageContent(
@@ -315,6 +264,8 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
   const [issuesError, setIssuesError] = useState('');
   const [issueBusy, setIssueBusy] = useState(false);
   const [editingIssueId, setEditingIssueId] = useState<number | null>(null);
+  const [issueMedia, setIssueMedia] = useState<Record<number, ManagedFile[]>>({});
+  const [issueMediaFiles, setIssueMediaFiles] = useState<File[]>([]);
   const [issueForm, setIssueForm] = useState({
     title: '',
     description: '',
@@ -355,6 +306,8 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
   const [customerOptionsError, setCustomerOptionsError] = useState<string | null>(null);
   const [customerPickerTarget, setCustomerPickerTarget] = useState<ProjectCustomerPickerTarget | null>(null);
   const [createProjectBusy, setCreateProjectBusy] = useState(false);
+  const [projectCreateMediaFiles, setProjectCreateMediaFiles] = useState<File[]>([]);
+  const [projectEditMediaFiles, setProjectEditMediaFiles] = useState<File[]>([]);
   const [projectNameDraft, setProjectNameDraft] = useState('');
   const [projectStartDateDraft, setProjectStartDateDraft] = useState('');
   const [projectEndDateDraft, setProjectEndDateDraft] = useState('');
@@ -396,6 +349,7 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
     priority: 'MEDIUM',
     estimatedHours: '',
   });
+  const [taskMediaFiles, setTaskMediaFiles] = useState<File[]>([]);
   const [showTimeLogEntry, setShowTimeLogEntry] = useState(false);
   const [timeLogEntries, setTimeLogEntries] = useState<Array<{
     id: number;
@@ -542,8 +496,18 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
     setIssuesLoading(true);
     setIssuesError('');
     getProjectWorkspace(selectedProjectId)
-      .then((workspace) => {
-        if (!cancelled) setProjectIssues(workspace.issues);
+      .then(async (workspace) => {
+        if (cancelled) return;
+        setProjectIssues(workspace.issues);
+        const mediaEntries = await Promise.all(
+          workspace.issues.map(async (issue) => [
+            issue.id,
+            await listFilesByEntity('ProjectIssue', issue.id),
+          ] as const),
+        );
+        if (!cancelled) {
+          setIssueMedia(Object.fromEntries(mediaEntries));
+        }
       })
       .catch((cause: unknown) => {
         if (!cancelled) {
@@ -1045,6 +1009,7 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
 
   function resetIssueForm() {
     setEditingIssueId(null);
+    setIssueMediaFiles([]);
     setIssueForm({
       title: '',
       description: '',
@@ -1083,8 +1048,28 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
       };
       if (editingIssueId != null) {
         await updateProjectIssue(selectedProjectId, editingIssueId, payload);
+        if (issueMediaFiles.length > 0) {
+          const formData = new FormData();
+          issueMediaFiles.forEach((file) => formData.append('files', file));
+          formData.append('module', 'projects');
+          formData.append('entityType', 'ProjectIssue');
+          formData.append('entityId', String(editingIssueId));
+          formData.append('category', 'Issue Media');
+          formData.append('isPublic', 'false');
+          await uploadMultipleFiles(formData);
+        }
       } else {
-        await createProjectIssue(selectedProjectId, payload);
+        const created = await createProjectIssue(selectedProjectId, payload);
+        if (issueMediaFiles.length > 0) {
+          const formData = new FormData();
+          issueMediaFiles.forEach((file) => formData.append('files', file));
+          formData.append('module', 'projects');
+          formData.append('entityType', 'ProjectIssue');
+          formData.append('entityId', String(created.id));
+          formData.append('category', 'Issue Media');
+          formData.append('isPublic', 'false');
+          await uploadMultipleFiles(formData);
+        }
       }
       const workspace = await getProjectWorkspace(selectedProjectId);
       setProjectIssues(workspace.issues);
@@ -1136,6 +1121,8 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
         driveLink: projectDriveLinkDraft || undefined,
         ownerIds: projectOwnerIdsDraft.map(Number),
       });
+      if (projectEditMediaFiles.length) await uploadEntityMedia(projectEditMediaFiles, 'projects', 'Project', selectedProjectId, 'Description Media');
+      setProjectEditMediaFiles([]);
       await refreshProjects(selectedProjectId);
       setShowProjectEdit(false);
       setActionFeedback({ type: 'success', message: 'Project details updated successfully.' });
@@ -1186,6 +1173,8 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
         customerId: projectCreateForm.customerId ? Number(projectCreateForm.customerId) : null,
         tags: projectCreateForm.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
       });
+      if (projectCreateMediaFiles.length) await uploadEntityMedia(projectCreateMediaFiles, 'projects', 'Project', createdProject.id, 'Description Media');
+      setProjectCreateMediaFiles([]);
 
       setProjectCreateForm({
         projectName: '',
@@ -1293,7 +1282,7 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
     setTaskSubmitting(true);
     setTaskError('');
     try {
-      await createTask({
+      const createdTask = await createTask({
         title: taskForm.taskName.trim(),
         taskName: taskForm.taskName.trim(),
         category: taskForm.category.trim() || null,
@@ -1308,6 +1297,8 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
         estimatedHours: taskForm.estimatedHours ? Number(taskForm.estimatedHours) : null,
         status: 'PENDING',
       });
+      if (taskMediaFiles.length) await uploadEntityMedia(taskMediaFiles, 'tasks', 'Task', createdTask.id, 'Description Media');
+      setTaskMediaFiles([]);
       setTaskForm({
         taskName: '',
         category: '',
@@ -1791,7 +1782,10 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
                     <input value={projectCreateForm.specificTask} onChange={(event) => setProjectCreateForm((current) => ({ ...current, specificTask: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Primary project task" />
                     <div className="space-y-2">
                       <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Project description</label>
-                      <RichTextEditor value={projectCreateForm.description} onChange={(value) => setProjectCreateForm((current) => ({ ...current, description: value }))} placeholder="Project description" />
+                      <RichTextEditor value={projectCreateForm.description} onChange={(value) => setProjectCreateForm((current) => ({ ...current, description: value }))} placeholder="Project description" disabled={createProjectBusy} mediaFiles={projectCreateMediaFiles} onMediaChange={(files) => {
+                        if (!validMedia(files)) { setActionFeedback({ type: 'error', message: 'Only images or videos up to 25 MB each can be attached.' }); return; }
+                        setProjectCreateMediaFiles(files);
+                      }} />
                     </div>
                     <textarea value={projectCreateForm.remarks} onChange={(event) => setProjectCreateForm((current) => ({ ...current, remarks: event.target.value }))} rows={3} className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Remarks" />
                   </div>
@@ -2077,7 +2071,7 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
                   <div
                     className="prose prose-sm max-w-none text-sm text-slate-700"
                   >
-                    <SafeRichText value={projectDetails.description || '<p>No description available.</p>'} />
+                    <RichTextContent value={projectDetails.description || '<p>No description available.</p>'} />
                   </div>
                   <div className="mt-4 space-y-1 text-sm text-slate-600">
                     <p>Start: {formatDate(projectDetails.startDate)}</p>
@@ -2198,7 +2192,10 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
                     ))}
                   </select>
                   <div className="md:col-span-2">
-                    <RichTextEditor value={taskForm.description} onChange={(value) => setTaskForm((prev) => ({ ...prev, description: value }))} placeholder="Describe what the employee needs to do. Include steps, context, and any reference materials." />
+                    <RichTextEditor value={taskForm.description} onChange={(value) => setTaskForm((prev) => ({ ...prev, description: value }))} placeholder="Describe what the employee needs to do. Include steps, context, and any reference materials." disabled={taskSubmitting} mediaFiles={taskMediaFiles} onMediaChange={(files) => {
+                      if (!validMedia(files)) { setTaskError('Only images or videos up to 25 MB each can be attached.'); return; }
+                      setTaskError(''); setTaskMediaFiles(files);
+                    }} />
                   </div>
                   <input
                     value={taskForm.links}
@@ -2471,7 +2468,11 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
                   )}
                   <label className="space-y-1 text-sm md:col-span-2">
                     <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Description</span>
-                    <textarea rows={3} maxLength={5000} value={issueForm.description} onChange={(event) => setIssueForm((current) => ({ ...current, description: event.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-orange-400" />
+                    <RichTextEditor value={issueForm.description} onChange={(description) => setIssueForm((current) => ({ ...current, description }))} placeholder="Describe the issue" disabled={issueBusy} mediaFiles={issueMediaFiles} onMediaChange={(selected) => {
+                      const invalid = selected.find((file) => (!file.type.startsWith('image/') && !file.type.startsWith('video/')) || file.size > 25 * 1024 * 1024);
+                      if (invalid) { setIssuesError('Only images or videos up to 25 MB each can be attached.'); return; }
+                      setIssuesError(''); setIssueMediaFiles(selected);
+                    }} />
                   </label>
                 </div>
                 <div className="flex justify-end gap-2">
@@ -2502,7 +2503,21 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
                             {canManageProject && <button type="button" onClick={() => void onDeleteIssue(issue)} disabled={issueBusy} className="text-sm font-medium text-rose-600 hover:text-rose-700 disabled:opacity-50">Delete</button>}
                           </div>
                         </div>
-                        {issue.description ? <p className="mt-3 whitespace-pre-wrap text-sm text-slate-600">{issue.description}</p> : null}
+                        {issue.description ? <RichTextContent value={issue.description} className="mt-3 text-sm text-slate-600" /> : null}
+                        {(issueMedia[issue.id]?.length ?? 0) > 0 && (
+                          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                            {issueMedia[issue.id].map((file) => (
+                              <a key={file.id} href={getManagedFileUrl(file)} target="_blank" rel="noreferrer" className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                                {file.mimeType.startsWith('image/') ? (
+                                  <img src={getManagedFileUrl(file)} alt={file.originalName} className="h-40 w-full object-cover" />
+                                ) : (
+                                  <video src={getManagedFileUrl(file)} controls className="h-40 w-full bg-slate-950 object-contain" />
+                                )}
+                                <span className="block truncate px-3 py-2 text-xs font-medium text-slate-600">{file.originalName}</span>
+                              </a>
+                            ))}
+                          </div>
+                        )}
                         {issue.taskId != null ? <p className="mt-2 text-xs text-slate-500">Related task: {visibleTasks.find((task) => task.id === issue.taskId)?.taskName ?? `#${issue.taskId}`}</p> : null}
                       </article>
                     );
@@ -2868,7 +2883,10 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
                       <input value={projectSpecificTaskDraft} onChange={(event) => setProjectSpecificTaskDraft(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Primary project task" />
                       <div className="space-y-2">
                         <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Project description</label>
-                        <RichTextEditor value={projectDescriptionDraft} onChange={setProjectDescriptionDraft} placeholder="Project description" />
+                        <RichTextEditor value={projectDescriptionDraft} onChange={setProjectDescriptionDraft} placeholder="Project description" disabled={busy} mediaFiles={projectEditMediaFiles} onMediaChange={(files) => {
+                          if (!validMedia(files)) { setActionFeedback({ type: 'error', message: 'Only images or videos up to 25 MB each can be attached.' }); return; }
+                          setProjectEditMediaFiles(files);
+                        }} />
                       </div>
                       <textarea value={projectRemarksDraft} onChange={(event) => setProjectRemarksDraft(event.target.value)} rows={3} className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Remarks" />
                     </div>

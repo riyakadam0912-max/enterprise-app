@@ -456,7 +456,11 @@ export class UsersService {
           }
         }
 
-        if (employeeId) {
+        // Platform-level users (for example SUPER_ADMIN) legitimately have no
+        // organization and therefore no tenant Employee row to synchronize.
+        // Keep the organization predicate for tenant isolation when a row does
+        // exist instead of converting null to undefined and broadening the query.
+        if (employeeId && existing.organizationId !== null) {
           await this.prisma.employee.updateMany({
             where: {
               id: employeeId,

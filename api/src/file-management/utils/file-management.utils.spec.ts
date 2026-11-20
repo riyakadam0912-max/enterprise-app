@@ -16,6 +16,13 @@ describe('FileManagementUtils', () => {
       expect(isSupportedFile('photo.webp', 'image/webp')).toBe(true);
     });
 
+    it('accepts allowed video types', () => {
+      expect(isSupportedFile('clip.mp4', 'video/mp4')).toBe(true);
+      expect(isSupportedFile('clip.mov', 'video/quicktime')).toBe(true);
+      expect(isSupportedFile('clip.webm', 'video/webm')).toBe(true);
+      expect(isSupportedFile('clip.m4v', 'video/x-m4v')).toBe(true);
+    });
+
     it('accepts allowed document types', () => {
       expect(isSupportedFile('document.pdf', 'application/pdf')).toBe(true);
       expect(

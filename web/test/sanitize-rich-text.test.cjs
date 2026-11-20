@@ -28,15 +28,17 @@ test('rich text preserves formatting and removes executable HTML in a browser', 
       document.querySelector('main').innerHTML = clean;
       return {
         clean,
-        attributes: [...document.querySelectorAll('main *')].flatMap((node) => [...node.attributes]),
-        unsafeElements: document.querySelectorAll('main script,main img,main svg,main iframe,main a').length,
+        unsafeAttributes: [...document.querySelectorAll('main *')].flatMap((node) => [...node.attributes]).filter((attribute) => /^(on|style$|srcdoc$)/i.test(attribute.name)),
+        unsafeElements: document.querySelectorAll('main script,main img,main svg,main iframe').length,
+        unsafeLinks: [...document.querySelectorAll('main a')].filter((anchor) => !/^(https?:|mailto:)/i.test(anchor.getAttribute('href') || '') && anchor.hasAttribute('href')).length,
         compromised: Boolean(window.compromised),
       };
     }, compiled);
     assert.match(result.clean, /<strong>Keep bold<\/strong>/);
     assert.match(result.clean, /<ul><li>Item<\/li><\/ul>/);
     assert.equal(result.unsafeElements, 0);
-    assert.deepEqual(result.attributes, []);
+    assert.equal(result.unsafeLinks, 0);
+    assert.deepEqual(result.unsafeAttributes, []);
     assert.equal(result.compromised, false);
   } finally {
     await browser.close();

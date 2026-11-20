@@ -25,6 +25,8 @@ import {
 import { UserIdentity } from "@/src/components/UserIdentity";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { can } from "@/src/utils/permissions";
+import * as ImagePicker from "expo-image-picker";
+import { filesByEntity, uploadTaskMedia } from "@/src/api/files";
 
 type Tab = "overview" | "submissions" | "chat";
 type TaskData = Record<string, any>;
@@ -62,10 +64,16 @@ export default function TaskDetail() {
   const [note, setNote] = useState("");
   const [remarks, setRemarks] = useState("");
   const [message, setMessage] = useState("");
+  const [submissionMediaBusy, setSubmissionMediaBusy] = useState(false);
   const chat = useQuery({
     queryKey: ["task-chat", taskId],
     queryFn: () => taskMessages(taskId),
     enabled: tab === "chat" && taskId > 0,
+  });
+  const submissionFiles = useQuery({
+    queryKey: ["task-files", taskId],
+    queryFn: () => filesByEntity("Task", taskId),
+    enabled: tab === "submissions" && taskId > 0,
   });
   const status = String(data?.status ?? "PENDING").toUpperCase();
   const assigned =
@@ -126,6 +134,38 @@ export default function TaskDetail() {
     },
     onError: (error) => Alert.alert("Unable to send message", apiError(error)),
   });
+  const pickSubmissionMedia = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Permission required", "Allow photo and video library access.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images", "videos"],
+      allowsMultipleSelection: true,
+      quality: 0.8,
+    });
+    if (result.canceled) return;
+    setSubmissionMediaBusy(true);
+    try {
+      for (const asset of result.assets) {
+        await uploadTaskMedia(
+          {
+            uri: asset.uri,
+            name: asset.fileName ?? `task-${taskId}-media`,
+            type: asset.mimeType ?? "application/octet-stream",
+          },
+          taskId,
+        );
+      }
+      await client.invalidateQueries({ queryKey: ["task-files", taskId] });
+      Alert.alert("Media uploaded", "The images or videos were added to this task.");
+    } catch (error) {
+      Alert.alert("Unable to upload media", apiError(error));
+    } finally {
+      setSubmissionMediaBusy(false);
+    }
+  };
   if (!allowed)
     return (
       <View style={styles.page}>
@@ -226,6 +266,9 @@ export default function TaskDetail() {
           setNote={setNote}
           busy={mutation.isPending}
           submit={() => mutation.mutate("submit")}
+          pickMedia={() => void pickSubmissionMedia()}
+          mediaBusy={submissionMediaBusy}
+          files={submissionFiles.data}
         />
       )}
       {tab === "chat" && (
@@ -528,6 +571,9 @@ function Submissions({
   setNote,
   busy,
   submit,
+  pickMedia,
+  mediaBusy,
+  files,
 }: {
   data: TaskData;
   enabled: boolean;
@@ -537,6 +583,9 @@ function Submissions({
   setNote: (v: string) => void;
   busy: boolean;
   submit: () => void;
+  pickMedia: () => void;
+  mediaBusy: boolean;
+  files?: Array<{ id: number; originalName: string; mimeType: string; downloadUrl?: string; previewUrl?: string | null }>;
 }) {
   return (
     <>
@@ -551,6 +600,22 @@ function Submissions({
             <Text style={styles.detail}>
               {String(data.submissionNotes ?? "No notes provided.")}
             </Text>
+            {files && files.length > 0 ? (
+              <View style={styles.mediaList}>
+                {files.map((file) => (
+                  <Pressable
+                    key={file.id}
+                    onPress={() => {
+                      const url = file.previewUrl ?? file.downloadUrl;
+                      if (url) void Linking.openURL(url);
+                    }}
+                    style={styles.mediaLink}
+                  >
+                    <Text style={styles.mediaLinkText}>{file.originalName}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
             {data.reviewComment && (
               <View style={styles.review}>
                 <Text style={styles.label}>Reviewer feedback</Text>
@@ -581,6 +646,15 @@ function Submissions({
             multiline
             style={[styles.input, styles.multiline]}
           />
+          <Pressable
+            disabled={mediaBusy}
+            onPress={pickMedia}
+            style={[styles.secondaryAction, mediaBusy && styles.disabled]}
+          >
+            <Text style={styles.secondaryActionText}>
+              {mediaBusy ? "Uploading media..." : "Add images or videos"}
+            </Text>
+          </Pressable>
           <Pressable
             disabled={busy || !note.trim()}
             onPress={submit}
@@ -868,6 +942,11 @@ const styles = {
   } as const,
   disabled: { opacity: 0.45 } as const,
   link: { color: "#2563eb", fontWeight: "700", marginTop: 8 } as const,
+  mediaList: { marginTop: 10, gap: 8 } as const,
+  mediaLink: { borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 9, backgroundColor: "#fff", padding: 10 } as const,
+  mediaLinkText: { color: "#2563eb", fontWeight: "700", fontSize: 12 } as const,
+  secondaryAction: { borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 10, padding: 12, alignItems: "center", marginTop: 12, backgroundColor: "#fff" } as const,
+  secondaryActionText: { color: "#475569", fontWeight: "800", fontSize: 12 } as const,
   review: {
     backgroundColor: "#fff7ed",
     borderRadius: 10,

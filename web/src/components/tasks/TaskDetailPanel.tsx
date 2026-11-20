@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { AuthRole } from '@/stores/auth-store';
 import { TaskDetailHeader, TaskDetailMetadata } from '@/components/tasks/TaskDetailPresentation';
 import { Check, ExternalLink, MessageCircle, Play, Send, X } from 'lucide-react';
+import { getManagedFileUrl, listFilesByEntity, uploadFile, type ManagedFile } from '@/api/filesApi';
+import { RichTextContent, RichTextEditor } from '@/components/forms/RichTextEditor';
 
 type DashboardRole = AuthRole;
 type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'COMPLETED';
@@ -181,6 +183,8 @@ function TaskDetailPanelBody({
   const [showSubmitForm, setShowSubmitForm] = useState(false);
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
+  const [submissionMedia, setSubmissionMedia] = useState<ManagedFile[]>([]);
+  const [submissionMediaBusy, setSubmissionMediaBusy] = useState(false);
   const [editTaskName, setEditTaskName] = useState(task.taskName);
   const [editCategory, setEditCategory] = useState(task.category ?? '');
   const [editDescription, setEditDescription] = useState(task.description ?? '');
@@ -198,6 +202,38 @@ function TaskDetailPanelBody({
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState('');
   const [chatTab, setChatTab] = useState(false);
+
+  useEffect(() => {
+    void listFilesByEntity('Task', task.id)
+      .then(setSubmissionMedia)
+      .catch(() => setSubmissionMedia([]));
+  }, [task.id, taskStatus]);
+
+  async function uploadSubmissionMedia(files: File[]) {
+    if (!files.length) return;
+    setSubmissionMediaBusy(true);
+    try {
+      for (const file of files) {
+        if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+          throw new Error('Only images and videos can be attached.');
+        }
+        if (file.size > 25 * 1024 * 1024) {
+          throw new Error('Each attachment must be 25 MB or smaller.');
+        }
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('module', 'tasks');
+        formData.append('entityType', 'Task');
+        formData.append('entityId', String(task.id));
+        formData.append('category', 'Task Submission');
+        formData.append('isPublic', 'false');
+        await uploadFile(formData);
+      }
+      setSubmissionMedia(await listFilesByEntity('Task', task.id));
+    } finally {
+      setSubmissionMediaBusy(false);
+    }
+  }
 
   const isEmployee = role === 'EMPLOYEE';
   const isManagerOrAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER';
@@ -416,9 +452,7 @@ function TaskDetailPanelBody({
 
           <div className="space-y-2 border-t border-slate-200 pt-4">
             <h3 className="text-sm font-semibold text-slate-900">Instructions</h3>
-            <div className="whitespace-pre-wrap wrap-break-word text-sm leading-6 text-slate-600">
-              {task.description?.trim() ? task.description : 'No instructions provided.'}
-            </div>
+            {task.description?.trim() ? <RichTextContent value={task.description} className="wrap-break-word text-sm leading-6 text-slate-600" /> : <div className="text-sm text-slate-600">No instructions provided.</div>}
             {showEditForm && (
               <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
                 <input
@@ -449,13 +483,7 @@ function TaskDetailPanelBody({
                     <option value="HIGH">HIGH</option>
                   </select>
                 </div>
-                <textarea
-                  value={editDescription}
-                  onChange={(event) => setEditDescription(event.target.value)}
-                  rows={5}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                  placeholder="Task description and instructions"
-                />
+                <RichTextEditor value={editDescription} onChange={setEditDescription} placeholder="Task description and instructions" disabled={busy || submissionMediaBusy} onMediaChange={(files) => void uploadSubmissionMedia(files)} />
                 <input
                   value={editLinks}
                   onChange={(event) => setEditLinks(event.target.value)}
@@ -534,8 +562,22 @@ function TaskDetailPanelBody({
             <div className="space-y-2 border-t border-slate-200 pt-4">
               <h3 className="text-sm font-semibold text-slate-900">Submission</h3>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700 shadow-sm">
-                {task.submissionNotes?.trim() ? task.submissionNotes : 'No submission notes provided.'}
+                {task.submissionNotes?.trim() ? <RichTextContent value={task.submissionNotes} /> : 'No submission notes provided.'}
               </div>
+              {submissionMedia.length > 0 && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {submissionMedia.map((file) => (
+                    <a key={file.id} href={getManagedFileUrl(file)} target="_blank" rel="noreferrer" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                      {file.mimeType.startsWith('image/') ? (
+                        <img src={getManagedFileUrl(file)} alt={file.originalName} className="h-40 w-full object-cover" />
+                      ) : (
+                        <video src={getManagedFileUrl(file)} controls className="h-40 w-full bg-slate-950 object-contain" />
+                      )}
+                      <span className="block truncate px-3 py-2 text-xs font-medium text-slate-600">{file.originalName}</span>
+                    </a>
+                  ))}
+                </div>
+              )}
               {task.submissionLink && (
                 <a href={task.submissionLink} target="_blank" rel="noreferrer" className="block text-sm text-blue-600 hover:underline">
                   {task.submissionLink}
@@ -597,13 +639,7 @@ function TaskDetailPanelBody({
 
             {showSubmitForm && (
               <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
-                <textarea
-                  value={submissionNote}
-                  onChange={(e) => setSubmissionNote(e.target.value)}
-                  rows={4}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                  placeholder="Describe what you completed, what was done, and any notes"
-                />
+                <RichTextEditor value={submissionNote} onChange={setSubmissionNote} placeholder="Describe what you completed, what was done, and any notes" disabled={busy || submissionMediaBusy} onMediaChange={(files) => void uploadSubmissionMedia(files)} />
                 <input
                   value={submissionLink}
                   onChange={(e) => setSubmissionLink(e.target.value)}
@@ -681,7 +717,7 @@ function TaskDetailPanelBody({
                   <p className="mt-2 text-xs text-slate-500">Employee: {task.assignedToUser?.name ?? 'N/A'}</p>
                   <p className="text-xs text-slate-500">Submitted: {formatDate(task.updatedAt)}</p>
                   <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm leading-6 text-slate-700">
-                    {task.submissionNotes?.trim() ? task.submissionNotes : 'No submission notes provided.'}
+                    {task.submissionNotes?.trim() ? <RichTextContent value={task.submissionNotes} /> : 'No submission notes provided.'}
                   </div>
                   {task.submissionLink && (
                     <a href={task.submissionLink} target="_blank" rel="noreferrer" className="mt-3 block text-blue-600 hover:underline">
