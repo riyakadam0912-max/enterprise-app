@@ -1787,7 +1787,10 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
                         setProjectCreateMediaFiles(files);
                       }} />
                     </div>
-                    <textarea value={projectCreateForm.remarks} onChange={(event) => setProjectCreateForm((current) => ({ ...current, remarks: event.target.value }))} rows={3} className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Remarks" />
+                    <div className="space-y-2">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Remarks</label>
+                      <RichTextEditor value={projectCreateForm.remarks} onChange={(value) => setProjectCreateForm((current) => ({ ...current, remarks: value }))} placeholder="Project remarks" disabled={createProjectBusy} />
+                    </div>
                   </div>
                 </div>
 

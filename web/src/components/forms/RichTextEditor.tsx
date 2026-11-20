@@ -68,6 +68,16 @@ export function RichTextEditor({ value, onChange, placeholder = 'Start typing…
         <span className="mx-1 h-6 w-px bg-slate-200" />
         {tools.map(([label, Icon, name]) => <button key={label} type="button" title={label} aria-label={label} disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={() => command(name)} className={iconButton}><Icon className="h-4 w-4" /></button>)}
         <button type="button" title="Insert link" aria-label="Insert link" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={chooseLink} className={iconButton}><Link className="h-4 w-4" /></button>
+        {onMediaChange && (
+          <label title="Attach images or videos" aria-label="Attach images or videos" className={`${iconButton} cursor-pointer`}>
+            <Paperclip className="h-4 w-4" aria-hidden="true" />
+            <input type="file" accept="image/*,video/*" multiple disabled={disabled} className="sr-only" onChange={(event) => {
+              const files = Array.from(event.currentTarget.files ?? []);
+              onMediaChange([...mediaFiles, ...files]);
+              event.currentTarget.value = '';
+            }} />
+          </label>
+        )}
       </div>
       <div ref={editorRef} contentEditable={!disabled} suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label={placeholder} data-placeholder={placeholder}
         onPaste={(event) => { event.preventDefault(); const html = event.clipboardData.getData('text/html'); document.execCommand(html ? 'insertHTML' : 'insertText', false, html ? sanitizeRichText(html) : event.clipboardData.getData('text/plain')); onChange(sanitizeRichText(event.currentTarget.innerHTML)); }}
@@ -75,15 +85,8 @@ export function RichTextEditor({ value, onChange, placeholder = 'Start typing…
         className="rich-text-editor min-h-32 px-4 py-3 text-sm leading-6 text-slate-700 outline-none empty:before:pointer-events-none empty:before:text-slate-400 empty:before:content-[attr(data-placeholder)] [&_blockquote]:border-l-4 [&_blockquote]:border-slate-300 [&_blockquote]:pl-3 [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:text-xl [&_h2]:font-bold [&_h3]:text-lg [&_h3]:font-semibold [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:list-disc [&_ul]:pl-6" />
       {onMediaChange && (
         <div className="border-t border-slate-200 bg-slate-50 px-3 py-2.5">
-          <label title="Attach images or videos" aria-label="Attach images or videos" className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-600">
-            <Paperclip className="h-4 w-4" aria-hidden="true" />
-            <input type="file" accept="image/*,video/*" multiple disabled={disabled} className="sr-only" onChange={(event) => {
-              const files = Array.from(event.currentTarget.files ?? []);
-              onMediaChange(files);
-              event.currentTarget.value = '';
-            }} />
-          </label>
-          {mediaFiles.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{mediaFiles.map((file, index) => <span key={`${file.name}-${file.lastModified}`} className="inline-flex max-w-52 items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600"><span className="truncate">{file.name}</span><button type="button" aria-label={`Remove ${file.name}`} onClick={() => onMediaChange(mediaFiles.filter((_, itemIndex) => itemIndex !== index))} className="font-bold text-slate-400 hover:text-rose-600">×</button></span>)}</div>}
+          {mediaFiles.length > 0 && <div className="flex flex-wrap gap-2">{mediaFiles.map((file, index) => <span key={`${file.name}-${file.lastModified}-${index}`} className="inline-flex max-w-52 items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600"><span className="truncate">{file.name}</span><button type="button" aria-label={`Remove ${file.name}`} onClick={() => onMediaChange(mediaFiles.filter((_, itemIndex) => itemIndex !== index))} className="font-bold text-slate-400 hover:text-rose-600">×</button></span>)}</div>}
+          {mediaFiles.length === 0 && <p className="text-xs text-slate-500">Use the paperclip in the toolbar to attach images or videos.</p>}
           {mediaError && <p className="mt-1.5 text-xs text-rose-600">{mediaError}</p>}
         </div>
       )}
@@ -93,6 +96,10 @@ export function RichTextEditor({ value, onChange, placeholder = 'Start typing…
 
 export function RichTextContent({ value, className = '' }: { value?: string | null; className?: string }) {
   const [html, setHtml] = useState('');
-  useEffect(() => setHtml(sanitizeRichText(value ?? '')), [value]);
+  useEffect(() => {
+    // Sanitize in the browser because DOMPurify requires a DOM implementation.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHtml(sanitizeRichText(value ?? ''));
+  }, [value]);
   return <div className={`rich-text-content [&_a]:text-blue-600 [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-slate-300 [&_blockquote]:pl-3 [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:text-xl [&_h2]:font-bold [&_h3]:text-lg [&_h3]:font-semibold [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:list-disc [&_ul]:pl-6 ${className}`} dangerouslySetInnerHTML={{ __html: html }} />;
 }

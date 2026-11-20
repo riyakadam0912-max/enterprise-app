@@ -8,6 +8,8 @@ import { canAccessUsers, canManageProjects } from '@/utils/auth/permissions';
 import { reportError } from '@/lib/error-handling';
 import { useAuthSession } from '@/stores/auth-store';
 import { dateTimeLocalToIso, getCurrentDateTimeLocalValue } from '@/utils/dateUtils';
+import { RichTextEditor } from '@/components/forms/RichTextEditor';
+import { uploadFile } from '@/api/filesApi';
 
 type CreateTaskDrawerProps = {
   open: boolean;
@@ -56,6 +58,8 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
   const [form, setForm] = useState(buildEmptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [mediaFiles, setMediaFiles] = useState<File[]>([]);
+  const [mediaError, setMediaError] = useState('');
 
   useEffect(() => {
     if (role !== 'EMPLOYEE' || currentUserId == null) return;
@@ -138,7 +142,7 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
     setSaving(true);
     setError('');
     try {
-      await createTask({
+      const createdTask = await createTask({
         taskName: form.taskName.trim(),
         taskType: form.taskType === 'SHOOT' ? 'SHOOT' : 'GENERAL',
         ...(form.taskType === 'SHOOT' && {
@@ -161,6 +165,18 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
         notes: form.notes.trim() || null,
         driveLink: form.driveLink.trim() || undefined,
       });
+      for (const file of mediaFiles) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('module', 'tasks');
+        formData.append('entityType', 'Task');
+        formData.append('entityId', String(createdTask.id));
+        formData.append('category', 'Notes Media');
+        formData.append('isPublic', 'false');
+        await uploadFile(formData);
+      }
+      setMediaFiles([]);
+      setMediaError('');
       setForm(role === 'EMPLOYEE' && currentUserId != null
         ? { ...buildEmptyForm(), assignedToUserId: String(currentUserId), assignee: authSession.user?.name ?? '' }
         : buildEmptyForm());
@@ -360,10 +376,29 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
               <input type="url" className={field} value={form.driveLink} onChange={(event) => set('driveLink', event.target.value)} placeholder="https://drive.google.com/..." />
             </label>
 
-            <label className="block space-y-1.5">
+            <div className="block space-y-1.5">
               <span className="text-sm font-medium text-slate-700">Notes</span>
-              <textarea rows={4} className={field} value={form.notes} onChange={(event) => set('notes', event.target.value)} placeholder="Add notes..." />
-            </label>
+              <RichTextEditor
+                value={form.notes}
+                onChange={(value) => set('notes', value)}
+                placeholder="Add notes..."
+                disabled={saving}
+                mediaFiles={mediaFiles}
+                mediaError={mediaError}
+                onMediaChange={(files) => {
+                  const valid = files.every((file) =>
+                    (file.type.startsWith('image/') || file.type.startsWith('video/'))
+                    && file.size <= 25 * 1024 * 1024,
+                  );
+                  if (!valid) {
+                    setMediaError('Only images and videos up to 25 MB each can be attached.');
+                    return;
+                  }
+                  setMediaError('');
+                  setMediaFiles(files);
+                }}
+              />
+            </div>
           </div>
 
           <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
