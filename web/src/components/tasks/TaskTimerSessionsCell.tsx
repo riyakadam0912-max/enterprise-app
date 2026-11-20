@@ -1,5 +1,4 @@
 'use client';
-'use client';
 
 import { useEffect, useState } from 'react';
 import { Clock3, Pause, Play, Square } from 'lucide-react';

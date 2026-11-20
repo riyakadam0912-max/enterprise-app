@@ -499,6 +499,26 @@ function TaskDetailModal({
                   overdue={pastDue}
                 />
 
+                {(isAssignee || canEditTasks) && (
+                  <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                    <div className="mb-3">
+                      <p className="text-sm font-semibold text-slate-900">Task timer</p>
+                      <p className="text-xs text-slate-500">
+                        Track work without leaving this task.
+                      </p>
+                    </div>
+                    <TaskTimerSessionsCell
+                      taskId={activeTask.id}
+                      estimateHours={activeTask.estimatedHours}
+                      actualHours={activeTask.actualHours}
+                      sessions={activeTask.timerSessions}
+                      legacyTimerTotalSeconds={activeTask.legacyTimerTotalSeconds}
+                      currentUserId={currentUserId}
+                      canControl={isAssignee || canEditTasks}
+                    />
+                  </section>
+                )}
+
                 <div className="h-px bg-slate-200" />
 
                 <div>

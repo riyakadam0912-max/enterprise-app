@@ -346,8 +346,6 @@ function TaskTimerControl({
       : ownSession?.status === "PAUSED"
         ? "resume"
         : "start";
-  const enabled = action === "pause" || attendanceReady;
-
   return (
     <View style={styles.timerCard}>
       <View style={{ flex: 1 }}>
@@ -366,12 +364,11 @@ function TaskTimerControl({
       </View>
       <View style={{ gap: 8 }}>
         <Pressable
-          disabled={!enabled || attendanceLoading || timerMutation.isPending}
+          disabled={timerMutation.isPending}
           onPress={() => timerMutation.mutate(action)}
           style={[
             styles.timerButton,
-            (!enabled || attendanceLoading || timerMutation.isPending) &&
-              styles.disabled,
+            timerMutation.isPending && styles.disabled,
           ]}
         >
           <Text style={styles.actionText}>
