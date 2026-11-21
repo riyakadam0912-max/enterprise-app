@@ -57,6 +57,7 @@ before(async () => {
       env: {
         ...process.env,
         API_PROXY_TARGET: 'http://127.0.0.1:1',
+        NEXT_DIST_DIR: '.next-test-ui',
         NEXT_PUBLIC_API_URL: '/api/v1',
         NEXT_TELEMETRY_DISABLED: '1',
       },
@@ -103,6 +104,20 @@ async function fulfillJson(route, data, status = 200) {
     contentType: 'application/json',
     body: JSON.stringify(data),
   });
+}
+
+async function gotoWithRetry(page, url) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return await page.goto(url);
+    } catch (error) {
+      const transientNetworkError =
+        error instanceof Error &&
+        /ERR_NETWORK_IO_SUSPENDED|ERR_CONNECTION_RESET/.test(error.message);
+      if (!transientNetworkError || attempt === 3) throw error;
+      await delay(500 * attempt);
+    }
+  }
 }
 
 async function createPage({ sessionData, api } = {}) {
@@ -196,7 +211,7 @@ async function createPage({ sessionData, api } = {}) {
 }
 
 async function loginWithoutOrganization(page) {
-  await page.goto(`${baseUrl}/login`);
+  await gotoWithRetry(page, `${baseUrl}/login`);
   await page.getByLabel('Email address').fill('admin@example.test');
   await page.locator('#login-password').fill('valid-password');
   await page.getByRole('button', { name: 'Sign in' }).click();
@@ -238,7 +253,7 @@ async function createEmployeeRolePage({ role = 'ADMIN', linkedUser = { id: 84, r
 test('employee role can be promoted to manager from employee edit and persists after reload', { timeout: 120_000 }, async () => {
   const { context, page, roleRequests, diagnostics } = await createEmployeeRolePage();
   try {
-    await page.goto(`${baseUrl}/dashboard/employees/edit/42`);
+    await gotoWithRetry(page, `${baseUrl}/dashboard/employees/edit/42`);
     await waitForText(page, 'Account role', diagnostics);
     const selector = page.getByLabel('Role', { exact: true });
     await selector.selectOption('MANAGER');
@@ -262,7 +277,7 @@ test('employee role prevents self changes, missing accounts and unauthorized edi
   ]) {
     const { context, page, roleRequests } = await createEmployeeRolePage(scenario);
     try {
-      await page.goto(`${baseUrl}/dashboard/employees/edit/42`);
+      await gotoWithRetry(page, `${baseUrl}/dashboard/employees/edit/42`);
       await page.getByText(scenario.message, { exact: true }).waitFor();
       assert.equal(await page.getByRole('button', { name: 'Update role', exact: true }).count(), 0);
       assert.equal(roleRequests.length, 0);
@@ -275,7 +290,7 @@ test('employee role prevents self changes, missing accounts and unauthorized edi
 test('employee role shows API failures and allows retry without losing the form', { timeout: 120_000 }, async () => {
   const { context, page } = await createEmployeeRolePage({ failUpdate: true });
   try {
-    await page.goto(`${baseUrl}/dashboard/employees/edit/42`);
+    await gotoWithRetry(page, `${baseUrl}/dashboard/employees/edit/42`);
     await page.getByLabel('Role', { exact: true }).selectOption('MANAGER');
     await page.getByRole('button', { name: 'Update role', exact: true }).click();
     await page.getByRole('alert').filter({ hasText: 'Role update denied.' }).waitFor();
@@ -312,7 +327,7 @@ test('login shows an authentication error without losing the form', { timeout: 1
     },
   });
   try {
-    await page.goto(`${baseUrl}/login`);
+    await gotoWithRetry(page, `${baseUrl}/login`);
     await page.getByLabel('Email address').fill('bad@example.test');
     await page.locator('#login-password').fill('bad-password');
     await page.getByRole('button', { name: 'Sign in' }).click();
@@ -386,7 +401,7 @@ test('login supports organization selection and switching', { timeout: 120_000 }
     },
   });
   try {
-    await page.goto(`${baseUrl}/login`);
+    await gotoWithRetry(page, `${baseUrl}/login`);
     await page.getByLabel('Email address').fill('admin@example.test');
     await page.locator('#login-password').fill('valid-password');
     await page.getByRole('button', { name: 'Sign in' }).click();
@@ -465,7 +480,7 @@ test('organization selection shows API failures and protected pages reject anony
     await page.locator('.text-rose-700').waitFor();
     assert.match(await page.locator('.text-rose-700').innerText(), /something went wrong|try again/i);
 
-    await unauthorizedContext.page.goto(`${baseUrl}/dashboard/reports`);
+    await gotoWithRetry(unauthorizedContext.page, `${baseUrl}/dashboard/reports`);
     await unauthorizedContext.page.waitForURL('**/login');
     assert.equal(new URL(unauthorizedContext.page.url()).pathname, '/login');
   } catch (error) {

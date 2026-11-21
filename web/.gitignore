@@ -15,6 +15,7 @@
 
 # next.js
 /.next/
+/.next-test-ui/
 /out/
 
 # production

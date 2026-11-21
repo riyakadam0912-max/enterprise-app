@@ -62,6 +62,10 @@ function warnWhenLocalFrontendUsesProductionApi(apiProxyTarget: string): void {
 }
 
 const nextConfig: NextConfig = {
+  // UI tests run beside a developer's active Next.js server. Giving the test
+  // process its own output directory prevents both servers from competing for
+  // the same .next/dev lock.
+  distDir: process.env.NEXT_DIST_DIR?.trim() || '.next',
   outputFileTracingRoot: monorepoRoot,
   turbopack: {
     root: monorepoRoot,
