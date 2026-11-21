@@ -10,6 +10,7 @@ import { useAuthSession } from '@/stores/auth-store';
 import { dateTimeLocalToIso, getCurrentDateTimeLocalValue } from '@/utils/dateUtils';
 import { RichTextEditor } from '@/components/forms/RichTextEditor';
 import { uploadFile } from '@/api/filesApi';
+import { AttendanceDateTimeInput } from '@/components/common/AttendanceDateTimeInput';
 
 type CreateTaskDrawerProps = {
   open: boolean;
@@ -328,20 +329,26 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
               {role === 'EMPLOYEE' && <span className="block text-xs text-slate-500">Employees can only assign tasks to themselves.</span>}
             </label>
 
-            <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-slate-700">Due date and time</span>
-              <div className="flex items-center gap-2">
-                <input type="datetime-local" className={`${field} flex-1`} value={form.dueDate} onChange={(event) => set('dueDate', event.target.value)} />
+            <div className="space-y-2">
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                <AttendanceDateTimeInput
+                  id="create-task-due-date"
+                  label="Due date and time"
+                  value={form.dueDate}
+                  disabled={saving}
+                  onChange={(value) => set('dueDate', value)}
+                />
                 <button
                   type="button"
                   onClick={() => set('dueDate', getCurrentDateTimeLocalValue())}
-                  className="shrink-0 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 transition hover:bg-orange-100"
+                  disabled={saving}
+                  className="h-10 rounded-xl border border-orange-200 bg-orange-50 px-3 text-xs font-semibold text-orange-700 transition hover:bg-orange-100 disabled:opacity-50 sm:mt-8"
                 >
                   Now
                 </button>
               </div>
-              <span className="block text-xs text-slate-500">Time uses your device&apos;s local timezone.</span>
-            </label>
+              <p className="text-xs text-slate-500">Time uses your device&apos;s local timezone.</p>
+            </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block space-y-1.5">

@@ -1764,14 +1764,26 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
                     <div className="space-y-1.5 text-sm font-medium text-slate-700">
                       <label htmlFor="project-create-owner-search">Additional owners</label>
                       <input id="project-create-owner-search" value={ownerSearch} onChange={(event) => setOwnerSearch(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Search by name, role, or organization" />
-                      <select multiple value={projectCreateForm.ownerIds} onChange={(event) => {
-                        const ownerIds = Array.from(event.currentTarget.selectedOptions, (option) => option.value);
-                        setProjectCreateForm((current) => ({ ...current, ownerIds }));
-                      }} className="min-h-24 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
-                        {filteredOwnerOptions.map((owner) => (
-                          <option key={owner.id} value={String(owner.id)}>{owner.name} · {owner.role.replaceAll('_', ' ')} · {owner.organization?.name ?? 'Organization unavailable'}</option>
-                        ))}
-                      </select>
+                      <div className="max-h-44 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1.5">
+                        {filteredOwnerOptions.map((owner) => {
+                          const ownerId = String(owner.id);
+                          const selected = projectCreateForm.ownerIds.includes(ownerId);
+                          return (
+                            <label key={owner.id} className={`flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition ${selected ? 'bg-orange-50 text-orange-900' : 'text-slate-700 hover:bg-slate-50'}`}>
+                              <input type="checkbox" checked={selected} onChange={() => setProjectCreateForm((current) => ({
+                                ...current,
+                                ownerIds: selected
+                                  ? current.ownerIds.filter((id) => id !== ownerId)
+                                  : [...current.ownerIds, ownerId],
+                              }))} className="h-4 w-4 rounded border-slate-300 accent-orange-500" />
+                              <span className="min-w-0 flex-1 truncate">{owner.name}</span>
+                              <span className="shrink-0 text-xs text-slate-400">{owner.role.replaceAll('_', ' ')} · {owner.organization?.name ?? 'No organization'}</span>
+                            </label>
+                          );
+                        })}
+                        {filteredOwnerOptions.length === 0 && <p className="px-2.5 py-3 text-sm font-normal text-slate-500">No matching owners.</p>}
+                      </div>
+                      <p className="text-xs font-normal text-slate-500">{projectCreateForm.ownerIds.length} owner{projectCreateForm.ownerIds.length === 1 ? '' : 's'} selected</p>
                     </div>
                   </div>
                 </div>
@@ -1921,14 +1933,13 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
                 </div>
               </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1.5 shadow-sm ring-1 ring-slate-100">
                 {canManageProject && (
                   <button
                     type="button"
                     onClick={() => setShowProjectEdit(true)}
                     title="Edit project"
                     aria-label="Edit project"
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
                   >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4" aria-hidden="true">
                       <path d="M12 20h9" strokeLinecap="round" />
@@ -1938,24 +1949,25 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
                 )}
 
                 {isAdmin && (
-                  <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-slate-700">
-                    <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Manager</label>
+                  <div className="flex items-center gap-1.5">
+                    <label htmlFor="project-manager-select" className="sr-only">Manager</label>
                     <select
+                      id="project-manager-select"
                       value={managerSelection}
                       onChange={(e) => setManagerSelection(e.target.value)}
-                      className="min-w-42.5 border-0 bg-transparent pr-1 text-sm font-medium text-slate-700 outline-none"
+                      className="h-8 min-w-48 max-w-64 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 outline-none transition focus:border-slate-400"
                     >
                       <option value="">Assign manager</option>
                       {managers.map((manager) => (
                         <option key={manager.id} value={manager.id}>
-                          {manager.name} · {manager.role.replaceAll('_', ' ')} · {manager.organization?.name ?? 'Organization unavailable'}
+                          {manager.name} · {manager.organization?.name ?? 'Organization unavailable'}
                         </option>
                       ))}
                     </select>
                     <button
                       onClick={onAssignManager}
                       disabled={busy || !managerSelection || Number(managerSelection) === projectDetails.managerId}
-                      className="rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="h-8 rounded-lg bg-slate-800 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Assign
                     </button>
@@ -1963,12 +1975,13 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
                 )}
 
                 {canManageProject && (
-                  <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-slate-700">
-                    <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Status</label>
+                  <div>
+                    <label htmlFor="project-status-select" className="sr-only">Status</label>
                     <select
+                      id="project-status-select"
                       value={projectDetails.status}
                       onChange={(e) => onUpdateProjectStatus(e.target.value)}
-                      className="min-w-37.5 border-0 bg-transparent pr-1 text-sm font-medium text-slate-700 outline-none"
+                      className="h-8 min-w-36 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 outline-none transition focus:border-slate-400"
                     >
                       <option value="NOT_STARTED">Not started</option>
                       <option value="IN_PROGRESS">In progress</option>
@@ -1984,12 +1997,11 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
                   <button
                     onClick={onMarkAsComplete}
                     disabled={busy}
-                    className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="h-8 rounded-lg bg-emerald-600 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Complete
                   </button>
                 )}
-              </div>
             </div>
           </div>
 
@@ -2874,11 +2886,23 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
                     <div className="space-y-1.5 text-sm font-medium text-slate-700">
                       <label htmlFor="project-edit-owner-search">Additional owners</label>
                       <input id="project-edit-owner-search" value={ownerSearch} onChange={(event) => setOwnerSearch(event.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100" placeholder="Search by name, role, or organization" />
-                      <select multiple value={projectOwnerIdsDraft} onChange={(event) => setProjectOwnerIdsDraft(Array.from(event.currentTarget.selectedOptions, (option) => option.value))} className="min-h-24 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100">
-                        {filteredOwnerOptions.map((owner) => (
-                          <option key={owner.id} value={String(owner.id)}>{owner.name} · {owner.role.replaceAll('_', ' ')} · {owner.organization?.name ?? 'Organization unavailable'}</option>
-                        ))}
-                      </select>
+                      <div className="max-h-44 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1.5">
+                        {filteredOwnerOptions.map((owner) => {
+                          const ownerId = String(owner.id);
+                          const selected = projectOwnerIdsDraft.includes(ownerId);
+                          return (
+                            <label key={owner.id} className={`flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition ${selected ? 'bg-orange-50 text-orange-900' : 'text-slate-700 hover:bg-slate-50'}`}>
+                              <input type="checkbox" checked={selected} onChange={() => setProjectOwnerIdsDraft((current) => (
+                                selected ? current.filter((id) => id !== ownerId) : [...current, ownerId]
+                              ))} className="h-4 w-4 rounded border-slate-300 accent-orange-500" />
+                              <span className="min-w-0 flex-1 truncate">{owner.name}</span>
+                              <span className="shrink-0 text-xs text-slate-400">{owner.role.replaceAll('_', ' ')} · {owner.organization?.name ?? 'No organization'}</span>
+                            </label>
+                          );
+                        })}
+                        {filteredOwnerOptions.length === 0 && <p className="px-2.5 py-3 text-sm font-normal text-slate-500">No matching owners.</p>}
+                      </div>
+                      <p className="text-xs font-normal text-slate-500">{projectOwnerIdsDraft.length} owner{projectOwnerIdsDraft.length === 1 ? '' : 's'} selected</p>
                     </div>
                   </div>
 

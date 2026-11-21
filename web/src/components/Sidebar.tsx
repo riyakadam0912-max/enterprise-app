@@ -76,6 +76,16 @@ const navConfig: NavItem[] = [
     ],
   },
   { type: 'link', label: 'Attendance', href: '/dashboard/attendance', icon: <CalendarCheckIcon /> },
+  { type: 'link', label: 'Projects', href: '/dashboard/projects', icon: <FolderIcon /> },
+  { type: 'link', label: 'Tasks', href: '/dashboard/tasks', icon: <CheckIcon /> },
+  {
+    type: 'dropdown', id: 'requests', label: 'Requests', icon: <InboxIcon />,
+    children: [
+      { label: '+ Leave Requests', href: '/dashboard/requests/add',         icon: <PlusCircleIcon /> },
+      { label: 'All Requests',     href: '/dashboard/requests',             icon: <ReportIcon /> },
+      { label: 'Leave Types',      href: '/dashboard/requests/leave-types', icon: <KanbanIcon /> },
+    ],
+  },
   {
     type: 'dropdown', id: 'campaign-leads', label: 'Campaign Leads', icon: <TrendingUpIcon />,
     children: [
@@ -131,14 +141,6 @@ const navConfig: NavItem[] = [
     ],
   },
   {
-    type: 'dropdown', id: 'requests', label: 'Requests', icon: <InboxIcon />,
-    children: [
-      { label: '+ Leave Requests', href: '/dashboard/requests/add',         icon: <PlusCircleIcon /> },
-      { label: 'All Requests',     href: '/dashboard/requests',             icon: <ReportIcon /> },
-      { label: 'Leave Types',      href: '/dashboard/requests/leave-types', icon: <KanbanIcon /> },
-    ],
-  },
-  {
     type: 'dropdown', id: 'tickets', label: 'Tickets', icon: <TagIcon />,
     children: [
       { label: '+ Tickets',    href: '/dashboard/tickets/add',          icon: <PlusCircleIcon /> },
@@ -161,8 +163,6 @@ const navConfig: NavItem[] = [
       { label: 'Categories',    href: '/dashboard/expenses/categories',     icon: <KanbanIcon /> },
     ],
   },
-  { type: 'link', label: 'Projects', href: '/dashboard/projects', icon: <FolderIcon /> },
-  { type: 'link', label: 'Tasks', href: '/dashboard/tasks', icon: <CheckIcon /> },
   {
     type: 'dropdown', id: 'contacts', label: 'Contacts', icon: <ContactsIcon />,
     children: [
