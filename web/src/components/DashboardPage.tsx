@@ -16,6 +16,7 @@ import { useAuthSession } from '@/stores/auth-store';
 import TimesheetsReport from './dashboard/TimesheetsReport';
 import DashboardChartsSkeleton from './dashboard/DashboardChartsSkeleton';
 import CardSkeleton from './dashboard/CardSkeleton';
+import { TaskTimerSessionsCell } from './tasks/TaskTimerSessionsCell';
 
 const DashboardCharts = dynamic(() => import('./dashboard/DashboardCharts'), {
   ssr: false,
@@ -70,7 +71,31 @@ function taskOwner(task: Task) {
 
 function isTaskActive(task: Task) {
   const status = normalizeTaskStatus(task.status);
-  return status !== 'APPROVED' && status !== 'REJECTED';
+  return status !== 'APPROVED' && status !== 'REJECTED' && status !== 'COMPLETED';
+}
+
+const taskPriorityRank: Record<string, number> = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+
+function sortByPriority(tasks: Task[]) {
+  return [...tasks].sort((left, right) => {
+    const priorityDifference = (taskPriorityRank[left.priority?.toUpperCase() ?? 'LOW'] ?? 4)
+      - (taskPriorityRank[right.priority?.toUpperCase() ?? 'LOW'] ?? 4);
+    if (priorityDifference !== 0) return priorityDifference;
+    const leftDate = left.dueDate ? new Date(left.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+    const rightDate = right.dueDate ? new Date(right.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+    return leftDate - rightDate;
+  });
+}
+
+function PriorityBadge({ priority }: { priority?: string | null }) {
+  const normalized = priority?.toUpperCase() ?? 'LOW';
+  const classes: Record<string, string> = {
+    URGENT: 'bg-rose-100 text-rose-700',
+    HIGH: 'bg-orange-100 text-orange-700',
+    MEDIUM: 'bg-amber-100 text-amber-700',
+    LOW: 'bg-slate-100 text-slate-600',
+  };
+  return <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${classes[normalized] ?? classes.LOW}`}>{normalized}</span>;
 }
 
 function sortByDueDate(tasks: Task[]) {
@@ -299,7 +324,7 @@ function AdminDashboard() {
   );
 }
 
-function ManagerDashboard() {
+function ManagerDashboard({ session }: { session: Session }) {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -341,6 +366,22 @@ function ManagerDashboard() {
 
   const reviewQueue = useMemo(() => sortByDueDate(tasks).filter((task) => normalizeTaskStatus(task.status) === 'SUBMITTED').slice(0, 6), [tasks]);
   const activeTasks = useMemo(() => tasks.filter(isTaskActive).length, [tasks]);
+  const managerTasks = useMemo(() => sortByPriority(tasks.filter((task) => (
+    isTaskActive(task)
+    && normalizeTaskStatus(task.status) !== 'SUBMITTED'
+    && (task.assignedToId === session.employeeId
+      || task.assignedToUserId === session.userId
+      || task.assignedToUser?.id === session.userId)
+  ))).slice(0, 3), [session.employeeId, session.userId, tasks]);
+  const currentTimerTask = useMemo(() => managerTasks.find((task) => task.timerSessions?.some((timerSession) => (
+    timerSession.userId === session.userId
+    && (timerSession.status === 'RUNNING' || timerSession.status === 'PAUSED')
+  ))), [managerTasks, session.userId]);
+  const handleTaskTimerUpdated = useCallback((updatedTask: Task) => {
+    setTasks((currentTasks) => currentTasks.map((task) => (
+      task.id === updatedTask.id ? { ...task, ...updatedTask } : task
+    )));
+  }, []);
   const activeEmployees = useMemo(() => employees.filter((employee) => (employee.status ?? 'ACTIVE').toUpperCase() !== 'INACTIVE').length, [employees]);
   const pendingLeaves = useMemo(() => leaveRequests.filter((request) => request.status === 'PENDING_MANAGER' || request.status === 'PENDING_HR').length, [leaveRequests]);
   const todayRows = todayAttendance?.rows ?? [];
@@ -377,6 +418,43 @@ function ManagerDashboard() {
         <StatCard label="Needs Review" value={String(reviewQueue.length)} hint={`${activeTasks} active tasks`} />
         <StatCard label="Pending Leaves" value={String(pendingLeaves)} hint="Manager / HR approvals" />
         <StatCard label="Present Today" value={String(todaySummary?.present ?? stats?.hr?.attendanceToday?.present ?? 0)} hint="Checked in now" />
+      </div>
+
+      <div className="mt-6">
+        <Panel title="My Priority Tasks" description="Your assigned open tasks, ordered by priority and due date." action={<Link href="/dashboard/tasks" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">Open tasks</Link>}>
+          <div className="space-y-3">
+            {currentTimerTask ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 shadow-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">Current timer</p>
+                    <p className="mt-1 truncate text-sm font-semibold text-slate-950">{taskTitle(currentTimerTask)}</p>
+                  </div>
+                  <TaskTimerSessionsCell taskId={currentTimerTask.id} estimateHours={currentTimerTask.estimatedHours} actualHours={currentTimerTask.actualHours} sessions={currentTimerTask.timerSessions} legacyTimerTotalSeconds={currentTimerTask.legacyTimerTotalSeconds} currentUserId={session.userId} canControl showStopLabel onTaskUpdated={handleTaskTimerUpdated} />
+                </div>
+              </div>
+            ) : null}
+            {managerTasks.length === 0 ? <EmptyState title="No open tasks assigned to you" description="Tasks assigned to your manager account will appear here." /> : (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {managerTasks.map((task) => (
+                  <div key={task.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-900">{taskTitle(task)}</p>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                          <PriorityBadge priority={task.priority} />
+                          <span className="text-xs text-slate-500">Due {formatDate(task.dueDate)}</span>
+                          <StatusBadge status={task.status} />
+                        </div>
+                      </div>
+                      <TaskTimerSessionsCell taskId={task.id} estimateHours={task.estimatedHours} actualHours={task.actualHours} sessions={task.timerSessions} legacyTimerTotalSeconds={task.legacyTimerTotalSeconds} currentUserId={session.userId} canControl showStopLabel onTaskUpdated={handleTaskTimerUpdated} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Panel>
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.3fr_1fr]">
@@ -529,8 +607,22 @@ function EmployeeDashboard({ session }: { session: Session }) {
     void loadDashboard();
   }, [loadDashboard]);
 
-  const myTasks = useMemo(() => sortByDueDate(tasks.filter((task) => task.assignedToUserId === session.employeeId || task.assignedToUser?.id === session.userId)), [session.employeeId, session.userId, tasks]);
-  const openTasks = useMemo(() => myTasks.filter(isTaskActive).length, [myTasks]);
+  const myTasks = useMemo(() => tasks.filter((task) => (
+    task.assignedToId === session.employeeId
+    || task.assignedToUserId === session.userId
+    || task.assignedToUser?.id === session.userId
+  )), [session.employeeId, session.userId, tasks]);
+  const priorityTasks = useMemo(() => sortByPriority(myTasks.filter(isTaskActive)), [myTasks]);
+  const openTasks = priorityTasks.length;
+  const currentTimerTask = useMemo(() => priorityTasks.find((task) => task.timerSessions?.some((timerSession) => (
+    timerSession.userId === session.userId
+    && (timerSession.status === 'RUNNING' || timerSession.status === 'PAUSED')
+  ))), [priorityTasks, session.userId]);
+  const handleTaskTimerUpdated = useCallback((updatedTask: Task) => {
+    setTasks((currentTasks) => currentTasks.map((task) => (
+      task.id === updatedTask.id ? { ...task, ...updatedTask } : task
+    )));
+  }, []);
   const leaveBalance = employee?.leaveBalance ?? 0;
   const hasAssignedShift = Boolean(attendance?.shiftDetails) && attendance?.activeAttendance?.kind !== 'REVIEW_REQUIRED';
   const canCheckIn = attendance?.capabilities?.canCheckIn ?? (hasAssignedShift && !attendance?.activeSession && (attendance?.shiftDetails?.type === 'FLEXIBLE' || !attendance?.checkIn));
@@ -575,16 +667,31 @@ function EmployeeDashboard({ session }: { session: Session }) {
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.3fr_1fr]">
-        <Panel title="My Tasks Today" description="Your current work queue, sorted by due date.">
+        <Panel title="My Tasks Today" description="Your open work queue, sorted by priority.">
           <div className="space-y-3">
-            {myTasks.length === 0 ? <EmptyState title="No assigned tasks yet" description="Assigned tasks will show up here once your manager assigns them." /> : myTasks.slice(0, 6).map((task) => (
-              <div key={task.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">{taskTitle(task)}</p>
-                    <p className="mt-1 text-sm text-slate-500">Due {formatDate(task.dueDate)} · {task.priority ?? 'LOW'} priority</p>
+            {currentTimerTask ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 shadow-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">Current timer</p>
+                    <p className="mt-1 truncate text-sm font-semibold text-slate-950">{taskTitle(currentTimerTask)}</p>
                   </div>
-                  <StatusBadge status={task.status} />
+                  <TaskTimerSessionsCell taskId={currentTimerTask.id} estimateHours={currentTimerTask.estimatedHours} actualHours={currentTimerTask.actualHours} sessions={currentTimerTask.timerSessions} legacyTimerTotalSeconds={currentTimerTask.legacyTimerTotalSeconds} currentUserId={session.userId} canControl showStopLabel onTaskUpdated={handleTaskTimerUpdated} />
+                </div>
+              </div>
+            ) : null}
+            {priorityTasks.length === 0 ? <EmptyState title="No open tasks" description="New assigned tasks will appear here once your manager assigns them." /> : priorityTasks.slice(0, 6).map((task) => (
+              <div key={task.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-900">{taskTitle(task)}</p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                      <PriorityBadge priority={task.priority} />
+                      <span className="text-xs text-slate-500">Due {formatDate(task.dueDate)}</span>
+                      <StatusBadge status={task.status} />
+                    </div>
+                  </div>
+                  <TaskTimerSessionsCell taskId={task.id} estimateHours={task.estimatedHours} actualHours={task.actualHours} sessions={task.timerSessions} legacyTimerTotalSeconds={task.legacyTimerTotalSeconds} currentUserId={session.userId} canControl showStopLabel onTaskUpdated={handleTaskTimerUpdated} />
                 </div>
                 {task.description ? <p className="mt-3 line-clamp-2 text-sm text-slate-600">{task.description}</p> : null}
               </div>
@@ -651,6 +758,6 @@ export default function DashboardPage() {
   };
 
   if (session.role === 'EMPLOYEE') return <EmployeeDashboard key={`${auth.user?.id}:${auth.organizationId}:${auth.activeBusinessUnitId}`} session={session} />;
-  if (session.role === 'MANAGER') return <ManagerDashboard />;
+  if (session.role === 'MANAGER') return <ManagerDashboard key={`${auth.user?.id}:${auth.organizationId}:${auth.activeBusinessUnitId}`} session={session} />;
   return <AdminDashboard />;
 }

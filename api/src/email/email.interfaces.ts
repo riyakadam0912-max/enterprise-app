@@ -16,6 +16,7 @@ export type EmailTemplateContext = Record<string, unknown> & {
   leaveType?: string;
   leaveDates?: string;
   approvalStatus?: string;
+  rejectionReason?: string;
   resetLink?: string;
   verificationLink?: string;
   loginLocation?: string;

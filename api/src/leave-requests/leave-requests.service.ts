@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EmployeeLeaveDecisionEvent } from './events/employee-leave-decision.event';
 import { Prisma } from '@prisma/client';
 import type { Cache } from 'cache-manager';
 import { Role } from '../common/enums/role.enum';
@@ -175,7 +176,7 @@ export class LeaveRequestsService {
           include: {
             organization: { select: { id: true, name: true } },
             user: {
-              select: { id: true, name: true, managerId: true },
+              select: { id: true, name: true, email: true, managerId: true },
             },
           },
         },
@@ -751,6 +752,26 @@ export class LeaveRequestsService {
 
     await this.invalidateDashboardCache();
 
+    const employeeUser = request.employee?.user;
+    if (employeeUser) {
+      this.eventEmitter.emit(
+        'employee.leave_approved',
+        new EmployeeLeaveDecisionEvent(
+          id,
+          employeeUser.id,
+          employeeUser.name,
+          employeeUser.email,
+          request.requestType === 'WORK_FROM_HOME'
+            ? 'WORK_FROM_HOME'
+            : request.leaveType,
+          request.startDate,
+          request.endDate,
+          organizationId,
+          `${user.role}:${user.userId}`,
+        ),
+      );
+    }
+
     return approved;
   }
 
@@ -969,6 +990,26 @@ export class LeaveRequestsService {
     });
 
     await this.invalidateDashboardCache();
+    const employeeUser = request.employee?.user;
+    if (employeeUser) {
+      this.eventEmitter.emit(
+        'employee.leave_rejected',
+        new EmployeeLeaveDecisionEvent(
+          id,
+          employeeUser.id,
+          employeeUser.name,
+          employeeUser.email,
+          request.requestType === 'WORK_FROM_HOME'
+            ? 'WORK_FROM_HOME'
+            : request.leaveType,
+          request.startDate,
+          request.endDate,
+          organizationId,
+          `${user.role}:${user.userId}`,
+          reason,
+        ),
+      );
+    }
     return updated;
   }
 

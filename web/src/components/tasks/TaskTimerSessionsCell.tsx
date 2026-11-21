@@ -38,6 +38,8 @@ export function TaskTimerSessionsCell({
   legacyTimerTotalSeconds = 0,
   currentUserId,
   canControl,
+  showStopLabel = false,
+  onTaskUpdated,
 }: {
   taskId: number;
   estimateHours?: number | null;
@@ -46,6 +48,8 @@ export function TaskTimerSessionsCell({
   legacyTimerTotalSeconds?: number;
   currentUserId: number | null;
   canControl: boolean;
+  showStopLabel?: boolean;
+  onTaskUpdated?: (task: Task) => void;
 }) {
   const [timerSessions, setTimerSessions] = useState(sessions);
   const [now, setNow] = useState(() => Date.now());
@@ -79,6 +83,7 @@ export function TaskTimerSessionsCell({
       const updated = await updateTaskTimer(taskId, action);
       setTimerSessions(updated.timerSessions ?? []);
       setNow(Date.now());
+      onTaskUpdated?.(updated);
       window.dispatchEvent(new Event(TASK_TIMER_STATE_CHANGED_EVENT));
     } catch (reason) {
       if (isConflictError(reason)) {
@@ -87,6 +92,7 @@ export function TaskTimerSessionsCell({
           const freshSessions = freshTask.timerSessions ?? [];
           setTimerSessions(freshSessions);
           setNow(Date.now());
+          onTaskUpdated?.(freshTask);
           const refreshedSession = freshSessions.find((session) => session.userId === currentUserId);
           const actionAlreadyApplied =
             ((action === 'start' || action === 'resume') && refreshedSession?.status === 'RUNNING') ||
@@ -118,8 +124,9 @@ export function TaskTimerSessionsCell({
           <button type="button" title="Pause my timer" aria-label="Pause my timer" disabled={busy} onClick={() => void act('pause')} className="rounded border border-slate-200 p-1 text-slate-600 hover:bg-slate-100 disabled:opacity-50">
             <Pause className="h-3.5 w-3.5" />
           </button>
-          <button type="button" title="Stop my timer and log time" aria-label="Stop my timer and log time" disabled={busy} onClick={() => void act('stop')} className="rounded border border-slate-200 p-1 text-slate-600 hover:bg-slate-100 disabled:opacity-50">
+          <button type="button" title="Stop my timer and log time" aria-label="Stop my timer and log time" disabled={busy} onClick={() => void act('stop')} className="inline-flex items-center gap-1.5 rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50">
             <Square className="h-3.5 w-3.5" />
+            {showStopLabel ? 'End timer' : null}
           </button>
         </div>
       ) : ownSession?.status === 'PAUSED' ? (
@@ -130,8 +137,9 @@ export function TaskTimerSessionsCell({
           <button type="button" title="Resume my timer" aria-label="Resume my timer" disabled={busy} onClick={() => void act('resume')} className="rounded border border-slate-200 p-1 text-slate-600 hover:bg-slate-100 disabled:opacity-50">
             <Play className="h-3.5 w-3.5" />
           </button>
-          <button type="button" title="Stop my timer and log time" aria-label="Stop my timer and log time" disabled={busy} onClick={() => void act('stop')} className="rounded border border-slate-200 p-1 text-slate-600 hover:bg-slate-100 disabled:opacity-50">
+          <button type="button" title="Stop my timer and log time" aria-label="Stop my timer and log time" disabled={busy} onClick={() => void act('stop')} className="inline-flex items-center gap-1.5 rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50">
             <Square className="h-3.5 w-3.5" />
+            {showStopLabel ? 'End timer' : null}
           </button>
         </div>
       ) : (

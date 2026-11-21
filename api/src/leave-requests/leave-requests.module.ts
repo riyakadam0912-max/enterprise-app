@@ -8,6 +8,7 @@ import { LeaveRequestsService } from './leave-requests.service';
 import { LeaveRequestNotificationListener } from './listeners/leave-request-notification.listener';
 import { BusinessUnitsModule } from '../business-units/business-units.module';
 import { LeaveEntitlementsService } from './leave-entitlements.service';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { LeaveEntitlementsService } from './leave-entitlements.service';
     MailModule,
     WorkflowModule,
     BusinessUnitsModule,
+    EmailModule,
   ],
   controllers: [LeaveRequestsController],
   providers: [

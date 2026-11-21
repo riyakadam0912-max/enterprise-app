@@ -93,6 +93,7 @@ export interface LeaveRejectedEmailDto extends BaseEmailDto {
   leaveType: string;
   leaveDates: string;
   approvalStatus?: string;
+  rejectionReason?: string;
 }
 
 export interface LeaveCancelledEmailDto extends BaseEmailDto {

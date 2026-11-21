@@ -1,0 +1,9 @@
+{{> header title="Leave request approved"}}
+<p>Hello {{firstName}},</p>
+<p>Your leave request has been approved.</p>
+{{#> card}}
+  <p><strong>Leave type:</strong> {{leaveType}}</p>
+  <p><strong>Dates:</strong> {{leaveDates}}</p>
+  <p><strong>Status:</strong> {{approvalStatus}}</p>
+{{/card}}
+{{#if ctaUrl}}{{> button url=ctaUrl text="View leave request"}}{{/if}}
