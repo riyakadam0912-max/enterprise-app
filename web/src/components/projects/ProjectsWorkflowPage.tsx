@@ -2272,7 +2272,61 @@ export function ProjectsWorkflowPage({ initialProjectId, dedicated = false }: { 
                   </div>
                 )}
                 {visibleTasks.length > 0 && (
-                  <table className="min-w-max border-collapse text-sm">
+                  <div className="divide-y divide-slate-100 md:hidden">
+                    {visibleTasks.map((task) => {
+                      const status = task.status?.toUpperCase() ?? 'PENDING';
+                      const priority = (task.priority?.toUpperCase() ?? 'LOW') as keyof typeof taskPriorityClass;
+                      return (
+                        <article key={task.id} className="space-y-3 px-4 py-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium text-slate-400">Task #{task.id}</p>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedTaskId(task.id)}
+                                className="mt-1 text-left text-base font-semibold text-slate-900 hover:text-orange-600"
+                              >
+                                {task.taskName}
+                              </button>
+                              <p className="mt-1 text-xs text-slate-500">
+                                Assigned to {task.assignedToUser?.name ?? 'Unassigned'}
+                              </p>
+                            </div>
+                            <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold ${taskStatusClass[status] ?? 'bg-slate-200 text-slate-700'}`}>
+                              {status.replace('_', ' ')}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                            <span className={`rounded-full px-2 py-1 font-semibold ${taskPriorityClass[priority] ?? taskPriorityClass.LOW}`}>{priority}</span>
+                            <span>{task.dueDate ? `Due ${formatDateTime(task.dueDate)}` : 'No due date'}</span>
+                          </div>
+
+                          <div className="flex items-end justify-between gap-3 border-t border-slate-100 pt-3">
+                            <TaskTimerSessionsCell
+                              taskId={task.id}
+                              estimateHours={task.estimatedHours}
+                              actualHours={task.actualHours}
+                              sessions={task.timerSessions}
+                              legacyTimerTotalSeconds={task.legacyTimerTotalSeconds}
+                              currentUserId={userId}
+                              canControl={role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'HR' || role === 'MANAGER' || role === 'EMPLOYEE'}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setSelectedTaskId(task.id)}
+                              className="shrink-0 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white"
+                            >
+                              View task
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+                {visibleTasks.length > 0 && (
+                  <table className="hidden min-w-max border-collapse text-sm md:table">
                     <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                       <tr>
                         {['ID', 'Task Name', 'Owner', 'Start Date', 'Due Date', 'Duration', 'Priority', 'Completion', 'Time Logs', 'Status'].map((heading, index) => (
