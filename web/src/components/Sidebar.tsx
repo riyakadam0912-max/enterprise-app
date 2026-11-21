@@ -446,7 +446,7 @@ export default function Sidebar({ currentPath }: SidebarProps) {
           touchStartX.current = null;
         }}
       >
-        <div className="sidebar-brand flex items-center justify-between px-4 py-4 lg:px-5">
+        <div className={`sidebar-brand flex items-center justify-between py-4 ${isCollapsed ? 'px-1.5' : 'px-4 lg:px-5'}`}>
           <div className="flex min-w-0 items-center gap-3">
             {session.organizationLogo ? (
               <>

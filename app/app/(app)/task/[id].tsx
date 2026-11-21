@@ -45,9 +45,11 @@ export default function TaskDetail() {
     queryKey: ["task", taskId],
     queryFn: () => task(taskId),
     enabled: allowed && taskId > 0,
+    staleTime: 30_000,
   });
   const data = query.data as TaskData | undefined;
   const role = session?.role ?? "EMPLOYEE";
+  const [tab, setTab] = useState<Tab>("overview");
   const attendance = useQuery({
     queryKey: [
       "attendance-today",
@@ -55,11 +57,12 @@ export default function TaskDetail() {
       session?.employeeId,
     ],
     queryFn: attendanceToday,
-    enabled: ["EMPLOYEE", "MANAGER", "HR", "ADMIN", "SUPER_ADMIN"].includes(
-      role,
-    ),
+    enabled:
+      query.isSuccess &&
+      tab === "overview" &&
+      ["EMPLOYEE", "MANAGER", "HR", "ADMIN", "SUPER_ADMIN"].includes(role),
+    staleTime: 30_000,
   });
-  const [tab, setTab] = useState<Tab>("overview");
   const [link, setLink] = useState("");
   const [note, setNote] = useState("");
   const [remarks, setRemarks] = useState("");
@@ -69,11 +72,13 @@ export default function TaskDetail() {
     queryKey: ["task-chat", taskId],
     queryFn: () => taskMessages(taskId),
     enabled: tab === "chat" && taskId > 0,
+    staleTime: 10_000,
   });
   const submissionFiles = useQuery({
     queryKey: ["task-files", taskId],
     queryFn: () => filesByEntity("Task", taskId),
     enabled: tab === "submissions" && taskId > 0,
+    staleTime: 30_000,
   });
   const status = String(data?.status ?? "PENDING").toUpperCase();
   const assigned =

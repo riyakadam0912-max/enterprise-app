@@ -183,6 +183,9 @@ export function useNotifications(options?: {
     }
     const interval = isActiveRef.current ? activePollingInterval : pollingInterval;
     pollingTimerRef.current = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        return;
+      }
       void pollDelta();
     }, interval);
   }, [pollDelta, pollingInterval, activePollingInterval]);
@@ -195,8 +198,27 @@ export function useNotifications(options?: {
   }, []);
 
   useEffect(() => {
+    if (!session.user?.id) {
+      setLoading(false);
+      return;
+    }
     void fetchNotifications();
-  }, [fetchNotifications]);
+  }, [fetchNotifications, session.user?.id]);
+
+  useEffect(() => {
+    if (!session.user?.id || typeof document === 'undefined') {
+      return;
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void pollDelta();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [pollDelta, session.user?.id]);
 
   useEffect(() => {
     if (

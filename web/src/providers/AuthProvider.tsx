@@ -110,6 +110,11 @@ export function AuthProvider({
         return;
       }
 
+      // A persisted session is sufficient to render the application shell.
+      // Revalidate it in the background instead of blocking every page on
+      // the network round trip to /auth/me.
+      setLoading(false);
+
       const selectedOrganizationId = getActiveOrganizationId();
       try {
         const current = await getCurrentUser();

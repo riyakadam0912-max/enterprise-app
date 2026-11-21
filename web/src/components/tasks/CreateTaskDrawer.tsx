@@ -123,7 +123,7 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
       return;
     }
     if (!form.assignedToUserId) {
-      setError('Choose an assignee or select Assign to me.');
+      setError('Choose who the task is assigned to or select Assign to me.');
       return;
     }
     const shootDuration = Number.parseFloat(form.shootEstimatedHours);
@@ -247,7 +247,7 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
               <section className="space-y-4 rounded-xl border border-orange-100 bg-orange-50/40 p-4">
                 <div>
                   <h3 className="text-sm font-semibold text-slate-900">Shoot details</h3>
-                  <p className="mt-1 text-xs text-slate-500">The task assignee and any optional additional crew are credited for attendance on this date without clock-in or clock-out.</p>
+                  <p className="mt-1 text-xs text-slate-500">The person assigned to the task and any optional additional crew are credited for attendance on this date without clock-in or clock-out.</p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="block space-y-1.5">
@@ -315,13 +315,13 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
             </label>
 
             <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-slate-700">Assignee</span>
+              <span className="text-sm font-medium text-slate-700">Assigned to</span>
               <div className="flex gap-2">
                 <select className={`${field} min-w-0 flex-1`} value={form.assignedToUserId} disabled={role === 'EMPLOYEE'} onChange={(event) => {
                   const selected = assignableUsers.find((user) => String(user.id) === event.target.value);
                   setForm((previous) => ({ ...previous, assignedToUserId: event.target.value, assignee: selected?.name ?? '' }));
                 }}>
-                  <option value="">Select assignee</option>
+                  <option value="">Select person</option>
                   {assignableUsers.map((user) => <option key={user.id} value={user.id}>{user.name} ({user.role})</option>)}
                 </select>
                 <button type="button" onClick={assignToMe} disabled={currentUserId == null} className="shrink-0 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 transition hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50">Assign to me</button>
