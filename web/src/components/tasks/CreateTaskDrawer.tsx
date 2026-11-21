@@ -315,7 +315,7 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
             </label>
 
             <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-slate-700">Assigned to</span>
+              <span className="text-sm font-medium text-slate-700">Assign to</span>
               <div className="flex gap-2">
                 <select className={`${field} min-w-0 flex-1`} value={form.assignedToUserId} disabled={role === 'EMPLOYEE'} onChange={(event) => {
                   const selected = assignableUsers.find((user) => String(user.id) === event.target.value);

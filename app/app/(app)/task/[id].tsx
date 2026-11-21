@@ -467,7 +467,7 @@ function Overview({
         </View>
       </View>
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Assignment</Text>
+        <Text style={styles.cardTitle}>Assigned to</Text>
         <UserIdentity
           userId={
             Number(
