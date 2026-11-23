@@ -24,5 +24,11 @@
       "maxDuration": 60,
       "includeFiles": "{dist/**,node_modules/pdfkit/js/standard-fonts/**}"
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/attendance-cron",
+      "schedule": "0 * * * *"
+    }
+  ]
 }

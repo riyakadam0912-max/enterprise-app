@@ -14,6 +14,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
@@ -65,6 +66,7 @@ import type { WorkdayShift } from './workday-schedule.utils';
 import { buildApprovedWorkFromHomeCredits } from './work-from-home.utils';
 import { TasksService } from '../tasks/tasks.service';
 import { withDeletedRecords } from '../../prisma/middleware/softDelete';
+import { NotificationsService } from '../notifications/notifications.service';
 
 type AttendanceUser = {
   userId: number;
@@ -167,6 +169,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     private readonly businessUnitsService: BusinessUnitsService,
     private readonly organizationScopeService: OrganizationScopeService,
     private readonly tasksService: TasksService,
+    @Optional() private readonly notificationsService?: NotificationsService,
   ) {}
 
   private async resolveOrganizationId(user: AttendanceUser): Promise<number> {
@@ -7839,6 +7842,217 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  private localHour(now: Date, timezone: string): number {
+    const hour = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour: '2-digit',
+      hourCycle: 'h23',
+    }).format(now);
+    return Number(hour);
+  }
+
+  private async sendScheduledAttendanceReminders(
+    organizations: Array<{ id: number; name: string; timezone: string }>,
+    options: { dryRun?: boolean } = {},
+  ) {
+    const notificationsService = this.notificationsService;
+    if (!notificationsService) return [];
+    const now = new Date();
+    const results: Array<{
+      organizationId: number;
+      reminder: 'CHECK_IN_10' | 'CHECK_IN_14' | 'CHECK_OUT_19';
+      recipients: number;
+      status: 'SENT' | 'SKIPPED' | 'DRY_RUN';
+    }> = [];
+
+    for (const organization of organizations) {
+      const hour = this.localHour(now, organization.timezone);
+      const reminder =
+        hour === 10
+          ? 'CHECK_IN_10'
+          : hour === 14
+            ? 'CHECK_IN_14'
+            : hour === 19
+              ? 'CHECK_OUT_19'
+              : null;
+      if (!reminder) continue;
+
+      const dateKey = dateKeyInTimezone(now, organization.timezone);
+      const day = attendanceDateFromKey(dateKey);
+      const dayStart = localMidnightAtDateInTimezone(
+        dateKey,
+        organization.timezone,
+      );
+      const dayEnd = localMidnightAfterDateInTimezone(
+        dateKey,
+        organization.timezone,
+      );
+      if (!dayStart || !dayEnd) continue;
+
+      const { holidays, familyRootByOrganization } =
+        await this.findApplicableHolidays([organization.id], day, day);
+      const isHoliday = holidays.some(
+        (holiday) =>
+          this.holidayAppliesToOrganization(
+            holiday,
+            organization.id,
+            familyRootByOrganization,
+          ) && this.holidayCoversDay(holiday, day),
+      );
+      if (isHoliday) {
+        results.push({
+          organizationId: organization.id,
+          reminder,
+          recipients: 0,
+          status: 'SKIPPED',
+        });
+        continue;
+      }
+
+      const title =
+        reminder === 'CHECK_OUT_19'
+          ? `Attendance checkout reminder - ${dateKey}`
+          : `Attendance check-in reminder ${hour}:00 - ${dateKey}`;
+      const alreadySent = await this.prisma.notification.findFirst({
+        where: {
+          organizationId: organization.id,
+          title,
+          category: 'ATTENDANCE',
+          createdAt: { gte: dayStart, lt: dayEnd },
+        },
+        select: { id: true },
+      });
+      if (alreadySent) {
+        results.push({
+          organizationId: organization.id,
+          reminder,
+          recipients: 0,
+          status: 'SKIPPED',
+        });
+        continue;
+      }
+
+      const employees = await this.prisma.employee.findMany({
+        where: {
+          organizationId: organization.id,
+          deletedAt: null,
+          OR: [{ status: null }, { status: { not: 'INACTIVE' } }],
+          user: { is: { isActive: true, deletedAt: null } },
+        },
+        include: {
+          user: { select: { id: true } },
+          shift: true,
+          shiftAssignments: { include: { shift: true } },
+        },
+      });
+      const employeeIds = employees.map((employee) => employee.id);
+      const [attendanceRows, openSessions, approvedLeaves] =
+        employeeIds.length === 0
+          ? [[], [], []]
+          : await Promise.all([
+              this.prisma.attendance.findMany({
+                where: {
+                  organizationId: organization.id,
+                  employeeId: { in: employeeIds },
+                  date: day,
+                  deletedAt: null,
+                },
+                select: {
+                  employeeId: true,
+                  checkIn: true,
+                  checkOut: true,
+                },
+              }),
+              this.prisma.attendanceSession.findMany({
+                where: {
+                  organizationId: organization.id,
+                  employeeId: { in: employeeIds },
+                  endedAt: null,
+                },
+                select: { employeeId: true },
+              }),
+              this.prisma.leaveRequest.findMany({
+                where: {
+                  organizationId: organization.id,
+                  employeeId: { in: employeeIds },
+                  status: 'APPROVED',
+                  deletedAt: null,
+                  startDate: { lte: day },
+                  endDate: { gte: day },
+                },
+                select: { employeeId: true },
+              }),
+            ]);
+
+      const attendanceByEmployee = new Map(
+        attendanceRows.map((row) => [row.employeeId, row]),
+      );
+      const employeesWithOpenSession = new Set(
+        openSessions.map((session) => session.employeeId),
+      );
+      const employeesOnLeave = new Set(
+        approvedLeaves.flatMap((leave) =>
+          leave.employeeId == null ? [] : [leave.employeeId],
+        ),
+      );
+      const recipientIds = employees.flatMap((employee) => {
+        if (!employee.user || employeesOnLeave.has(employee.id)) return [];
+        if (!this.isAttendanceEligible(day, employee.hireDate)) return [];
+        const shift = this.employeeShiftForDay(
+          employee.shiftAssignments,
+          employee.shift,
+          day,
+        );
+        if (!shift || this.isWeeklyHoliday(day, shift)) return [];
+        const attendance = attendanceByEmployee.get(employee.id);
+        const hasCheckedIn =
+          Boolean(attendance?.checkIn) ||
+          employeesWithOpenSession.has(employee.id);
+        const needsReminder =
+          reminder === 'CHECK_OUT_19'
+            ? hasCheckedIn && !attendance?.checkOut
+            : !hasCheckedIn;
+        return needsReminder ? [employee.user.id] : [];
+      });
+
+      if (recipientIds.length === 0 || options.dryRun) {
+        results.push({
+          organizationId: organization.id,
+          reminder,
+          recipients: recipientIds.length,
+          status: options.dryRun ? 'DRY_RUN' : 'SKIPPED',
+        });
+        continue;
+      }
+
+      await notificationsService.sendNotification({
+        recipientIds,
+        organizationId: organization.id,
+        title,
+        message:
+          reminder === 'CHECK_OUT_19'
+            ? 'You are still checked in. Please check out and close your workday.'
+            : `You have not checked in yet. Please record your attendance for today.`,
+        module: 'Attendance',
+        entityType: 'AttendanceReminder',
+        actionUrl: '/dashboard/attendance',
+        type: 'REMINDER',
+        priority: reminder === 'CHECK_OUT_19' ? 'HIGH' : 'MEDIUM',
+        category: 'ATTENDANCE',
+        channels: ['IN_APP', 'EMAIL'],
+        metadata: { reminder, dateKey },
+      });
+      results.push({
+        organizationId: organization.id,
+        reminder,
+        recipients: recipientIds.length,
+        status: 'SENT',
+      });
+    }
+
+    return results;
+  }
+
   async runScheduledAutomation(
     options: { dryRun?: boolean; organizationId?: number } = {},
   ) {
@@ -7858,7 +8072,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         deletedAt: null,
         ...(options.organizationId ? { id: options.organizationId } : {}),
       },
-      select: { id: true, timezone: true },
+      select: { id: true, name: true, timezone: true },
       orderBy: { id: 'asc' },
     });
     const pendingJobs = await this.prisma.attendanceReconciliationJob.findMany({
@@ -7971,9 +8185,14 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         });
       }
     }
+    const reminders = await this.sendScheduledAttendanceReminders(
+      organizations,
+      { dryRun: options.dryRun },
+    );
     return {
       closure,
       reconciliation: results,
+      reminders,
       dryRun: Boolean(options.dryRun),
     };
   }

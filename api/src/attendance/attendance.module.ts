@@ -4,9 +4,15 @@ import { AttendanceController } from './attendance.controller';
 import { AttendanceService } from './attendance.service';
 import { BusinessUnitsModule } from '../business-units/business-units.module';
 import { TasksModule } from '../tasks/tasks.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [PrismaModule, BusinessUnitsModule, TasksModule],
+  imports: [
+    PrismaModule,
+    BusinessUnitsModule,
+    TasksModule,
+    NotificationsModule,
+  ],
   controllers: [AttendanceController],
   providers: [AttendanceService],
   exports: [AttendanceService],
