@@ -7388,17 +7388,6 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       });
       const timezone = organization?.timezone ?? 'UTC';
 
-      if (
-        !reopening &&
-        shift?.type === 'FLEXIBLE' &&
-        record.checkIn &&
-        dto.status &&
-        dto.status !== record.status
-      ) {
-        throw new BadRequestException(
-          'Flexible session status is derived from its source sessions. Correct session times or breaks instead.',
-        );
-      }
       const workingHours =
         checkIn && checkOut
           ? this.calculateWorkingHours(checkIn, checkOut, orderedBreaks)
