@@ -10,6 +10,7 @@ export interface Task {
   shootClientName?: string | null;
   shootLocation?: string | null;
   shootDate?: string | null;
+  shootEndDate?: string | null;
   shootReportingTime?: string | null;
   shootEstimatedHours?: number | null;
   shootCrew?: Array<{
@@ -118,6 +119,7 @@ export interface TaskPayload {
   shootClientName?: string | null;
   shootLocation?: string | null;
   shootDate?: string | null;
+  shootEndDate?: string | null;
   shootReportingTime?: string | null;
   shootEstimatedHours?: number | null;
   shootCrewUserIds?: number[];

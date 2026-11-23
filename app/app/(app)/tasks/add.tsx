@@ -28,9 +28,11 @@ export default function AddTask() {
     driveLink: "",
     notes: "",
     taskType: "GENERAL",
+    assignedToUserId: "",
     shootClientName: "",
     shootLocation: "",
     shootDate: "",
+    shootEndDate: "",
     shootReportingTime: "",
     shootEstimatedHours: "",
     shootCrewUserIds: [] as string[],
@@ -86,17 +88,21 @@ export default function AddTask() {
       setError("Task name is required.");
       return;
     }
-    const shootDuration = Number.parseFloat(form.shootEstimatedHours);
+    const assignedToUserId =
+      form.assignedToUserId || String(session?.user.id ?? "");
+    if (!assignedToUserId) {
+      setError("Choose who the shoot or task is assigned to.");
+      return;
+    }
     if (
       form.taskType === "SHOOT" &&
-      (!form.shootClientName.trim() ||
-        !form.shootLocation.trim() ||
-        !form.shootDate ||
-        !form.shootReportingTime ||
-        !Number.isFinite(shootDuration) ||
-        shootDuration <= 0)
+      (!form.shootDate || !form.shootEndDate)
     ) {
-      setError("Complete the required shoot details.");
+      setError("Choose both a shoot from date and to date.");
+      return;
+    }
+    if (form.taskType === "SHOOT" && form.shootEndDate < form.shootDate) {
+      setError("Shoot to date cannot be before the from date.");
       return;
     }
     mutation.mutate({
@@ -106,8 +112,11 @@ export default function AddTask() {
         shootClientName: form.shootClientName.trim(),
         shootLocation: form.shootLocation.trim(),
         shootDate: form.shootDate,
+        shootEndDate: form.shootEndDate,
         shootReportingTime: form.shootReportingTime,
-        shootEstimatedHours: shootDuration,
+        shootEstimatedHours: form.shootEstimatedHours
+          ? Number.parseFloat(form.shootEstimatedHours)
+          : undefined,
         shootCrewUserIds: form.shootCrewUserIds.map(Number),
       }),
       description: form.description.trim() || null,
@@ -116,6 +125,7 @@ export default function AddTask() {
       status: form.status,
       driveLink: form.driveLink.trim() || null,
       notes: form.notes.trim() || null,
+      assignedToUserId: Number(assignedToUserId),
     });
   };
   return (
@@ -144,6 +154,8 @@ export default function AddTask() {
           onChangeText={(value) => set("taskName", value)}
           placeholder="Enter task name"
         />
+        {form.taskType === "GENERAL" && (
+          <>
         <Field
           label="Description"
           value={form.description}
@@ -155,84 +167,43 @@ export default function AddTask() {
           value={form.dueDate}
           onChange={(value) => set("dueDate", value)}
         />
+          </>
+        )}
       </Section>
       {form.taskType === "SHOOT" && (
         <Section title="Shoot details">
           <Text style={styles.shootNote}>
-            Crew attendance is credited on the shoot date without clock-in or
-            clock-out.
+            Shoot attendance is credited for every day in the selected range.
           </Text>
           <Field
-            label="Client name *"
-            value={form.shootClientName}
-            onChangeText={(value) => set("shootClientName", value)}
-            placeholder="Client or brand"
-          />
-          <Field
-            label="Shoot location *"
-            value={form.shootLocation}
-            onChangeText={(value) => set("shootLocation", value)}
-            placeholder="Studio, venue, or address"
-          />
-          <Field
-            label="Shoot date * (YYYY-MM-DD)"
+            label="From date * (YYYY-MM-DD)"
             value={form.shootDate}
             onChangeText={(value) => set("shootDate", value)}
             placeholder="2026-10-17"
           />
           <Field
-            label="Reporting time * (24-hour)"
-            value={form.shootReportingTime}
-            onChangeText={(value) => set("shootReportingTime", value)}
-            placeholder="09:30"
+            label="To date * (YYYY-MM-DD)"
+            value={form.shootEndDate}
+            onChangeText={(value) => set("shootEndDate", value)}
+            placeholder="2026-10-19"
           />
-          <Field
-            label="Estimated duration * (hours)"
-            value={form.shootEstimatedHours}
-            onChangeText={(value) => set("shootEstimatedHours", value)}
-            placeholder="8"
-            keyboardType="decimal-pad"
-          />
-          {crewError ? <Text style={styles.error}>{crewError}</Text> : null}
-          <Text style={styles.label}>Additional shoot crew (optional)</Text>
-          {assignableUsers.map((user) => {
-            const selected = form.shootCrewUserIds.includes(String(user.id));
-            return (
-              <Pressable
-                key={user.id}
-                onPress={() =>
-                  setForm((current) => ({
-                    ...current,
-                    shootCrewUserIds: selected
-                      ? current.shootCrewUserIds.filter(
-                          (id) => id !== String(user.id),
-                        )
-                      : [...current.shootCrewUserIds, String(user.id)],
-                  }))
-                }
-                style={[
-                  styles.crewMember,
-                  selected && styles.crewMemberSelected,
-                ]}
-              >
-                <Text
-                  style={selected ? styles.crewCheckSelected : styles.crewCheck}
-                >
-                  {selected ? "✓" : ""}
-                </Text>
-                <Text style={styles.crewName}>{user.name}</Text>
-                <Text style={styles.crewRole}>
-                  {user.role.replaceAll("_", " ")}
-                </Text>
-              </Pressable>
-            );
-          })}
-          <Text style={styles.shootNote}>
-            {form.shootCrewUserIds.length} crew member
-            {form.shootCrewUserIds.length === 1 ? "" : "s"} selected
-          </Text>
+          {assignableUsers.length > 0 ? (
+            <Dropdown
+              label="Assign to *"
+              value={form.assignedToUserId}
+              options={assignableUsers.map((user) => String(user.id))}
+              formatOption={(value) =>
+                assignableUsers.find((user) => String(user.id) === value)?.name ??
+                "Select person"
+              }
+              onChange={(value) => set("assignedToUserId", value)}
+            />
+          ) : (
+            <Text style={styles.shootNote}>Assigning to you.</Text>
+          )}
         </Section>
       )}
+      {form.taskType === "GENERAL" && (
       <Section title="Planning">
         <Options
           label="Priority"
@@ -261,6 +232,7 @@ export default function AddTask() {
           multiline
         />
       </Section>
+      )}
       <Pressable
         disabled={mutation.isPending}
         onPress={submit}

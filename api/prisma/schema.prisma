@@ -752,6 +752,7 @@ model Task {
   shootClientName         String?
   shootLocation           String?
   shootDate               DateTime?            @db.Date
+  shootEndDate            DateTime?            @db.Date
   shootReportingTime      String?
   shootEstimatedHours     Float?
   status                  String               @default("PENDING")

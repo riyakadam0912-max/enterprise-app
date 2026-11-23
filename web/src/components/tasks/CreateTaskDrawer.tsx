@@ -34,6 +34,7 @@ const buildEmptyForm = () => ({
   shootClientName: '',
   shootLocation: '',
   shootDate: '',
+  shootEndDate: '',
   shootReportingTime: '',
   shootEstimatedHours: '',
   shootCrewUserIds: [] as string[],
@@ -126,17 +127,18 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
       setError('Choose who the task is assigned to or select Assign to me.');
       return;
     }
-    const shootDuration = Number.parseFloat(form.shootEstimatedHours);
     if (
       form.taskType === 'SHOOT' &&
-      (!form.shootClientName.trim() ||
-        !form.shootLocation.trim() ||
-        !form.shootDate ||
-        !form.shootReportingTime ||
-        !Number.isFinite(shootDuration) ||
-        shootDuration <= 0)
+      (!form.shootDate || !form.shootEndDate)
     ) {
-      setError('Complete the required shoot details.');
+      setError('Choose both a shoot from date and to date.');
+      return;
+    }
+    if (
+      form.taskType === 'SHOOT' &&
+      form.shootEndDate < form.shootDate
+    ) {
+      setError('Shoot to date cannot be before the from date.');
       return;
     }
 
@@ -150,8 +152,9 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
           shootClientName: form.shootClientName.trim(),
           shootLocation: form.shootLocation.trim(),
           shootDate: form.shootDate,
+          shootEndDate: form.shootEndDate,
           shootReportingTime: form.shootReportingTime,
-          shootEstimatedHours: shootDuration,
+          shootEstimatedHours: form.shootEstimatedHours ? Number.parseFloat(form.shootEstimatedHours) : undefined,
           shootCrewUserIds: form.shootCrewUserIds.map(Number),
         }),
         project: form.project.trim() || null,
@@ -247,58 +250,22 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
               <section className="space-y-4 rounded-xl border border-orange-100 bg-orange-50/40 p-4">
                 <div>
                   <h3 className="text-sm font-semibold text-slate-900">Shoot details</h3>
-                  <p className="mt-1 text-xs text-slate-500">The person assigned to the task and any optional additional crew are credited for attendance on this date without clock-in or clock-out.</p>
+                  <p className="mt-1 text-xs text-slate-500">Shoot attendance will be credited for every day in this range.</p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="block space-y-1.5">
-                    <span className="text-sm font-medium text-slate-700">Client name</span>
-                    <input required className={field} value={form.shootClientName} onChange={(event) => set('shootClientName', event.target.value)} placeholder="Client or brand" />
-                  </label>
-                  <label className="block space-y-1.5">
-                    <span className="text-sm font-medium text-slate-700">Shoot location</span>
-                    <input required className={field} value={form.shootLocation} onChange={(event) => set('shootLocation', event.target.value)} placeholder="Studio, venue, or address" />
-                  </label>
-                  <label className="block space-y-1.5">
-                    <span className="text-sm font-medium text-slate-700">Shoot date</span>
+                    <span className="text-sm font-medium text-slate-700">From date</span>
                     <input type="date" required className={field} value={form.shootDate} onChange={(event) => set('shootDate', event.target.value)} />
                   </label>
                   <label className="block space-y-1.5">
-                    <span className="text-sm font-medium text-slate-700">Reporting time</span>
-                    <input type="time" required className={field} value={form.shootReportingTime} onChange={(event) => set('shootReportingTime', event.target.value)} />
-                  </label>
-                  <label className="block space-y-1.5 sm:col-span-2">
-                    <span className="text-sm font-medium text-slate-700">Estimated duration (hours)</span>
-                    <input type="number" required min="0.25" step="0.25" className={field} value={form.shootEstimatedHours} onChange={(event) => set('shootEstimatedHours', event.target.value)} placeholder="e.g. 8" />
+                    <span className="text-sm font-medium text-slate-700">To date</span>
+                    <input type="date" required min={form.shootDate || undefined} className={field} value={form.shootEndDate} onChange={(event) => set('shootEndDate', event.target.value)} />
                   </label>
                 </div>
-                <fieldset className="space-y-2">
-                  <legend className="text-sm font-medium text-slate-700">Additional shoot crew (optional)</legend>
-                  <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2">
-                    {assignableUsers.length ? assignableUsers.map((user) => (
-                      <label key={user.id} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                        <input
-                          type="checkbox"
-                          checked={form.shootCrewUserIds.includes(String(user.id))}
-                          onChange={(event) => setForm((previous) => ({
-                            ...previous,
-                            shootCrewUserIds: event.target.checked
-                              ? [...previous.shootCrewUserIds, String(user.id)]
-                              : previous.shootCrewUserIds.filter((id) => id !== String(user.id)),
-                          }))}
-                          className="h-4 w-4 rounded border-slate-300 accent-orange-500"
-                        />
-                        <span className="min-w-0 flex-1 truncate">{user.name}</span>
-                        <span className="text-xs text-slate-400">{user.role.replace('_', ' ')}</span>
-                      </label>
-                    )) : (
-                      <p className="px-2 py-3 text-sm text-slate-500">No additional crew members are available.</p>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-500">{form.shootCrewUserIds.length} crew member{form.shootCrewUserIds.length === 1 ? '' : 's'} selected</p>
-                </fieldset>
               </section>
             )}
 
+            {form.taskType !== 'SHOOT' && (
             <label className="block space-y-1.5">
               <span className="text-sm font-medium text-slate-700">Project <span className="font-normal text-slate-400">(optional)</span></span>
               <select
@@ -313,6 +280,7 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
                 {projects.map((project) => <option key={project.id} value={project.id}>{project.projectName}</option>)}
               </select>
             </label>
+            )}
 
             <label className="block space-y-1.5">
               <span className="text-sm font-medium text-slate-700">Assign to</span>
@@ -329,6 +297,8 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
               {role === 'EMPLOYEE' && <span className="block text-xs text-slate-500">Employees can only assign tasks to themselves.</span>}
             </label>
 
+            {form.taskType !== 'SHOOT' && (
+            <>
             <div className="space-y-2">
               <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
                 <AttendanceDateTimeInput
@@ -406,6 +376,8 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
                 }}
               />
             </div>
+            </>
+            )}
           </div>
 
           <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">

@@ -739,15 +739,12 @@ export class TasksService {
     const taskType = dto.taskType ?? 'GENERAL';
     if (
       taskType === 'SHOOT' &&
-      (!dto.shootClientName?.trim() ||
-        !dto.shootLocation?.trim() ||
-        !dto.shootDate ||
-        !dto.shootReportingTime?.trim() ||
-        dto.shootEstimatedHours == null ||
-        dto.shootEstimatedHours <= 0)
+      (!dto.shootDate ||
+        !dto.shootEndDate ||
+        dto.shootEndDate < dto.shootDate)
     ) {
       throw new BadRequestException(
-        'Shoot tasks require client, location, date, reporting time, and estimated duration',
+        'Shoot tasks require a from date and to date',
       );
     }
     if (taskType === 'GENERAL' && dto.shootCrewUserIds?.length) {
@@ -832,6 +829,7 @@ export class TasksService {
           shootClientName: dto.shootClientName?.trim(),
           shootLocation: dto.shootLocation?.trim(),
           shootDate: this.shootDay(new Date(dto.shootDate!)),
+          shootEndDate: this.shootDay(new Date(dto.shootEndDate ?? dto.shootDate!)),
           shootReportingTime: dto.shootReportingTime?.trim(),
           shootEstimatedHours: dto.shootEstimatedHours,
           shootCrew: {
@@ -878,15 +876,23 @@ export class TasksService {
       },
     });
     if (taskType === 'SHOOT' && dto.shootDate) {
-      await this.syncShootAttendance(
-        [
-          ...(assignee.employeeId == null ? [] : [assignee.employeeId]),
-          ...shootCrew.flatMap((member) =>
-            member.employeeId == null ? [] : [member.employeeId],
-          ),
-        ],
-        new Date(dto.shootDate),
+      const employeeIds = [
+        ...(assignee.employeeId == null ? [] : [assignee.employeeId]),
+        ...shootCrew.flatMap((member) =>
+          member.employeeId == null ? [] : [member.employeeId],
+        ),
+      ];
+      const start = this.shootDay(new Date(dto.shootDate));
+      const end = this.shootDay(
+        new Date(dto.shootEndDate ?? dto.shootDate),
       );
+      for (
+        let date = new Date(start);
+        date <= end;
+        date = new Date(date.getTime() + 24 * 60 * 60 * 1000)
+      ) {
+        await this.syncShootAttendance(employeeIds, date);
+      }
     }
     if (dto.status === 'SUBMITTED') {
       await this.submitWork(
@@ -1639,19 +1645,22 @@ export class TasksService {
           ? this.shootDay(new Date(dto.shootDate))
           : null
         : existingTask.shootDate;
+    const nextShootEndDate =
+      dto.shootEndDate !== undefined
+        ? dto.shootEndDate
+          ? this.shootDay(new Date(dto.shootEndDate))
+          : null
+        : existingTask.shootEndDate;
     const nextShootEstimatedHours =
       dto.shootEstimatedHours ?? existingTask.shootEstimatedHours;
     if (
       nextTaskType === 'SHOOT' &&
-      (!(dto.shootClientName ?? existingTask.shootClientName)?.trim() ||
-        !(dto.shootLocation ?? existingTask.shootLocation)?.trim() ||
-        !nextShootDate ||
-        !(dto.shootReportingTime ?? existingTask.shootReportingTime)?.trim() ||
-        nextShootEstimatedHours == null ||
-        nextShootEstimatedHours <= 0)
+      (!nextShootDate ||
+        !nextShootEndDate ||
+        nextShootEndDate < nextShootDate)
     ) {
       throw new BadRequestException(
-        'Shoot tasks require client, location, date, reporting time, and estimated duration',
+        'Shoot tasks require a from date and to date',
       );
     }
     const actorOrganizationIds =
@@ -1925,6 +1934,7 @@ export class TasksService {
                 dto.shootClientName ?? existingTask.shootClientName,
               shootLocation: dto.shootLocation ?? existingTask.shootLocation,
               shootDate: nextShootDate,
+              shootEndDate: nextShootEndDate,
               shootReportingTime:
                 dto.shootReportingTime ?? existingTask.shootReportingTime,
               shootEstimatedHours: nextShootEstimatedHours,
@@ -1939,6 +1949,7 @@ export class TasksService {
               shootClientName: null,
               shootLocation: null,
               shootDate: null,
+              shootEndDate: null,
               shootReportingTime: null,
               shootEstimatedHours: null,
               shootCrew: { deleteMany: {} },
@@ -2002,12 +2013,17 @@ export class TasksService {
     ].filter((employeeId): employeeId is number => employeeId != null);
     const affectedShootDates = new Set<string>();
     if (existingTask.shootDate) {
-      affectedShootDates.add(
-        this.shootDay(existingTask.shootDate).toISOString(),
-      );
+      const oldStart = this.shootDay(existingTask.shootDate);
+      const oldEnd = this.shootDay(existingTask.shootEndDate ?? existingTask.shootDate);
+      for (let date = new Date(oldStart); date <= oldEnd; date = new Date(date.getTime() + 24 * 60 * 60 * 1000)) {
+        affectedShootDates.add(date.toISOString());
+      }
     }
     if (nextShootDate) {
-      affectedShootDates.add(nextShootDate.toISOString());
+      const newEnd = nextShootEndDate ?? nextShootDate;
+      for (let date = new Date(nextShootDate); date <= newEnd; date = new Date(date.getTime() + 24 * 60 * 60 * 1000)) {
+        affectedShootDates.add(date.toISOString());
+      }
     }
     for (const date of affectedShootDates) {
       await this.syncShootAttendance(affectedShootEmployeeIds, new Date(date));

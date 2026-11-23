@@ -46,6 +46,7 @@ type TaskLike = {
   shootClientName?: string | null;
   shootLocation?: string | null;
   shootDate?: string | null;
+  shootEndDate?: string | null;
   shootReportingTime?: string | null;
   shootEstimatedHours?: number | null;
   shootCrew?: Array<{ userId: number; user: { id: number; name: string; role: string } }>;
@@ -425,12 +426,14 @@ function TaskDetailPanelBody({
                   <p className="font-medium text-slate-800">{task.shootLocation}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500">Date &amp; reporting</p>
+                  <p className="text-xs text-slate-500">Shoot date range</p>
                   <p className="font-medium text-slate-800">
                     {task.shootDate
                       ? new Date(`${task.shootDate.slice(0, 10)}T12:00:00`).toLocaleDateString()
                       : 'Not set'}
-                    {task.shootReportingTime ? ` · ${task.shootReportingTime}` : ''}
+                    {task.shootEndDate
+                      ? ` – ${new Date(`${task.shootEndDate.slice(0, 10)}T12:00:00`).toLocaleDateString()}`
+                      : ''}
                   </p>
                 </div>
                 <div>

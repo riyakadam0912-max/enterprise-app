@@ -27,6 +27,7 @@ export type Task = {
   shootClientName?: string | null;
   shootLocation?: string | null;
   shootDate?: string | null;
+  shootEndDate?: string | null;
   shootReportingTime?: string | null;
   shootEstimatedHours?: number | null;
   shootCrew?: {
@@ -52,6 +53,7 @@ export type CreateTaskPayload = {
   shootClientName?: string;
   shootLocation?: string;
   shootDate?: string;
+  shootEndDate?: string;
   shootReportingTime?: string;
   shootEstimatedHours?: number;
   shootCrewUserIds?: number[];
