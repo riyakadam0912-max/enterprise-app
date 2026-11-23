@@ -192,6 +192,7 @@ export class TasksService {
       roleWhere = {
         OR: [
           { assignedToUserId: user.userId },
+          { assignedByUserId: user.userId },
           ...(user.employeeId ? [{ assignedToId: user.employeeId }] : []),
         ],
       } as Prisma.TaskWhereInput;
@@ -2023,10 +2024,18 @@ export class TasksService {
 
   async remove(id: number, user: AuthUser) {
     this.validateOrganization(user);
-    const canManage = await this.canManageTask(id, user);
-    if (!canManage) {
+    const isPrivileged = new Set<Role>([
+      Role.SUPER_ADMIN,
+      Role.ADMIN,
+      Role.HR,
+    ]).has(user.role);
+    const canManage =
+      user.role === Role.MANAGER
+        ? await this.canManageTask(id, user)
+        : isPrivileged;
+    if (user.role === Role.MANAGER && !canManage) {
       throw new ForbiddenException(
-        'Only admin or project manager can delete this task',
+        'You can only delete tasks you created or tasks in projects you manage',
       );
     }
     const taskScope = await this.getScopedWhere(user);
@@ -2037,6 +2046,10 @@ export class TasksService {
       },
     });
     if (!existing) throw new NotFoundException(`Task #${id} not found`);
+    const isCreator = existing.assignedByUserId === user.userId;
+    if (!isPrivileged && !canManage && !isCreator) {
+      throw new ForbiddenException('You can only delete tasks you created');
+    }
     const removed = await this.db.task.update({
       where: { id },
       data: { deletedAt: new Date() },

@@ -328,7 +328,11 @@ function TaskDetailModal({
   const showAwaitingReview = taskStatus === 'SUBMITTED' && !isAssignee;
   const showApproved = taskStatus === 'APPROVED';
   const canEditTasks = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER';
-  const canDeleteTasks = role === 'SUPER_ADMIN' || role === 'ADMIN';
+  const canDeleteTask =
+    role === 'SUPER_ADMIN' ||
+    role === 'ADMIN' ||
+    activeTask.assignedByUserId === currentUserId ||
+    (role === 'MANAGER' && activeTask.projectRef?.managerId === currentUserId);
   const canReview = (role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER') && taskStatus === 'SUBMITTED';
   const canChangeStatus = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER';
   const submissionDate = activeTask.updatedAt ?? activeTask.createdAt;
@@ -453,7 +457,7 @@ function TaskDetailModal({
                 onTabChange('overview');
                 setShowEditForm((current) => !current);
               } : undefined}
-              onDelete={canDeleteTasks && !busy ? () => void onDeleteTask(activeTask.id) : undefined}
+              onDelete={canDeleteTask && !busy ? () => void onDeleteTask(activeTask.id) : undefined}
               onClose={onClose}
             />
             <div className="px-5 sm:px-7">
@@ -906,7 +910,14 @@ function AllTasksPage() {
   const [visibleTaskColumns, setVisibleTaskColumns] = useState<Record<string, boolean>>(() => Object.fromEntries(TASK_GRID_COLUMNS.map((column) => [column.key, true])));
 
   const isManagerOrAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER';
-  const canDeleteTasks = role === 'SUPER_ADMIN' || role === 'ADMIN';
+  const canDeleteTask = useCallback(
+    (task: Task) =>
+      role === 'SUPER_ADMIN' ||
+      role === 'ADMIN' ||
+      task.assignedByUserId === currentUserId ||
+      (role === 'MANAGER' && task.projectRef?.managerId === currentUserId),
+    [currentUserId, role],
+  );
   const visibleTaskColumnList = useMemo(
     () => TASK_GRID_COLUMNS.filter((column) => visibleTaskColumns[column.key] !== false),
     [visibleTaskColumns],
@@ -1018,6 +1029,10 @@ function AllTasksPage() {
     () => tasks.find((task) => task.id === selectedTaskId) ?? null,
     [selectedTaskId, tasks],
   );
+  const deletableSelectedTaskIds = useMemo(
+    () => tasks.filter((task) => selectedTaskIds.includes(task.id) && canDeleteTask(task)).map((task) => task.id),
+    [canDeleteTask, selectedTaskIds, tasks],
+  );
 
   function toggleTaskSelection(taskId: number) {
     setSelectedTaskIds((current) => current.includes(taskId) ? current.filter((id) => id !== taskId) : [...current, taskId]);
@@ -1031,11 +1046,11 @@ function AllTasksPage() {
   }
 
   async function deleteSelectedTasks() {
-    if (selectedTaskIds.length === 0 || !window.confirm(`Delete ${selectedTaskIds.length} selected task(s)?`)) return;
+    if (deletableSelectedTaskIds.length === 0 || !window.confirm(`Delete ${deletableSelectedTaskIds.length} selected task(s) you are allowed to delete?`)) return;
     try {
-      await Promise.all(selectedTaskIds.map((id) => deleteTask(id)));
-      setTasks((current) => current.filter((task) => !selectedTaskIds.includes(task.id)));
-      setSelectedTaskIds([]);
+      await Promise.all(deletableSelectedTaskIds.map((id) => deleteTask(id)));
+      setTasks((current) => current.filter((task) => !deletableSelectedTaskIds.includes(task.id)));
+      setSelectedTaskIds((current) => current.filter((id) => !deletableSelectedTaskIds.includes(id)));
       toast.success('Tasks deleted', 'Selected tasks were deleted successfully');
     } catch (error) {
       handleTaskActionError(error);
@@ -1394,7 +1409,7 @@ function AllTasksPage() {
               <span className="text-xs font-semibold text-orange-700">{selectedTaskIds.length} selected</span>
               <button type="button" onClick={exportSelectedTasks} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">Export CSV</button>
               <button type="button" onClick={() => void completeSelectedTasks()} disabled={busy} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">Mark complete</button>
-              {canDeleteTasks && <button type="button" onClick={() => void deleteSelectedTasks()} className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white">Delete</button>}
+              {deletableSelectedTaskIds.length > 0 && <button type="button" onClick={() => void deleteSelectedTasks()} className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white">Delete ({deletableSelectedTaskIds.length})</button>}
               <button type="button" onClick={() => setSelectedTaskIds([])} className="text-xs font-semibold text-slate-500">Clear</button>
             </div>
           )}

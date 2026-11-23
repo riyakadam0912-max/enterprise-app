@@ -781,6 +781,7 @@ describe('TasksService', () => {
               expect.objectContaining({
                 OR: [
                   { assignedToUserId: mockEmployeeUser.userId },
+                  { assignedByUserId: mockEmployeeUser.userId },
                   { assignedToId: mockEmployeeUser.employeeId },
                 ],
               }),
@@ -1204,6 +1205,39 @@ describe('TasksService', () => {
       );
       expect(taskDelegate.update).toHaveBeenCalledTimes(1);
     });
+
+    it('allows an employee to soft delete a task they created', async () => {
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      taskDelegate.findFirst.mockResolvedValueOnce({
+        id: 12,
+        assignedByUserId: mockEmployeeUser.userId,
+        taskType: 'GENERAL',
+        shootCrew: [],
+      });
+      taskDelegate.update.mockResolvedValueOnce({ id: 12 });
+
+      await service.remove(12, mockEmployeeUser);
+
+      expect(taskDelegate.update).toHaveBeenCalledWith({
+        where: { id: 12 },
+        data: { deletedAt: expect.any(Date) },
+      });
+    });
+
+    it('prevents an employee from deleting a task created by another user', async () => {
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      taskDelegate.findFirst.mockResolvedValueOnce({
+        id: 13,
+        assignedByUserId: 999,
+        taskType: 'GENERAL',
+        shootCrew: [],
+      });
+
+      await expect(service.remove(13, mockEmployeeUser)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(taskDelegate.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('importRecords', () => {
@@ -1232,6 +1266,7 @@ describe('TasksService', () => {
               expect.objectContaining({
                 OR: [
                   { assignedToUserId: mockEmployeeUser.userId },
+                  { assignedByUserId: mockEmployeeUser.userId },
                   { assignedToId: mockEmployeeUser.employeeId },
                 ],
               }),

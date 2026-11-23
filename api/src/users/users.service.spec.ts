@@ -469,7 +469,7 @@ describe('UsersService', () => {
   });
 
   describe('resetPassword', () => {
-    it('sends the security code from the logged-in user to the target user only', async () => {
+    it('sends the security code to the logged-in administrator, not the target user', async () => {
       const authUser = createMockAuthUser(Role.ADMIN, {
         email: 'admin@example.com',
         userId: 9,
@@ -489,14 +489,16 @@ describe('UsersService', () => {
 
       expect(mockMailService.sendEmail).toHaveBeenCalledWith(
         expect.objectContaining({
-          replyTo: 'admin@example.com',
-          to: 'target@example.com',
+          to: 'admin@example.com',
+          html: expect.stringContaining('Target User'),
+          metadata: expect.objectContaining({
+            userId: 1,
+            requestedByUserId: 9,
+          }),
         }),
       );
-      expect(mockMailService.sendEmail.mock.calls[0][0]).not.toEqual(
-        expect.objectContaining({
-          to: expect.arrayContaining(['admin@example.com']),
-        }),
+      expect(mockMailService.sendEmail.mock.calls[0][0].to).not.toBe(
+        'target@example.com',
       );
     });
 

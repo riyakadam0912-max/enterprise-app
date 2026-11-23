@@ -221,6 +221,7 @@ async function loginWithoutOrganization(page) {
 async function createEmployeeRolePage({ role = 'ADMIN', linkedUser = { id: 84, role: 'EMPLOYEE' }, failUpdate = false } = {}) {
   const session = authPayload(role);
   const roleRequests = [];
+  const passwordResetRequests = [];
   let account = linkedUser;
   const result = await createPage({
     sessionData: session,
@@ -241,14 +242,46 @@ async function createEmployeeRolePage({ role = 'ADMIN', linkedUser = { id: 84, r
         account = { ...account, role: route.request().postDataJSON().role };
         return fulfillJson(route, { success: true, data: account });
       }
+      if (/^\/users\/\d+\/request-reset-code$/.test(endpoint)) {
+        passwordResetRequests.push({ endpoint, method: route.request().method() });
+        return fulfillJson(route, { success: true, data: { success: true, message: 'Security code sent successfully.' } });
+      }
+      if (/^\/users\/\d+\/reset-password$/.test(endpoint)) {
+        passwordResetRequests.push({ endpoint, method: route.request().method(), body: route.request().postDataJSON() });
+        return fulfillJson(route, { success: true, data: { success: true, message: 'Password reset successfully' } });
+      }
       if (endpoint === '/employees/42') return fulfillJson(route, {
         success: true, data: { id: 42, name: 'Test Employee', email: 'employee@example.test', status: 'Active', user: account },
       });
       return fulfillJson(route, { success: true, data: [] });
     },
   });
-  return { ...result, roleRequests };
+  return { ...result, roleRequests, passwordResetRequests };
 }
+
+test('employee password reset targets the linked user account instead of the employee id', { timeout: 120_000 }, async () => {
+  const { context, page, passwordResetRequests, diagnostics } = await createEmployeeRolePage();
+  try {
+    await gotoWithRetry(page, `${baseUrl}/dashboard/employees/edit/42`);
+    await waitForText(page, 'Password reset', diagnostics);
+    await page.getByRole('button', { name: 'Send security code', exact: true }).click();
+    await page.getByPlaceholder('Minimum 8 characters').fill('new-password');
+    await page.getByPlaceholder('Enter the 6-digit code').fill('123456');
+    await page.getByRole('button', { name: 'Reset password', exact: true }).click();
+    await page.getByText('Password reset successfully', { exact: true }).waitFor();
+
+    assert.deepEqual(passwordResetRequests, [
+      { endpoint: '/users/84/request-reset-code', method: 'POST' },
+      {
+        endpoint: '/users/84/reset-password',
+        method: 'PATCH',
+        body: { password: 'new-password', securityCode: '123456' },
+      },
+    ]);
+  } finally {
+    await context.close();
+  }
+});
 
 test('employee role can be promoted to manager from employee edit and persists after reload', { timeout: 120_000 }, async () => {
   const { context, page, roleRequests, diagnostics } = await createEmployeeRolePage();

@@ -343,7 +343,7 @@ export class TasksController {
     return this.tasksService.reviewTask(id, dto, req.user);
   }
 
-  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.EMPLOYEE)
   @ApiOperation({ summary: 'DELETE :id' })
   @ApiResponse({ status: 200, description: 'DELETE request successful.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })

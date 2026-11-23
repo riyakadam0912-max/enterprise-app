@@ -54,7 +54,10 @@ export default function EditEmployeePage() {
     resetError: '',
   });
   const authSession = useAuthSession();
-  const isSelfEdit = authSession.employeeId === id;
+  const resetTargetUserId = employee?.user?.id ?? null;
+  const isSelfEdit = resetTargetUserId != null
+    ? authSession.user?.id === resetTargetUserId
+    : authSession.employeeId === id;
   const canResetPasswords = authSession.isSuperAdmin || authSession.role === 'ADMIN';
 
   useEffect(() => {
@@ -125,9 +128,14 @@ export default function EditEmployeePage() {
       return;
     }
 
+    if (resetTargetUserId == null) {
+      setResetState((prev) => ({ ...prev, requestError: 'This employee does not have a linked login account.' }));
+      return;
+    }
+
     setResetState((prev) => ({ ...prev, sendingCode: true, requestError: '', requestMessage: '' }));
     try {
-      const response = await requestPasswordResetCode(id);
+      const response = await requestPasswordResetCode(resetTargetUserId);
       setResetState((prev) => ({ ...prev, requestMessage: response.message }));
     } catch (err) {
       setResetState((prev) => ({ ...prev, requestError: err instanceof Error ? err.message : 'Unable to send the reset code.' }));
@@ -144,6 +152,11 @@ export default function EditEmployeePage() {
       return;
     }
 
+    if (resetTargetUserId == null) {
+      setResetState((prev) => ({ ...prev, resetError: 'This employee does not have a linked login account.' }));
+      return;
+    }
+
     if (!resetState.password || resetState.password.length < 8) {
       setResetState((prev) => ({ ...prev, resetError: 'New password must be at least 8 characters long.' }));
       return;
@@ -157,7 +170,7 @@ export default function EditEmployeePage() {
     setResetState((prev) => ({ ...prev, resetting: true, resetError: '', resetMessage: '' }));
 
     try {
-      const response = await resetUserPassword(id, {
+      const response = await resetUserPassword(resetTargetUserId, {
         password: resetState.password,
         securityCode: resetState.securityCode.trim(),
       });
@@ -203,7 +216,7 @@ export default function EditEmployeePage() {
           <div className="mb-5 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">{error}</div>
         )}
 
-        {!isSelfEdit && canResetPasswords && (
+        {!isSelfEdit && canResetPasswords && resetTargetUserId != null && (
           <div className="mb-6 rounded-xl border border-orange-200 bg-orange-50 p-4">
             <div className="flex items-center justify-between gap-3 mb-3">
               <div>
@@ -270,6 +283,12 @@ export default function EditEmployeePage() {
                 )}
               </form>
             </div>
+          </div>
+        )}
+
+        {!isSelfEdit && canResetPasswords && resetTargetUserId == null && (
+          <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Password reset is unavailable because this employee does not have a linked login account.
           </div>
         )}
 

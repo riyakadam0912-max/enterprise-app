@@ -160,15 +160,19 @@ export class UsersService {
     });
 
     await this.mailService.sendEmail({
-      to: targetUser.email,
-      replyTo: actor.email,
+      to: actor.email,
       subject: 'Security code for employee password reset',
       html: `
-        <p>Hello ${targetUser.name},</p>
-        <p>Your password reset security code is: <strong>${code}</strong></p>
+        <p>Hello ${actor.name},</p>
+        <p>You requested a password reset for <strong>${targetUser.name}</strong> (${targetUser.email}).</p>
+        <p>The security code is: <strong>${code}</strong></p>
         <p>This code expires in 10 minutes.</p>
       `,
-      metadata: { userId: targetUser.id, template: 'security-code' },
+      metadata: {
+        userId: targetUser.id,
+        requestedByUserId: actor.userId ?? actor.id ?? null,
+        template: 'security-code',
+      },
     });
 
     return code;
