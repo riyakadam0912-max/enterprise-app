@@ -1416,9 +1416,11 @@ describe('TasksService', () => {
 
     it('should submit work successfully', async () => {
       const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
       taskDelegate.findFirst.mockResolvedValueOnce({
         id: 1,
         status: 'IN_PROGRESS',
+        organizationId: 1,
         projectId: 1,
         assignedToUserId: 3,
         projectRef: { managerId: 2 },
@@ -1444,6 +1446,86 @@ describe('TasksService', () => {
       );
       expect(result.status).toEqual('SUBMITTED');
       expect(mockWorkflowEngine.submitWorkflow).toHaveBeenCalledTimes(1);
+      expect(timesheetDelegate.updateMany).toHaveBeenCalledWith({
+        where: {
+          taskId: 1,
+          organizationId: 1,
+          status: 'PENDING',
+          deletedAt: null,
+        },
+        data: {
+          status: 'SUBMITTED',
+          submittedAt: expect.any(Date),
+        },
+      });
+    });
+
+    it('submits only pending timesheets linked to the submitted task', async () => {
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
+      taskDelegate.findFirst.mockResolvedValueOnce({
+        id: 44,
+        status: 'IN_PROGRESS',
+        organizationId: 7,
+        projectId: 3,
+        assignedToUserId: 3,
+        projectRef: { managerId: 2 },
+      });
+      taskDelegate.update.mockResolvedValueOnce({
+        id: 44,
+        status: 'SUBMITTED',
+      });
+      (mockWorkflowEngine.submitWorkflow as jest.Mock).mockResolvedValueOnce(
+        {},
+      );
+
+      await service.submitWork(
+        44,
+        { note: 'Ready for review' } as SubmitTaskWorkDto,
+        mockEmployeeUser,
+      );
+
+      expect(timesheetDelegate.updateMany).toHaveBeenCalledTimes(1);
+      expect(timesheetDelegate.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            taskId: 44,
+            organizationId: 7,
+            status: 'PENDING',
+            deletedAt: null,
+          },
+        }),
+      );
+    });
+
+    it('keeps task and timesheet submission in the same transaction', async () => {
+      const taskDelegate = getPrismaDelegate(mockPrisma, 'task');
+      const timesheetDelegate = getPrismaDelegate(mockPrisma, 'timesheet');
+      taskDelegate.findFirst.mockResolvedValueOnce({
+        id: 45,
+        status: 'IN_PROGRESS',
+        organizationId: 1,
+        projectId: 1,
+        assignedToUserId: 3,
+        projectRef: { managerId: 2 },
+      });
+      taskDelegate.update.mockResolvedValueOnce({
+        id: 45,
+        status: 'SUBMITTED',
+      });
+      timesheetDelegate.updateMany.mockRejectedValueOnce(
+        new Error('timesheet update failed'),
+      );
+
+      await expect(
+        service.submitWork(
+          45,
+          { note: 'Ready for review' } as SubmitTaskWorkDto,
+          mockEmployeeUser,
+        ),
+      ).rejects.toThrow('timesheet update failed');
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(mockWorkflowEngine.submitWorkflow).not.toHaveBeenCalled();
     });
   });
 

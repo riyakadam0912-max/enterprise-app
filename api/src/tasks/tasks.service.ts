@@ -2401,6 +2401,19 @@ export class TasksService {
       };
     }>;
 
+    await this.db.timesheet.updateMany({
+      where: {
+        taskId: id,
+        organizationId: taskOrganizationId,
+        status: 'PENDING',
+        deletedAt: null,
+      },
+      data: {
+        status: 'SUBMITTED',
+        submittedAt: new Date(),
+      },
+    });
+
     await this.workflowEngine.submitWorkflow({
       definitionKey: 'task-review',
       entityType: 'Task',
