@@ -761,7 +761,7 @@ function EditAttendanceModal(props: {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2" htmlFor="attendance-status">Status</label>
-            <select id="attendance-status" value={status} disabled={reopenAsWorking || Boolean(selectedSession) || (record.shiftDetails?.type === 'FLEXIBLE' && Boolean(record.checkIn))} onChange={(event) => setStatus(event.target.value as AttendanceStatus)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-slate-100 disabled:text-slate-500">
+            <select id="attendance-status" value={status} disabled={loading} onChange={(event) => setStatus(event.target.value as AttendanceStatus)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-slate-100 disabled:text-slate-500">
               <option value="PRESENT">Present</option>
               <option value="ABSENT">Absent</option>
               <option value="HALF_DAY">Half Day</option>
@@ -1228,6 +1228,12 @@ function AttendancePageContent() {
       } else if (payload.sessionId) {
         await correctAttendanceSession(payload.sessionId, { checkIn: payload.checkIn || undefined, checkOut: payload.checkOut || undefined,
           breaks: payload.breaks, expectedSessionUpdatedAt: payload.expectedSessionUpdatedAt });
+        if (editingRecord.id && payload.status !== editingRecord.status) {
+          await updateAttendanceMutation.mutate(editingRecord.id, {
+            expectedVersion: editingRecord.version,
+            status: payload.status,
+          });
+        }
       } else if (editingRecord.id) {
         await updateAttendanceMutation.mutate(editingRecord.id, {
           date: payload.date,
