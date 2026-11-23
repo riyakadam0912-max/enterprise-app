@@ -5,7 +5,7 @@ import {
   ShiftType,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { Permission } from '../src/common/enums/permissions.enum';
+import { DEFAULT_MODULE_PERMISSIONS, Permission } from '../src/common/enums/permissions.enum';
 
 const prisma = new PrismaClient();
 
@@ -310,7 +310,13 @@ async function seedRolesWithPermissions() {
       create: { name: roleConfig.name, description: roleConfig.description },
     });
 
-    const permissionIds = roleConfig.permissions
+    const effectivePermissions = [
+      ...new Set([
+        ...roleConfig.permissions,
+        ...(DEFAULT_MODULE_PERMISSIONS[roleConfig.name] ?? []),
+      ]),
+    ];
+    const permissionIds = effectivePermissions
       .map((key) => permissionMap.get(key))
       .filter((id): id is number => id !== undefined);
 

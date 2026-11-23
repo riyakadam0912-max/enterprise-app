@@ -7,6 +7,11 @@ import { ChevronLeft, ChevronRight, Menu } from 'lucide-react';
 import { useAuthSession } from '@/stores/auth-store';
 import { useAuth } from '@/providers/AuthProvider';
 import { UserAvatar } from '@/components/common/UserAvatar';
+import {
+  canAccessModule,
+  getModuleByLabel,
+  hasModulePermissionCatalog,
+} from '@/config/module-access';
 
 // ── SVG icon components ──────────────────────────────────────────────────────
 const stroke = { fill: 'none' as const, stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
@@ -339,6 +344,19 @@ export default function Sidebar({ currentPath }: SidebarProps) {
         session.isBusinessUnitAdmin
           ? [...items, navConfig.find((item) => item.type === 'link' && item.label === 'My Business Units')!]
           : items;
+      if (hasModulePermissionCatalog(session.permissions)) {
+        const permittedItems = navConfig.filter((item) => {
+          if (item.label === 'Dashboard' || item.label === 'My Business Units') return true;
+          const module = getModuleByLabel(item.label);
+          return !module || canAccessModule(module.id, role, session.permissions);
+        });
+        const scopedItems = role === 'EMPLOYEE' || role === 'MANAGER'
+          ? permittedItems.map(filterEventManagementChildren)
+          : permittedItems;
+        return flattenNavigation(withBusinessUnitAdminLink(
+          scopedItems.filter((item) => item.label !== 'My Business Units'),
+        ));
+      }
       if (role === 'EMPLOYEE') {
         return flattenNavigation(withBusinessUnitAdminLink(navConfig
           .filter((item) => EMPLOYEE_VISIBLE_LABELS.has(item.label))
@@ -359,7 +377,7 @@ export default function Sidebar({ currentPath }: SidebarProps) {
         ? flattenNavigation(navConfig)
         : flattenNavigation(navConfig.filter((item) => item.label !== 'Organization' && item.label !== 'Items'));
     },
-    [role, session.isBusinessUnitAdmin],
+    [role, session.isBusinessUnitAdmin, session.permissions],
   );
 
   // Only one dropdown open at a time

@@ -6,6 +6,7 @@ import Sidebar from '@/components/Sidebar';
 import Topbar from '@/components/Topbar';
 import { useAuth } from '@/providers/AuthProvider';
 import { getActiveOrganizationId, isSuperAdminSession } from '@/stores/auth-store';
+import { canAccessModule, getModuleForPath, hasModulePermissionCatalog } from '@/config/module-access';
 
 const EMPLOYEE_ALLOWED_EXACT_PATHS = ['/dashboard'];
 const EMPLOYEE_ALLOWED_PATH_PREFIXES = [
@@ -114,17 +115,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       return;
     }
 
-    if (role === 'EMPLOYEE' && !isEmployeePathAllowed(pathname) && !(session.isBusinessUnitAdmin && pathname === '/dashboard/business-units')) {
+    const requestedModule = getModuleForPath(pathname);
+    if (
+      requestedModule &&
+      hasModulePermissionCatalog(session.permissions) &&
+      !canAccessModule(requestedModule.id, role, session.permissions)
+    ) {
       router.replace('/dashboard');
       return;
     }
 
-    if (role === 'MANAGER' && !isManagerPathAllowed(pathname) && !(session.isBusinessUnitAdmin && pathname === '/dashboard/business-units')) {
+    if (!hasModulePermissionCatalog(session.permissions) && role === 'EMPLOYEE' && !isEmployeePathAllowed(pathname) && !(session.isBusinessUnitAdmin && pathname === '/dashboard/business-units')) {
       router.replace('/dashboard');
       return;
     }
 
-  }, [authenticated, loading, pathname, router, session, session.role, session.roles, session.isSuperAdmin, session.isPlatformAdmin]);
+    if (!hasModulePermissionCatalog(session.permissions) && role === 'MANAGER' && !isManagerPathAllowed(pathname) && !(session.isBusinessUnitAdmin && pathname === '/dashboard/business-units')) {
+      router.replace('/dashboard');
+      return;
+    }
+
+  }, [authenticated, loading, pathname, router, session, session.role, session.roles, session.permissions, session.isSuperAdmin, session.isPlatformAdmin]);
 
   if (loading) {
     return (

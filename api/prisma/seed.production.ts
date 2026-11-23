@@ -1,6 +1,6 @@
 import { PrismaClient, Role, OrganizationStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { Permission } from '../src/common/enums/permissions.enum';
+import { DEFAULT_MODULE_PERMISSIONS, Permission } from '../src/common/enums/permissions.enum';
 
 const prisma = new PrismaClient();
 
@@ -150,6 +150,7 @@ async function ensureRoleWithPermissions(
   permissions: Permission[],
   description: string,
 ): Promise<void> {
+  permissions = [...new Set([...permissions, ...(DEFAULT_MODULE_PERMISSIONS[name] ?? [])])];
   // Ensure role exists
   const appRole = await prisma.appRole.upsert({
     where: { name },

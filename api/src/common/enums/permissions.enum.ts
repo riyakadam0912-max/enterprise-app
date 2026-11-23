@@ -1,4 +1,35 @@
 export enum Permission {
+  // Module visibility. These permissions control navigation and dashboard routes;
+  // the action permissions below continue to protect API operations.
+  MODULE_TIMESHEETS_VIEW = 'module.timesheets.view',
+  MODULE_ATTENDANCE_VIEW = 'module.attendance.view',
+  MODULE_PROJECTS_VIEW = 'module.projects.view',
+  MODULE_TASKS_VIEW = 'module.tasks.view',
+  MODULE_REQUESTS_VIEW = 'module.requests.view',
+  MODULE_CAMPAIGN_LEADS_VIEW = 'module.campaign-leads.view',
+  MODULE_LEADS_VIEW = 'module.leads.view',
+  MODULE_DEALS_VIEW = 'module.deals.view',
+  MODULE_QUOTES_VIEW = 'module.quotes.view',
+  MODULE_ITEMS_VIEW = 'module.items.view',
+  MODULE_INVOICES_VIEW = 'module.invoices.view',
+  MODULE_ACCOUNTS_VIEW = 'module.accounts.view',
+  MODULE_PAYMENTS_VIEW = 'module.payments.view',
+  MODULE_PAYROLL_VIEW = 'module.payroll.view',
+  MODULE_REPORTS_VIEW = 'module.reports.view',
+  MODULE_AUDIT_LOGS_VIEW = 'module.audit-logs.view',
+  MODULE_LEDGER_VIEW = 'module.ledger.view',
+  MODULE_TICKETS_VIEW = 'module.tickets.view',
+  MODULE_FORMS_VIEW = 'module.forms.view',
+  MODULE_EXPENSES_VIEW = 'module.expenses.view',
+  MODULE_CONTACTS_VIEW = 'module.contacts.view',
+  MODULE_CUSTOMERS_VIEW = 'module.customers.view',
+  MODULE_CLIENTS_VIEW = 'module.clients.view',
+  MODULE_EVENTS_VIEW = 'module.events.view',
+  MODULE_MARKETING_CAMPAIGNS_VIEW = 'module.marketing-campaigns.view',
+  MODULE_EMPLOYEE_MANAGEMENT_VIEW = 'module.employee-management.view',
+  MODULE_ORGANIZATION_VIEW = 'module.organization.view',
+  MODULE_EMAIL_PREVIEW_VIEW = 'module.email-preview.view',
+
   // Employee permissions
   EMPLOYEE_READ = 'employee.read',
   EMPLOYEE_CREATE = 'employee.create',
@@ -135,3 +166,33 @@ export enum Permission {
   PERMISSION_READ = 'permission.read',
   PERMISSION_MANAGE = 'permission.manage',
 }
+
+export const DEFAULT_MODULE_PERMISSIONS: Record<string, Permission[]> = {
+  SUPER_ADMIN: Object.values(Permission).filter((permission) => permission.startsWith('module.')),
+  ADMIN: Object.values(Permission).filter((permission) => permission.startsWith('module.')),
+  HR: [
+    Permission.MODULE_TIMESHEETS_VIEW, Permission.MODULE_ATTENDANCE_VIEW,
+    Permission.MODULE_INVOICES_VIEW, Permission.MODULE_ACCOUNTS_VIEW,
+    Permission.MODULE_PAYMENTS_VIEW, Permission.MODULE_PAYROLL_VIEW,
+    Permission.MODULE_REPORTS_VIEW, Permission.MODULE_AUDIT_LOGS_VIEW,
+    Permission.MODULE_LEDGER_VIEW, Permission.MODULE_REQUESTS_VIEW,
+    Permission.MODULE_TICKETS_VIEW, Permission.MODULE_FORMS_VIEW,
+    Permission.MODULE_EXPENSES_VIEW, Permission.MODULE_CONTACTS_VIEW,
+    Permission.MODULE_EVENTS_VIEW, Permission.MODULE_MARKETING_CAMPAIGNS_VIEW,
+    Permission.MODULE_EMPLOYEE_MANAGEMENT_VIEW,
+  ],
+  MANAGER: [
+    Permission.MODULE_TIMESHEETS_VIEW, Permission.MODULE_ATTENDANCE_VIEW,
+    Permission.MODULE_PROJECTS_VIEW, Permission.MODULE_TASKS_VIEW,
+    Permission.MODULE_REQUESTS_VIEW, Permission.MODULE_REPORTS_VIEW,
+    Permission.MODULE_FORMS_VIEW, Permission.MODULE_EXPENSES_VIEW,
+    Permission.MODULE_EVENTS_VIEW, Permission.MODULE_EMPLOYEE_MANAGEMENT_VIEW,
+  ],
+  EMPLOYEE: [
+    Permission.MODULE_TIMESHEETS_VIEW, Permission.MODULE_ATTENDANCE_VIEW,
+    Permission.MODULE_PROJECTS_VIEW, Permission.MODULE_TASKS_VIEW,
+    Permission.MODULE_REQUESTS_VIEW, Permission.MODULE_FORMS_VIEW,
+    Permission.MODULE_EXPENSES_VIEW, Permission.MODULE_CONTACTS_VIEW,
+    Permission.MODULE_EVENTS_VIEW,
+  ],
+};

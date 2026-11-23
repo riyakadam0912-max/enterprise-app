@@ -359,6 +359,18 @@ export class AuthController {
       }
     }
 
+    const currentRoleAssignments = await this.prisma.userRole.findMany({
+      where: { userId: req.user.userId ?? req.user.id },
+      include: {
+        role: { include: { rolePermissions: { include: { permission: true } } } },
+      },
+    });
+    const currentPermissions = currentRoleAssignments.length > 0
+      ? [...new Set(currentRoleAssignments.flatMap((assignment) =>
+          assignment.role.rolePermissions.map((entry) => entry.permission.key),
+        ))]
+      : (req.user.permissions ?? []);
+
     const response = {
       user: {
         id: req.user.userId ?? req.user.id,
@@ -368,7 +380,7 @@ export class AuthController {
       },
       role: req.user.role ?? Role.EMPLOYEE,
       roles: req.user.roles ?? [],
-      permissions: req.user.permissions ?? [],
+      permissions: currentPermissions,
       employeeId: resolvedEmployeeId,
       organizationId: activeOrgId,
       organizationSlug: orgSlug,
