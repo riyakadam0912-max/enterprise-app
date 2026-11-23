@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -77,6 +78,18 @@ export class RbacController {
     return this.rbacService.removePermissionFromRole(
       parseInt(roleId, 10),
       body.permissionKey,
+    );
+  }
+
+  @Patch('roles/:roleId/module-access')
+  @RequirePermissions(Permission.PERMISSION_MANAGE)
+  async updateModuleAccess(
+    @Param('roleId') roleId: string,
+    @Body() body: { enabledPermissions: string[] },
+  ) {
+    return this.rbacService.updateModuleAccess(
+      parseInt(roleId, 10),
+      body.enabledPermissions,
     );
   }
 

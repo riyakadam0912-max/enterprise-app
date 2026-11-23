@@ -56,3 +56,13 @@ export async function removePermissionFromRole(roleId: number, permissionKey: st
     body: JSON.stringify({ permissionKey }),
   });
 }
+
+export async function updateRoleModuleAccess(
+  roleId: number,
+  enabledPermissions: string[],
+): Promise<RoleRecord> {
+  return apiClient<RoleRecord>(`/rbac/roles/${roleId}/module-access`, {
+    method: 'PATCH',
+    body: JSON.stringify({ enabledPermissions }),
+  });
+}

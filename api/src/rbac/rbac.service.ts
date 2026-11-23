@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -53,6 +53,11 @@ export class RbacService {
   }
 
   async removePermissionFromRole(roleId: number, permissionKey: string) {
+    const role = await this.prisma.appRole.findUnique({ where: { id: roleId } });
+    if (!role) throw new NotFoundException('Role not found');
+    if (role.name === 'SUPER_ADMIN' && permissionKey.startsWith('module.')) {
+      throw new BadRequestException('Super Admin module access cannot be removed');
+    }
     const permission = await this.prisma.permission.findUnique({
       where: { key: permissionKey },
     });
@@ -61,6 +66,39 @@ export class RbacService {
     return this.prisma.rolePermission.delete({
       where: { roleId_permissionId: { roleId, permissionId: permission.id } },
     });
+  }
+
+  async updateModuleAccess(roleId: number, enabledPermissions: string[]) {
+    const role = await this.prisma.appRole.findUnique({ where: { id: roleId } });
+    if (!role) throw new NotFoundException('Role not found');
+    if (role.name === 'SUPER_ADMIN') {
+      throw new BadRequestException('Super Admin module access cannot be removed');
+    }
+
+    const modulePermissions = await this.prisma.permission.findMany({
+      where: { key: { startsWith: 'module.' } },
+    });
+    const validKeys = new Set(modulePermissions.map((permission) => permission.key));
+    const enabledKeys = [...new Set(enabledPermissions)].filter((key) => validKeys.has(key));
+    const enabledPermissionIds = modulePermissions
+      .filter((permission) => enabledKeys.includes(permission.key))
+      .map((permission) => permission.id);
+
+    await this.prisma.$transaction([
+      this.prisma.rolePermission.deleteMany({
+        where: {
+          roleId,
+          permission: { key: { startsWith: 'module.' } },
+        },
+      }),
+      ...enabledPermissionIds.map((permissionId) =>
+        this.prisma.rolePermission.create({
+          data: { roleId, permissionId },
+        }),
+      ),
+    ]);
+
+    return this.getRoleById(roleId);
   }
 
   async assignRoleToUser(userId: number, roleId: number) {
