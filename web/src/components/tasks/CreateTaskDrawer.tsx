@@ -67,7 +67,12 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
     if (role !== 'EMPLOYEE' || currentUserId == null) return;
     setForm((previous) => previous.assignedToUserId
       ? previous
-      : { ...previous, assignedToUserId: String(currentUserId), assignee: authSession.user?.name ?? '' });
+      : {
+          ...previous,
+          assignedToUserId: String(currentUserId),
+          assignee: authSession.user?.name ?? '',
+          shootCrewUserIds: [String(currentUserId)],
+        });
   }, [authSession.user?.name, currentUserId, role]);
 
   useEffect(() => {
@@ -114,7 +119,12 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
 
   function assignToMe() {
     if (currentUserId == null) return;
-    setForm((previous) => ({ ...previous, assignedToUserId: String(currentUserId), assignee: authSession.user?.name ?? '' }));
+    setForm((previous) => ({
+      ...previous,
+      assignedToUserId: String(currentUserId),
+      assignee: authSession.user?.name ?? '',
+      shootCrewUserIds: [String(currentUserId)],
+    }));
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -123,7 +133,10 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
       setError('Task name is required.');
       return;
     }
-    if (!form.assignedToUserId) {
+    const shootAssigneeIds = form.taskType === 'SHOOT'
+      ? form.shootCrewUserIds
+      : (form.assignedToUserId ? [form.assignedToUserId] : []);
+    if (shootAssigneeIds.length === 0) {
       setError('Choose who the task is assigned to or select Assign to me.');
       return;
     }
@@ -145,6 +158,8 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
     setSaving(true);
     setError('');
     try {
+      const [primaryShootAssigneeId, ...additionalShootCrewIds] =
+        shootAssigneeIds;
       const createdTask = await createTask({
         taskName: form.taskName.trim(),
         taskType: form.taskType === 'SHOOT' ? 'SHOOT' : 'GENERAL',
@@ -155,12 +170,14 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
           shootEndDate: form.shootEndDate,
           shootReportingTime: form.shootReportingTime,
           shootEstimatedHours: form.shootEstimatedHours ? Number.parseFloat(form.shootEstimatedHours) : undefined,
-          shootCrewUserIds: form.shootCrewUserIds.map(Number),
+          shootCrewUserIds: additionalShootCrewIds.map(Number),
         }),
         project: form.project.trim() || null,
         projectId: form.projectId ? Number(form.projectId) : undefined,
         assignee: form.assignee.trim() || null,
-        assignedToUserId: form.assignedToUserId ? Number(form.assignedToUserId) : undefined,
+        assignedToUserId: form.taskType === 'SHOOT'
+          ? Number(primaryShootAssigneeId)
+          : (form.assignedToUserId ? Number(form.assignedToUserId) : undefined),
         dueDate: dateTimeLocalToIso(form.dueDate),
         priority: form.priority || null,
         status: form.status || 'PENDING',
@@ -262,6 +279,40 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
                     <input type="date" required min={form.shootDate || undefined} className={field} value={form.shootEndDate} onChange={(event) => set('shootEndDate', event.target.value)} />
                   </label>
                 </div>
+                <fieldset className="space-y-2">
+                  <legend className="text-sm font-medium text-slate-700">Assign to <span className="text-rose-500">*</span></legend>
+                  <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2">
+                    {assignableUsers.length ? assignableUsers.map((user) => (
+                      <label key={user.id} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                        <input
+                          type="checkbox"
+                          checked={form.shootCrewUserIds.includes(String(user.id))}
+                          disabled={role === 'EMPLOYEE'}
+                          onChange={(event) => setForm((previous) => {
+                            const nextIds = event.target.checked
+                              ? [...previous.shootCrewUserIds, String(user.id)]
+                              : previous.shootCrewUserIds.filter((id) => id !== String(user.id));
+                            const primary = nextIds[0]
+                              ? assignableUsers.find((candidate) => String(candidate.id) === nextIds[0])
+                              : undefined;
+                            return {
+                              ...previous,
+                              assignedToUserId: nextIds[0] ?? '',
+                              assignee: primary?.name ?? '',
+                              shootCrewUserIds: nextIds,
+                            };
+                          })}
+                          className="h-4 w-4 rounded border-slate-300 accent-orange-500"
+                        />
+                        <span className="min-w-0 flex-1 truncate">{user.name}</span>
+                        <span className="text-xs text-slate-400">{user.role.replace('_', ' ')}</span>
+                      </label>
+                    )) : (
+                      currentUserId != null && <p className="px-2 py-3 text-sm text-slate-500">Assigned to {authSession.user?.name ?? 'you'}.</p>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500">{form.shootCrewUserIds.length} user{form.shootCrewUserIds.length === 1 ? '' : 's'} selected</p>
+                </fieldset>
               </section>
             )}
 
@@ -282,6 +333,7 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
             </label>
             )}
 
+            {form.taskType !== 'SHOOT' && (
             <label className="block space-y-1.5">
               <span className="text-sm font-medium text-slate-700">Assign to</span>
               <div className="flex gap-2">
@@ -296,6 +348,7 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
               </div>
               {role === 'EMPLOYEE' && <span className="block text-xs text-slate-500">Employees can only assign tasks to themselves.</span>}
             </label>
+            )}
 
             {form.taskType !== 'SHOOT' && (
             <>

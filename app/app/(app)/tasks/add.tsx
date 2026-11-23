@@ -56,11 +56,18 @@ export default function AddTask() {
     setForm((current) => ({ ...current, [key]: value }));
   useEffect(() => {
     if (form.taskType !== "SHOOT") return;
-    if (
-      !["ADMIN", "SUPER_ADMIN", "HR", "MANAGER"].includes(session?.role ?? "")
-    ) {
-      setAssignableUsers([]);
-      setCrewError("Your role cannot assign shoot crew members.");
+    if (!["ADMIN", "SUPER_ADMIN", "HR", "MANAGER"].includes(session?.role ?? "")) {
+      if (session?.user) {
+        setAssignableUsers([{ id: session.user.id, name: session.user.name, role: session.role }]);
+        setForm((current) => ({
+          ...current,
+          assignedToUserId: String(session.user.id),
+          shootCrewUserIds: [String(session.user.id)],
+        }));
+      } else {
+        setAssignableUsers([]);
+      }
+      setCrewError("");
       return;
     }
     let active = true;
@@ -88,8 +95,14 @@ export default function AddTask() {
       setError("Task name is required.");
       return;
     }
+    const selectedShootUserIds =
+      form.taskType === "SHOOT"
+        ? form.shootCrewUserIds
+        : form.assignedToUserId
+          ? [form.assignedToUserId]
+          : [];
     const assignedToUserId =
-      form.assignedToUserId || String(session?.user.id ?? "");
+      selectedShootUserIds[0] || String(session?.user.id ?? "");
     if (!assignedToUserId) {
       setError("Choose who the shoot or task is assigned to.");
       return;
@@ -117,7 +130,7 @@ export default function AddTask() {
         shootEstimatedHours: form.shootEstimatedHours
           ? Number.parseFloat(form.shootEstimatedHours)
           : undefined,
-        shootCrewUserIds: form.shootCrewUserIds.map(Number),
+        shootCrewUserIds: selectedShootUserIds.slice(1).map(Number),
       }),
       description: form.description.trim() || null,
       dueDate: form.dueDate || null,
@@ -187,19 +200,40 @@ export default function AddTask() {
             onChangeText={(value) => set("shootEndDate", value)}
             placeholder="2026-10-19"
           />
-          {assignableUsers.length > 0 ? (
-            <Dropdown
-              label="Assign to *"
-              value={form.assignedToUserId}
-              options={assignableUsers.map((user) => String(user.id))}
-              formatOption={(value) =>
-                assignableUsers.find((user) => String(user.id) === value)?.name ??
-                "Select person"
-              }
-              onChange={(value) => set("assignedToUserId", value)}
-            />
-          ) : (
+          <Text style={styles.label}>Assign to *</Text>
+          {assignableUsers.map((user) => {
+            const selected = form.shootCrewUserIds.includes(String(user.id));
+            return (
+              <Pressable
+                key={user.id}
+                disabled={["EMPLOYEE"].includes(session?.role ?? "")}
+                onPress={() => setForm((current) => {
+                  const nextIds = selected
+                    ? current.shootCrewUserIds.filter((id) => id !== String(user.id))
+                    : [...current.shootCrewUserIds, String(user.id)];
+                  return {
+                    ...current,
+                    assignedToUserId: nextIds[0] ?? "",
+                    shootCrewUserIds: nextIds,
+                  };
+                })}
+                style={[styles.crewMember, selected && styles.crewMemberSelected]}
+              >
+                <Text style={selected ? styles.crewCheckSelected : styles.crewCheck}>
+                  {selected ? "✓" : ""}
+                </Text>
+                <Text style={styles.crewName}>{user.name}</Text>
+                <Text style={styles.crewRole}>{user.role.replaceAll("_", " ")}</Text>
+              </Pressable>
+            );
+          })}
+          {assignableUsers.length === 0 ? (
             <Text style={styles.shootNote}>Assigning to you.</Text>
+          ) : (
+            <Text style={styles.shootNote}>
+              {form.shootCrewUserIds.length} user
+              {form.shootCrewUserIds.length === 1 ? "" : "s"} selected
+            </Text>
           )}
         </Section>
       )}
