@@ -1226,14 +1226,13 @@ function AttendancePageContent() {
           throw new Error('Attendance reopen completed without clearing checkout. Reload and try again.');
         }
       } else if (payload.sessionId) {
-        await correctAttendanceSession(payload.sessionId, { checkIn: payload.checkIn || undefined, checkOut: payload.checkOut || undefined,
-          breaks: payload.breaks, expectedSessionUpdatedAt: payload.expectedSessionUpdatedAt });
-        if (editingRecord.id && payload.status !== editingRecord.status) {
-          await updateAttendanceMutation.mutate(editingRecord.id, {
-            expectedVersion: editingRecord.version,
-            status: payload.status,
-          });
-        }
+        await correctAttendanceSession(payload.sessionId, {
+          checkIn: payload.checkIn || undefined,
+          checkOut: payload.checkOut || undefined,
+          status: payload.status,
+          breaks: payload.breaks,
+          expectedSessionUpdatedAt: payload.expectedSessionUpdatedAt,
+        });
       } else if (editingRecord.id) {
         await updateAttendanceMutation.mutate(editingRecord.id, {
           date: payload.date,

@@ -7125,6 +7125,17 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         last,
         true,
       );
+      if (dto.status) {
+        const localDateKey = dateKeyInTimezone(start, timezone);
+        await tx.attendance.updateMany({
+          where: {
+            employeeId: session.employeeId,
+            organizationId: session.organizationId,
+            date: attendanceDateFromKey(localDateKey),
+          },
+          data: { status: dto.status, manuallyCorrected: true },
+        });
+      }
       await tx.auditLog.create({
         data: {
           userId: user.userId,
