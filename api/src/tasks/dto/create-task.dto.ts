@@ -8,10 +8,8 @@ import {
   IsUrl,
   IsArray,
   ArrayUnique,
-  IsPositive,
   Min,
   Max,
-  Matches,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -50,12 +48,9 @@ export class CreateTaskDto {
 
   @IsOptional()
   @IsString()
-  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)
   shootReportingTime?: string;
 
   @IsOptional()
-  @IsNumber()
-  @IsPositive()
   shootEstimatedHours?: number;
 
   @IsOptional()

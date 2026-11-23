@@ -29,12 +29,8 @@ export default function AddTask() {
     notes: "",
     taskType: "GENERAL",
     assignedToUserId: "",
-    shootClientName: "",
-    shootLocation: "",
     shootDate: "",
     shootEndDate: "",
-    shootReportingTime: "",
-    shootEstimatedHours: "",
     shootCrewUserIds: [] as string[],
   });
   const [assignableUsers, setAssignableUsers] = useState<
@@ -122,14 +118,8 @@ export default function AddTask() {
       taskName: form.taskName.trim(),
       taskType: form.taskType === "SHOOT" ? "SHOOT" : "GENERAL",
       ...(form.taskType === "SHOOT" && {
-        shootClientName: form.shootClientName.trim(),
-        shootLocation: form.shootLocation.trim(),
         shootDate: form.shootDate,
         shootEndDate: form.shootEndDate,
-        shootReportingTime: form.shootReportingTime,
-        shootEstimatedHours: form.shootEstimatedHours
-          ? Number.parseFloat(form.shootEstimatedHours)
-          : undefined,
         shootCrewUserIds: selectedShootUserIds.slice(1).map(Number),
       }),
       description: form.description.trim() || null,
