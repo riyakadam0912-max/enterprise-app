@@ -16,6 +16,7 @@ import { useAuthSession } from '@/stores/auth-store';
 import TimesheetsReport from './dashboard/TimesheetsReport';
 import DashboardChartsSkeleton from './dashboard/DashboardChartsSkeleton';
 import CardSkeleton from './dashboard/CardSkeleton';
+import { RichTextContent } from './forms/RichTextEditor';
 import { TaskTimerSessionsCell } from './tasks/TaskTimerSessionsCell';
 
 const DashboardCharts = dynamic(() => import('./dashboard/DashboardCharts'), {
@@ -469,7 +470,7 @@ function ManagerDashboard({ session }: { session: Session }) {
                   </div>
                   <StatusBadge status={task.status} />
                 </div>
-                {task.description ? <p className="mt-3 line-clamp-2 text-sm text-slate-600">{task.description}</p> : null}
+                {task.description ? <RichTextContent value={task.description} className="mt-3 line-clamp-2 text-sm text-slate-600" /> : null}
               </div>
             ))}
           </div>
@@ -693,7 +694,7 @@ function EmployeeDashboard({ session }: { session: Session }) {
                   </div>
                   <TaskTimerSessionsCell taskId={task.id} estimateHours={task.estimatedHours} actualHours={task.actualHours} sessions={task.timerSessions} legacyTimerTotalSeconds={task.legacyTimerTotalSeconds} currentUserId={session.userId} canControl showStopLabel onTaskUpdated={handleTaskTimerUpdated} />
                 </div>
-                {task.description ? <p className="mt-3 line-clamp-2 text-sm text-slate-600">{task.description}</p> : null}
+                {task.description ? <RichTextContent value={task.description} className="mt-3 line-clamp-2 text-sm text-slate-600" /> : null}
               </div>
             ))}
           </div>
