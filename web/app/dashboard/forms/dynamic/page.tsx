@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
+import { canAccessModule } from '@/config/module-access';
+import { useAuthSession } from '@/stores/auth-store';
 
 const stroke = {
   fill: 'none' as const,
@@ -151,6 +153,7 @@ type FormDef = {
   label: string;
   description: string;
   href: string;
+  moduleId: string;
   iconBg: string;
   iconColor: string;
   Icon: React.ComponentType;
@@ -171,6 +174,7 @@ const SECTIONS: SectionDef[] = [
         label: 'Add Employee',
         description: 'Onboard a new employee record',
         href: '/dashboard/employees/add',
+        moduleId: 'employee-management',
         iconBg: 'bg-indigo-50',
         iconColor: 'text-indigo-600',
         Icon: IconUsers,
@@ -179,6 +183,7 @@ const SECTIONS: SectionDef[] = [
         label: 'Leave Request',
         description: 'Submit a new leave application',
         href: '/dashboard/requests/add',
+        moduleId: 'requests',
         iconBg: 'bg-sky-50',
         iconColor: 'text-sky-600',
         Icon: IconInbox,
@@ -193,6 +198,7 @@ const SECTIONS: SectionDef[] = [
         label: 'Attendance',
         description: 'Record check-in / check-out',
         href: '/dashboard/attendance',
+        moduleId: 'attendance',
         iconBg: 'bg-emerald-50',
         iconColor: 'text-emerald-600',
         Icon: IconCalendarCheck,
@@ -207,6 +213,7 @@ const SECTIONS: SectionDef[] = [
         label: 'Add Expense',
         description: 'Submit a new expense claim',
         href: '/dashboard/expenses/add',
+        moduleId: 'expenses',
         iconBg: 'bg-orange-50',
         iconColor: 'text-orange-600',
         Icon: IconRupee,
@@ -215,6 +222,7 @@ const SECTIONS: SectionDef[] = [
         label: 'Add Invoice',
         description: 'Create a new customer invoice',
         href: '/dashboard/invoices/add',
+        moduleId: 'invoices',
         iconBg: 'bg-violet-50',
         iconColor: 'text-violet-600',
         Icon: IconFileText,
@@ -223,6 +231,7 @@ const SECTIONS: SectionDef[] = [
         label: 'Add Quote',
         description: 'Draft a new sales quote',
         href: '/dashboard/quotes/add',
+        moduleId: 'quotes',
         iconBg: 'bg-teal-50',
         iconColor: 'text-teal-600',
         Icon: IconFileText,
@@ -231,6 +240,7 @@ const SECTIONS: SectionDef[] = [
         label: 'Add Ledger Entry',
         description: 'Post a manual ledger entry',
         href: '/dashboard/ledger-entries/add',
+        moduleId: 'ledger',
         iconBg: 'bg-slate-100',
         iconColor: 'text-slate-700',
         Icon: IconBook,
@@ -245,6 +255,7 @@ const SECTIONS: SectionDef[] = [
         label: 'Add Lead',
         description: 'Capture a new sales lead',
         href: '/dashboard/leads/add',
+        moduleId: 'leads',
         iconBg: 'bg-rose-50',
         iconColor: 'text-rose-600',
         Icon: IconLeads,
@@ -253,6 +264,7 @@ const SECTIONS: SectionDef[] = [
         label: 'Add Deal',
         description: 'Create a new pipeline deal',
         href: '/dashboard/deals/add',
+        moduleId: 'deals',
         iconBg: 'bg-pink-50',
         iconColor: 'text-pink-600',
         Icon: IconBriefcase,
@@ -261,6 +273,7 @@ const SECTIONS: SectionDef[] = [
         label: 'Add Contact',
         description: 'Add a person or organization contact',
         href: '/dashboard/contacts/add',
+        moduleId: 'contacts',
         iconBg: 'bg-cyan-50',
         iconColor: 'text-cyan-600',
         Icon: IconContacts,
@@ -269,6 +282,7 @@ const SECTIONS: SectionDef[] = [
         label: 'Add Campaign Lead',
         description: 'Capture a lead from a marketing campaign',
         href: '/dashboard/campaign-leads/add',
+        moduleId: 'campaign-leads',
         iconBg: 'bg-fuchsia-50',
         iconColor: 'text-fuchsia-600',
         Icon: IconTrendingUp,
@@ -277,6 +291,7 @@ const SECTIONS: SectionDef[] = [
         label: 'Add Marketing Campaign',
         description: 'Plan and define a marketing campaign',
         href: '/dashboard/marketing-campaigns/add',
+        moduleId: 'marketing-campaigns',
         iconBg: 'bg-purple-50',
         iconColor: 'text-purple-600',
         Icon: IconMegaphone,
@@ -285,6 +300,7 @@ const SECTIONS: SectionDef[] = [
         label: 'Add Event',
         description: 'Schedule an event or meeting',
         href: '/dashboard/events/add',
+        moduleId: 'events',
         iconBg: 'bg-lime-50',
         iconColor: 'text-lime-700',
         Icon: IconEvents,
@@ -299,6 +315,7 @@ const SECTIONS: SectionDef[] = [
         label: 'Add Task',
         description: 'Create an actionable work item',
         href: '/dashboard/tasks/add',
+        moduleId: 'tasks',
         iconBg: 'bg-green-50',
         iconColor: 'text-green-600',
         Icon: IconCheck,
@@ -313,6 +330,7 @@ const SECTIONS: SectionDef[] = [
         label: 'Add Ticket',
         description: 'Log a support or operations ticket',
         href: '/dashboard/tickets/add',
+        moduleId: 'tickets',
         iconBg: 'bg-red-50',
         iconColor: 'text-red-600',
         Icon: IconTag,
@@ -321,16 +339,31 @@ const SECTIONS: SectionDef[] = [
   },
 ];
 
-const ALL_ITEM_COUNT = SECTIONS.reduce((n, s) => n + s.items.length, 0);
-
 export default function DynamicFormsDirectoryPage() {
   const router = useRouter();
+  const session = useAuthSession();
   const [search, setSearch] = useState('');
+
+  const accessibleSections = useMemo(
+    () =>
+      SECTIONS.map((section) => ({
+        ...section,
+        items: section.items.filter((item) =>
+          canAccessModule(item.moduleId, session.role, session.permissions),
+        ),
+      })).filter((section) => section.items.length > 0),
+    [session.permissions, session.role],
+  );
+
+  const accessibleItemCount = useMemo(
+    () => accessibleSections.reduce((count, section) => count + section.items.length, 0),
+    [accessibleSections],
+  );
 
   const filteredSections = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return SECTIONS;
-    return SECTIONS
+    if (!q) return accessibleSections;
+    return accessibleSections
       .map((s) => ({
         ...s,
         items: s.items.filter(
@@ -340,7 +373,7 @@ export default function DynamicFormsDirectoryPage() {
         ),
       }))
       .filter((s) => s.items.length > 0);
-  }, [search]);
+  }, [accessibleSections, search]);
 
   const totalShowing = filteredSections.reduce((n, s) => n + s.items.length, 0);
 
@@ -387,8 +420,14 @@ export default function DynamicFormsDirectoryPage() {
             <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
             <rect x="8" y="2" width="8" height="4" rx="1" />
           </svg>
-          <p className="text-sm font-medium text-slate-500">No forms match your search</p>
-          <p className="text-xs text-slate-400 mt-1">Try a different keyword.</p>
+          <p className="text-sm font-medium text-slate-500">
+            {accessibleItemCount === 0 ? 'No forms are available to you' : 'No forms match your search'}
+          </p>
+          <p className="text-xs text-slate-400 mt-1">
+            {accessibleItemCount === 0
+              ? 'Contact an administrator if you need access to a form.'
+              : 'Try a different keyword.'}
+          </p>
         </div>
       ) : (
         <div className="space-y-8">
@@ -433,7 +472,7 @@ export default function DynamicFormsDirectoryPage() {
       )}
 
       <p className="mt-5 text-xs text-slate-400">
-        Showing {totalShowing} of {ALL_ITEM_COUNT} form{ALL_ITEM_COUNT === 1 ? '' : 's'}
+        Showing {totalShowing} of {accessibleItemCount} accessible form{accessibleItemCount === 1 ? '' : 's'}
       </p>
     </div>
   );
