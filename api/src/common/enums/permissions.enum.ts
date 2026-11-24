@@ -165,6 +165,8 @@ export enum Permission {
   ROLE_DELETE = 'role.delete',
   PERMISSION_READ = 'permission.read',
   PERMISSION_MANAGE = 'permission.manage',
+  PLATFORM_SETTINGS_READ = 'platform-settings.read',
+  PLATFORM_SETTINGS_UPDATE = 'platform-settings.update',
 }
 
 export const DEFAULT_MODULE_PERMISSIONS: Record<string, Permission[]> = {

@@ -28,6 +28,8 @@ import { redisConnectionOptions } from './config/redis-options';
 import { EmailModule } from './email/email.module';
 import { ClientPortalModule } from './client-portal/client-portal.module';
 import { CustomersModule } from './customers/customers.module';
+import { PlatformSettingsModule } from './platform-settings/platform-settings.module';
+import { MaintenanceModeMiddleware } from './platform-settings/maintenance-mode.middleware';
 
 const redisConnection = resolveRedisConnection(process.env);
 
@@ -66,14 +68,18 @@ const queueImports = redisConnection
     EmailModule,
     ClientPortalModule,
     CustomersModule,
+    PlatformSettingsModule,
   ],
   controllers: [AppController],
-  providers: [AppService, TenantContextMiddleware],
+  providers: [AppService, TenantContextMiddleware, MaintenanceModeMiddleware],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(AuditContextMiddleware, TenantContextMiddleware)
+      .forRoutes({ path: '*', method: RequestMethod.ALL });
+    consumer
+      .apply(MaintenanceModeMiddleware)
       .forRoutes({ path: '*', method: RequestMethod.ALL });
   }
 }
