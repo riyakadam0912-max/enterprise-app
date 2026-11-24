@@ -31,26 +31,34 @@ function request(options, body) {
   }, loginBody);
 
   const loginPayload = JSON.parse(loginRes.body);
-  const token = loginPayload?.data?.token;
+  const token = loginPayload?.data?.access_token;
   console.log('loginStatus', loginRes.statusCode);
   console.log('tokenPresent', Boolean(token));
 
-  if (!token) {
+  if (loginRes.statusCode !== 201 || !token) {
+    console.error('Login failed', {
+      statusCode: loginRes.statusCode,
+      message: loginPayload?.message,
+    });
     process.exit(1);
   }
 
-  const dashboardRes = await request({
+  const profileRes = await request({
     host: '127.0.0.1',
     port: 3000,
-    path: '/api/v1/dashboard/summary',
+    path: '/api/v1/auth/me',
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
     },
   });
 
-  console.log('dashboardStatus', dashboardRes.statusCode);
-  console.log(dashboardRes.body.slice(0, 2000));
+  console.log('authenticatedRequestStatus', profileRes.statusCode);
+  console.log(profileRes.body.slice(0, 2000));
+
+  if (profileRes.statusCode !== 200) {
+    process.exit(1);
+  }
 })().catch((err) => {
   console.error(err);
   process.exit(1);

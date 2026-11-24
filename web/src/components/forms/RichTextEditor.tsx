@@ -6,7 +6,7 @@ import {
   Link, List, ListOrdered, Outdent, Paperclip, Redo2, Strikethrough,
   Underline, Undo2,
 } from 'lucide-react';
-import { sanitizeRichText } from '@/lib/sanitize-rich-text';
+import { sanitizeRichText, sanitizeRichTextForDisplay } from '@/lib/sanitize-rich-text';
 
 type RichTextEditorProps = {
   value: string;
@@ -99,7 +99,7 @@ export function RichTextContent({ value, className = '' }: { value?: string | nu
   useEffect(() => {
     // Sanitize in the browser because DOMPurify requires a DOM implementation.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setHtml(sanitizeRichText(value ?? ''));
+    setHtml(sanitizeRichTextForDisplay(value ?? ''));
   }, [value]);
   return <div className={`rich-text-content [&_a]:text-blue-600 [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-slate-300 [&_blockquote]:pl-3 [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:text-xl [&_h2]:font-bold [&_h3]:text-lg [&_h3]:font-semibold [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:list-disc [&_ul]:pl-6 ${className}`} dangerouslySetInnerHTML={{ __html: html }} />;
 }

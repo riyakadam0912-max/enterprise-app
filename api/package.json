@@ -28,6 +28,7 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage --runInBand",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
+    "pretest:e2e": "npm run prisma:migrate:test",
     "test:e2e": "dotenv -e .env.test -- jest --config ./test/jest-e2e.json",
     "seed": "ts-node prisma/seed.ts",
     "seed:production": "ts-node prisma/seed.production.ts",

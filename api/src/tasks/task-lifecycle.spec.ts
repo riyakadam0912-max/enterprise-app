@@ -51,6 +51,9 @@ describe('Task lifecycle transaction boundaries', () => {
               async ({ data }) => (draft = { ...draft, ...data }),
             ),
           },
+          timesheet: {
+            updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+          },
           project: { findFirst: jest.fn(async () => null) },
           workflowInstance: {
             delete: jest.fn(async () => {
@@ -103,6 +106,18 @@ describe('Task lifecycle transaction boundaries', () => {
     expect(stored.status).toBe('SUBMITTED');
     expect(workflowExists).toBe(true);
     expect(tx.$queryRaw).toHaveBeenCalled();
+    expect(tx.timesheet.updateMany).toHaveBeenCalledWith({
+      where: {
+        taskId: 9,
+        organizationId: 1,
+        status: 'PENDING',
+        deletedAt: null,
+      },
+      data: {
+        status: 'SUBMITTED',
+        submittedAt: expect.any(Date),
+      },
+    });
   });
 
   it('rolls back task approval and suppresses notifications when workflow approval fails', async () => {

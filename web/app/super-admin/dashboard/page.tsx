@@ -1,16 +1,23 @@
 'use client';
 
-import { ArrowRight, CircleAlert, Sparkles } from 'lucide-react';
+import { ArrowRight, Building2, FileText, Settings, Users } from 'lucide-react';
 import Link from 'next/link';
-import { SuperAdminPageShell } from '@/components/super-admin/SuperAdminPageShell';
+
 import { SuperAdminOverviewCards } from '@/components/super-admin/SuperAdminOverviewCards';
-import { Card } from '@/components/ui/card';
+import { SuperAdminPageShell } from '@/components/super-admin/SuperAdminPageShell';
+
+const workflows = [
+  { label: 'Organizations', description: 'Tenant setup, status, and hierarchy', href: '/super-admin/organizations', icon: Building2 },
+  { label: 'Users', description: 'Access, roles, and account lifecycle', href: '/super-admin/users', icon: Users },
+  { label: 'Audit logs', description: 'Administrative and security history', href: '/super-admin/audit-logs', icon: FileText },
+  { label: 'Settings', description: 'Platform-wide operating controls', href: '/super-admin/settings', icon: Settings },
+];
 
 export default function SuperAdminDashboard() {
   return (
     <SuperAdminPageShell
-      title="Platform Command Center"
-      description="A premium overview of platform health, tenant momentum, and system operations."
+      title="Platform overview"
+      description="Monitor platform scope, review exceptions, and open the workflows that need attention."
       actions={
         <>
           <Link href="/super-admin/organizations" className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50">Manage organizations</Link>
@@ -19,44 +26,29 @@ export default function SuperAdminDashboard() {
       }
     >
       <SuperAdminOverviewCards />
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card className="border-slate-200/80 bg-white/80 p-6 shadow-[0_16px_45px_-24px_rgba(15,23,42,0.35)] backdrop-blur">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-950">Live platform activity</h2>
-              <p className="mt-1 text-sm text-slate-500">Recent administrative events across every tenant.</p>
-            </div>
-            <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">Operational</div>
-          </div>
-          <div className="mt-6 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4 text-sm text-slate-600">
-            Administrative events are available in the audit console. This panel no longer shows placeholder activity.
-            <Link href="/super-admin/audit-logs" className="mt-3 inline-flex font-semibold text-indigo-700 hover:underline">View audit events <ArrowRight className="ml-1 h-4 w-4" /></Link>
-          </div>
-        </Card>
-        <div className="space-y-6">
-          <Card className="border-slate-200/80 bg-linear-to-br from-slate-950 via-slate-900 to-indigo-900 p-6 text-white shadow-[0_24px_60px_-24px_rgba(15,23,42,0.65)]">
-            <div className="flex items-center gap-2 text-sm font-medium text-indigo-200">
-              <Sparkles className="h-4 w-4" />
-              Premium operations
-            </div>
-            <h3 className="mt-4 text-xl font-semibold">Multi-tenant admin experience</h3>
-            <p className="mt-2 text-sm text-slate-300">Coordinate organization launches, security posture, and lifecycle events from one polished control surface.</p>
-            <Link href="/super-admin/audit-logs" className="mt-5 inline-flex h-10 items-center rounded-md bg-white px-4 text-sm font-medium text-slate-900 hover:bg-slate-100">Review audit alerts <ArrowRight className="ml-2 h-4 w-4" /></Link>
-          </Card>
-          <Card className="border-slate-200/80 bg-white/80 p-6 shadow-[0_16px_45px_-24px_rgba(15,23,42,0.35)] backdrop-blur">
-            <div className="flex items-center gap-2">
-              <CircleAlert className="h-5 w-5 text-amber-500" />
-              <h3 className="font-semibold text-slate-950">System cautions</h3>
-            </div>
-            <p className="mt-4 text-sm text-slate-600">Operational cautions require live monitoring integrations. Review tenant, audit, and settings pages for current data.</p>
-            <div className="mt-4 flex flex-wrap gap-2 text-sm font-medium">
-              <Link href="/super-admin/organizations" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700 hover:bg-slate-100">Organizations</Link>
-              <Link href="/super-admin/audit-logs" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700 hover:bg-slate-100">Audit logs</Link>
-              <Link href="/super-admin/settings" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700 hover:bg-slate-100">Settings</Link>
-            </div>
-          </Card>
+
+      <section aria-labelledby="core-workflows-heading">
+        <div className="mb-3">
+          <h2 id="core-workflows-heading" className="font-semibold text-slate-950">Core workflows</h2>
+          <p className="mt-1 text-sm text-slate-500">Go directly to the records you need to manage.</p>
         </div>
-      </div>
+        <div className="grid overflow-hidden rounded-2xl border border-slate-200 bg-white sm:grid-cols-2 xl:grid-cols-4">
+          {workflows.map((workflow, index) => {
+            const Icon = workflow.icon;
+            return (
+              <Link
+                key={workflow.href}
+                href={workflow.href}
+                className={`group flex items-start gap-3 border-slate-200 p-4 transition hover:bg-slate-50 ${index > 0 ? 'border-t sm:border-t-0 sm:border-l' : ''} ${index === 2 ? 'sm:border-l-0 sm:border-t xl:border-l xl:border-t-0' : ''}`}
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600"><Icon className="h-4 w-4" /></span>
+                <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-slate-900">{workflow.label}</span><span className="mt-1 block text-xs leading-5 text-slate-500">{workflow.description}</span></span>
+                <ArrowRight className="mt-2 h-4 w-4 shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-slate-700" />
+              </Link>
+            );
+          })}
+        </div>
+      </section>
     </SuperAdminPageShell>
   );
 }

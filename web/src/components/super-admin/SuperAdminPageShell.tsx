@@ -24,13 +24,13 @@ export function SuperAdminPageShell({
       transition={{ duration: 0.24, ease: 'easeOut' }}
       className={cn('space-y-6', className)}
     >
-      <div className="flex flex-col gap-4 rounded-[28px] border border-slate-200/80 bg-white/80 p-6 shadow-[0_18px_50px_-24px_rgba(15,23,42,0.35)] backdrop-blur sm:flex-row sm:items-end sm:justify-between">
+      <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-950">{title}</h1>
-          {description ? <p className="mt-2 text-sm text-slate-500">{description}</p> : null}
+          {description ? <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">{description}</p> : null}
         </div>
         {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
-      </div>
+      </header>
       {children}
     </motion.div>
   );
