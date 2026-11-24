@@ -438,6 +438,9 @@ model Attendance {
   shortfallHours  Float                     @default(0)
   remarks         String?
   isShootDay      Boolean                   @default(false)
+  scheduledDayType AttendanceScheduledDayType @default(WORKING_DAY)
+  attendanceSource AttendanceCreditSource     @default(STANDARD)
+  creditedTaskId   Int?
   requiredHours   Float?
   organizationId  Int
   employee        Employee                  @relation(fields: [employeeId], references: [id])
@@ -983,6 +986,9 @@ model LeaveCompOffClaim {
   organizationId Int
   workDate       DateTime     @db.Date
   hours          Float
+  sourceType     String       @default("ATTENDANCE")
+  sourceTaskId   Int?
+  validUntil     DateTime?    @db.Date
   status         String       @default("PENDING")
   reviewedById   Int?
   reviewedAt     DateTime?
@@ -2687,6 +2693,20 @@ enum AttendanceStatus {
   UPCOMING
   NOT_STARTED
   NOT_SCHEDULED
+}
+
+enum AttendanceScheduledDayType {
+  WORKING_DAY
+  CORPORATE_HOLIDAY
+  WEEKLY_OFF
+}
+
+enum AttendanceCreditSource {
+  STANDARD
+  PUNCH
+  TASK_WORK
+  SHOOT_ASSIGNMENT
+  ADMIN
 }
 
 enum AttendanceCheckoutSource {

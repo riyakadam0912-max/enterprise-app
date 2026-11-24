@@ -2754,7 +2754,13 @@ function AttendancePageContent() {
                   {canViewAdminAttendance && <td className="px-5 py-4">
                     <StatusBadge status={row.status} />
                     {row.isShootDay && (
-                      <p className="mt-1 text-xs font-medium text-orange-700">Shoot day</p>
+                      <p className="mt-1 text-xs font-medium text-orange-700">
+                        {row.scheduledDayType === 'CORPORATE_HOLIDAY'
+                          ? 'Present · holiday shoot'
+                          : row.scheduledDayType === 'WEEKLY_OFF'
+                            ? 'Present · weekly-off shoot'
+                            : 'Shoot day'}
+                      </p>
                     )}
                   </td>}
                   {canViewAdminAttendance && (

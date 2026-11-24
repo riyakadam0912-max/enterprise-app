@@ -449,7 +449,7 @@ function TaskDetailPanelBody({
                   </p>
                 </div>
               </div>
-              <p className="text-xs text-slate-500">Crew attendance is credited for the shoot date; no clock-in or clock-out is required.</p>
+              <p className="text-xs text-slate-500">Crew attendance is credited for every date in the shoot period; no clock-in or clock-out is required.</p>
             </section>
           )}
 

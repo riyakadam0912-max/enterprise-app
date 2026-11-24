@@ -11,7 +11,7 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { DASHBOARD_CACHE_KEY } from '../common/utils/cache-keys';
 import { PrismaService } from '../prisma/prisma.service';
-import type { Prisma } from '@prisma/client';
+import type { AttendanceScheduledDayType, Prisma } from '@prisma/client';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { TaskQueryDto } from './dto/task-query.dto';
 import { CreateChecklistItemDto } from './dto/create-checklist-item.dto';
@@ -443,6 +443,7 @@ export class TasksService {
           organizationId: true,
           shiftId: true,
           organization: { select: { timezone: true } },
+          shift: { select: { workingDays: true } },
         },
       });
       if (!employee) continue;
@@ -453,14 +454,53 @@ export class TasksService {
           new Date(),
           employee.organization?.timezone ?? 'UTC',
         );
+      const familyRootId = this.organizationScopeService
+        ?.getOrganizationFamilyRootMap
+        ? (
+            await this.organizationScopeService.getOrganizationFamilyRootMap([
+              employee.organizationId,
+            ])
+          ).get(employee.organizationId)
+        : null;
+      const isCorporateHoliday = Boolean(
+        await this.db.holiday.findFirst({
+          where: {
+            startDate: { lte: date },
+            endDate: { gte: date },
+            OR: [
+              {
+                organizationId: employee.organizationId,
+                familyRootOrganizationId: null,
+              },
+              ...(familyRootId
+                ? [{ familyRootOrganizationId: familyRootId }]
+                : []),
+            ],
+          },
+          select: { id: true },
+        }),
+      );
+      let scheduledDayType: AttendanceScheduledDayType = isCorporateHoliday
+        ? 'CORPORATE_HOLIDAY'
+        : employee.shift &&
+            !employee.shift.workingDays.includes(date.getUTCDay())
+          ? 'WEEKLY_OFF'
+          : 'WORKING_DAY';
       const assignedToAnotherShoot = await this.db.task.findFirst({
         where: {
           taskType: 'SHOOT',
-          shootDate: date,
+          shootDate: { lte: date },
           deletedAt: null,
-          OR: [
-            { assignedToId: employeeId },
-            { shootCrew: { some: { user: { employeeId } } } },
+          AND: [
+            {
+              OR: [{ shootEndDate: { gte: date } }, { shootEndDate: null }],
+            },
+            {
+              OR: [
+                { assignedToId: employeeId },
+                { shootCrew: { some: { user: { employeeId } } } },
+              ],
+            },
           ],
         },
         select: { id: true },
@@ -468,6 +508,11 @@ export class TasksService {
       let attendance = await this.db.attendance.findUnique({
         where: { employeeId_date: { employeeId, date } },
       });
+      if (attendance?.status === 'HOLIDAY') {
+        scheduledDayType = 'CORPORATE_HOLIDAY';
+      } else if (attendance?.status === 'WEEKLY_OFF') {
+        scheduledDayType = 'WEEKLY_OFF';
+      }
       if (assignedToAnotherShoot) {
         if (!attendance) {
           attendance = await this.db.attendance.upsert({
@@ -479,19 +524,27 @@ export class TasksService {
               date,
               status: shootDateIsDue ? 'PRESENT' : 'UPCOMING',
               isShootDay: true,
+              scheduledDayType,
+              attendanceSource: 'SHOOT_ASSIGNMENT',
+              creditedTaskId: assignedToAnotherShoot.id,
               remarks: 'Shoot day credit',
             },
             update: {},
           });
         }
         if (
-          attendance.status !== 'LEAVE' &&
-          attendance.status !== 'HOLIDAY' &&
-          attendance.status !== 'WEEKLY_OFF'
+          attendance.status !== 'LEAVE'
         ) {
           const shouldCountAsPresent =
             shootDateIsDue &&
-            ['ABSENT', 'UPCOMING', 'NOT_STARTED', 'NOT_SCHEDULED'].includes(
+            [
+              'ABSENT',
+              'UPCOMING',
+              'NOT_STARTED',
+              'NOT_SCHEDULED',
+              'HOLIDAY',
+              'WEEKLY_OFF',
+            ].includes(
               attendance.status,
             );
           const shouldScheduleAsUpcoming =
@@ -513,6 +566,9 @@ export class TasksService {
                     ? 'UPCOMING'
                     : attendance.status,
                 isShootDay: true,
+                scheduledDayType,
+                attendanceSource: 'SHOOT_ASSIGNMENT',
+                creditedTaskId: assignedToAnotherShoot.id,
                 remarks: attendance.remarks ?? 'Shoot day credit',
               },
             });
@@ -524,9 +580,16 @@ export class TasksService {
           where: { id: attendance.id },
           data: {
             isShootDay: false,
+            attendanceSource: 'STANDARD',
+            creditedTaskId: null,
             ...(!hasPunches &&
               attendance.status === 'PRESENT' && {
-                status: 'ABSENT',
+                status:
+                  attendance.scheduledDayType === 'CORPORATE_HOLIDAY'
+                    ? 'HOLIDAY'
+                    : attendance.scheduledDayType === 'WEEKLY_OFF'
+                      ? 'WEEKLY_OFF'
+                      : 'ABSENT',
                 remarks: null,
               }),
           },

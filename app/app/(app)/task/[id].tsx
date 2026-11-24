@@ -519,7 +519,7 @@ function Overview({
                 .join(", ") || "No crew assigned"}
             </Text>
             <Text style={styles.shootNote}>
-              Crew attendance is credited for the shoot date without clock-in or
+              Crew attendance is credited for every date in the shoot period without clock-in or
               clock-out.
             </Text>
           </View>

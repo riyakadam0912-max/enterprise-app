@@ -63,6 +63,7 @@ describe('LeaveRequestsService', () => {
     countScheduledLeaveDays: jest.Mock;
     getScheduledLeaveDates: jest.Mock;
     getAvailableBalance: jest.Mock;
+    getAvailableCompOffForMonth: jest.Mock;
     recordUsage: jest.Mock;
   };
 
@@ -98,6 +99,7 @@ describe('LeaveRequestsService', () => {
           new Date('2026-01-02T00:00:00.000Z'),
         ]),
       getAvailableBalance: jest.fn().mockResolvedValue(10),
+      getAvailableCompOffForMonth: jest.fn().mockResolvedValue(10),
       recordUsage: jest.fn().mockResolvedValue(undefined),
     };
 
@@ -1142,7 +1144,8 @@ describe('LeaveRequestsService', () => {
         id: 17,
         employeeId: 101,
         organizationId: 1,
-        workDate: new Date('2026-10-18T00:00:00.000Z'),
+        workDate: new Date('2026-11-18T00:00:00.000Z'),
+        validUntil: new Date('2026-12-01T00:00:00.000Z'),
         hours,
         status: 'PENDING',
         employee: { user: { id: 22 } },
@@ -1150,8 +1153,6 @@ describe('LeaveRequestsService', () => {
       claimDelegate.findFirst.mockResolvedValue(claim);
       claimDelegate.updateMany.mockResolvedValue({ count: 1 });
       ledgerDelegate.create.mockResolvedValue({});
-      const policyDelegate = getPrismaDelegate(mockPrisma, 'leavePolicy');
-      policyDelegate.findUnique.mockResolvedValue({ compOffExpiryDays: 90 });
       (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn) =>
         fn(mockPrisma),
       );
@@ -1246,6 +1247,9 @@ describe('LeaveRequestsService', () => {
         shiftId: 1,
       });
       mockLeaveEntitlementsService.getAvailableBalance.mockResolvedValue(
+        balance,
+      );
+      mockLeaveEntitlementsService.getAvailableCompOffForMonth.mockResolvedValue(
         balance,
       );
       leave.update.mockImplementation(async (args) => ({

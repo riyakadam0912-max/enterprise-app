@@ -525,7 +525,7 @@ describe('TasksService', () => {
           { taskName: 'Studio shoot', taskType: 'SHOOT' } as CreateTaskDto,
           mockAdminUser,
         ),
-      ).rejects.toThrow('Shoot tasks require client, location, date');
+      ).rejects.toThrow('Shoot tasks require a from date and to date');
       expect(
         getPrismaDelegate(mockPrisma, 'task').create,
       ).not.toHaveBeenCalled();
@@ -555,12 +555,63 @@ describe('TasksService', () => {
         new Date('2099-01-15T12:00:00.000Z'),
       );
 
+      expect(getPrismaDelegate(mockPrisma, 'task').findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            shootDate: { lte: new Date('2099-01-15T00:00:00.000Z') },
+            AND: expect.arrayContaining([
+              expect.objectContaining({
+                OR: [
+                  { shootEndDate: { gte: new Date('2099-01-15T00:00:00.000Z') } },
+                  { shootEndDate: null },
+                ],
+              }),
+            ]),
+          }),
+        }),
+      );
+
       expect(attendanceDelegate.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 32 },
           data: expect.objectContaining({
             status: 'UPCOMING',
             isShootDay: true,
+          }),
+        }),
+      );
+    });
+
+    it.each([
+      ['HOLIDAY', 'CORPORATE_HOLIDAY'],
+      ['WEEKLY_OFF', 'WEEKLY_OFF'],
+    ])('marks an assigned shoot present on %s while preserving its calendar context', async (status, scheduledDayType) => {
+      getPrismaDelegate(mockPrisma, 'employee').findUnique.mockResolvedValueOnce({
+        organizationId: 1,
+        shiftId: 4,
+        organization: { timezone: 'UTC' },
+      });
+      getPrismaDelegate(mockPrisma, 'task').findFirst.mockResolvedValueOnce({ id: 91 });
+      getPrismaDelegate(mockPrisma, 'attendance').findUnique.mockResolvedValueOnce({
+        id: 32,
+        status,
+        isShootDay: false,
+        checkIn: null,
+        checkOut: null,
+      });
+
+      await (service as any).syncShootAttendance(
+        [117],
+        new Date('2026-11-22T00:00:00.000Z'),
+      );
+
+      expect(getPrismaDelegate(mockPrisma, 'attendance').update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'PRESENT',
+            scheduledDayType,
+            attendanceSource: 'SHOOT_ASSIGNMENT',
+            creditedTaskId: 91,
           }),
         }),
       );
@@ -588,6 +639,7 @@ describe('TasksService', () => {
           shootClientName: 'Northstar',
           shootLocation: 'Studio A',
           shootDate: '2026-11-03',
+          shootEndDate: '2026-11-03',
           shootReportingTime: '09:30',
           shootEstimatedHours: 8,
         } as CreateTaskDto,
@@ -641,6 +693,7 @@ describe('TasksService', () => {
           shootClientName: 'Northstar',
           shootLocation: 'Studio A',
           shootDate: '2026-11-03',
+          shootEndDate: '2026-11-03',
           shootReportingTime: '09:30',
           shootEstimatedHours: 8,
           shootCrewUserIds: [17, 18],

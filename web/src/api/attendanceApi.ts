@@ -1,6 +1,8 @@
 import { apiClient } from './apiClient';
 
 export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'HALF_DAY' | 'LEAVE' | 'HOLIDAY' | 'WEEKLY_OFF' | 'UPCOMING' | 'NOT_STARTED' | 'NOT_SCHEDULED';
+export type AttendanceScheduledDayType = 'WORKING_DAY' | 'CORPORATE_HOLIDAY' | 'WEEKLY_OFF';
+export type AttendanceCreditSource = 'STANDARD' | 'PUNCH' | 'TASK_WORK' | 'SHOOT_ASSIGNMENT' | 'ADMIN';
 
 export interface AttendanceSummary {
   present: number;
@@ -66,6 +68,9 @@ export interface AttendanceRecord {
   overtimeHours: number;
   status: AttendanceStatus;
   isShootDay?: boolean;
+  scheduledDayType?: AttendanceScheduledDayType;
+  attendanceSource?: AttendanceCreditSource;
+  creditedTaskId?: number | null;
   holidayName?: string | null;
   shiftDetails: ShiftDetails | null;
 }
@@ -90,6 +95,9 @@ export interface EmployeeAttendanceDay {
   day: number;
   status: AttendanceStatus;
   isShootDay?: boolean;
+  scheduledDayType?: AttendanceScheduledDayType;
+  attendanceSource?: AttendanceCreditSource;
+  creditedTaskId?: number | null;
   holidayName?: string | null;
   checkIn: string | null;
   checkOut: string | null;

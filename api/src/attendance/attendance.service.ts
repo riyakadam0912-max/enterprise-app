@@ -128,6 +128,9 @@ type DailyAttendanceRow = {
   status: AttendanceStatus;
   workFromHomeCredit?: number;
   isShootDay: boolean;
+  scheduledDayType?: string;
+  attendanceSource?: string;
+  creditedTaskId?: number | null;
   holidayName?: string | null;
   shiftDetails: {
     id: number | null;
@@ -1309,6 +1312,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
           shortfallHours: number;
           status: AttendanceStatus;
           isShootDay?: boolean;
+          scheduledDayType?: string;
+          attendanceSource?: string;
+          creditedTaskId?: number | null;
           shift?: ShiftLite | null;
           isAutoClosed?: boolean;
           checkoutSource?: AttendanceCheckoutSource | null;
@@ -1431,6 +1437,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       status,
       ...(workFromHomeCredit !== undefined ? { workFromHomeCredit } : {}),
       isShootDay: attendance?.isShootDay ?? false,
+      scheduledDayType: attendance?.scheduledDayType,
+      attendanceSource: attendance?.attendanceSource,
+      creditedTaskId: attendance?.creditedTaskId ?? null,
       holidayName:
         computedStatus === AttendanceStatus.HOLIDAY ? holidayName : null,
       shiftDetails: shift
@@ -3450,6 +3459,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         overtimeHours: row.overtimeHours,
         status: row.status,
         isShootDay: row.isShootDay,
+        scheduledDayType: row.scheduledDayType,
+        attendanceSource: row.attendanceSource,
+        creditedTaskId: row.creditedTaskId,
         shiftDetails: shift
           ? {
               id: shift.id,
@@ -3945,6 +3957,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       lateMinutes: number;
       overtimeHours: number;
       isShootDay: boolean;
+      scheduledDayType?: string;
+      attendanceSource?: string;
+      creditedTaskId?: number | null;
       workFromHomeCredit?: number;
       shiftDetails: (ShiftLite & { minPresentHours: number }) | null;
     }> = [];
@@ -4099,6 +4114,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         day: dayNumber,
         status: effectiveStatus,
         isShootDay: attendance?.isShootDay ?? false,
+        scheduledDayType: attendance?.scheduledDayType,
+        attendanceSource: attendance?.attendanceSource,
+        creditedTaskId: attendance?.creditedTaskId ?? null,
         holidayName:
           effectiveStatus === AttendanceStatus.HOLIDAY
             ? (holidayName ?? null)
@@ -4160,6 +4178,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
         lateMinutes: d.lateMinutes,
         overtimeHours: d.overtimeHours,
         isShootDay: d.isShootDay,
+        scheduledDayType: d.scheduledDayType,
+        attendanceSource: d.attendanceSource,
+        creditedTaskId: d.creditedTaskId,
         status: d.status,
         shiftDetails: d.shiftDetails,
       })),
@@ -8373,23 +8394,64 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
               employee.id,
               target,
             );
-            const shootAssignment = await tx.taskCrewAssignment.findFirst({
+            const shootAssignment = tx.task?.findFirst
+              ? await tx.task.findFirst({
               where: {
-                user: { employeeId: employee.id },
-                task: {
-                  taskType: 'SHOOT',
-                  shootDate: target,
-                  deletedAt: null,
-                },
+                taskType: 'SHOOT',
+                shootDate: { lte: target },
+                deletedAt: null,
+                AND: [
+                  {
+                    OR: [
+                      { shootEndDate: { gte: target } },
+                      { shootEndDate: null },
+                    ],
+                  },
+                  {
+                    OR: [
+                      { assignedToId: employee.id },
+                      {
+                        shootCrew: {
+                          some: { user: { employeeId: employee.id } },
+                        },
+                      },
+                    ],
+                  },
+                ],
               },
               select: { id: true },
-            });
+            })
+              : await tx.taskCrewAssignment.findFirst({
+                  where: {
+                    user: { employeeId: employee.id },
+                    task: {
+                      taskType: 'SHOOT',
+                      shootDate: { lte: target },
+                      deletedAt: null,
+                      AND: [
+                        {
+                          OR: [
+                            { shootEndDate: { gte: target } },
+                            { shootEndDate: null },
+                          ],
+                        },
+                      ],
+                    },
+                  },
+                  select: { taskId: true },
+                });
+            const shootTaskId =
+              shootAssignment && 'taskId' in shootAssignment
+                ? shootAssignment.taskId
+                : shootAssignment?.id;
             const shootCreditEligible = Boolean(
-              shootAssignment &&
-              !leave &&
-              !isCorporateHoliday &&
-              !this.isWeeklyHoliday(target, shift),
+              shootAssignment && !leave,
             );
+            const scheduledDayType = isCorporateHoliday
+              ? 'CORPORATE_HOLIDAY'
+              : this.isWeeklyHoliday(target, shift)
+                ? 'WEEKLY_OFF'
+                : 'WORKING_DAY';
 
             if (shift.type === 'FLEXIBLE') return;
 
@@ -8417,6 +8479,11 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
                 requiredHours: shift.requiredHours,
                 isPaidLeave: leave ? Boolean(leave.isPaid ?? true) : null,
                 isShootDay: shootCreditEligible,
+                scheduledDayType,
+                attendanceSource: shootCreditEligible
+                  ? 'SHOOT_ASSIGNMENT'
+                  : 'STANDARD',
+                creditedTaskId: shootAssignment ? shootTaskId : null,
               },
               update: {},
               include: { shift: true, breaks: true },
@@ -8437,7 +8504,9 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
               (existing.status === AttendanceStatus.ABSENT ||
                 existing.status === AttendanceStatus.UPCOMING ||
                 existing.status === AttendanceStatus.NOT_STARTED ||
-                existing.status === AttendanceStatus.NOT_SCHEDULED) &&
+                existing.status === AttendanceStatus.NOT_SCHEDULED ||
+                existing.status === AttendanceStatus.HOLIDAY ||
+                existing.status === AttendanceStatus.WEEKLY_OFF) &&
               !existing.checkIn &&
               !existing.checkOut
             ) {
@@ -8446,12 +8515,37 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
                 data: {
                   status: AttendanceStatus.PRESENT,
                   isShootDay: true,
+                  scheduledDayType,
+                  attendanceSource: 'SHOOT_ASSIGNMENT',
+                  creditedTaskId: shootAssignment ? shootTaskId : null,
                   remarks: existing.remarks ?? 'Shoot day credit',
                 },
               });
             }
 
-            if (isCorporateHoliday && !existing.checkIn) {
+            if (
+              shootCreditEligible &&
+              existing.status === AttendanceStatus.PRESENT &&
+              (existing.scheduledDayType !== scheduledDayType ||
+                existing.attendanceSource !== 'SHOOT_ASSIGNMENT' ||
+                existing.creditedTaskId !== shootTaskId)
+            ) {
+              await tx.attendance.update({
+                where: { id: existing.id },
+                data: {
+                  scheduledDayType,
+                  attendanceSource: 'SHOOT_ASSIGNMENT',
+                  creditedTaskId: shootTaskId,
+                  isShootDay: true,
+                },
+              });
+            }
+
+            if (
+              isCorporateHoliday &&
+              !existing.checkIn &&
+              !shootCreditEligible
+            ) {
               if (existing.status !== AttendanceStatus.HOLIDAY) {
                 await tx.attendance.update({
                   where: { id: existing.id },
@@ -8463,6 +8557,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
 
             if (
               this.isWeeklyHoliday(target, shift) &&
+              !shootCreditEligible &&
               existing.status !== AttendanceStatus.WEEKLY_OFF
             ) {
               await tx.attendance.update({

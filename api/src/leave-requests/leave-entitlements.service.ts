@@ -170,6 +170,33 @@ export class LeaveEntitlementsService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  async getAvailableCompOffForMonth(
+    employeeId: number,
+    organizationId: number,
+    date: Date,
+    writer: PrismaService | Prisma.TransactionClient = this.prisma,
+  ) {
+    const start = this.monthStart(date);
+    const end = this.addMonths(start, 1);
+    const entries = await writer.leaveBalanceEntry.findMany({
+      where: { employeeId, organizationId, category: 'COMP_OFF' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: {
+        amount: true,
+        createdAt: true,
+        expiresAt: true,
+        periodStart: true,
+      },
+    });
+    const monthEntries = entries.filter(
+      (entry) =>
+        entry.periodStart != null &&
+        entry.periodStart >= start &&
+        entry.periodStart < end,
+    );
+    return this.calculateAvailableBalance(monthEntries, date);
+  }
+
   async getAvailableBalance(
     employeeId: number,
     organizationId: number,
@@ -422,6 +449,7 @@ export class LeaveEntitlementsService implements OnModuleInit, OnModuleDestroy {
                 { checkIn: { not: null } },
                 { workingHours: { gt: 0 } },
                 { taskHours: { gt: 0 } },
+                { attendanceSource: 'SHOOT_ASSIGNMENT' },
               ],
             },
             select: {
@@ -430,6 +458,9 @@ export class LeaveEntitlementsService implements OnModuleInit, OnModuleDestroy {
               date: true,
               workingHours: true,
               taskHours: true,
+              status: true,
+              attendanceSource: true,
+              creditedTaskId: true,
               shift: { select: { workingDays: true } },
               employee: {
                 select: {
@@ -479,6 +510,9 @@ export class LeaveEntitlementsService implements OnModuleInit, OnModuleDestroy {
             organizationId: number;
             workDate: Date;
             hours: number;
+            sourceType: string;
+            sourceTaskId: number | null;
+            validUntil: Date;
           }> = [];
           for (const row of attendanceRows) {
             if (
@@ -488,7 +522,6 @@ export class LeaveEntitlementsService implements OnModuleInit, OnModuleDestroy {
               continue;
             }
             const hours = (row.workingHours ?? 0) + row.taskHours;
-            if (hours < policy.compOffMinimumHours) continue;
             const day = new Date(row.date);
             const dayKey = day.toISOString().slice(0, 10);
             const rootId = roots.get(row.organizationId);
@@ -503,10 +536,13 @@ export class LeaveEntitlementsService implements OnModuleInit, OnModuleDestroy {
                 dayKey <= holiday.endDate.toISOString().slice(0, 10)
               );
             });
-            const workingDays = row.shift?.workingDays ??
-              row.employee.shift?.workingDays ?? [1, 2, 3, 4, 5];
-            const isWeeklyOff = !workingDays.includes(day.getUTCDay());
-            if (isCorporateHoliday || isWeeklyOff) {
+            const isShootCredit =
+              row.status === 'PRESENT' &&
+              row.attendanceSource === 'SHOOT_ASSIGNMENT' &&
+              row.creditedTaskId != null;
+            if (!isCorporateHoliday) continue;
+            if (!isShootCredit && hours < policy.compOffMinimumHours) continue;
+            if (isCorporateHoliday) {
               claims.push({
                 employeeId: row.employeeId,
                 organizationId: row.organizationId,
@@ -517,7 +553,14 @@ export class LeaveEntitlementsService implements OnModuleInit, OnModuleDestroy {
                     day.getUTCDate(),
                   ),
                 ),
-                hours,
+                hours: isShootCredit ? Math.max(hours, 8) : hours,
+                sourceType: isShootCredit
+                  ? 'SHOOT_ASSIGNMENT'
+                  : 'ATTENDANCE',
+                sourceTaskId: isShootCredit ? row.creditedTaskId : null,
+                validUntil: new Date(
+                  Date.UTC(day.getUTCFullYear(), day.getUTCMonth() + 1, 1),
+                ),
               });
             }
           }

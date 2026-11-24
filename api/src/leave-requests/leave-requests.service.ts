@@ -623,10 +623,18 @@ export class LeaveRequestsService {
     }
 
     if (!isWorkFromHome && request.employeeId && leaveCategory === 'COMP_OFF') {
-      const available = await this.leaveEntitlementsService.getAvailableBalance(
+      if (
+        request.startDate.getUTCFullYear() !== request.endDate.getUTCFullYear() ||
+        request.startDate.getUTCMonth() !== request.endDate.getUTCMonth()
+      ) {
+        throw new BadRequestException(
+          'Comp-off leave must be taken within one calendar month',
+        );
+      }
+      const available = await this.leaveEntitlementsService.getAvailableCompOffForMonth(
         request.employeeId,
         organizationId,
-        'COMP_OFF',
+        request.startDate,
       );
       if (available < leaveDays)
         throw new BadRequestException(
@@ -657,12 +665,19 @@ export class LeaveRequestsService {
           ) SELECT 1 AS locked FROM lock_result
         `;
         const available =
-          await this.leaveEntitlementsService.getAvailableBalance(
-            request.employeeId,
-            organizationId,
-            leaveCategory,
-            tx,
-          );
+          leaveCategory === 'COMP_OFF'
+            ? await this.leaveEntitlementsService.getAvailableCompOffForMonth(
+                request.employeeId,
+                organizationId,
+                request.startDate,
+                tx,
+              )
+            : await this.leaveEntitlementsService.getAvailableBalance(
+                request.employeeId,
+                organizationId,
+                leaveCategory,
+                tx,
+              );
         if (leaveCategory === 'COMP_OFF' && available < leaveDays) {
           throw new BadRequestException(
             `Insufficient comp-off balance. Available: ${available} day(s).`,
@@ -881,15 +896,22 @@ export class LeaveRequestsService {
       );
     }
 
-    const policy = await this.prisma.leavePolicy.findUnique({
-      where: { organizationId: claim.organizationId },
-      select: { compOffExpiryDays: true },
-    });
     const earnedDays = claim.hours >= 8 ? 1 : 0.5;
     const reviewedAt = new Date();
-    const expiresAt = new Date(
-      reviewedAt.getTime() + (policy?.compOffExpiryDays ?? 90) * 86_400_000,
-    );
+    const expiresAt =
+      claim.validUntil ??
+      new Date(
+        Date.UTC(
+          claim.workDate.getUTCFullYear(),
+          claim.workDate.getUTCMonth() + 1,
+          1,
+        ),
+      );
+    if (reviewedAt >= expiresAt) {
+      throw new BadRequestException(
+        'This comp-off claim expired at the end of the month in which it was earned',
+      );
+    }
 
     await this.prisma.$transaction(async (tx) => {
       const updated = await tx.leaveCompOffClaim.updateMany({

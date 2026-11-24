@@ -277,7 +277,15 @@ export default function EmployeeAttendancePage() {
                             Task hours · {formatHoursDuration(day.taskHours ?? 0)}
                           </p>
                         )}
-                        {day.isShootDay && <p className="font-medium text-orange-700">Shoot day · attendance credited</p>}
+                        {day.isShootDay && (
+                          <p className="font-medium text-orange-700">
+                            {day.scheduledDayType === 'CORPORATE_HOLIDAY'
+                              ? 'Present · shoot work on corporate holiday'
+                              : day.scheduledDayType === 'WEEKLY_OFF'
+                                ? 'Present · shoot work on weekly off'
+                                : 'Shoot day · attendance credited'}
+                          </p>
+                        )}
                         {day.workFromHomeCredit !== undefined && (
                           <p className="font-medium text-sky-700">
                             Work from home · {day.workFromHomeCredit === 1 ? 'full-day' : 'half-day'} attendance credit
