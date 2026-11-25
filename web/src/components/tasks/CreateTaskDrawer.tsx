@@ -16,6 +16,7 @@ type CreateTaskDrawerProps = {
   open: boolean;
   onClose: () => void;
   onCreated: () => Promise<void>;
+  initialTaskType?: 'GENERAL' | 'SHOOT';
 };
 
 type AssignableUser = { id: number; name: string; role: string; managerId?: number | null };
@@ -33,6 +34,7 @@ const buildEmptyForm = () => ({
   taskType: 'GENERAL',
   shootDate: '',
   shootEndDate: '',
+  shootDayType: '',
   shootCrewUserIds: [] as string[],
   project: '',
   projectId: '',
@@ -47,7 +49,7 @@ const buildEmptyForm = () => ({
   driveLink: '',
 });
 
-export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTaskDrawerProps) {
+export default function CreateTaskDrawer({ open, onClose, onCreated, initialTaskType = 'GENERAL' }: CreateTaskDrawerProps) {
   const authSession = useAuthSession();
   const role = authSession.role;
   const currentUserId = authSession.user?.id ?? null;
@@ -73,6 +75,7 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
 
   useEffect(() => {
     if (!open) return;
+    setForm((previous) => ({ ...previous, taskType: initialTaskType }));
 
     async function loadOptions() {
       try {
@@ -98,7 +101,7 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
     }
 
     void loadOptions();
-  }, [currentUserId, open, role]);
+  }, [currentUserId, initialTaskType, open, role]);
 
   useEffect(() => {
     if (!open) return;
@@ -270,6 +273,13 @@ export default function CreateTaskDrawer({ open, onClose, onCreated }: CreateTas
                     <span className="text-sm font-medium text-slate-700">To date</span>
                     <input type="date" required min={form.shootDate || undefined} className={field} value={form.shootEndDate} onChange={(event) => set('shootEndDate', event.target.value)} />
                   </label>
+                  <div className="sm:col-span-2 space-y-1.5">
+                    <span className="text-sm font-medium text-slate-700">Day type <span className="font-normal text-slate-400">(optional)</span></span>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => set('shootDayType', form.shootDayType === 'FULL_DAY' ? '' : 'FULL_DAY')} className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-medium ${form.shootDayType === 'FULL_DAY' ? 'border-orange-400 bg-orange-50 text-orange-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>Full day</button>
+                      <button type="button" onClick={() => set('shootDayType', form.shootDayType === 'HALF_DAY' ? '' : 'HALF_DAY')} className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-medium ${form.shootDayType === 'HALF_DAY' ? 'border-orange-400 bg-orange-50 text-orange-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>Half day</button>
+                    </div>
+                  </div>
                 </div>
                 <fieldset className="space-y-2">
                   <legend className="text-sm font-medium text-slate-700">Assign to <span className="text-rose-500">*</span></legend>

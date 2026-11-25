@@ -18,6 +18,7 @@ import DashboardChartsSkeleton from './dashboard/DashboardChartsSkeleton';
 import CardSkeleton from './dashboard/CardSkeleton';
 import { RichTextContent } from './forms/RichTextEditor';
 import { TaskTimerSessionsCell } from './tasks/TaskTimerSessionsCell';
+import CalendarPage from './CalendarPage';
 
 const DashboardCharts = dynamic(() => import('./dashboard/DashboardCharts'), {
   ssr: false,
@@ -276,6 +277,8 @@ function AdminDashboard() {
         </div>
       </Panel>
 
+      <div className="mt-4"><CalendarPage compact /></div>
+
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.35fr_1fr]">
         <Panel title="Recent Activity" description="Latest leave and expense events across the organization.">
           <div className="space-y-3">
@@ -457,6 +460,8 @@ function ManagerDashboard({ session }: { session: Session }) {
           </div>
         </Panel>
       </div>
+
+      <div className="mt-4"><CalendarPage compact /></div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.3fr_1fr]">
         <Panel title="Needs Review" description="Tasks submitted by the team and waiting for attention." action={<Link href="/dashboard/tasks" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">Open tasks</Link>}>
@@ -723,6 +728,8 @@ function EmployeeDashboard({ session }: { session: Session }) {
               </div>
             </div>
           </Panel>
+
+          <div className="mt-4"><CalendarPage compact /></div>
 
           <Panel title="Quick Actions" description="Jump straight into the employee pages you need most.">
             <div className="grid gap-3 sm:grid-cols-2">

@@ -81,6 +81,7 @@ const navConfig: NavItem[] = [
     ],
   },
   { type: 'link', label: 'Attendance', href: '/dashboard/attendance', icon: <CalendarCheckIcon /> },
+  { type: 'link', label: 'Calendar', href: '/dashboard/calendar', icon: <EventsIcon /> },
   { type: 'link', label: 'Projects', href: '/dashboard/projects', icon: <FolderIcon /> },
   { type: 'link', label: 'Tasks', href: '/dashboard/tasks', icon: <CheckIcon /> },
   {
@@ -226,6 +227,7 @@ const EMPLOYEE_VISIBLE_LABELS = new Set([
   'Contacts',
   'Timesheets',
   'Attendance',
+  'Calendar',
   'Events',
   'Requests',
   'Expenses',
@@ -238,6 +240,7 @@ const MANAGER_VISIBLE_LABELS = new Set([
   'Dashboard',
   'Expenses',
   'Attendance',
+  'Calendar',
   'Requests',
   'Reports',
   'Timesheets',

@@ -4,6 +4,7 @@ import { isSuperAdminSession } from '@/stores/auth-store';
 import { AddEntryButton } from '@/components/common/AddEntryButton';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import {
   getTasks,
@@ -887,6 +888,7 @@ export default function ScopedAllTasksPage() {
 }
 
 function AllTasksPage() {
+  const searchParams = useSearchParams();
   const authSession = useAuthSession();
   const { session: _session } = useAuth();
   
@@ -906,6 +908,13 @@ function AllTasksPage() {
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
   const [showCreateTask, setShowCreateTask] = useState(false);
+  const createType = searchParams.get('create') === 'shoot' ? 'SHOOT' : 'GENERAL';
+
+  useEffect(() => {
+    if (searchParams.get('create') === 'task' || searchParams.get('create') === 'shoot') {
+      setShowCreateTask(true);
+    }
+  }, [searchParams]);
   const [isTaskFilterOpen, setIsTaskFilterOpen] = useState(false);
   const [visibleTaskColumns, setVisibleTaskColumns] = useState<Record<string, boolean>>(() => Object.fromEntries(TASK_GRID_COLUMNS.map((column) => [column.key, true])));
 
@@ -1645,6 +1654,7 @@ function AllTasksPage() {
         />
         <CreateTaskDrawer
           open={showCreateTask}
+          initialTaskType={createType}
           onClose={() => setShowCreateTask(false)}
           onCreated={async () => {
             setShowCreateTask(false);
