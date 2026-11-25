@@ -3351,6 +3351,56 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     query: QueryAttendanceDto,
     user: AttendanceUser,
   ) {
+    const historyEmployeeId = await this.resolveCurrentEmployeeId(user);
+    const historyOrganizationId = await this.resolveOrganizationId(user);
+    const historyOrganization = await this.prisma.organization.findUnique({
+      where: { id: historyOrganizationId },
+      select: { timezone: true },
+    });
+    const historyTimezone = historyOrganization?.timezone ?? 'UTC';
+    const historyTodayKey = dateKeyInTimezone(new Date(), historyTimezone);
+    const historyEmployee = await this.prisma.employee.findUnique({
+      where: { id: historyEmployeeId },
+      select: { hireDate: true },
+    });
+    const historyStartKey = query.all
+      ? historyEmployee?.hireDate
+        ? dateKeyInTimezone(historyEmployee.hireDate, historyTimezone)
+        : historyTodayKey
+      : query.fromDate
+        ? query.fromDate.slice(0, 10)
+        : this.dateKey(new Date(new Date(`${historyTodayKey}T00:00:00Z`).getTime() - 29 * 86_400_000));
+    const historyDates: string[] = [];
+    const historyCursor = attendanceDateFromKey(historyStartKey);
+    const historyEnd = attendanceDateFromKey(historyTodayKey);
+    while (historyCursor <= historyEnd) {
+      historyDates.push(this.dateKey(historyCursor));
+      historyCursor.setUTCDate(historyCursor.getUTCDate() + 1);
+    }
+    const historyRows = [];
+    for (const historyDate of historyDates) {
+      const daily = await this.findAll({
+        employeeId: historyEmployeeId,
+        date: historyDate,
+        page: 1,
+        limit: 1,
+        summaryMode: 'none',
+        status: query.status,
+      }, user);
+      if (daily.data[0]) historyRows.push(daily.data[0]);
+    }
+    const historyPage = query.page ?? 1;
+    const historyLimit = Math.max(1, Math.min(query.limit ?? 10, 100));
+    const historyStart = (historyPage - 1) * historyLimit;
+    return {
+      data: historyRows.slice(historyStart, historyStart + historyLimit),
+      total: historyRows.length,
+      page: historyPage,
+      limit: historyLimit,
+      date: attendanceDateFromKey(historyTodayKey).toISOString(),
+      summary: this.buildSummary(historyRows),
+    };
+
     const employeeId = await this.resolveCurrentEmployeeId(user);
     const organizationId = await this.resolveOrganizationId(user);
     const organization = await this.prisma.organization.findUnique({

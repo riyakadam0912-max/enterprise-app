@@ -904,6 +904,7 @@ function AttendancePageContent() {
   const [department, setDepartment] = useState(searchParams.get('department') || '');
   const [date, setDate] = useState(searchParams.get('date') || todayString());
   const [status, setStatus] = useState(searchParams.get('status') || '');
+  const [historyStatus, setHistoryStatus] = useState(searchParams.get('status') || '');
   const [attendanceCardFilter, setAttendanceCardFilter] = useState<
     'WORKING' | 'NOT_CHECKED_IN' | 'LATE' | 'FOLLOW_UP' | undefined
   >();
@@ -1089,7 +1090,7 @@ function AttendancePageContent() {
       page,
       limit: 10,
       all: historyRange === 'all',
-      status: status ? status as AttendanceStatus : undefined,
+      status: historyStatus ? historyStatus as AttendanceStatus : undefined,
     })
       .then((result) => {
         if (!cancelled) setHistoryData(result);
@@ -1105,7 +1106,7 @@ function AttendancePageContent() {
     return () => {
       cancelled = true;
     };
-  }, [canViewAdminAttendance, historyRange, historyRefreshKey, page, status]);
+  }, [canViewAdminAttendance, historyRange, historyRefreshKey, historyStatus, page]);
 
   useEffect(() => {
     async function loadShifts() {
@@ -2527,10 +2528,9 @@ function AttendancePageContent() {
           <div>
             <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">Status</label>
             <select
-              value={status}
+              value={historyStatus}
               onChange={(event) => {
-                setStatus(event.target.value);
-                setAttendanceCardFilter(undefined);
+                setHistoryStatus(event.target.value);
                 setPage(1);
               }}
               className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm sm:w-52"
