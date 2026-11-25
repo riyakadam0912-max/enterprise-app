@@ -3377,7 +3377,7 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
       historyDates.push(this.dateKey(historyCursor));
       historyCursor.setUTCDate(historyCursor.getUTCDate() + 1);
     }
-    const historyRows = [];
+    const historyRows: DailyAttendanceRow[] = [];
     for (const historyDate of historyDates) {
       const daily = await this.findAll({
         employeeId: historyEmployeeId,
@@ -3413,21 +3413,22 @@ export class AttendanceService implements OnModuleInit, OnModuleDestroy {
     const rangeStart = query.all
       ? null
       : query.fromDate
-        ? attendanceDateFromKey(query.fromDate.slice(0, 10))
+        ? attendanceDateFromKey(query.fromDate!.slice(0, 10))
         : attendanceDateFromKey(todayKey);
     if (!query.all && !query.fromDate && rangeStart) {
-      rangeStart.setUTCDate(rangeStart.getUTCDate() - 29);
+      rangeStart!.setUTCDate(rangeStart!.getUTCDate() - 29);
     }
+    const persistedStatus: AttendanceStatus | undefined = query.status === 'LATE'
+      ? undefined
+      : query.status as AttendanceStatus | undefined;
     const where: Prisma.AttendanceWhereInput = {
       employeeId,
       organizationId,
       deletedAt: null,
       ...(!query.all && rangeStart
-        ? { date: { gte: rangeStart, lte: today } }
+        ? { date: { gte: rangeStart!, lte: today } }
         : {}),
-      ...(query.status && query.status !== 'LATE'
-        ? { status: query.status }
-        : {}),
+      ...(persistedStatus ? { status: persistedStatus } : {}),
       ...(query.status === 'LATE' ? { lateMinutes: { gt: 0 } } : {}),
     };
     const page = query.page ?? 1;
